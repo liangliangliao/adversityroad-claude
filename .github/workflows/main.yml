@@ -17,6 +17,15 @@ jobs:
         with:
           lfs: true
 
+      # 缓存 Library：避免每次全量重新导入工程，后续构建可提速数倍
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Android-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: |
+            Library-Android-
+
       - name: Build Android
         uses: game-ci/unity-builder@v4
         env:
