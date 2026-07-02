@@ -1,0 +1,22 @@
+{
+  "skills": [
+    { "skillId": "skill_shadow_kick_combo", "displayName": "影步连踢", "staminaCost": 25, "willCost": 0,
+      "physicalDamage": 35, "postureDamage": 15, "cooldown": 6, "note": "多段腿法，破轻甲（快速腿法气质）" },
+    { "skillId": "skill_reverse_wound_fist", "displayName": "逆伤崩拳", "staminaCost": 30, "willCost": 20,
+      "selfCostAxisDamage": 10, "physicalDamage": 70, "postureDamage": 40, "cooldown": 15,
+      "note": "高伤害但消耗意志值（七伤拳气质，自损机制用 selfCostAxisDamage 表达）" },
+    { "skillId": "skill_thought_breaker_finger", "displayName": "破念指", "staminaCost": 15, "willCost": 15,
+      "physicalDamage": 20, "postureDamage": 30, "cooldown": 8, "note": "远程点穴，打断敌人心理攻击前摇（一阳指气质）" },
+    { "skillId": "skill_flowing_cloud_step", "displayName": "流云步", "staminaCost": 20, "willCost": 0,
+      "cooldown": 0, "note": "高速闪避+无敌帧，绑定在 PlayerController.dodge（凌波微步气质）" },
+    { "skillId": "skill_steady_heart_guard", "displayName": "定心护体", "staminaCost": 10, "willCost": 25,
+      "mentalRestore": 30, "cooldown": 20, "note": "减免心理与物理伤害并恢复心理属性（金钟罩气质）" },
+    { "skillId": "skill_will_ignition", "displayName": "意志燃烧", "staminaCost": 0, "willCost": 40,
+      "cooldown": 30, "note": "内功爆发：短时间攻击与抗性提升，绑定 PlayerCombatController.InnerPower" },
+    { "skillId": "skill_first_step_slash", "displayName": "起步斩", "staminaCost": 15, "willCost": 10,
+      "physicalDamage": 40, "mentalRestore": 15, "cooldown": 12,
+      "note": "独居小屋通关奖励：对拖延系敌人额外伤害，象征'五分钟起步'" },
+    { "skillId": "skill_thought_cut_wave", "displayName": "斩念气刃", "staminaCost": 25, "willCost": 20,
+      "physicalDamage": 45, "postureDamage": 20, "cooldown": 10, "note": "中距离剑气/拳气攻击（武侠剑气气质）" }
+  ]
+}

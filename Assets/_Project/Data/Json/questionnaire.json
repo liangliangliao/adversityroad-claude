@@ -1,0 +1,30 @@
+{
+  "note": "简化问卷（MVP）：每题选项映射到弱点轴加分，结果喂给 PlayerProfile",
+  "questions": [
+    { "id": "q1", "text": "定下目标后，你通常什么时候开始行动？",
+      "options": [
+        { "text": "立刻开始", "axis": "Procrastination", "delta": 0.0 },
+        { "text": "拖几天才开始", "axis": "Procrastination", "delta": 0.4 },
+        { "text": "经常拖到放弃", "axis": "Procrastination", "delta": 0.8 } ] },
+    { "id": "q2", "text": "周围有人说话、咳嗽或看你时，你的专注度？",
+      "options": [
+        { "text": "几乎不受影响", "axis": "NoiseSensitivity", "delta": 0.0 },
+        { "text": "会分心但能拉回", "axis": "NoiseSensitivity", "delta": 0.4 },
+        { "text": "很难再集中", "axis": "NoiseSensitivity", "delta": 0.8 } ] },
+    { "id": "q3", "text": "别人对你有负面评价时？",
+      "options": [
+        { "text": "不太在意", "axis": "Shame", "delta": 0.0 },
+        { "text": "会难受一阵", "axis": "Shame", "delta": 0.4 },
+        { "text": "长时间反复想", "axis": "Shame", "delta": 0.8 } ] },
+    { "id": "q4", "text": "面对不合理的要求或占便宜的人？",
+      "options": [
+        { "text": "能明确拒绝", "axis": "BoundaryConflict", "delta": 0.0 },
+        { "text": "犹豫后勉强拒绝", "axis": "BoundaryConflict", "delta": 0.4 },
+        { "text": "通常不敢拒绝", "axis": "BoundaryConflict", "delta": 0.8 } ] },
+    { "id": "q5", "text": "最近的求职/工作压力？",
+      "options": [
+        { "text": "基本没有", "axis": "JobAnxiety", "delta": 0.0 },
+        { "text": "有一些焦虑", "axis": "JobAnxiety", "delta": 0.4 },
+        { "text": "持续高压", "axis": "JobAnxiety", "delta": 0.8 } ] }
+  ]
+}

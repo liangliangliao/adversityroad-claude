@@ -1,0 +1,22 @@
+{
+  "scenes": [
+    { "sceneId": "SC_HomeRoom", "displayName": "独居小屋", "primaryAxis": "Procrastination",
+      "themeTag": "拖延,决断", "baseIntensity": 0.35, "bossId": "boss_procrastination_shadow",
+      "enemyIds": ["enemy_tomorrow_phantom", "enemy_phone_temptation", "enemy_selfdoubt_whisper"] },
+    { "sceneId": "SC_NoiseStreet", "displayName": "噪声街区", "primaryAxis": "NoiseSensitivity",
+      "themeTag": "专注,干扰", "baseIntensity": 0.5, "bossId": "boss_bystander_illusion",
+      "enemyIds": ["enemy_cough_assassin", "enemy_gaze_judge", "enemy_noise_walker"] },
+    { "sceneId": "SC_JobSquare", "displayName": "求职荒原", "primaryAxis": "JobAnxiety",
+      "themeTag": "求职,信心", "baseIntensity": 0.6, "bossId": "boss_king_of_no_reply",
+      "enemyIds": ["enemy_resume_inquisitor", "enemy_failure_prophet", "enemy_ironface_interviewer"] },
+    { "sceneId": "SC_BoundaryBridge", "displayName": "边界长桥", "primaryAxis": "BoundaryConflict",
+      "themeTag": "边界,公平,债务", "baseIntensity": 0.65, "bossId": "boss_fairness_scale_beast",
+      "enemyIds": ["enemy_debt_dodger", "enemy_moral_blackmailer", "enemy_blame_shifter"] },
+    { "sceneId": "SC_ShameMirrorHall", "displayName": "审判广场", "primaryAxis": "Shame",
+      "themeTag": "羞耻,自尊", "baseIntensity": 0.7, "bossId": "boss_judgement_eye",
+      "enemyIds": ["enemy_shame_mirror", "enemy_lowworth_shadow", "enemy_echo_of_past"] },
+    { "sceneId": "SC_ValleyWasteland", "displayName": "低谷荒原", "primaryAxis": "FailureFear",
+      "themeTag": "失败,低谷,重新站起", "baseIntensity": 0.75, "bossId": "boss_old_self",
+      "enemyIds": ["enemy_giveup_beast", "enemy_numb_walker", "enemy_fate_judge"] }
+  ]
+}
