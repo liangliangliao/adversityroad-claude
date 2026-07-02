@@ -65,8 +65,7 @@ namespace AdversityRoad.AI
                     break;
 
                 case EnemyState.Chase:
-                    _agent.isStopped = false;
-                    _agent.SetDestination(_player.position);
+                    MoveTowards(_player.position, dt);
                     if (dist <= profile.attackRange) State = EnemyState.Attack;
                     // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）
                     else if (dist < profile.detectRange * 0.7f && _mentalCd <= 0 && profile.mentalDamage > 0)
@@ -75,7 +74,7 @@ namespace AdversityRoad.AI
                     break;
 
                 case EnemyState.Attack:
-                    _agent.isStopped = true;
+                    StopMoving();
                     FaceTarget();
                     if (dist > profile.attackRange * 1.2f) { State = EnemyState.Chase; break; }
                     if (_attackCd <= 0) DoPhysicalAttack();
@@ -85,7 +84,7 @@ namespace AdversityRoad.AI
 
         void PatrolTick()
         {
-            if (patrolPoints == null || patrolPoints.Length == 0) { State = EnemyState.Idle; return; }
+            if (patrolPoints == null || patrolPoints.Length == 0 || !AgentReady) { State = EnemyState.Idle; return; }
             State = EnemyState.Patrol;
             _agent.isStopped = false;
             if (!_agent.pathPending && _agent.remainingDistance < 0.5f)
@@ -93,6 +92,31 @@ namespace AdversityRoad.AI
                 _patrolIndex = (_patrolIndex + 1) % patrolPoints.Length;
                 _agent.SetDestination(patrolPoints[_patrolIndex].position);
             }
+        }
+
+        /// <summary>Agent 是否可用：未落在 NavMesh 上时调用 isStopped/SetDestination 会抛异常。</summary>
+        bool AgentReady => _agent != null && _agent.enabled && _agent.isOnNavMesh;
+
+        void MoveTowards(Vector3 target, float dt)
+        {
+            if (AgentReady)
+            {
+                _agent.isStopped = false;
+                _agent.SetDestination(target);
+                return;
+            }
+            // NavMesh 不可用时的直线追击兜底，保证真机上 AI 不因烘焙失败而瘫痪
+            Vector3 dir = target - transform.position;
+            dir.y = 0;
+            if (dir.sqrMagnitude < 0.04f) return;
+            transform.position += dir.normalized * profile.moveSpeed * dt;
+            transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion.LookRotation(dir), 8f * dt);
+        }
+
+        void StopMoving()
+        {
+            if (AgentReady) _agent.isStopped = true;
         }
 
         void FaceTarget()
@@ -168,7 +192,7 @@ namespace AdversityRoad.AI
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
                 _staggerTimer = 2f;
-                _agent.isStopped = true;
+                StopMoving();
                 if (_anim != null) _anim.SetTrigger("Stagger");
             }
         }
@@ -176,7 +200,7 @@ namespace AdversityRoad.AI
         void Die()
         {
             State = EnemyState.Dead;
-            _agent.isStopped = true;
+            StopMoving();
             if (_anim != null) _anim.SetTrigger("Death");
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
