@@ -10,6 +10,9 @@ namespace AdversityRoad.UI
         public float smoothSpeed = 5f;
         float _target = 1f;
 
+        /// <summary>上一次设置的比例（供 HUD 判断数值升降）。</summary>
+        public float LastRatio => _target;
+
         public void SetValue(float cur, float max) => _target = max > 0 ? cur / max : 0;
 
         void Update()
