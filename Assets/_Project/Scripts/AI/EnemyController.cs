@@ -33,6 +33,12 @@ namespace AdversityRoad.AI
         {
             _agent = GetComponent<NavMeshAgent>();
             _anim = GetComponentInChildren<Animator>();
+        }
+
+        // 属性初始化放在 Start：运行时动态生成敌人时，profile 在 AddComponent
+        // 之后才注入，Awake 里读取会拿到默认值（Boss 血量/移速全错）。
+        void Start()
+        {
             _hp = profile.maxHealth;
             _posture = profile.posture;
             _agent.speed = profile.moveSpeed;
