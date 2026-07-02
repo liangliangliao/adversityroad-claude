@@ -1,9 +1,10 @@
 using UnityEngine;
+using AdversityRoad.Mobile;
 using AdversityRoad.Player;
 
 namespace AdversityRoad.Combat
 {
-    /// <summary>目标板（独居小屋）：靠近并按 E 蓄力，恢复意志与决断。</summary>
+    /// <summary>目标板：靠近后按住 E 键或触屏"互"键蓄力，恢复意志与决断。</summary>
     public class GoalBoard : MonoBehaviour
     {
         public float interactRange = 2.5f;
@@ -11,17 +12,15 @@ namespace AdversityRoad.Combat
 
         PlayerController _player;
 
-        void Start()
-        {
-            var p = FindObjectOfType<PlayerController>();
-            if (p != null) _player = p;
-        }
-
         void Update()
         {
-            if (_player == null) return;
+            if (_player == null)
+            {
+                _player = FindObjectOfType<PlayerController>();
+                if (_player == null) return;
+            }
             if (Vector3.Distance(transform.position, _player.transform.position) > interactRange) return;
-            if (Input.GetKey(KeyCode.E))
+            if (Input.GetKey(KeyCode.E) || MobileInput.GetHeld("Interact"))
                 _player.Stats.RestoreMental(restorePerSec * Time.deltaTime);
         }
     }

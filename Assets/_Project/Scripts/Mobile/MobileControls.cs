@@ -60,6 +60,9 @@ namespace AdversityRoad.Mobile
             AddButton("Lock", "锁", new Vector2(-560, 210), 100, new Color(0.7f, 0.7f, 0.75f, 0.7f));
             AddButton("Inner", "功", new Vector2(-570, 400), 100, new Color(0.95f, 0.8f, 0.3f, 0.75f));
             AddButton("Jump", "跳", new Vector2(-180, 620), 110, new Color(0.65f, 0.5f, 0.9f, 0.75f));
+            AddButton("Skill1", "技1", new Vector2(-390, 520), 110, new Color(0.9f, 0.3f, 0.55f, 0.75f));
+            AddButton("Skill2", "技2", new Vector2(-580, 570), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
+            AddButton("Interact", "互", new Vector2(-750, 170), 95, new Color(0.6f, 0.85f, 0.85f, 0.7f));
         }
 
         GameObject CreatePanel(string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
@@ -104,11 +107,15 @@ namespace AdversityRoad.Mobile
             t.raycastTarget = false;
         }
 
-        /// <summary>用内置 Knob 精灵把方形 Image 变圆形；找不到就保持方形。</summary>
+        /// <summary>用内置 Knob 精灵把方形 Image 变圆形；打包后取不到内置精灵时保持方形。</summary>
         static void MakeCircle(Image img)
         {
-            var knob = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
-            if (knob != null) img.sprite = knob;
+            try
+            {
+                var knob = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
+                if (knob != null) img.sprite = knob;
+            }
+            catch { /* 内置精灵未包含在构建中：保持方形按钮 */ }
         }
     }
 }

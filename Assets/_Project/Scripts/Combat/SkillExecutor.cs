@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using AdversityRoad.Mobile;
 using AdversityRoad.Player;
 using AdversityRoad.Core;
 
@@ -32,6 +33,10 @@ namespace AdversityRoad.Combat
             // 数字键 1-4 释放已装备技能
             for (int i = 0; i < Mathf.Min(4, equippedSkills.Count); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);
+
+            // 触屏技能按钮
+            if (MobileInput.GetDown("Skill1") && equippedSkills.Count > 0) TryCast(equippedSkills[0]);
+            if (MobileInput.GetDown("Skill2") && equippedSkills.Count > 1) TryCast(equippedSkills[1]);
         }
 
         public bool TryCast(Data.SkillDefinition skill)
