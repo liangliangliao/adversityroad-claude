@@ -31,6 +31,10 @@ namespace AdversityRoad.Data
         [Header("远程（斩念气刃等投射类技能）")]
         public bool isRanged = false;
         public float projectileSpeed = 16f;
+        public float projectileScale = 1f;
+
+        [Header("能量消耗：大招需消耗意势（0=不需要）")]
+        public int momentumCost = 0;
 
         [Header("时序")]
         public float cooldown = 5f;

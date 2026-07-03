@@ -19,6 +19,9 @@ namespace AdversityRoad.UI
         {
             ("疾影突(前+重)", c => c.Debug_DashStrike()),
             ("吹飞踢(后+重)", c => c.Debug_Blowback()),
+            ("左旋斩(左+重)", c => c.Debug_LeftSpin()),
+            ("右旋斩(右+重)", c => c.Debug_RightSpin()),
+            ("能量斩(需2势远程)", c => c.Debug_EnergyBlade()),
             ("切手技(连段中轻点重)", c => c.Debug_QiShou()),
             ("满蓄力重劈", c => c.Debug_HeavyCharged()),
             ("旋风终结(2势)", c => c.Debug_Finisher()),
@@ -39,7 +42,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "DebugMovesPanel", new Vector2(1280, 820),
+            _panel = UiUtil.MakePanel(canvas, "DebugMovesPanel", new Vector2(1280, 960),
                 new Color(0.07f, 0.08f, 0.11f, 0.96f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "招式测试台", 38,
