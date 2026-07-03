@@ -52,13 +52,13 @@ namespace AdversityRoad.Combat
             public float dmg, posture, lunge, windup, open, length, cancelAt;
         }
 
-        // 拳系（直拳朝正前方交替出击）：伤害高
+        // 拳键=剑式套路（持械时耍剑）：横斩→上撩→弓步突刺→腾空跃劈，伤害高
         static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.PunchJab,   dmg = 1.0f,  posture = 8,  lunge = 0.45f, windup = 0.08f, open = 0.18f, length = 0.32f, cancelAt = 0.20f },
-            new ComboStage { pose = PoseState.PunchCross, dmg = 1.1f,  posture = 9,  lunge = 0.45f, windup = 0.08f, open = 0.18f, length = 0.32f, cancelAt = 0.20f },
-            new ComboStage { pose = PoseState.AttackUp,   dmg = 1.3f,  posture = 12, lunge = 0.4f,  windup = 0.10f, open = 0.22f, length = 0.42f, cancelAt = 0.28f },
-            new ComboStage { pose = PoseState.AttackLeap, dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.16f, open = 0.30f, length = 0.62f, cancelAt = 0.6f },
+            new ComboStage { pose = PoseState.Attack,      dmg = 1.0f,  posture = 8,  lunge = 0.5f,  windup = 0.09f, open = 0.20f, length = 0.36f, cancelAt = 0.22f },
+            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.1f,  posture = 10, lunge = 0.4f,  windup = 0.09f, open = 0.20f, length = 0.36f, cancelAt = 0.22f },
+            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.08f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
+            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.16f, open = 0.30f, length = 0.62f, cancelAt = 0.6f },
         };
 
         // 腿系（脚技）：削韧强
@@ -337,19 +337,28 @@ namespace AdversityRoad.Combat
             CombatFeedback.SwingArc(transform, true,
                 finisher ? new Color(1f, 0.8f, 0.3f) : new Color(1f, 0.6f, 0.3f));
             CombatFeedback.Shake(finisher ? 0.8f : 0.5f);
+            // 满蓄力落地带地裂冲击环
+            if (charge01 > 0.7f || finisher)
+                CombatFeedback.RecipeBurst(transform.position,
+                    finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
             OpenHitboxTimed(0.12f, finisher ? 0.4f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
             if (finisher) GameEvents.RaiseSubtitle("旋风终结！消耗 " + spent + " 点意势");
         }
 
-        /// <summary>前+重：突进肘击（KOF 突进技）。</summary>
+        /// <summary>前+重：突进刺（疾影突）——高速突进直刺，双重剑气。</summary>
         void DashStrike()
         {
             _fsm.RequestState(CombatState.HeavyAttack, 0.5f);
-            PlayPose(PoseState.Attack);
-            FaceAndLunge(2.4f);
-            float dmg = heavyDamage * 0.8f * CritMult();
-            CombatFeedback.SwingArc(transform, true, new Color(0.9f, 0.9f, 0.5f));
-            OpenHitboxTimed(0.08f, 0.28f, dmg, 16f, 2f, false);
+            PlayPose(PoseState.SwordThrust);
+            FaceAndLunge(2.6f);
+            float dmg = heavyDamage * 0.85f * CritMult();
+            CombatFeedback.SwingArc(transform, true, new Color(0.9f, 0.95f, 0.6f));
+            CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
+            CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f,
+                new Color(0.9f, 0.95f, 0.6f), 5);
+            CombatFeedback.Shake(0.4f);
+            OpenHitboxTimed(0.08f, 0.3f, dmg, 16f, 2f, false);
+            GameEvents.RaiseSubtitle("疾影突！");
         }
 
         /// <summary>后+重：吹飞踢（KOF CD 吹飞攻击，大击退拉开身位）。</summary>
@@ -359,7 +368,7 @@ namespace AdversityRoad.Combat
             PlayPose(PoseState.SideKick);
             FaceAndLunge(0.4f);
             float dmg = heavyDamage * 0.7f * CritMult();
-            CombatFeedback.Shake(0.6f);
+            CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
             OpenHitboxTimed(0.1f, 0.3f, dmg, 34f, 9f, false);
             GameEvents.RaiseSubtitle("吹飞踢！");
         }
@@ -521,6 +530,53 @@ namespace AdversityRoad.Combat
                 if (d < bestDist) { bestDist = d; best = e.transform; }
             }
             return best;
+        }
+
+        // ================= 调试接口（「测试」面板：逐个验证招式实际生效） =================
+
+        public void Debug_DashStrike() { if (!_fsm.IsHardLocked) DashStrike(); }
+        public void Debug_Blowback() { if (!_fsm.IsHardLocked) BlowbackKick(); }
+        public void Debug_QiShou() { if (!_fsm.IsHardLocked) QiShou(); }
+        public void Debug_JumpAttack() { if (!_fsm.IsHardLocked) JumpAttack(); }
+        public void Debug_JumpKick() { if (!_fsm.IsHardLocked) JumpKickAttack(); }
+        public void Debug_Sweep() { if (!_fsm.IsHardLocked) SweepAttack(); }
+
+        public void Debug_HeavyCharged()
+        {
+            if (_fsm.IsHardLocked) return;
+            SetMomentum(0);
+            _chargeT = maxChargeTime;
+            _charging = true;
+            ReleaseHeavy();
+        }
+
+        public void Debug_Finisher()
+        {
+            if (_fsm.IsHardLocked) return;
+            SetMomentum(2);
+            _chargeT = maxChargeTime;
+            _charging = true;
+            ReleaseHeavy();
+        }
+
+        public void Debug_RanWu()
+        {
+            if (_fsm.IsHardLocked) return;
+            SetMomentum(3);
+            _chargeT = maxChargeTime;
+            _charging = true;
+            ReleaseHeavy();
+        }
+
+        public void Debug_FillMomentum() => SetMomentum(3);
+
+        public void Debug_RestoreAll()
+        {
+            var s = _player.Stats;
+            s.hp = s.maxHp;
+            s.stamina = s.maxStamina;
+            s.RestoreMental(999f);
+            GameEvents.RaisePlayerHpChanged(s.hp, s.maxHp);
         }
 
         // ================= 受击 =================

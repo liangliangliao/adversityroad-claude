@@ -71,22 +71,24 @@ namespace AdversityRoad.Combat
             float footLp = 0, footRp = 0;
 
             // ---------- 步态循环 ----------
+            // 步态：走路小步摆，奔跑大步幅+摆臂屈肘+前倾冲刺感
             float swing = moving ? Mathf.Sin(_phase) : 0;
-            float legAmp = Mathf.Lerp(13f, 42f, _speed01);
-            float armAmp = Mathf.Lerp(6f, 34f, _speed01);
+            float legAmp = Mathf.Lerp(13f, 56f, _speed01);
+            float armAmp = Mathf.Lerp(6f, 48f, _speed01);
             hipLp = swing * legAmp;
             hipRp = -swing * legAmp;
-            kneeLp = Mathf.Max(0, Mathf.Sin(_phase - 1.9f)) * Mathf.Lerp(12f, 62f, _speed01);
-            kneeRp = Mathf.Max(0, Mathf.Sin(_phase + 1.25f)) * Mathf.Lerp(12f, 62f, _speed01);
+            kneeLp = Mathf.Max(0, Mathf.Sin(_phase - 1.9f)) * Mathf.Lerp(12f, 82f, _speed01);
+            kneeRp = Mathf.Max(0, Mathf.Sin(_phase + 1.25f)) * Mathf.Lerp(12f, 82f, _speed01);
             shLp = -swing * armAmp;
             shRp = swing * armAmp;
-            elL += _speed01 * 26f;
-            elR += _speed01 * 26f;
+            elL += _speed01 * 55f;   // 奔跑屈肘摆臂
+            elR += _speed01 * 55f;
+            torsoP += _speed01 * 7f; // 冲刺前倾
             if (moving)
             {
-                pelvisY += Mathf.Abs(Mathf.Cos(_phase)) * 0.045f * _speed01;
-                footLp = -hipLp * 0.4f;
-                footRp = -hipRp * 0.4f;
+                pelvisY += Mathf.Abs(Mathf.Cos(_phase)) * 0.055f * _speed01;
+                footLp = -hipLp * 0.45f;
+                footRp = -hipRp * 0.45f;
             }
             else
             {
@@ -158,6 +160,22 @@ namespace AdversityRoad.Combat
                     shLr = 30f; shRr = -35f;
                     elL = elR = 60f;
                     swinging = _t < 0.36f;
+                    break;
+                }
+                case PoseState.SwordThrust: // 剑式·突刺：弓步前倾，持剑臂直线刺出
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.26f));
+                    shRp = 92f;
+                    shRr = -4f;
+                    elR = Mathf.Lerp(100f, 2f, k);               // 肘由屈到全伸=刺出
+                    shLp = Mathf.Lerp(30f, -35f, k);             // 后手向后展开配重
+                    shLr = 30f;
+                    torsoP = Mathf.Lerp(4f, 22f, k);             // 弓步前倾
+                    torsoY = Mathf.Lerp(-18f, 8f, k);
+                    hipRp = 35f; kneeRp = 45f;                   // 前弓
+                    hipLp = -22f; kneeLp = 8f;                   // 后箭
+                    pelvisY -= 0.1f * k;
+                    swinging = _t < 0.3f;
                     break;
                 }
                 case PoseState.PunchJab: // 右直拳：手臂朝正前方快速伸出（拳打在前方）

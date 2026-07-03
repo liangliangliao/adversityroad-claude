@@ -475,6 +475,12 @@ namespace AdversityRoad.Core
                     var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
                     if (cam != null) cam.CyclePreset();
                 }, 26);
+            var debugPanel = DebugMovesPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "测试", new Vector2(1, 1), new Vector2(-265, -116),
+                new Vector2(150, 64), new Color(0.45f, 0.35f, 0.5f, 0.8f), debugPanel.Toggle, 26);
+            var settingsPanel = SettingsPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "设置", new Vector2(1, 1), new Vector2(-435, -116),
+                new Vector2(150, 64), new Color(0.4f, 0.4f, 0.45f, 0.8f), settingsPanel.Toggle, 26);
 
             // 第五阶段：画像驱动的个性化遭遇战
             var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();

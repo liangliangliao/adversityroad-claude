@@ -51,6 +51,7 @@ namespace AdversityRoad.Player
         float _pivotH = 1.55f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         bool _pivotInit;
+        Transform _head;                    // 第一人称时隐藏头部（显露手臂与兵器）
 
         /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
@@ -61,6 +62,7 @@ namespace AdversityRoad.Player
             public string name;
             public Vector3 offset;
             public float pitch;
+            public bool fp;   // 第一人称
         }
 
         static readonly CamPreset[] Presets =
@@ -68,6 +70,7 @@ namespace AdversityRoad.Player
             new CamPreset { name = "近身动作", offset = new Vector3(0.55f, 1.75f, -3.7f), pitch = 7f },
             new CamPreset { name = "标准跟随", offset = new Vector3(0.6f, 2.0f, -4.9f), pitch = 10f },
             new CamPreset { name = "战术远景", offset = new Vector3(0.25f, 3.3f, -7.0f), pitch = 21f },
+            new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = 2f, fp = true },
         };
 
         public int PresetIndex { get; private set; } = 1;
@@ -139,7 +142,7 @@ namespace AdversityRoad.Player
                 }
                 _followBlend = 0;
             }
-            else if (autoFollow)
+            else if (autoFollow && !Presets[PresetIndex].fp)
             {
                 // 移动即回正：玩家一旦朝新方向移动，镜头迅速（但平滑）切到其身后
                 // 展示新的前方远景；偏差越大追得越快；原地转身不动镜头
@@ -157,8 +160,9 @@ namespace AdversityRoad.Player
                 }
             }
 
-            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视
-            if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
+            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视（第一人称不干预）
+            if (!Presets[PresetIndex].fp &&
+                Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
                 _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
 
             _lastTargetPos = target.position;
@@ -170,6 +174,21 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
+
+            // ---- 第一人称：镜头在眼位，隐藏头部，手臂与兵器动作直观可见 ----
+            SetHeadVisible(!Presets[PresetIndex].fp);
+            if (Presets[PresetIndex].fp)
+            {
+                Vector3 eye = target.position + Vector3.up * 0.75f + rot * new Vector3(0, 0, 0.12f);
+                if (_kick > 0.001f)
+                {
+                    eye.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.03f;
+                    _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
+                }
+                transform.position = eye;
+                transform.rotation = rot;
+                return;
+            }
 
             // 物理感取景：水平刚性跟随，纵向软化（GDC 稳定镜头原则——
             // 不复制角色每个纵向小动作，跳跃/落地时镜头柔和跟进）
@@ -214,6 +233,17 @@ namespace AdversityRoad.Player
 
             transform.position = pos;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * 0.25f - pos);
+        }
+
+        void SetHeadVisible(bool visible)
+        {
+            if (_head == null && player != null)
+            {
+                var app = player.GetComponent<PlayerAppearance>();
+                if (app != null && app.Rig != null) _head = app.Rig.head;
+            }
+            if (_head != null && _head.gameObject.activeSelf != visible)
+                _head.gameObject.SetActive(visible);
         }
     }
 }
