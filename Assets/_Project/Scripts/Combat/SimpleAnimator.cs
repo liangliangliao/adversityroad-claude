@@ -12,7 +12,13 @@ namespace AdversityRoad.Combat
         AttackLeap,     // 跃劈（连段终结）
         Sweep,          // 蹲伏扫堂腿
         JumpAttack,     // 空中下劈
-        Charge          // 重击蓄力
+        Charge,         // 重击蓄力
+        // KOF 式拳脚基本动作（朝正前方发力）
+        PunchJab,       // 右直拳
+        PunchCross,     // 左直拳（交替出拳）
+        SideKick,       // 侧踢
+        SpinKick,       // 后旋踢
+        JumpKick        // 飞踢
     }
 
     /// <summary>

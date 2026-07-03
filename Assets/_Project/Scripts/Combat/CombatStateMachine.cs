@@ -14,12 +14,22 @@ namespace AdversityRoad.Combat
         Animator _anim;
         float _stateTimer;
 
-        /// <summary>处于攻击/受击/硬直等状态时锁定移动输入。</summary>
+        /// <summary>处于攻击/受击/硬直等状态时锁定新动作输入。</summary>
         public bool IsActionLocked =>
             Current == CombatState.LightAttack || Current == CombatState.HeavyAttack ||
             Current == CombatState.HitReaction || Current == CombatState.Knockdown ||
             Current == CombatState.MentalStagger || Current == CombatState.InnerPowerCast ||
             Current == CombatState.Finisher || Current == CombatState.Death;
+
+        /// <summary>
+        /// 硬性锁定：完全禁止移动的状态（重击/倒地/硬直/死亡等）。
+        /// 轻击连段不在其中——真实格斗可以边移动边出拳踢腿。
+        /// </summary>
+        public bool IsHardLocked =>
+            Current == CombatState.HeavyAttack || Current == CombatState.HitReaction ||
+            Current == CombatState.Knockdown || Current == CombatState.MentalStagger ||
+            Current == CombatState.InnerPowerCast || Current == CombatState.Finisher ||
+            Current == CombatState.Death;
 
         void Awake() => _anim = GetComponentInChildren<Animator>();
 

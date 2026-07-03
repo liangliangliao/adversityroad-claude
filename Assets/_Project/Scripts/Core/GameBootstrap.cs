@@ -456,6 +456,9 @@ namespace AdversityRoad.Core
             var profilePanel = ProfilePanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "画像", new Vector2(1, 1), new Vector2(-775, -42),
                 new Vector2(150, 64), new Color(0.5f, 0.35f, 0.55f, 0.8f), profilePanel.Toggle, 26);
+            var movesPanel = MovesPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "招式", new Vector2(1, 1), new Vector2(-945, -42),
+                new Vector2(150, 64), new Color(0.55f, 0.45f, 0.25f, 0.8f), movesPanel.Toggle, 26);
 
             BuildBattleFlowPanel(canvasGo.transform);
         }
