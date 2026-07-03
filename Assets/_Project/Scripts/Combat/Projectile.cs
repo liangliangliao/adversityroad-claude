@@ -17,7 +17,8 @@ namespace AdversityRoad.Combat
         float _dieAt;
 
         public static Projectile Launch(Transform owner, Vector3 origin, Vector3 dir,
-            DamageInfo damage, float speed, Color color, Material baseMat)
+            DamageInfo damage, float speed, Color color, Material baseMat,
+            float visualScale = 1f)
         {
             var root = new GameObject("Projectile");
             root.transform.position = origin;
@@ -26,7 +27,8 @@ namespace AdversityRoad.Combat
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.DestroyImmediate(visual.GetComponent<Collider>());
             visual.transform.SetParent(root.transform, false);
-            visual.transform.localScale = new Vector3(0.25f, 0.25f, 1.1f);
+            visual.transform.localScale =
+                new Vector3(0.25f, 0.25f, 1.1f) * Mathf.Max(0.5f, visualScale);
             var r = visual.GetComponent<MeshRenderer>();
             Material m;
             if (baseMat != null) m = new Material(baseMat);
@@ -42,7 +44,7 @@ namespace AdversityRoad.Combat
 
             var col = root.AddComponent<SphereCollider>();
             col.isTrigger = true;
-            col.radius = 0.3f;
+            col.radius = 0.3f * Mathf.Max(1f, visualScale);
             var rb = root.AddComponent<Rigidbody>();
             rb.isKinematic = true;
             rb.useGravity = false;

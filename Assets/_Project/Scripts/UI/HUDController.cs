@@ -22,8 +22,10 @@ namespace AdversityRoad.UI
         public Image[] momentumPips; // 意势点（0-3）
         public Text comboText;       // 当前连段序列（拳·拳·腿）
         public RectTransform cineTop, cineBottom;   // 锁定战斗时的电影黑边
+        public Text skillBanner;                    // 招式大字横幅（中央弹出）
 
         float _cineHeight;
+        float _bannerUntil;
 
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
@@ -39,6 +41,7 @@ namespace AdversityRoad.UI
             GameEvents.OnMomentumChanged += OnMomentum;
             GameEvents.OnComboSeqChanged += OnComboSeq;
             GameEvents.OnLockStateChanged += OnLockState;
+            GameEvents.OnSkillBanner += OnBanner;
         }
 
         void OnDisable()
@@ -50,6 +53,16 @@ namespace AdversityRoad.UI
             GameEvents.OnMomentumChanged -= OnMomentum;
             GameEvents.OnComboSeqChanged -= OnComboSeq;
             GameEvents.OnLockStateChanged -= OnLockState;
+            GameEvents.OnSkillBanner -= OnBanner;
+        }
+
+        void OnBanner(string name)
+        {
+            if (skillBanner == null) return;
+            skillBanner.text = name;
+            skillBanner.transform.localScale = Vector3.one * 1.6f;
+            var c = skillBanner.color; c.a = 1f; skillBanner.color = c;
+            _bannerUntil = Time.unscaledTime + 0.9f;
         }
 
         void OnLockState(bool locked) => _cineHeight = locked ? 52f : 0f;
@@ -80,6 +93,19 @@ namespace AdversityRoad.UI
             }
             if (subtitleText != null && subtitleText.text.Length > 0 && Time.unscaledTime > _subtitleHideAt)
                 subtitleText.text = "";
+
+            // 招式横幅：弹入缩放+超时淡出
+            if (skillBanner != null && skillBanner.color.a > 0.01f)
+            {
+                skillBanner.transform.localScale = Vector3.Lerp(
+                    skillBanner.transform.localScale, Vector3.one, 10f * Time.unscaledDeltaTime);
+                if (Time.unscaledTime > _bannerUntil)
+                {
+                    var c = skillBanner.color;
+                    c.a = Mathf.MoveTowards(c.a, 0, 3f * Time.unscaledDeltaTime);
+                    skillBanner.color = c;
+                }
+            }
 
             // 电影黑边平滑滑入/滑出
             if (cineTop != null)

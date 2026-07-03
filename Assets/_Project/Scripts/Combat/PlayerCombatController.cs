@@ -78,17 +78,19 @@ namespace AdversityRoad.Combat
             public string seq;    // P=拳 K=腿
             public string name;
             public float mult;
+            public int cost;      // 释放绝招所需意势（越复杂越强，需能量积累）
         }
 
+        // 复杂度越高伤害越强、消耗意势越多——大绝招不可无限使用
         static readonly Recipe[] Recipes =
         {
-            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.1f },
-            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.0f },
-            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.0f },
-            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f },
-            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f },
-            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f },
-            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f },
+            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.6f, cost = 2 },
+            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.5f, cost = 2 },
+            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.5f, cost = 2 },
+            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f, cost = 0 },
+            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f, cost = 0 },
+            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f, cost = 0 },
+            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f, cost = 0 },
         };
 
         PlayerController _player;
@@ -112,7 +114,9 @@ namespace AdversityRoad.Combat
         bool _charging;
         float _chargeT;
         float _chargeGained;
-        float _heavyDirDot;            // 按下重键时的前后方向意图
+        float _chargeFxAt;
+        float _heavyDirFwd, _heavyDirSide;   // 按下重键时的八向意图
+        float _specialCd;                     // 指令技共享冷却（大招不能无限使用）
 
         float _parryTimer;
 
@@ -132,6 +136,7 @@ namespace AdversityRoad.Combat
             if (_player.Stats.IsDead) return;
             float dt = Time.deltaTime;
             if (_parryTimer > 0) _parryTimer -= dt;
+            if (_specialCd > 0) _specialCd -= dt;
 
             // 受身：被击倒瞬间按闪避快速翻身（KOF 受身）
             if (_fsm.Current == CombatState.Knockdown &&
@@ -184,6 +189,13 @@ namespace AdversityRoad.Combat
                         _chargeGained = _chargeT;
                         AddMomentum(1);
                     }
+                    // 蓄力可见化：脚下周期性金色能量火花
+                    if (_chargeT > 0.25f && Time.time > _chargeFxAt)
+                    {
+                        _chargeFxAt = Time.time + 0.28f;
+                        CombatFeedback.HitSpark(transform.position - Vector3.up * 0.6f,
+                            new Color(1f, 0.85f, 0.35f), 4);
+                    }
                     if (!heavyHeld) ReleaseHeavy();
                 }
                 return;
@@ -192,7 +204,7 @@ namespace AdversityRoad.Combat
             if (heavyDown)
             {
                 if (_depth >= 1 && _stageT >= 0.12f) { QiShou(); return; }
-                _heavyDirDot = MoveIntentForwardDot();
+                MoveIntent(out _heavyDirFwd, out _heavyDirSide);
                 StartCharge();
                 return;
             }
@@ -215,12 +227,13 @@ namespace AdversityRoad.Combat
             }
         }
 
-        /// <summary>移动输入相对角色朝向的前后分量（指令技判定）。</summary>
-        float MoveIntentForwardDot()
+        /// <summary>移动输入相对角色朝向的前后/左右分量（八向指令技判定）。</summary>
+        void MoveIntent(out float fwd, out float side)
         {
+            fwd = 0; side = 0;
             Vector2 mv = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"))
                          + MobileInput.Move;
-            if (mv.sqrMagnitude < 0.09f) return 0;
+            if (mv.sqrMagnitude < 0.09f) return;
             Transform cam = Camera.main != null ? Camera.main.transform : null;
             Vector3 dir;
             if (cam != null)
@@ -230,7 +243,8 @@ namespace AdversityRoad.Combat
                 dir = (f * mv.y + r * mv.x).normalized;
             }
             else dir = new Vector3(mv.x, 0, mv.y).normalized;
-            return Vector3.Dot(dir, transform.forward);
+            fwd = Vector3.Dot(dir, transform.forward);
+            side = Vector3.Dot(dir, transform.right);
         }
 
         // ================= 拳/腿连段 =================
@@ -257,15 +271,22 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * s.dmg * CritMult();
 
             // 组合技识别：打出配方即触发「招式」——冲击波+时缓+大增伤+击飞
+            // 高级绝招（cost>0）需消耗意势能量；能量不足则退化为普通连段
             bool recipeHit = false;
             foreach (var r in Recipes)
             {
                 if (_seq.EndsWith(r.seq))
                 {
+                    if (r.cost > 0 && !TrySpendMomentum(r.cost))
+                    {
+                        GameEvents.RaiseSubtitle("意势不足，「" + r.name + "」未能成招（需 " + r.cost + " 势）");
+                        break;
+                    }
                     dmg *= r.mult;
                     recipeHit = true;
-                    GameEvents.RaiseSubtitle("招式 ·「" + r.name + "」！");
+                    GameEvents.RaiseSkillBanner("绝招「" + r.name + "」");
                     CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
+                    if (r.cost > 0) CombatFeedback.SlowMo(0.4f, 0.18f);
                     break;
                 }
             }
@@ -315,11 +336,21 @@ namespace AdversityRoad.Combat
         {
             _charging = false;
 
-            // 轻点（KOF 指令技）：前+重=突进肘击，后+重=吹飞踢
-            if (_chargeT < tapThreshold)
+            // 轻点=八向指令技（斜向就近归并）：前=疾影突 后=吹飞踢 左/右=侧旋斩
+            // 指令技共享 3.5s 冷却：大招不能无限制连发
+            if (_chargeT < tapThreshold && _specialCd <= 0)
             {
-                if (_heavyDirDot > 0.4f) { DashStrike(); return; }
-                if (_heavyDirDot < -0.4f) { BlowbackKick(); return; }
+                float af = Mathf.Abs(_heavyDirFwd), asd = Mathf.Abs(_heavyDirSide);
+                if (Mathf.Max(af, asd) > 0.35f)
+                {
+                    _specialCd = 3.5f;
+                    if (af >= asd)
+                    {
+                        if (_heavyDirFwd > 0) { DashStrike(); return; }
+                        BlowbackKick(); return;
+                    }
+                    SideSpinStrike(_heavyDirSide > 0); return;
+                }
             }
 
             float charge01 = Mathf.Clamp01(_chargeT / maxChargeTime);
@@ -342,7 +373,8 @@ namespace AdversityRoad.Combat
                 CombatFeedback.RecipeBurst(transform.position,
                     finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
             OpenHitboxTimed(0.12f, finisher ? 0.4f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
-            if (finisher) GameEvents.RaiseSubtitle("旋风终结！消耗 " + spent + " 点意势");
+            if (finisher) GameEvents.RaiseSkillBanner("「旋风终结」");
+            else if (charge01 > 0.7f) GameEvents.RaiseSkillBanner("「蓄力重劈」");
         }
 
         /// <summary>前+重：突进刺（疾影突）——高速突进直刺，双重剑气。</summary>
@@ -358,7 +390,7 @@ namespace AdversityRoad.Combat
                 new Color(0.9f, 0.95f, 0.6f), 5);
             CombatFeedback.Shake(0.4f);
             OpenHitboxTimed(0.08f, 0.3f, dmg, 16f, 2f, false);
-            GameEvents.RaiseSubtitle("疾影突！");
+            GameEvents.RaiseSkillBanner("「疾影突」");
         }
 
         /// <summary>后+重：吹飞踢（KOF CD 吹飞攻击，大击退拉开身位）。</summary>
@@ -370,7 +402,29 @@ namespace AdversityRoad.Combat
             float dmg = heavyDamage * 0.7f * CritMult();
             CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
             OpenHitboxTimed(0.1f, 0.3f, dmg, 34f, 9f, false);
-            GameEvents.RaiseSubtitle("吹飞踢！");
+            GameEvents.RaiseSkillBanner("「吹飞踢」");
+        }
+
+        /// <summary>左/右+重：侧旋斩——侧步位移接旋身横扫（八向指令技）。</summary>
+        void SideSpinStrike(bool right)
+        {
+            _fsm.RequestState(CombatState.HeavyAttack, 0.55f);
+            PlayPose(PoseState.AttackSpin);
+            Vector3 lateral = (right ? transform.right : -transform.right) * 1.7f
+                              + transform.forward * 0.4f;
+            _cc.Move(lateral);
+            var target = AutoAimTarget();
+            if (target != null)
+            {
+                Vector3 dir = target.position - transform.position;
+                dir.y = 0;
+                if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
+            }
+            float dmg = heavyDamage * 0.75f * CritMult();
+            CombatFeedback.SwingArc(transform, true, new Color(0.7f, 1f, 0.7f));
+            CombatFeedback.Shake(0.4f);
+            OpenHitboxTimed(0.1f, 0.34f, dmg, 20f, 3f, false);
+            GameEvents.RaiseSkillBanner(right ? "「右旋斩」" : "「左旋斩」");
         }
 
         /// <summary>切手技：连段中轻点重击派生的快速反击。</summary>
@@ -383,6 +437,7 @@ namespace AdversityRoad.Combat
             float dmg = heavyDamage * 0.85f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 0.9f, 1f));
             OpenHitboxTimed(0.08f, 0.24f, dmg, 20f, 2.5f, false);
+            GameEvents.RaiseSkillBanner("「切手技」");
         }
 
         /// <summary>超必杀「觉醒·乱舞」：满 3 势释放的连续技（KOF 超杀）。</summary>
@@ -394,7 +449,7 @@ namespace AdversityRoad.Combat
 
         IEnumerator RanWu(float charge01)
         {
-            GameEvents.RaiseSubtitle("超必杀 · 觉醒乱舞！");
+            GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
             _fsm.RequestState(CombatState.Finisher, 1.5f);
             _player.SetInvincible(1.6f);
             PoseState[] seq =
@@ -509,6 +564,14 @@ namespace AdversityRoad.Combat
 
         void AddMomentum(int n) => SetMomentum(_momentum + n);
 
+        /// <summary>技能消耗意势（能量门槛）：足够则扣除返回 true。</summary>
+        public bool TrySpendMomentum(int cost)
+        {
+            if (_momentum < cost) return false;
+            SetMomentum(_momentum - cost);
+            return true;
+        }
+
         void SetMomentum(int v)
         {
             v = Mathf.Clamp(v, 0, 3);
@@ -536,6 +599,17 @@ namespace AdversityRoad.Combat
 
         public void Debug_DashStrike() { if (!_fsm.IsHardLocked) DashStrike(); }
         public void Debug_Blowback() { if (!_fsm.IsHardLocked) BlowbackKick(); }
+        public void Debug_LeftSpin() { if (!_fsm.IsHardLocked) SideSpinStrike(false); }
+        public void Debug_RightSpin() { if (!_fsm.IsHardLocked) SideSpinStrike(true); }
+
+        public void Debug_EnergyBlade()
+        {
+            var exec = GetComponent<SkillExecutor>();
+            if (exec == null) return;
+            SetMomentum(3);
+            foreach (var s in exec.equippedSkills)
+                if (s != null && s.isRanged) { exec.TryCast(s); return; }
+        }
         public void Debug_QiShou() { if (!_fsm.IsHardLocked) QiShou(); }
         public void Debug_JumpAttack() { if (!_fsm.IsHardLocked) JumpAttack(); }
         public void Debug_JumpKick() { if (!_fsm.IsHardLocked) JumpKickAttack(); }

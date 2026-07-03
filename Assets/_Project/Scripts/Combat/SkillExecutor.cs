@@ -42,9 +42,25 @@ namespace AdversityRoad.Combat
         public bool TryCast(Data.SkillDefinition skill)
         {
             if (skill == null || _fsm.IsActionLocked) return false;
-            if (_cooldowns.TryGetValue(skill.skillId, out float cd) && cd > 0) return false;
+            if (_cooldowns.TryGetValue(skill.skillId, out float cd) && cd > 0)
+            {
+                Core.GameEvents.RaiseSubtitle("「" + skill.displayName + "」调息中……");
+                return false;
+            }
+            // 能量门槛：大招需要消耗意势（能量积累才能释放）
+            if (skill.momentumCost > 0)
+            {
+                var combat = GetComponent<PlayerCombatController>();
+                if (combat == null || !combat.TrySpendMomentum(skill.momentumCost))
+                {
+                    Core.GameEvents.RaiseSubtitle("意势不足：「" + skill.displayName +
+                        "」需要 " + skill.momentumCost + " 点意势（命中/完美闪避/蓄力积攒）");
+                    return false;
+                }
+            }
             if (!_player.Stats.SpendStamina(skill.staminaCost)) return false;
             if (skill.willCost > 0 && !_player.Stats.SpendWill(skill.willCost)) return false;
+            if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
 
             // 逆伤崩拳气质：高伤害但额外消耗自尊/意志的技能由 selfCostAxisDamage 表达
             if (skill.selfCostAxisDamage > 0)
@@ -85,8 +101,10 @@ namespace AdversityRoad.Combat
                         ? (aim.position + Vector3.up * 1.0f - origin)
                         : transform.forward;
                     Projectile.Launch(transform, origin, dir, dmg, skill.projectileSpeed,
-                        new Color(0.5f, 0.85f, 1f), null);
-                    CombatFeedback.Shake(0.3f);
+                        new Color(0.5f, 0.85f, 1f), null, skill.projectileScale);
+                    if (skill.momentumCost > 0)
+                        CombatFeedback.RecipeBurst(transform.position, new Color(0.5f, 0.85f, 1f));
+                    else CombatFeedback.Shake(0.3f);
                 }
                 else if (weaponHitbox != null)
                 {

@@ -33,7 +33,7 @@ namespace AdversityRoad.Player
         [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
                 "左右转向/横移绝不转动镜头（符合真实摄影师行为）")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 1.2f;
+        public float autoFollowDelay = 0.35f;
         public float autoFollowSpeed = 50f;
 
         public PlayerController player;
@@ -144,18 +144,20 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow && !Presets[PresetIndex].fp)
             {
-                // 移动即回正：玩家一旦朝新方向移动，镜头迅速（但平滑）切到其身后
-                // 展示新的前方远景；偏差越大追得越快；原地转身不动镜头
+                // 立刻回正：玩家一旦朝新方向移动，镜头迅速切到「该方向的身后」，
+                // 展示新的正前方（玩家掉头/左后/右后转向都会立即跟上）。
+                // 跟随目标用角色朝向（PlayerController 已让角色朝移动方向），比速度矢量稳。
                 Vector3 vel = (target.position - _lastTargetPos) / dt;
                 vel.y = 0;
-                bool moving = moveSpeed > 1.6f;
+                bool moving = moveSpeed > 1.4f;
                 bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moving;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.3f);
-                if (_followBlend > 0.01f && vel.sqrMagnitude > 0.1f)
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.2f);
+                if (_followBlend > 0.01f)
                 {
-                    float wantYaw = Quaternion.LookRotation(vel.normalized).eulerAngles.y;
+                    float wantYaw = target.eulerAngles.y;   // 角色正前方
                     float diff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
-                    float speed = Mathf.Lerp(45f, 160f, Mathf.InverseLerp(15f, 150f, diff));
+                    // 偏差越大追得越快：小偏差柔和跟随，大转向（掉头）近乎瞬切
+                    float speed = Mathf.Lerp(70f, 420f, Mathf.InverseLerp(20f, 150f, diff));
                     _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
                 }
             }

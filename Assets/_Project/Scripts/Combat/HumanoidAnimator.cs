@@ -418,8 +418,70 @@ namespace AdversityRoad.Combat
             J(rig.footL, footLp, 0, 0, k2);
             J(rig.footR, footRp, 0, 0, k2);
 
+            ApplyWeaponFlourish();
+
             if (weaponTrail != null && weaponTrail.emitting != swinging)
                 weaponTrail.emitting = swinging;
+        }
+
+        /// <summary>
+        /// 兵器耍花（武术表演式）：枢轴层旋转叠加在手臂动作之上，
+        /// 每个剑式姿态有独立的大幅刀刃轨迹，配合加宽刀光形成明显剑花。
+        /// 之前兵器只是刚性跟随手部——这是「死死握剑」的根因修复。
+        /// </summary>
+        void ApplyWeaponFlourish()
+        {
+            if (weaponPivot == null) return;
+            Quaternion rest = Quaternion.Euler(-30f, 0, 8f);
+            float k;
+
+            switch (_pose)
+            {
+                case PoseState.Attack: // 横斩：刃自举位横扫过体前
+                    k = Ease(Mathf.Clamp01(_t / 0.3f));
+                    weaponPivot.localRotation = Quaternion.Euler(
+                        Mathf.Lerp(-100f, 110f, k), Mathf.Lerp(-40f, 40f, k), 0);
+                    break;
+                case PoseState.AttackUp: // 上撩：刃自下向上反撩画弧
+                    k = Ease(Mathf.Clamp01(_t / 0.3f));
+                    weaponPivot.localRotation = Quaternion.Euler(
+                        Mathf.Lerp(115f, -125f, k), Mathf.Lerp(30f, -30f, k), 0);
+                    break;
+                case PoseState.SwordThrust: // 突刺：起手绕腕剑花后刃指正前
+                    k = Ease(Mathf.Clamp01(_t / 0.3f));
+                    weaponPivot.localRotation = Quaternion.Euler(
+                        Mathf.Lerp(40f, -8f, k), 0, Mathf.Lerp(-170f, 0f, k));
+                    break;
+                case PoseState.AttackLeap:
+                case PoseState.HeavyAttack: // 跃劈/重劈：过顶大轮劈
+                    k = Ease(Mathf.Clamp01(_t / 0.55f));
+                    weaponPivot.localRotation = Quaternion.Euler(
+                        Mathf.Lerp(-150f, 115f, k), Mathf.Lerp(-25f, 25f, k), 0);
+                    break;
+                case PoseState.AttackSpin: // 旋斩：刃持平随身旋转
+                    weaponPivot.localRotation = Quaternion.Slerp(weaponPivot.localRotation,
+                        Quaternion.Euler(95f, 0, -20f), 18f * Time.deltaTime);
+                    break;
+                case PoseState.Charge: // 蓄力：刃举于脑后蓄势微颤
+                    weaponPivot.localRotation = Quaternion.Slerp(weaponPivot.localRotation,
+                        Quaternion.Euler(-135f + Mathf.Sin(_t * 24f) * 4f, 0, -15f),
+                        12f * Time.deltaTime);
+                    break;
+                case PoseState.JumpAttack: // 空中下劈
+                    k = Ease(Mathf.Clamp01(_t / 0.4f));
+                    weaponPivot.localRotation = Quaternion.Euler(
+                        Mathf.Lerp(-160f, 100f, k), 0, 0);
+                    break;
+                case PoseState.Cast: // 施法/能量斩：绕腕立剑花一周
+                    weaponPivot.localRotation = Quaternion.Euler(0, 0, _t / 0.4f * 360f);
+                    break;
+                default: // 静息：刃斜立体侧，随呼吸微摆
+                    weaponPivot.localRotation = Quaternion.Slerp(
+                        weaponPivot.localRotation,
+                        rest * Quaternion.Euler(Mathf.Sin(Time.time * 1.6f) * 3f, 0, 0),
+                        8f * Time.deltaTime);
+                    break;
+            }
         }
 
         void MapFromFsm()

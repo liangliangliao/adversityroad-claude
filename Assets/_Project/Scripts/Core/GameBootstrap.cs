@@ -232,19 +232,22 @@ namespace AdversityRoad.Core
             dingxin.castLockTime = 0.4f;
             exec.equippedSkills.Add(dingxin);
 
+            // 能量斩：远程大能量攻击——需 2 点意势积累才能释放，伤害极高
             var qiren = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             qiren.skillId = "zhannian_qiren";
-            qiren.displayName = "斩念气刃";
-            qiren.description = "凝念成刃远程斩出，在心魔靠近前先发制人。";
-            qiren.staminaCost = 15;
+            qiren.displayName = "能量斩·斩念气刃";
+            qiren.description = "凝聚 2 点意势轰出巨型剑气，伤害极高但需能量积累与调息。";
+            qiren.staminaCost = 12;
             qiren.willCost = 10;
-            qiren.physicalDamage = 26;
-            qiren.postureDamage = 12;
-            qiren.knockback = 2;
-            qiren.cooldown = 5;
-            qiren.castLockTime = 0.45f;
+            qiren.physicalDamage = 60;
+            qiren.postureDamage = 35;
+            qiren.knockback = 5;
+            qiren.cooldown = 7;
+            qiren.castLockTime = 0.5f;
             qiren.isRanged = true;
-            qiren.projectileSpeed = 18f;
+            qiren.projectileSpeed = 20f;
+            qiren.projectileScale = 2.2f;
+            qiren.momentumCost = 2;
             exec.equippedSkills.Add(qiren);
         }
 
@@ -449,6 +452,14 @@ namespace AdversityRoad.Core
                 TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.75f));
             UiUtil.SetRect(subText, new Vector2(0.5f, 0f), new Vector2(0, 130), new Vector2(1300, 44));
             hud.subtitleText = subText;
+
+            // 招式大字横幅（屏幕中央偏上，弹入缩放淡出）
+            var banner = UiUtil.MakeText(canvasGo.transform, "SkillBanner", "", 72,
+                TextAnchor.MiddleCenter, new Color(1f, 0.85f, 0.35f));
+            UiUtil.SetRect(banner, new Vector2(0.5f, 0.5f), new Vector2(0, 180), new Vector2(1400, 110));
+            banner.fontStyle = FontStyle.Bold;
+            var bannerColor = banner.color; bannerColor.a = 0f; banner.color = bannerColor;
+            hud.skillBanner = banner;
 
             // 右上角功能按钮 + 面板
             var spawnerPanel = EnemySpawnerPanel.Create(canvasGo.transform, SpawnEnemyNearPlayer);

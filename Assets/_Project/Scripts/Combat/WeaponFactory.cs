@@ -105,8 +105,8 @@ namespace AdversityRoad.Combat
             tipGo.transform.SetParent(parent, false);
             tipGo.transform.localPosition = localPos;
             var trail = tipGo.AddComponent<TrailRenderer>();
-            trail.time = 0.22f;
-            trail.startWidth = 0.16f;
+            trail.time = 0.32f;
+            trail.startWidth = 0.28f;   // 加宽刀光：剑花轨迹清晰可见
             trail.endWidth = 0f;
             trail.minVertexDistance = 0.03f;
             trail.emitting = false;
