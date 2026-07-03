@@ -37,6 +37,7 @@ namespace AdversityRoad.Combat
             // 触屏技能按钮
             if (MobileInput.GetDown("Skill1") && equippedSkills.Count > 0) TryCast(equippedSkills[0]);
             if (MobileInput.GetDown("Skill2") && equippedSkills.Count > 1) TryCast(equippedSkills[1]);
+            if (MobileInput.GetDown("Skill3") && equippedSkills.Count > 2) TryCast(equippedSkills[2]);
         }
 
         public bool TryCast(Data.SkillDefinition skill)
@@ -59,17 +60,41 @@ namespace AdversityRoad.Combat
                 Core.GameEvents.RaiseSubtitle("【" + skill.displayName + "】心神安定，心理属性恢复。");
             }
 
-            if (skill.physicalDamage > 0 && weaponHitbox != null)
+            if (skill.physicalDamage > 0)
             {
-                CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.3f));
-                weaponHitbox.EnableHitbox(new DamageInfo
+                var dmg = new DamageInfo
                 {
                     physicalDamage = skill.physicalDamage,
                     postureDamage = skill.postureDamage,
                     knockback = skill.knockback,
                     attackerId = "player_skill_" + skill.skillId
-                });
-                Invoke(nameof(CloseHitbox), skill.hitboxOpenTime);
+                };
+
+                if (skill.isRanged)
+                {
+                    // 远程：朝最近敌人（无则朝正前方）发射剑气
+                    var combat = GetComponent<PlayerCombatController>();
+                    Transform aim = combat != null ? combat.AutoAimTarget() : null;
+                    if (aim != null)
+                    {
+                        Vector3 face = aim.position - transform.position;
+                        face.y = 0;
+                        if (face.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(face);
+                    }
+                    Vector3 origin = transform.position + Vector3.up * 1.2f + transform.forward * 0.8f;
+                    Vector3 dir = aim != null
+                        ? (aim.position + Vector3.up * 1.0f - origin)
+                        : transform.forward;
+                    Projectile.Launch(transform, origin, dir, dmg, skill.projectileSpeed,
+                        new Color(0.5f, 0.85f, 1f), null);
+                    CombatFeedback.Shake(0.3f);
+                }
+                else if (weaponHitbox != null)
+                {
+                    CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.3f));
+                    weaponHitbox.EnableHitbox(dmg);
+                    Invoke(nameof(CloseHitbox), skill.hitboxOpenTime);
+                }
             }
             return true;
         }

@@ -36,6 +36,13 @@ namespace AdversityRoad.World
 
             RenderSettings.ambientLight = Color.Lerp(NightAmbient, DayAmbient, dayFactor);
 
+            // 距离雾：白天淡青灰、夜晚深蓝，增强空间纵深与真实感
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Exponential;
+            RenderSettings.fogDensity = Mathf.Lerp(0.0075f, 0.0038f, dayFactor);
+            RenderSettings.fogColor = Color.Lerp(
+                new Color(0.06f, 0.08f, 0.14f), new Color(0.7f, 0.76f, 0.82f), dayFactor);
+
             bool night = dayFactor < 0.25f;
             if (night != _lampsOn)
             {

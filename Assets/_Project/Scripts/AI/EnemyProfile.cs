@@ -22,6 +22,7 @@ namespace AdversityRoad.AI
         public float moveSpeed = 3f;
         public float attackRange = 1.8f;
         public float detectRange = 12f;
+        public bool rangedAttack = false;     // 中距离发射心念弹（远程攻击）
         public List<string> skillIds = new List<string>();
         public List<string> dialogueTags = new List<string>();
         public string prefabAddress;

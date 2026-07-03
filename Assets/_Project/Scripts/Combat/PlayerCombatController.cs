@@ -97,7 +97,7 @@ namespace AdversityRoad.Combat
             _fsm.InCombat = true;
 
             // 自动瞄准：朝最近敌人转身，触屏无锁定时也能打中
-            var target = FindAutoAimTarget();
+            var target = AutoAimTarget();
             if (target != null)
             {
                 Vector3 dir = target.position - transform.position;
@@ -128,11 +128,12 @@ namespace AdversityRoad.Combat
             }
         }
 
-        Transform FindAutoAimTarget()
+        /// <summary>最近的存活敌人（供普攻转向与远程技能瞄准）。</summary>
+        public Transform AutoAimTarget()
         {
             var enemies = FindObjectsOfType<AI.EnemyController>();
             Transform best = null;
-            float bestDist = autoAimRange;
+            float bestDist = Mathf.Max(autoAimRange, 14f);
             foreach (var e in enemies)
             {
                 if (e.State == AI.EnemyState.Dead) continue;

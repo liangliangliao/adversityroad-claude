@@ -31,8 +31,12 @@ namespace AdversityRoad.AI
         Animator _anim;
         Transform _player;
         float _hp, _posture;
-        float _attackCd, _mentalCd, _staggerTimer, _tauntTimer;
+        float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         int _patrolIndex;
+
+        /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
+        [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
+        [HideInInspector] public Material baseMaterial;
 
         void Awake()
         {
@@ -61,7 +65,14 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
-            _attackCd -= dt; _mentalCd -= dt;
+            _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt;
+
+            // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
+            if (statusBar != null)
+            {
+                statusBar.SetHealth(_hp, profile.maxHealth);
+                statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
+            }
 
             if (State == EnemyState.Stagger)
             {
@@ -99,6 +110,10 @@ namespace AdversityRoad.AI
                     UpdateEmotion("紧逼");
                     MoveTowards(_player.position, dt);
                     if (dist <= profile.attackRange) State = EnemyState.Attack;
+                    // 中距离远程：发射心念弹
+                    else if (profile.rangedAttack && _rangedCd <= 0 &&
+                             dist > profile.attackRange * 2f && dist < profile.detectRange)
+                        DoRangedAttack();
                     // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）
                     else if (dist < profile.detectRange * 0.7f && _mentalCd <= 0 && profile.mentalDamage > 0)
                         DoMentalAttack();
@@ -185,6 +200,28 @@ namespace AdversityRoad.AI
         }
 
         void CloseHitbox() { if (attackHitbox != null) attackHitbox.DisableHitbox(); }
+
+        /// <summary>远程攻击：朝玩家胸口发射心念弹。</summary>
+        void DoRangedAttack()
+        {
+            _rangedCd = Mathf.Lerp(6f, 3f, profile.aggression);
+            StopMoving();
+            FaceTarget();
+            if (poser != null) poser.SetPose(PoseState.Cast);
+            UpdateEmotion("凝念");
+
+            Vector3 origin = transform.position + Vector3.up * 1.3f + transform.forward * 0.8f;
+            Vector3 targetPos = _player.position + Vector3.up * 1.0f;
+            Projectile.Launch(transform, origin, targetPos - origin,
+                new DamageInfo
+                {
+                    physicalDamage = profile.physicalDamage * 0.7f,
+                    mentalDamage = profile.mentalDamage * 0.5f,
+                    mentalAxis = profile.targetWeakness,
+                    knockback = 1f,
+                    attackerId = profile.enemyId
+                }, 11f, themeColor, baseMaterial);
+        }
 
         /// <summary>心理攻击：凝视/低语 + 实时恶意台词。可被定心格挡反制。</summary>
         void DoMentalAttack()

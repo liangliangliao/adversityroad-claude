@@ -16,6 +16,8 @@ namespace AdversityRoad.Combat
     {
         public Transform visual;
         public CombatStateMachine fsm;
+        public Transform weaponPivot;    // 兵器枢轴：攻击时挥舞
+        public TrailRenderer weaponTrail; // 刀光拖尾：挥击窗口内开启
 
         PoseState _pose = PoseState.Idle;
         CombatState _lastFsmState = CombatState.Idle;
@@ -107,6 +109,40 @@ namespace AdversityRoad.Combat
             visual.localRotation = Quaternion.Slerp(visual.localRotation, targetRot, k);
             visual.localPosition = Vector3.Lerp(visual.localPosition, targetPos, k);
             visual.localScale = Vector3.Lerp(visual.localScale, targetScale, k);
+
+            ApplyWeaponSwing();
+        }
+
+        /// <summary>兵器挥舞：攻击姿态时枢轴从上举扫到斜下，同时开启刀光拖尾。</summary>
+        void ApplyWeaponSwing()
+        {
+            if (weaponPivot == null) return;
+
+            Quaternion rest = Quaternion.Euler(25f, 0, 0);
+            bool swinging = false;
+
+            if (_pose == PoseState.Attack)
+            {
+                float k = Mathf.Clamp01(_t / 0.3f);
+                weaponPivot.localRotation = Quaternion.Euler(
+                    Mathf.Lerp(-80f, 95f, k), 0, Mathf.Lerp(-15f, 15f, k));
+                swinging = k < 1f;
+            }
+            else if (_pose == PoseState.HeavyAttack)
+            {
+                float k = Mathf.Clamp01(_t / 0.55f);
+                weaponPivot.localRotation = Quaternion.Euler(
+                    Mathf.Lerp(-110f, 110f, k), Mathf.Lerp(-25f, 25f, k), 0);
+                swinging = k < 1f;
+            }
+            else
+            {
+                weaponPivot.localRotation = Quaternion.Slerp(
+                    weaponPivot.localRotation, rest, 10f * Time.deltaTime);
+            }
+
+            if (weaponTrail != null && weaponTrail.emitting != swinging)
+                weaponTrail.emitting = swinging;
         }
     }
 }

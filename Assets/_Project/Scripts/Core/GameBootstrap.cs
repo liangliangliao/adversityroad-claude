@@ -27,6 +27,7 @@ namespace AdversityRoad.Core
 
         WorldContext _world;
         PlayerController _player;
+        PlayerAppearance _appearance;
         BattleFlowController _battleFlow;
         GameObject _currentChapterEnemy;
 
@@ -52,6 +53,14 @@ namespace AdversityRoad.Core
             BuildHUD();
             SetupChapterQuest();
             ShowChapterIntro();
+
+            // 云端台词池预热：进区域即后台预取，喊话零延迟
+            if (CloudDialogueService.Instance != null)
+                CloudDialogueService.Instance.WarmUp(ZoneBuilder.CurrentZoneId,
+                    Personalization.WeaknessAxis.Procrastination,
+                    Personalization.WeaknessAxis.SelfDoubt,
+                    Personalization.WeaknessAxis.NoiseSensitivity,
+                    Personalization.WeaknessAxis.Shame);
         }
 
         void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
@@ -93,6 +102,7 @@ namespace AdversityRoad.Core
                 gm.safety = safetySettings != null
                     ? safetySettings
                     : ScriptableObject.CreateInstance<SafetySettings>();
+            CloudDialogueService.Ensure();
         }
 
         void SetupDayNight()
@@ -122,11 +132,9 @@ namespace AdversityRoad.Core
             var root = new GameObject("Player");
             root.transform.position = spawn;
 
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            visual.name = "Visual";
-            Object.DestroyImmediate(visual.GetComponent<Collider>());
-            visual.transform.SetParent(root.transform, false);
-            Paint(visual, new Color(0.2f, 0.5f, 1f));
+            // 外观容器：由 PlayerAppearance 按预设组装身体/头部/着装/兵器
+            var visualRoot = new GameObject("Visual");
+            visualRoot.transform.SetParent(root.transform, false);
 
             var cc = root.AddComponent<CharacterController>();
             cc.height = 2f;
@@ -140,8 +148,14 @@ namespace AdversityRoad.Core
             var skillExec = root.AddComponent<SkillExecutor>();
 
             var poser = root.AddComponent<SimpleAnimator>();
-            poser.visual = visual.transform;
+            poser.visual = visualRoot.transform;
             poser.fsm = fsm;
+
+            _appearance = root.AddComponent<PlayerAppearance>();
+            _appearance.visualRoot = visualRoot.transform;
+            _appearance.poser = poser;
+            _appearance.baseMaterial = baseMaterial;
+            _appearance.Init();
 
             var hurt = new GameObject("PlayerHurtbox");
             hurt.transform.SetParent(root.transform, false);
@@ -205,6 +219,21 @@ namespace AdversityRoad.Core
             dingxin.cooldown = 12;
             dingxin.castLockTime = 0.4f;
             exec.equippedSkills.Add(dingxin);
+
+            var qiren = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            qiren.skillId = "zhannian_qiren";
+            qiren.displayName = "斩念气刃";
+            qiren.description = "凝念成刃远程斩出，在心魔靠近前先发制人。";
+            qiren.staminaCost = 15;
+            qiren.willCost = 10;
+            qiren.physicalDamage = 26;
+            qiren.postureDamage = 12;
+            qiren.knockback = 2;
+            qiren.cooldown = 5;
+            qiren.castLockTime = 0.45f;
+            qiren.isRanged = true;
+            qiren.projectileSpeed = 18f;
+            exec.equippedSkills.Add(qiren);
         }
 
         void BuildCamera()
@@ -220,6 +249,7 @@ namespace AdversityRoad.Core
             if (tpc == null) tpc = camGo.AddComponent<ThirdPersonCamera>();
             tpc.target = _player.transform;
             tpc.player = _player;
+            tpc.lockOn = _player.GetComponent<LockOnSystem>();
             _player.cameraTransform = camGo.transform;
             // 镜头立即就位，避免开场从原点飞过来
             camGo.transform.position = _player.transform.position + new Vector3(0, 2.5f, -5f);
@@ -283,6 +313,16 @@ namespace AdversityRoad.Core
             var dialogue = root.AddComponent<EnemyDialogue>();
             dialogue.displayName = profile.displayName;
             ec.dialogue = dialogue;
+
+            // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挥击带刀光
+            var rig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), visual.transform, baseMaterial);
+            if (rig != null)
+            {
+                poser.weaponPivot = rig.pivot;
+                poser.weaponTrail = rig.trail;
+            }
+            ec.themeColor = EnemyCatalog.TypeColor(type);
+            ec.baseMaterial = baseMaterial;
 
             var hurt = new GameObject("Hurtbox");
             hurt.transform.SetParent(root.transform, false);
@@ -369,6 +409,9 @@ namespace AdversityRoad.Core
                 new Vector2(150, 64), new Color(0.6f, 0.25f, 0.2f, 0.8f), spawnerPanel.Toggle, 26);
             UiUtil.MakeButton(canvasGo.transform, "AI台词", new Vector2(1, 1), new Vector2(-265, -42),
                 new Vector2(150, 64), new Color(0.25f, 0.35f, 0.6f, 0.8f), promptPanel.Toggle, 26);
+            UiUtil.MakeButton(canvasGo.transform, "角色", new Vector2(1, 1), new Vector2(-435, -42),
+                new Vector2(150, 64), new Color(0.3f, 0.5f, 0.4f, 0.8f),
+                () => { if (_appearance != null) _appearance.TogglePreset(); }, 26);
 
             BuildBattleFlowPanel(canvasGo.transform);
         }
