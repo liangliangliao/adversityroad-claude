@@ -4,9 +4,10 @@ using AdversityRoad.Mobile;
 namespace AdversityRoad.Player
 {
     /// <summary>
-    /// 第三人称跟随镜头（防晕 v3）：
-    /// - 位置刚性跟随（零滞后）：只平滑"转角"，不平滑"位置"，
-    ///   消除橡皮筋式游动感——这是眩晕的主因之一；
+    /// 第三人称跟随镜头（防晕 v4）：
+    /// - 位置临界阻尼软跟随（followSmoothTime 极短）：跟随点是一个平滑的
+    ///   CameraTarget，而不是直接钉在角色身体上——用极短的临界阻尼滤掉角色
+    ///   逐帧移动微抖动（这是移动晃屏的主因），同时几乎无滞后、不产生橡皮筋游动；
     /// - 转角用临界阻尼 SmoothDamp（无过冲、无回弹）；
     /// - FOV 固定 62°，永不动态变化；
     /// - 碰撞回缩快、伸出慢（避免镜头突然弹跳）；
@@ -28,6 +29,9 @@ namespace AdversityRoad.Player
         public float pitchRecenterDelay = 2.5f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
+        [Tooltip("水平跟随平滑时间：极短的临界阻尼，滤掉角色移动的逐帧微抖动又几乎无滞后" +
+                 "（抖动是逐帧高频信号衰减充分，稳态跟随仅微量拖尾，不产生橡皮筋）")]
+        public float followSmoothTime = 0.05f;
         public float fieldOfView = 66f;
 
         [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
@@ -48,6 +52,7 @@ namespace AdversityRoad.Player
         float _lastManualLook;
         Vector3 _lastTargetPos;
         float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
+        Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
         float _pivotH = 1.55f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         bool _pivotInit;
@@ -127,7 +132,10 @@ namespace AdversityRoad.Player
             _yaw += lookX;
             _pitch = Mathf.Clamp(_pitch - lookY, minPitch, maxPitch);
 
-            float moveSpeed = (target.position - _lastTargetPos).magnitude / dt;
+            // 只按水平位移判定移动：跳跃/台阶的纵向起伏不应误触发运镜与变焦
+            Vector3 frameDelta = target.position - _lastTargetPos;
+            frameDelta.y = 0;
+            float moveSpeed = frameDelta.magnitude / dt;
 
             // ---- 锁定运镜 / 自动跟随（渐入渐出，避免突然接管） ----
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
@@ -147,8 +155,6 @@ namespace AdversityRoad.Player
                 // 立刻回正：玩家一旦朝新方向移动，镜头迅速切到「该方向的身后」，
                 // 展示新的正前方（玩家掉头/左后/右后转向都会立即跟上）。
                 // 跟随目标用角色朝向（PlayerController 已让角色朝移动方向），比速度矢量稳。
-                Vector3 vel = (target.position - _lastTargetPos) / dt;
-                vel.y = 0;
                 bool moving = moveSpeed > 1.4f;
                 bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moving;
                 _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.2f);
@@ -192,15 +198,19 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // 物理感取景：水平刚性跟随，纵向软化（GDC 稳定镜头原则——
-            // 不复制角色每个纵向小动作，跳跃/落地时镜头柔和跟进）
+            // 物理感取景：跟随点做临界阻尼软跟随（GDC 稳定镜头原则——不复制角色
+            // 每个逐帧小动作）。水平用极短时间几乎无滞后但滤掉抖动，纵向更软，
+            // 跳跃/落地/台阶时镜头柔和跟进。
             float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
-            if (!_pivotInit) { _pivotY = targetPivotY; _pivotInit = true; }
+            Vector2 targetXZ = new Vector2(target.position.x, target.position.z);
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = targetXZ; _pivotInit = true; }
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
-            Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
+            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, targetXZ, ref _pivotXZVel,
+                followSmoothTime, Mathf.Infinity, dt);
+            Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
 
             // 电影感构图：锁定时按敌我距离取景（双人同框），疾跑微拉远
             float wantFactor;
