@@ -23,13 +23,13 @@ namespace AdversityRoad.Combat
     {
         [Header("连段")]
         public Hitbox weaponHitbox;
-        public float baseDamage = 13f;
+        public float baseDamage = 16f;
         public float staminaPerHit = 8f;
         public float comboResetTime = 1.1f;
         public float autoAimRange = 5f;
 
         [Header("重击 / 蓄力 / 指令技")]
-        public float heavyDamage = 30f;
+        public float heavyDamage = 34f;
         public float maxChargeTime = 1.2f;
         public float chargeStaminaPerSec = 9f;
         public float tapThreshold = 0.18f;   // 轻点/长按分界

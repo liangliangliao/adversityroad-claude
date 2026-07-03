@@ -83,8 +83,9 @@ namespace AdversityRoad.Player
             if (poser != null)
             {
                 poser.rig = Rig;
+                // 静息持械：刃朝斜上方立于体侧（不插地）
                 var wr = WeaponFactory.Build(weapon, Rig.handR, baseMaterial,
-                    new Vector3(0, -0.06f, 0.03f), new Vector3(112f, 0, 0));
+                    new Vector3(0, -0.06f, 0.03f), new Vector3(-32f, 0, 8f));
                 if (wr != null)
                 {
                     poser.weaponPivot = wr.pivot;

@@ -32,6 +32,7 @@ namespace AdversityRoad.AI
         Transform _player;
         float _hp, _posture;
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
+        float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
@@ -105,7 +106,7 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
-            _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt;
+            _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt;
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
             if (statusBar != null)
@@ -126,7 +127,11 @@ namespace AdversityRoad.AI
             {
                 _staggerTimer -= dt;
                 UpdateEmotion("慌乱");
-                if (_staggerTimer <= 0) State = EnemyState.Chase;
+                if (_staggerTimer <= 0)
+                {
+                    State = EnemyState.Chase;
+                    if (poser != null) poser.SetPose(PoseState.Idle); // 从倒地/踉跄姿态爬起
+                }
                 return;
             }
 
@@ -351,12 +356,30 @@ namespace AdversityRoad.AI
             }
 
             if (_anim != null) _anim.SetTrigger("Hit");
-            if (poser != null && State != EnemyState.Stagger) poser.SetPose(PoseState.Hit);
 
             // 被打醒：立即进入追击
             if (State == EnemyState.Idle || State == EnemyState.Patrol) State = EnemyState.Chase;
 
             if (_hp <= 0) { Die(); return; }
+
+            // 受击反应（去掉"铁桩感"的关键）：
+            // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
+            // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
+            bool heavyHit = dmg.postureDamage >= 22f || final >= 28f;
+            if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
+            {
+                _flinchCd = profile.category == EnemyCategory.Boss ? 2.4f : 1.1f;
+                CancelInvoke(nameof(OpenAttackHitbox));
+                CancelInvoke(nameof(FireProjectile));
+                ShowTelegraph(false);
+                if (attackHitbox != null) attackHitbox.DisableHitbox();
+                State = EnemyState.Stagger;
+                _staggerTimer = heavyHit ? 1.0f : 0.42f;
+                StopMoving();
+                if (poser != null)
+                    poser.SetPose(heavyHit ? PoseState.Knockdown : PoseState.Hit);
+                if (heavyHit) CombatFeedback.Shake(0.5f);
+            }
 
             if (_posture <= 0)
             {

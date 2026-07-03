@@ -313,10 +313,16 @@ namespace AdversityRoad.Combat
                     break;
                 case PoseState.Hit:
                 {
-                    float d = Mathf.Max(0, 1f - _t * 3f);
-                    torsoP -= 16f * d;
-                    headP -= 12f * d;
-                    shLr += 20f * d; shRr -= 20f * d;
+                    // 明显的受击踉跄：上身猛向后仰、头甩、双臂扬起、重心后坐
+                    float d = Mathf.Max(0, 1f - _t * 2.4f);
+                    torsoP -= 32f * d;
+                    torsoR += 8f * d;
+                    headP -= 22f * d;
+                    shLp -= 30f * d; shRp -= 30f * d;
+                    shLr += 40f * d; shRr -= 40f * d;
+                    hipLp += 14f * d; hipRp += 14f * d;
+                    kneeLp += 18f * d; kneeRp += 18f * d;
+                    pelvisY -= 0.08f * d;
                     break;
                 }
                 case PoseState.Stagger:
@@ -369,8 +375,13 @@ namespace AdversityRoad.Combat
             }
 
             // ---------- 应用关节 ----------
-            float k2 = Mathf.Clamp01((_pose == PoseState.Attack || _pose == PoseState.HeavyAttack
-                ? 22f : 13f) * dt);
+            bool attackPose = _pose == PoseState.Attack || _pose == PoseState.HeavyAttack ||
+                _pose == PoseState.PunchJab || _pose == PoseState.PunchCross ||
+                _pose == PoseState.AttackUp || _pose == PoseState.AttackKick ||
+                _pose == PoseState.SideKick || _pose == PoseState.AttackLeap ||
+                _pose == PoseState.JumpAttack || _pose == PoseState.JumpKick ||
+                _pose == PoseState.Hit;
+            float k2 = Mathf.Clamp01((attackPose ? 30f : 13f) * dt);
             rig.pelvis.localPosition = Vector3.Lerp(rig.pelvis.localPosition,
                 new Vector3(0, pelvisY, 0), k2);
             J(rig.torso, torsoP, torsoY, torsoR, k2);

@@ -339,7 +339,7 @@ namespace AdversityRoad.Core
 
             // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挂右手随臂挥舞带刀光
             var weaponRig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), rig.handR,
-                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(112f, 0, 0));
+                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(-32f, 0, 8f));
             if (weaponRig != null)
             {
                 poser.weaponPivot = weaponRig.pivot;
