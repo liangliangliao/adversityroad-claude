@@ -40,6 +40,9 @@ namespace AdversityRoad.Player
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
 
+        /// <summary>倒地起身等外部授予的无敌帧。</summary>
+        public void SetInvincible(float duration) => _iframeTimer = Mathf.Max(_iframeTimer, duration);
+
         void Awake()
         {
             _cc = GetComponent<CharacterController>();

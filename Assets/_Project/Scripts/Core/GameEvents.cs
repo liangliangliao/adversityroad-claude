@@ -2,7 +2,7 @@ using System;
 
 namespace AdversityRoad.Core
 {
-    /// <summary>全局事件总线：系统间解耦通信（战斗、心理、任务、UI）。</summary>
+    /// <summary>全局事件总线：系统间解耦通信（战斗、心理、任务、剧情、UI）。</summary>
     public static class GameEvents
     {
         public static event Action<float, float> OnPlayerHpChanged;
@@ -12,6 +12,8 @@ namespace AdversityRoad.Core
         public static event Action<string> OnQuestUpdated;
         public static event Action<string> OnSkillUnlocked;
         public static event Action OnRecoveryModeEntered;
+        public static event Action<int> OnChapterAdvanced;      // 章节推进（参数：新章节序号）
+        public static event Action<string> OnSubtitle;          // 底部字幕：敌人台词/系统提示
 
         public static void RaisePlayerHpChanged(float cur, float max) => OnPlayerHpChanged?.Invoke(cur, max);
         public static void RaiseMentalStatChanged(string stat, float cur, float max) => OnMentalStatChanged?.Invoke(stat, cur, max);
@@ -20,5 +22,7 @@ namespace AdversityRoad.Core
         public static void RaiseQuestUpdated(string id) => OnQuestUpdated?.Invoke(id);
         public static void RaiseSkillUnlocked(string id) => OnSkillUnlocked?.Invoke(id);
         public static void RaiseRecoveryMode() => OnRecoveryModeEntered?.Invoke();
+        public static void RaiseChapterAdvanced(int chapter) => OnChapterAdvanced?.Invoke(chapter);
+        public static void RaiseSubtitle(string text) => OnSubtitle?.Invoke(text);
     }
 }

@@ -1,10 +1,11 @@
 using UnityEngine;
+using UnityEngine.UI;
 using AdversityRoad.Core;
 
 namespace AdversityRoad.UI
 {
     /// <summary>
-    /// HUD：血条 + 五维心理条 + 任务提示。
+    /// HUD：血条 + 五维心理条 + 任务提示 + 受击暗角脉冲 + 底部字幕（敌人台词/系统提示）。
     /// 订阅 GameEvents，与游戏逻辑完全解耦。
     /// </summary>
     public class HUDController : MonoBehaviour
@@ -15,13 +16,21 @@ namespace AdversityRoad.UI
         public StatBar selfWorthBar;
         public StatBar boundaryBar;
         public StatBar resolveBar;
-        public UnityEngine.UI.Text questText;
+        public Text questText;
+        public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
+        public Text subtitleText;   // 底部字幕
+
+        float _vignetteAlpha;
+        Color _vignetteColor = Color.red;
+        float _subtitleHideAt;
+        float _lastHp = -1;
 
         void OnEnable()
         {
             GameEvents.OnPlayerHpChanged += OnHp;
             GameEvents.OnMentalStatChanged += OnMental;
             GameEvents.OnQuestUpdated += OnQuest;
+            GameEvents.OnSubtitle += OnSubtitle;
         }
 
         void OnDisable()
@@ -29,19 +38,51 @@ namespace AdversityRoad.UI
             GameEvents.OnPlayerHpChanged -= OnHp;
             GameEvents.OnMentalStatChanged -= OnMental;
             GameEvents.OnQuestUpdated -= OnQuest;
+            GameEvents.OnSubtitle -= OnSubtitle;
         }
 
-        void OnHp(float cur, float max) { if (hpBar != null) hpBar.SetValue(cur, max); }
+        void Update()
+        {
+            if (vignette != null)
+            {
+                _vignetteAlpha = Mathf.Lerp(_vignetteAlpha, 0, 3f * Time.unscaledDeltaTime);
+                var c = _vignetteColor;
+                c.a = _vignetteAlpha;
+                vignette.color = c;
+            }
+            if (subtitleText != null && subtitleText.text.Length > 0 && Time.unscaledTime > _subtitleHideAt)
+                subtitleText.text = "";
+        }
+
+        void Pulse(Color color, float alpha)
+        {
+            _vignetteColor = color;
+            _vignetteAlpha = Mathf.Max(_vignetteAlpha, alpha);
+        }
+
+        void OnHp(float cur, float max)
+        {
+            if (hpBar != null) hpBar.SetValue(cur, max);
+            if (_lastHp >= 0 && cur < _lastHp) Pulse(new Color(0.7f, 0.05f, 0.05f), 0.4f);
+            _lastHp = cur;
+        }
 
         void OnMental(string stat, float cur, float max)
         {
+            StatBar bar = null;
             switch (stat)
             {
-                case "will": if (willBar != null) willBar.SetValue(cur, max); break;
-                case "focus": if (focusBar != null) focusBar.SetValue(cur, max); break;
-                case "selfWorth": if (selfWorthBar != null) selfWorthBar.SetValue(cur, max); break;
-                case "boundary": if (boundaryBar != null) boundaryBar.SetValue(cur, max); break;
-                case "resolve": if (resolveBar != null) resolveBar.SetValue(cur, max); break;
+                case "will": bar = willBar; break;
+                case "focus": bar = focusBar; break;
+                case "selfWorth": bar = selfWorthBar; break;
+                case "boundary": bar = boundaryBar; break;
+                case "resolve": bar = resolveBar; break;
+            }
+            if (bar != null)
+            {
+                // 数值下降 = 受到心理攻击 → 紫色暗角脉冲
+                if (bar.LastRatio * max > cur + 0.5f) Pulse(new Color(0.35f, 0.05f, 0.5f), 0.35f);
+                bar.SetValue(cur, max);
             }
         }
 
@@ -51,6 +92,13 @@ namespace AdversityRoad.UI
             foreach (var q in Quest.QuestManager.Instance.activeQuests)
                 if (!q.completed) { questText.text = q.title; return; }
             questText.text = "";
+        }
+
+        void OnSubtitle(string text)
+        {
+            if (subtitleText == null) return;
+            subtitleText.text = text;
+            _subtitleHideAt = Time.unscaledTime + 3.5f;
         }
     }
 }

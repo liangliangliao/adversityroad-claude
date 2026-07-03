@@ -53,10 +53,15 @@ namespace AdversityRoad.Combat
             _cooldowns[skill.skillId] = skill.cooldown;
             _fsm.RequestState(CombatState.Finisher, skill.castLockTime);
 
-            if (skill.mentalRestore > 0) _player.Stats.RestoreMental(skill.mentalRestore);
+            if (skill.mentalRestore > 0)
+            {
+                _player.Stats.RestoreMental(skill.mentalRestore);
+                Core.GameEvents.RaiseSubtitle("【" + skill.displayName + "】心神安定，心理属性恢复。");
+            }
 
             if (skill.physicalDamage > 0 && weaponHitbox != null)
             {
+                CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.3f));
                 weaponHitbox.EnableHitbox(new DamageInfo
                 {
                     physicalDamage = skill.physicalDamage,

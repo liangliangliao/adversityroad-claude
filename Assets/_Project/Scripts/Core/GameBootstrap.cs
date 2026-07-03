@@ -8,14 +8,14 @@ using AdversityRoad.Mobile;
 using AdversityRoad.Player;
 using AdversityRoad.Quest;
 using AdversityRoad.UI;
+using AdversityRoad.World;
 
 namespace AdversityRoad.Core
 {
     /// <summary>
-    /// 运行时一键搭建训练武馆：地面、围墙、NavMesh、玩家、敌人、Boss、
-    /// 机制物件（目标板/拖延泥潭）、HUD、触屏操控、任务与胜负流程。
-    /// 挂在构建列表内场景（SampleScene）的空物体上即可。
-    /// CI 无头打包不经过编辑器手工建场，因此所有内容必须运行时生成。
+    /// 运行时一键搭建整个游戏世界（CI 无头打包不依赖编辑器建场）：
+    /// 四大区域（独居小屋/训练武馆/噪声街区/城市广场）+ 昼夜循环 + 行人车辆 +
+    /// 章节剧情 + 每区域一个章节心魔 + 玩家自由添加敌人 + HUD/触屏操控/配置面板。
     /// </summary>
     public class GameBootstrap : MonoBehaviour
     {
@@ -25,9 +25,10 @@ namespace AdversityRoad.Core
         [Tooltip("心理安全设置资产；为空时运行时创建默认值")]
         public SafetySettings safetySettings;
 
-        public const string BossId = "boss_procrastination_shadow";
-
+        WorldContext _world;
         PlayerController _player;
+        BattleFlowController _battleFlow;
+        GameObject _currentChapterEnemy;
 
         void Start()
         {
@@ -35,14 +36,41 @@ namespace AdversityRoad.Core
             if (Object.FindFirstObjectByType<PlayerController>() != null) return;
 
             EnsureSystems();
-            BuildArena();
+            CombatFeedback.Init(baseMaterial);
+
+            _world = new WorldContext { mat = baseMaterial };
+            SetupDayNight();
+            ZoneBuilder.BuildAll(_world);
             BakeNavMesh();
-            BuildMechanics();
-            BuildPlayer();
+
+            int zone = CurrentChapterZone();
+            ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
+            BuildPlayer(_world.playerSpawns[zone]);
             BuildCamera();
-            SpawnEnemies();
+            SpawnChapterEnemy();
+            ZoneBuilder.SpawnLife(_world);
             BuildHUD();
-            SetupQuests();
+            SetupChapterQuest();
+            ShowChapterIntro();
+        }
+
+        void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
+        void OnDisable() => GameEvents.OnChapterAdvanced -= HandleChapterAdvanced;
+
+        void HandleChapterAdvanced(int newChapter)
+        {
+            // 上一章敌人正在播放死亡演出，引用置空后生成下一章心魔
+            _currentChapterEnemy = null;
+            SpawnChapterEnemy();
+            SetupChapterQuest();
+        }
+
+        int CurrentChapterZone()
+        {
+            var story = StoryManager.Instance;
+            if (story == null || story.AllCleared)
+                return StoryManager.Chapters[StoryManager.Chapters.Length - 1].zoneIndex;
+            return story.Current.zoneIndex;
         }
 
         // ================= 系统 =================
@@ -55,6 +83,11 @@ namespace AdversityRoad.Core
                 var systems = new GameObject("GameSystems");
                 gm = systems.AddComponent<GameManager>();
                 systems.AddComponent<QuestManager>();
+                systems.AddComponent<StoryManager>();
+            }
+            else if (StoryManager.Instance == null)
+            {
+                gm.gameObject.AddComponent<StoryManager>();
             }
             if (gm.safety == null)
                 gm.safety = safetySettings != null
@@ -62,44 +95,15 @@ namespace AdversityRoad.Core
                     : ScriptableObject.CreateInstance<SafetySettings>();
         }
 
-        // ================= 场地 =================
-
-        void BuildArena()
+        void SetupDayNight()
         {
-            var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            ground.name = "Ground";
-            ground.transform.position = new Vector3(0, -0.5f, 0);
-            ground.transform.localScale = new Vector3(50, 1, 50);
-            Paint(ground, new Color(0.35f, 0.35f, 0.38f));
-
-            CreateWall(new Vector3(0, 1.5f, 25), new Vector3(50, 3, 1));
-            CreateWall(new Vector3(0, 1.5f, -25), new Vector3(50, 3, 1));
-            CreateWall(new Vector3(25, 1.5f, 0), new Vector3(1, 3, 50));
-            CreateWall(new Vector3(-25, 1.5f, 0), new Vector3(1, 3, 50));
-
-            // 训练柱：提供掩体与走位参照
-            CreatePillar(new Vector3(9, 1.5f, 9));
-            CreatePillar(new Vector3(-9, 1.5f, 9));
-            CreatePillar(new Vector3(9, 1.5f, -9));
-            CreatePillar(new Vector3(-9, 1.5f, -9));
-        }
-
-        void CreateWall(Vector3 pos, Vector3 scale)
-        {
-            var wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wall.name = "Wall";
-            wall.transform.position = pos;
-            wall.transform.localScale = scale;
-            Paint(wall, new Color(0.25f, 0.25f, 0.28f));
-        }
-
-        void CreatePillar(Vector3 pos)
-        {
-            var pillar = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            pillar.name = "Pillar";
-            pillar.transform.position = pos;
-            pillar.transform.localScale = new Vector3(1.5f, 3, 1.5f);
-            Paint(pillar, new Color(0.45f, 0.38f, 0.3f));
+            Light sun = null;
+            foreach (var l in Object.FindObjectsOfType<Light>())
+                if (l.type == LightType.Directional) { sun = l; break; }
+            var go = new GameObject("DayNightCycle");
+            var cycle = go.AddComponent<DayNightCycle>();
+            cycle.sun = sun;
+            _world.dayNight = cycle;
         }
 
         void BakeNavMesh()
@@ -111,63 +115,67 @@ namespace AdversityRoad.Core
             surface.BuildNavMesh();
         }
 
-        void BuildMechanics()
-        {
-            // 目标板：靠近按 E / 触屏"互"键蓄力，恢复意志与决断
-            var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            board.name = "GoalBoard";
-            board.transform.position = new Vector3(5, 1.2f, -12);
-            board.transform.localScale = new Vector3(3, 1.8f, 0.2f);
-            Paint(board, new Color(0.95f, 0.8f, 0.25f));
-            board.AddComponent<GoalBoard>();
-
-            // 拖延泥潭：通往 Boss 的必经区域，减速 + 决断流失
-            var mireVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            mireVisual.name = "MireVisual";
-            mireVisual.transform.position = new Vector3(0, 0.03f, 11);
-            mireVisual.transform.localScale = new Vector3(10, 0.06f, 8);
-            Paint(mireVisual, new Color(0.12f, 0.08f, 0.18f));
-            Destroy(mireVisual.GetComponent<Collider>());
-
-            var mire = new GameObject("MireZone");
-            mire.transform.position = new Vector3(0, 1, 11);
-            var mireCol = mire.AddComponent<BoxCollider>();
-            mireCol.size = new Vector3(10, 2, 8);
-            mire.AddComponent<ProcrastinationMire>();
-        }
-
         // ================= 玩家与镜头 =================
 
-        void BuildPlayer()
+        void BuildPlayer(Vector3 spawn)
         {
-            var player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            player.name = "Player";
-            player.transform.position = new Vector3(0, 1.1f, -10);
-            Destroy(player.GetComponent<CapsuleCollider>());
-            Paint(player, new Color(0.2f, 0.5f, 1f));
+            var root = new GameObject("Player");
+            root.transform.position = spawn;
 
-            var cc = player.AddComponent<CharacterController>();
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            visual.name = "Visual";
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            visual.transform.SetParent(root.transform, false);
+            Paint(visual, new Color(0.2f, 0.5f, 1f));
+
+            var cc = root.AddComponent<CharacterController>();
             cc.height = 2f;
             cc.center = Vector3.zero;
             cc.radius = 0.4f;
 
-            _player = player.AddComponent<PlayerController>();
-            player.AddComponent<CombatStateMachine>();
-            var combat = player.AddComponent<PlayerCombatController>();
-            player.AddComponent<LockOnSystem>();
-            var skillExec = player.AddComponent<SkillExecutor>();
+            _player = root.AddComponent<PlayerController>();
+            var fsm = root.AddComponent<CombatStateMachine>();
+            var combat = root.AddComponent<PlayerCombatController>();
+            root.AddComponent<LockOnSystem>();
+            var skillExec = root.AddComponent<SkillExecutor>();
+
+            var poser = root.AddComponent<SimpleAnimator>();
+            poser.visual = visual.transform;
+            poser.fsm = fsm;
 
             var hurt = new GameObject("PlayerHurtbox");
-            hurt.transform.SetParent(player.transform, false);
+            hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
             hurtCol.height = 2f;
             hurtCol.radius = 0.45f;
             hurt.AddComponent<Hurtbox>();
 
-            var hitbox = CreateAttackHitbox(player.transform);
+            var hitbox = CreateAttackHitbox(root.transform, 1.1f);
             combat.weaponHitbox = hitbox;
             skillExec.weaponHitbox = hitbox;
+
+            // 边界盾可视化
+            var shield = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shield.name = "GuardShield";
+            Object.DestroyImmediate(shield.GetComponent<Collider>());
+            shield.transform.SetParent(root.transform, false);
+            shield.transform.localPosition = new Vector3(0, 0.2f, 0.7f);
+            shield.transform.localScale = new Vector3(1.4f, 1.4f, 0.12f);
+            Paint(shield, new Color(0.35f, 0.85f, 0.55f));
+            shield.SetActive(false);
+            combat.guardShield = shield;
+
+            // 内功光环可视化
+            var aura = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            aura.name = "InnerAura";
+            Object.DestroyImmediate(aura.GetComponent<Collider>());
+            aura.transform.SetParent(root.transform, false);
+            aura.transform.localPosition = new Vector3(0, -0.95f, 0);
+            aura.transform.localScale = new Vector3(1.7f, 0.05f, 1.7f);
+            Paint(aura, new Color(1f, 0.85f, 0.35f));
+            aura.SetActive(false);
+            combat.innerAura = aura;
 
             EquipSkills(skillExec);
         }
@@ -177,7 +185,7 @@ namespace AdversityRoad.Core
             var qibu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             qibu.skillId = "qibu_zhan";
             qibu.displayName = "起步斩";
-            qibu.description = "对抗拖延的第一击：高伤害突进斩，打断敌人节奏。";
+            qibu.description = "对抗拖延的第一击：高伤害突进斩。";
             qibu.staminaCost = 20;
             qibu.physicalDamage = 40;
             qibu.postureDamage = 30;
@@ -213,102 +221,88 @@ namespace AdversityRoad.Core
             tpc.target = _player.transform;
             tpc.player = _player;
             _player.cameraTransform = camGo.transform;
+            // 镜头立即就位，避免开场从原点飞过来
+            camGo.transform.position = _player.transform.position + new Vector3(0, 2.5f, -5f);
         }
 
         // ================= 敌人 =================
 
-        void SpawnEnemies()
+        /// <summary>当前章节的心魔（一个场景默认只有这一个敌人）。</summary>
+        void SpawnChapterEnemy()
         {
-            SpawnEnemy("Enemy_TomorrowPhantom", new Vector3(6, 1.1f, 2), 1f,
-                new Color(0.5f, 0.3f, 0.7f),
-                new EnemyProfile
-                {
-                    enemyId = "enemy_tomorrow_phantom",
-                    displayName = "明日幻影",
-                    category = EnemyCategory.Internal,
-                    targetWeakness = Personalization.WeaknessAxis.Procrastination,
-                    maxHealth = 80, posture = 30,
-                    physicalDamage = 6, mentalDamage = 10,
-                    aggression = 0.4f, defense = 5, moveSpeed = 2.5f,
-                    attackRange = 1.8f, detectRange = 15
-                });
-
-            SpawnEnemy("Enemy_CoughAssassin", new Vector3(-7, 1.1f, 4), 1f,
-                new Color(0.9f, 0.4f, 0.2f),
-                new EnemyProfile
-                {
-                    enemyId = "enemy_cough_assassin",
-                    displayName = "咳声刺客",
-                    category = EnemyCategory.Hybrid,
-                    targetWeakness = Personalization.WeaknessAxis.NoiseSensitivity,
-                    maxHealth = 100, posture = 40,
-                    physicalDamage = 12, mentalDamage = 12,
-                    aggression = 0.7f, defense = 8, moveSpeed = 4.5f,
-                    attackRange = 1.8f, detectRange = 14
-                });
-
-            SpawnEnemy("Enemy_SelfDoubtWhisper", new Vector3(-3, 1.1f, 7), 1f,
-                new Color(0.35f, 0.55f, 0.6f),
-                new EnemyProfile
-                {
-                    enemyId = "enemy_selfdoubt_whisper",
-                    displayName = "自我怀疑低语",
-                    category = EnemyCategory.Internal,
-                    targetWeakness = Personalization.WeaknessAxis.SelfDoubt,
-                    maxHealth = 70, posture = 25,
-                    physicalDamage = 4, mentalDamage = 14,
-                    aggression = 0.5f, defense = 4, moveSpeed = 3f,
-                    attackRange = 1.8f, detectRange = 13
-                });
-
-            SpawnEnemy("Boss_ProcrastinationShadow", new Vector3(0, 1.6f, 18), 1.5f,
-                new Color(0.2f, 0.1f, 0.3f),
-                new EnemyProfile
-                {
-                    enemyId = BossId,
-                    displayName = "拖延影魔",
-                    category = EnemyCategory.Boss,
-                    targetWeakness = Personalization.WeaknessAxis.Procrastination,
-                    maxHealth = 300, posture = 80,
-                    physicalDamage = 15, mentalDamage = 18,
-                    aggression = 0.6f, defense = 15, moveSpeed = 3.2f,
-                    attackRange = 2.2f, detectRange = 13
-                });
+            var story = StoryManager.Instance;
+            if (story == null || story.AllCleared) return;
+            var ch = story.Current;
+            if (_currentChapterEnemy != null) return;
+            _currentChapterEnemy = SpawnEnemy(ch.enemyType, ch.enemyTier,
+                _world.enemySpawns[ch.zoneIndex], false);
         }
 
-        void SpawnEnemy(string name, Vector3 pos, float scale, Color color, EnemyProfile profile)
+        /// <summary>玩家在"敌人+"面板自由添加的挑战。</summary>
+        void SpawnEnemyNearPlayer(EnemyType type, EnemyTier tier)
         {
-            var enemy = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            enemy.name = name;
-            enemy.transform.position = pos;
-            enemy.transform.localScale = Vector3.one * scale;
-            Paint(enemy, color);
+            if (_player == null) return;
+            Vector3 pos = _player.transform.position + _player.transform.forward * 5f;
+            if (NavMesh.SamplePosition(pos, out NavMeshHit hit, 6f, NavMesh.AllAreas))
+                pos = hit.position + Vector3.up * 1.1f;
+            SpawnEnemy(type, tier, pos, true);
+        }
 
-            var agent = enemy.AddComponent<NavMeshAgent>();
+        GameObject SpawnEnemy(EnemyType type, EnemyTier tier, Vector3 pos, bool uniqueId)
+        {
+            var profile = EnemyCatalog.Create(type, tier, uniqueId);
+            float scale = EnemyCatalog.TierScale(tier);
+
+            var root = new GameObject(profile.enemyId);
+            root.transform.position = pos;
+            root.transform.localScale = Vector3.one * scale;
+
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            visual.name = "Visual";
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            visual.transform.SetParent(root.transform, false);
+            Paint(visual, EnemyCatalog.TypeColor(type));
+
+            var body = root.AddComponent<CapsuleCollider>();
+            body.height = 2f;
+            body.radius = 0.5f;
+
+            var agent = root.AddComponent<NavMeshAgent>();
             agent.speed = profile.moveSpeed;
             agent.stoppingDistance = profile.attackRange * 0.8f;
 
-            var ec = enemy.AddComponent<EnemyController>();
+            var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;
 
+            var poser = root.AddComponent<SimpleAnimator>();
+            poser.visual = visual.transform;
+            ec.poser = poser;
+
+            ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 2.5f);
+
+            var dialogue = root.AddComponent<EnemyDialogue>();
+            dialogue.displayName = profile.displayName;
+            ec.dialogue = dialogue;
+
             var hurt = new GameObject("Hurtbox");
-            hurt.transform.SetParent(enemy.transform, false);
+            hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
             hurtCol.height = 2f;
-            hurtCol.radius = 0.5f;
+            hurtCol.radius = 0.55f;
             hurt.AddComponent<Hurtbox>();
 
-            ec.attackHitbox = CreateAttackHitbox(enemy.transform);
+            ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
+            return root;
         }
 
-        Hitbox CreateAttackHitbox(Transform parent)
+        Hitbox CreateAttackHitbox(Transform parent, float reach)
         {
             var atk = GameObject.CreatePrimitive(PrimitiveType.Cube);
             atk.name = "AttackHitbox";
             atk.transform.SetParent(parent, false);
-            atk.transform.localPosition = new Vector3(0, 0, 1f);
-            atk.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
+            atk.transform.localPosition = new Vector3(0, 0, reach);
+            atk.transform.localScale = new Vector3(1f, 1f, 1.2f);
             atk.GetComponent<BoxCollider>().isTrigger = true;
             atk.GetComponent<MeshRenderer>().enabled = false;
             var rb = atk.AddComponent<Rigidbody>();
@@ -317,7 +311,7 @@ namespace AdversityRoad.Core
             return atk.AddComponent<Hitbox>();
         }
 
-        // ================= HUD 与流程 =================
+        // ================= HUD 与面板 =================
 
         void BuildHUD()
         {
@@ -338,6 +332,19 @@ namespace AdversityRoad.Core
             var hud = canvasGo.AddComponent<HUDController>();
             canvasGo.AddComponent<MobileControls>(); // 真机自动显示触屏操控
 
+            // 受击暗角（必须不拦截点击）
+            var vignetteGo = new GameObject("Vignette", typeof(Image));
+            vignetteGo.transform.SetParent(canvasGo.transform, false);
+            var vrt = vignetteGo.GetComponent<RectTransform>();
+            vrt.anchorMin = Vector2.zero;
+            vrt.anchorMax = Vector2.one;
+            vrt.offsetMin = Vector2.zero;
+            vrt.offsetMax = Vector2.zero;
+            var vImg = vignetteGo.GetComponent<Image>();
+            vImg.color = new Color(0, 0, 0, 0);
+            vImg.raycastTarget = false;
+            hud.vignette = vImg;
+
             hud.hpBar        = CreateBar(canvasGo.transform, "HP",   0, new Color(0.85f, 0.2f, 0.2f));
             hud.willBar      = CreateBar(canvasGo.transform, "意志", 1, new Color(0.95f, 0.75f, 0.2f));
             hud.focusBar     = CreateBar(canvasGo.transform, "专注", 2, new Color(0.2f, 0.7f, 0.95f));
@@ -345,28 +352,30 @@ namespace AdversityRoad.Core
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
             hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
 
-            var questGo = new GameObject("QuestText", typeof(Text));
-            questGo.transform.SetParent(canvasGo.transform, false);
-            var qrt = questGo.GetComponent<RectTransform>();
-            qrt.anchorMin = new Vector2(0.5f, 1);
-            qrt.anchorMax = new Vector2(0.5f, 1);
-            qrt.pivot = new Vector2(0.5f, 1);
-            qrt.anchoredPosition = new Vector2(0, -20);
-            qrt.sizeDelta = new Vector2(900, 40);
-            var qText = questGo.GetComponent<Text>();
-            qText.font = DefaultFont();
-            qText.fontSize = 26;
-            qText.alignment = TextAnchor.MiddleCenter;
-            qText.color = Color.white;
+            var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
+                TextAnchor.MiddleCenter, Color.white);
+            UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
             hud.questText = qText;
+
+            var subText = UiUtil.MakeText(canvasGo.transform, "Subtitle", "", 28,
+                TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.75f));
+            UiUtil.SetRect(subText, new Vector2(0.5f, 0f), new Vector2(0, 130), new Vector2(1300, 44));
+            hud.subtitleText = subText;
+
+            // 右上角功能按钮 + 面板
+            var spawnerPanel = EnemySpawnerPanel.Create(canvasGo.transform, SpawnEnemyNearPlayer);
+            var promptPanel = PromptConfigPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "敌人+", new Vector2(1, 1), new Vector2(-95, -42),
+                new Vector2(150, 64), new Color(0.6f, 0.25f, 0.2f, 0.8f), spawnerPanel.Toggle, 26);
+            UiUtil.MakeButton(canvasGo.transform, "AI台词", new Vector2(1, 1), new Vector2(-265, -42),
+                new Vector2(150, 64), new Color(0.25f, 0.35f, 0.6f, 0.8f), promptPanel.Toggle, 26);
 
             BuildBattleFlowPanel(canvasGo.transform);
         }
 
         void BuildBattleFlowPanel(Transform canvas)
         {
-            var flow = canvas.gameObject.AddComponent<BattleFlowController>();
-            flow.bossEnemyId = BossId;
+            _battleFlow = canvas.gameObject.AddComponent<BattleFlowController>();
 
             var panel = new GameObject("BattlePanel", typeof(Image));
             panel.transform.SetParent(canvas, false);
@@ -375,56 +384,24 @@ namespace AdversityRoad.Core
             prt.anchorMax = Vector2.one;
             prt.offsetMin = Vector2.zero;
             prt.offsetMax = Vector2.zero;
-            panel.GetComponent<Image>().color = new Color(0, 0, 0, 0.75f);
+            panel.GetComponent<Image>().color = new Color(0, 0, 0, 0.8f);
 
-            var title = new GameObject("Title", typeof(Text));
-            title.transform.SetParent(panel.transform, false);
-            var trt = title.GetComponent<RectTransform>();
-            trt.anchorMin = trt.anchorMax = new Vector2(0.5f, 0.65f);
-            trt.sizeDelta = new Vector2(1200, 90);
-            var titleText = title.GetComponent<Text>();
-            titleText.font = DefaultFont();
-            titleText.fontSize = 60;
-            titleText.alignment = TextAnchor.MiddleCenter;
-            titleText.color = new Color(0.95f, 0.85f, 0.4f);
+            var titleText = UiUtil.MakeText(panel.transform, "Title", "", 56,
+                TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
+            UiUtil.SetRect(titleText, new Vector2(0.5f, 0.78f), Vector2.zero, new Vector2(1400, 80));
 
-            var detail = new GameObject("Detail", typeof(Text));
-            detail.transform.SetParent(panel.transform, false);
-            var drt = detail.GetComponent<RectTransform>();
-            drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.48f);
-            drt.sizeDelta = new Vector2(1300, 160);
-            var detailText = detail.GetComponent<Text>();
-            detailText.font = DefaultFont();
-            detailText.fontSize = 30;
-            detailText.alignment = TextAnchor.MiddleCenter;
-            detailText.color = Color.white;
+            var detailText = UiUtil.MakeText(panel.transform, "Detail", "", 30,
+                TextAnchor.MiddleCenter, Color.white);
+            UiUtil.SetRect(detailText, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1400, 380));
 
-            var btnGo = new GameObject("ConfirmButton", typeof(Image), typeof(Button));
-            btnGo.transform.SetParent(panel.transform, false);
-            var brt = btnGo.GetComponent<RectTransform>();
-            brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0.28f);
-            brt.sizeDelta = new Vector2(360, 90);
-            btnGo.GetComponent<Image>().color = new Color(0.85f, 0.45f, 0.2f, 0.95f);
+            var btnText = UiUtil.MakeButton(panel.transform, "继续", new Vector2(0.5f, 0.16f),
+                Vector2.zero, new Vector2(380, 92), new Color(0.85f, 0.45f, 0.2f, 0.95f),
+                () => _battleFlow.OnConfirm(), 34);
 
-            var btnLabel = new GameObject("Label", typeof(Text));
-            btnLabel.transform.SetParent(btnGo.transform, false);
-            var blrt = btnLabel.GetComponent<RectTransform>();
-            blrt.anchorMin = Vector2.zero;
-            blrt.anchorMax = Vector2.one;
-            blrt.offsetMin = Vector2.zero;
-            blrt.offsetMax = Vector2.zero;
-            var btnText = btnLabel.GetComponent<Text>();
-            btnText.font = DefaultFont();
-            btnText.fontSize = 34;
-            btnText.alignment = TextAnchor.MiddleCenter;
-            btnText.color = Color.white;
-
-            btnGo.GetComponent<Button>().onClick.AddListener(flow.OnConfirm);
-
-            flow.panel = panel;
-            flow.titleText = titleText;
-            flow.detailText = detailText;
-            flow.buttonText = btnText;
+            _battleFlow.panel = panel;
+            _battleFlow.titleText = titleText;
+            _battleFlow.detailText = detailText;
+            _battleFlow.buttonText = btnText.GetComponentInChildren<Text>();
             panel.SetActive(false);
         }
 
@@ -441,20 +418,13 @@ namespace AdversityRoad.Core
             rt.anchoredPosition = new Vector2(20, y);
             rt.sizeDelta = new Vector2(320, 26);
 
-            var labelGo = new GameObject("Label", typeof(Text));
-            labelGo.transform.SetParent(root.transform, false);
-            var lrt = labelGo.GetComponent<RectTransform>();
+            var lt = UiUtil.MakeText(root.transform, "Label", label, 18, TextAnchor.MiddleLeft, Color.white);
+            var lrt = lt.GetComponent<RectTransform>();
             lrt.anchorMin = Vector2.zero;
             lrt.anchorMax = new Vector2(0, 1);
             lrt.pivot = new Vector2(0, 0.5f);
             lrt.anchoredPosition = Vector2.zero;
             lrt.sizeDelta = new Vector2(60, 0);
-            var lt = labelGo.GetComponent<Text>();
-            lt.font = DefaultFont();
-            lt.fontSize = 18;
-            lt.alignment = TextAnchor.MiddleLeft;
-            lt.color = Color.white;
-            lt.text = label;
 
             var sliderGo = new GameObject("Slider", typeof(RectTransform), typeof(Slider));
             sliderGo.transform.SetParent(root.transform, false);
@@ -472,6 +442,7 @@ namespace AdversityRoad.Core
             bgrt.offsetMin = Vector2.zero;
             bgrt.offsetMax = Vector2.zero;
             bg.GetComponent<Image>().color = new Color(0, 0, 0, 0.6f);
+            bg.GetComponent<Image>().raycastTarget = false;
 
             var fillArea = new GameObject("FillArea", typeof(RectTransform));
             fillArea.transform.SetParent(sliderGo.transform, false);
@@ -489,6 +460,7 @@ namespace AdversityRoad.Core
             frt.offsetMin = Vector2.zero;
             frt.offsetMax = Vector2.zero;
             fill.GetComponent<Image>().color = fillColor;
+            fill.GetComponent<Image>().raycastTarget = false;
 
             var slider = sliderGo.GetComponent<Slider>();
             slider.fillRect = frt;
@@ -503,64 +475,50 @@ namespace AdversityRoad.Core
             return bar;
         }
 
-        // ================= 任务 =================
+        // ================= 任务与剧情 =================
 
-        void SetupQuests()
+        void SetupChapterQuest()
         {
             var qm = QuestManager.Instance;
-            if (qm == null) return;
-
-            AddQuestOnce(qm, new QuestData
+            var story = StoryManager.Instance;
+            if (qm == null || story == null || story.AllCleared) return;
+            var ch = story.Current;
+            string questId = "chapter_q_" + story.Chapter;
+            foreach (var q in qm.activeQuests)
+                if (q.questId == questId) { GameEvents.RaiseQuestUpdated(questId); return; }
+            qm.AddQuest(new QuestData
             {
-                questId = "q_dojo_phantom",
-                title = "训练试炼：击败 明日幻影",
-                type = QuestType.Training,
-                sceneId = "SC_TrainingDojo",
-                relatedWeakness = Personalization.WeaknessAxis.Procrastination,
-                objectives = new System.Collections.Generic.List<QuestObjective>
-                {
-                    new QuestObjective { description = "击败明日幻影", targetEnemyId = "enemy_tomorrow_phantom" }
-                }
-            });
-
-            AddQuestOnce(qm, new QuestData
-            {
-                questId = "q_dojo_assassin",
-                title = "训练试炼：击败 咳声刺客 与 自我怀疑低语",
-                type = QuestType.Training,
-                sceneId = "SC_TrainingDojo",
-                relatedWeakness = Personalization.WeaknessAxis.NoiseSensitivity,
-                objectives = new System.Collections.Generic.List<QuestObjective>
-                {
-                    new QuestObjective { description = "击败咳声刺客", targetEnemyId = "enemy_cough_assassin" },
-                    new QuestObjective { description = "击败自我怀疑低语", targetEnemyId = "enemy_selfdoubt_whisper" }
-                }
-            });
-
-            AddQuestOnce(qm, new QuestData
-            {
-                questId = "q_dojo_boss",
-                title = "主线试炼：穿过拖延泥潭，击败 拖延影魔",
+                questId = questId,
+                title = ch.title + "：前往" + ZoneBuilder.ZoneNameOf(ch.zoneIndex) +
+                        "，击败【" + EnemyCatalog.TierLabel(ch.enemyTier) + "·" +
+                        EnemyCatalog.TypeLabel(ch.enemyType) + "】",
                 type = QuestType.Main,
-                sceneId = "SC_TrainingDojo",
+                sceneId = ZoneBuilder.ZoneIdOf(ch.zoneIndex),
                 relatedWeakness = Personalization.WeaknessAxis.Procrastination,
                 objectives = new System.Collections.Generic.List<QuestObjective>
                 {
-                    new QuestObjective { description = "击败拖延影魔", targetEnemyId = BossId }
-                },
-                rewardSkillIds = new System.Collections.Generic.List<string> { "qibu_zhan" }
+                    new QuestObjective
+                    {
+                        description = "击败章节心魔",
+                        targetEnemyId = ch.enemyId
+                    }
+                }
             });
         }
 
-        static void AddQuestOnce(QuestManager qm, QuestData quest)
+        void ShowChapterIntro()
         {
-            foreach (var q in qm.activeQuests)
-                if (q.questId == quest.questId)
-                {
-                    GameEvents.RaiseQuestUpdated(q.questId); // 刷新 HUD 任务提示
-                    return;
-                }
-            qm.AddQuest(quest);
+            var story = StoryManager.Instance;
+            if (_battleFlow == null || story == null) return;
+            if (story.AllCleared)
+            {
+                _battleFlow.ShowStory("自由修炼",
+                    "主线已完结。\n用右上角「敌人+」添加任意类型与难度的心魔，继续磨炼自己。",
+                    "开始");
+                return;
+            }
+            var ch = story.Current;
+            _battleFlow.ShowStory(ch.title, ch.intro, "出发");
         }
 
         // ================= 工具 =================
@@ -581,8 +539,5 @@ namespace AdversityRoad.Core
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
             r.sharedMaterial = m;
         }
-
-        static Font DefaultFont() =>
-            Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
     }
 }
