@@ -20,6 +20,7 @@ namespace AdversityRoad.UI
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
         public Image[] momentumPips; // 意势点（0-3）
+        public Text comboText;       // 当前连段序列（拳·拳·腿）
 
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
@@ -33,6 +34,7 @@ namespace AdversityRoad.UI
             GameEvents.OnQuestUpdated += OnQuest;
             GameEvents.OnSubtitle += OnSubtitle;
             GameEvents.OnMomentumChanged += OnMomentum;
+            GameEvents.OnComboSeqChanged += OnComboSeq;
         }
 
         void OnDisable()
@@ -42,6 +44,12 @@ namespace AdversityRoad.UI
             GameEvents.OnQuestUpdated -= OnQuest;
             GameEvents.OnSubtitle -= OnSubtitle;
             GameEvents.OnMomentumChanged -= OnMomentum;
+            GameEvents.OnComboSeqChanged -= OnComboSeq;
+        }
+
+        void OnComboSeq(string seq)
+        {
+            if (comboText != null) comboText.text = seq;
         }
 
         void OnMomentum(int m)

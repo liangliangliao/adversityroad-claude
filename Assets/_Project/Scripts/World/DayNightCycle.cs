@@ -16,7 +16,7 @@ namespace AdversityRoad.World
         public readonly List<Renderer> lampHeads = new List<Renderer>();
 
         static readonly Color DayAmbient = new Color(0.56f, 0.56f, 0.6f);
-        static readonly Color NightAmbient = new Color(0.09f, 0.1f, 0.17f);
+        static readonly Color NightAmbient = new Color(0.16f, 0.17f, 0.25f); // 夜晚保底亮度，不影响可读性
         static readonly Color DaySun = new Color(1f, 0.96f, 0.9f);
         static readonly Color DuskSun = new Color(1f, 0.55f, 0.3f);
 

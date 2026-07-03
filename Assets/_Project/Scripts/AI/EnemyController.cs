@@ -33,6 +33,8 @@ namespace AdversityRoad.AI
         float _hp, _posture;
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         int _patrolIndex;
+        TextMesh _alertMark;      // 前摇警示「！」
+        GameObject _dangerRing;   // 前摇地面红圈
 
         /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
         [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
@@ -59,6 +61,44 @@ namespace AdversityRoad.AI
                 statusBar.SetHealth(_hp, profile.maxHealth);
                 statusBar.SetPosture(_posture, profile.posture);
             }
+            BuildTelegraph();
+        }
+
+        /// <summary>前摇警示物：头顶红色「！」+ 脚下红圈，出手前亮起（读招窗口）。</summary>
+        void BuildTelegraph()
+        {
+            var markGo = new GameObject("AlertMark");
+            markGo.transform.SetParent(transform, false);
+            markGo.transform.localPosition = new Vector3(0, 3.3f, 0);
+            _alertMark = markGo.AddComponent<TextMesh>();
+            _alertMark.text = "";
+            _alertMark.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            _alertMark.fontSize = 110;
+            _alertMark.characterSize = 0.05f;
+            _alertMark.anchor = TextAnchor.MiddleCenter;
+            _alertMark.color = new Color(1f, 0.2f, 0.15f);
+            var mr = markGo.GetComponent<MeshRenderer>();
+            if (_alertMark.font != null) mr.material = _alertMark.font.material;
+            markGo.AddComponent<World.FaceCamera>();
+
+            _dangerRing = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Destroy(_dangerRing.GetComponent<Collider>());
+            _dangerRing.transform.SetParent(transform, false);
+            _dangerRing.transform.localPosition = new Vector3(0, -0.95f, 0);
+            _dangerRing.transform.localScale = new Vector3(2.6f, 0.03f, 2.6f);
+            var rr = _dangerRing.GetComponent<MeshRenderer>();
+            Material m = baseMaterial != null ? new Material(baseMaterial)
+                : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+            m.color = new Color(0.9f, 0.15f, 0.1f);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
+            rr.sharedMaterial = m;
+            _dangerRing.SetActive(false);
+        }
+
+        void ShowTelegraph(bool on)
+        {
+            if (_alertMark != null) _alertMark.text = on ? "！" : "";
+            if (_dangerRing != null) _dangerRing.SetActive(on);
         }
 
         void Update()
@@ -190,17 +230,21 @@ namespace AdversityRoad.AI
 
         void DoPhysicalAttack()
         {
-            _attackCd = Mathf.Lerp(3.5f, 1.2f, profile.aggression);
+            _attackCd = Mathf.Lerp(3.8f, 1.5f, profile.aggression);
             if (_anim != null) _anim.SetTrigger("Attack");
-            if (poser != null) poser.SetPose(PoseState.Attack);
-            // 前摇 0.28 秒后才开判定框：给玩家读招与完美闪避留窗口
-            Invoke(nameof(OpenAttackHitbox), 0.28f);
-            Invoke(nameof(CloseHitbox), 0.6f);
+            // 前摇 0.45 秒：头顶「！」+脚下红圈亮起=读招/完美闪避窗口，
+            // 蓄势姿态先行，判定框随后才开
+            ShowTelegraph(true);
+            if (poser != null) poser.SetPose(PoseState.Charge);
+            Invoke(nameof(OpenAttackHitbox), 0.45f);
+            Invoke(nameof(CloseHitbox), 0.8f);
         }
 
         void OpenAttackHitbox()
         {
+            ShowTelegraph(false);
             if (State == EnemyState.Dead || attackHitbox == null) return;
+            if (poser != null) poser.SetPose(PoseState.Attack);
             attackHitbox.EnableHitbox(new DamageInfo
             {
                 physicalDamage = profile.physicalDamage,
@@ -213,7 +257,7 @@ namespace AdversityRoad.AI
 
         void CloseHitbox() { if (attackHitbox != null) attackHitbox.DisableHitbox(); }
 
-        /// <summary>远程攻击：朝玩家胸口发射心念弹。</summary>
+        /// <summary>远程攻击：前摇警示后朝玩家胸口发射心念弹。</summary>
         void DoRangedAttack()
         {
             _rangedCd = Mathf.Lerp(6f, 3f, profile.aggression);
@@ -221,7 +265,14 @@ namespace AdversityRoad.AI
             FaceTarget();
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("凝念");
+            ShowTelegraph(true);
+            Invoke(nameof(FireProjectile), 0.4f);
+        }
 
+        void FireProjectile()
+        {
+            ShowTelegraph(false);
+            if (State == EnemyState.Dead || _player == null) return;
             Vector3 origin = transform.position + Vector3.up * 1.3f + transform.forward * 0.8f;
             Vector3 targetPos = _player.position + Vector3.up * 1.0f;
             Projectile.Launch(transform, origin, targetPos - origin,
@@ -272,19 +323,23 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense);
+            // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法
+            if (State == EnemyState.Stagger) final *= 1.6f;
             _hp -= final;
             _posture -= dmg.postureDamage;
 
-            // 受击反馈：闪红 / 伤害数字 / 碎块 / 顿帧 / 击退
+            // 受击反馈：火花 / 闪红 / 伤害数字（随伤害变大）/ 碎块 / 击退
+            CombatFeedback.HitSpark(transform.position,
+                State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.75f, 0.45f));
             CombatFeedback.HitFlash(gameObject);
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
-                new Color(1f, 0.9f, 0.5f));
+                State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
+                final >= 35f ? 1.6f : 1f);
             CombatFeedback.Debris(transform.position, new Color(0.6f, 0.3f, 0.5f), 3);
-            CombatFeedback.HitStop(0.035f);
             if (dmg.knockback > 0.1f)
             {
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * dmg.knockback * 0.35f;
+                             * dmg.knockback * 0.5f;
                 if (AgentReady) _agent.Move(kb);
                 else transform.position += kb;
             }
@@ -305,19 +360,30 @@ namespace AdversityRoad.AI
 
             if (_posture <= 0)
             {
+                // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
-                _staggerTimer = 2f;
+                _staggerTimer = 2.4f;
                 StopMoving();
+                CancelInvoke(nameof(OpenAttackHitbox));
+                ShowTelegraph(false);
                 if (_anim != null) _anim.SetTrigger("Stagger");
                 if (poser != null) poser.SetPose(PoseState.Stagger);
-                if (statusBar != null) statusBar.SetPosture(_posture, profile.posture);
+                if (statusBar != null)
+                {
+                    statusBar.SetPosture(_posture, profile.posture);
+                    statusBar.SetEmotion("破绽！！猛攻！");
+                }
+                if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
+                CombatFeedback.SlowMo(0.5f, 0.15f);
             }
         }
 
         void Die()
         {
             State = EnemyState.Dead;
+            CancelInvoke();
+            ShowTelegraph(false);
             StopMoving();
             if (_agent != null) _agent.enabled = false;
             if (_anim != null) _anim.SetTrigger("Death");

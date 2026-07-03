@@ -82,13 +82,13 @@ namespace AdversityRoad.Combat
 
         static readonly Recipe[] Recipes =
         {
-            new Recipe { seq = "PPKK", name = "双龙出海", mult = 1.55f },
-            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 1.5f },
-            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 1.5f },
-            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.3f },
-            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.35f },
-            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.25f },
-            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.25f },
+            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.1f },
+            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.0f },
+            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.0f },
+            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f },
+            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f },
+            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f },
+            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f },
         };
 
         PlayerController _player;
@@ -248,6 +248,7 @@ namespace AdversityRoad.Combat
             _cur = s;
             _stageT = 0;
             _seq += btn == AttackBtn.Kick ? "K" : "P";
+            RaiseSeq();
             _fsm.RequestState(CombatState.LightAttack, s.length);
             _fsm.InCombat = true;
             PlayPose(s.pose);
@@ -255,7 +256,7 @@ namespace AdversityRoad.Combat
 
             float dmg = baseDamage * s.dmg * CritMult();
 
-            // 组合技识别：打出配方序列的这一击成为「招式」，增伤+金色刀光
+            // 组合技识别：打出配方即触发「招式」——冲击波+时缓+大增伤+击飞
             bool recipeHit = false;
             foreach (var r in Recipes)
             {
@@ -264,6 +265,7 @@ namespace AdversityRoad.Combat
                     dmg *= r.mult;
                     recipeHit = true;
                     GameEvents.RaiseSubtitle("招式 ·「" + r.name + "」！");
+                    CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
                     break;
                 }
             }
@@ -272,7 +274,18 @@ namespace AdversityRoad.Combat
                 recipeHit ? new Color(1f, 0.85f, 0.3f)
                 : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
             OpenHitboxTimed(s.windup, s.open, dmg, s.posture,
-                (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 1.5f : 0f), true);
+                (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f), true);
+        }
+
+        void RaiseSeq()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (char c in _seq)
+            {
+                if (sb.Length > 0) sb.Append('·');
+                sb.Append(c == 'K' ? '腿' : '拳');
+            }
+            GameEvents.RaiseComboSeq(sb.ToString());
         }
 
         void EndCombo()
@@ -281,6 +294,7 @@ namespace AdversityRoad.Combat
             _depth = -1;
             _seq = "";
             _buffered = AttackBtn.None;
+            GameEvents.RaiseComboSeq("");
         }
 
         // ================= 重击 / 蓄力 / 指令技 / 超必杀 =================
@@ -468,7 +482,9 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = h =>
             {
                 if (buildMomentum) AddMomentum(1);
-                CombatFeedback.HitStop(0.03f);
+                // 打击感：命中顿帧随伤害加重
+                CombatFeedback.HitStop(dmg >= heavyDamage ? 0.08f : 0.05f);
+                CombatFeedback.Shake(0.3f);
             };
             weaponHitbox.EnableHitbox(new DamageInfo
             {

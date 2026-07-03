@@ -17,26 +17,29 @@ namespace AdversityRoad.Player
     public class ThirdPersonCamera : MonoBehaviour
     {
         public Transform target;
-        [Tooltip("抬高拉远：视野开阔不压低画面")]
-        public Vector3 offset = new Vector3(0, 2.8f, -5.4f);
+        public Vector3 offset = new Vector3(0, 2.3f, -4.6f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
-        public float minPitch = -25f, maxPitch = 60f;
+        [Tooltip("俯仰限制收紧+闲时回中，避免卡在俯视角变成上帝视角")]
+        public float minPitch = -18f, maxPitch = 38f;
+        public float defaultPitch = 15f;
+        public float pitchRecenterDelay = 2.5f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
         public float fieldOfView = 66f;
 
-        [Header("自动跟随（转向时镜头缓跟，减小晃动幅度）")]
+        [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
+                "左右转向/横移绝不转动镜头（符合真实摄影师行为）")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 1.0f;
-        public float autoFollowSpeed = 68f;
+        public float autoFollowDelay = 1.2f;
+        public float autoFollowSpeed = 50f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
 
-        float _yaw, _pitch = 12f;
-        float _curYaw, _curPitch = 12f;
+        float _yaw, _pitch = 15f;
+        float _curYaw, _curPitch = 15f;
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
@@ -100,16 +103,30 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 1.5f;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.5f);
-                if (_followBlend > 0.01f)
+                // 跟拍者逻辑：只有玩家持续「背离镜头向远处跑」时才缓慢跟上；
+                // 原地转身、横向移动、朝镜头走都不会带动镜头
+                Vector3 vel = (target.position - _lastTargetPos) / dt;
+                vel.y = 0;
+                Vector3 camFwd = transform.forward;
+                camFwd.y = 0;
+                camFwd.Normalize();
+                float awayDot = vel.sqrMagnitude > 0.1f
+                    ? Vector3.Dot(vel.normalized, camFwd) : 0f;
+                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay
+                                  && moveSpeed > 1.8f && awayDot > 0.6f;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.7f);
+                if (_followBlend > 0.01f && vel.sqrMagnitude > 0.1f)
                 {
-                    float wantYaw = target.eulerAngles.y;
-                    float speedK = Mathf.Clamp01(moveSpeed / 5f);
+                    float wantYaw = Quaternion.LookRotation(vel.normalized).eulerAngles.y;
                     _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw,
-                        autoFollowSpeed * speedK * _followBlend * dt);
+                        autoFollowSpeed * _followBlend * dt);
                 }
             }
+
+            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视
+            if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
+                _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+
             _lastTargetPos = target.position;
 
             // ---- 临界阻尼转角（无过冲），位置刚性跟随（零滞后） ----

@@ -430,6 +430,12 @@ namespace AdversityRoad.Core
                 hud.momentumPips[i] = img;
             }
 
+            // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
+            var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
+                TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -252), new Vector2(400, 40));
+            hud.comboText = comboText;
+
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);
             UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
