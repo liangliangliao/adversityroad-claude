@@ -59,6 +59,7 @@ namespace AdversityRoad.Core
             SetIfEmpty("home", "深夜独居的房间；落灰的计划表；劝人躺回床上、明天再说");
             SetIfEmpty("dojo", "嘲笑训练是花架子；质疑坚持不了三天；练了也改变不了什么");
             SetIfEmpty("street", "街上的议论声、咳嗽声、目光都冲着玩家来；劝人缩回家里");
+            SetIfEmpty("job", "已读不回的沉默；投出的简历石沉大海；质疑玩家的价值与定位");
             SetIfEmpty("plaza", "终局审判口吻；细数玩家过去的失败；断言他走不到终点");
         }
 

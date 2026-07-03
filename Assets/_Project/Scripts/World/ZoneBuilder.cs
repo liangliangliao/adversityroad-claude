@@ -30,8 +30,8 @@ namespace AdversityRoad.World
     {
         public static string CurrentZoneId = "home";
 
-        static readonly string[] ZoneIds = { "home", "dojo", "street", "plaza" };
-        static readonly string[] ZoneNames = { "独居小屋", "训练武馆", "噪声街区", "城市广场" };
+        static readonly string[] ZoneIds = { "home", "dojo", "street", "job", "plaza" };
+        static readonly string[] ZoneNames = { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -46,26 +46,30 @@ namespace AdversityRoad.World
                 new Vector3(0, 0, 0),
                 new Vector3(300, 0, 0),
                 new Vector3(600, 0, 0),
-                new Vector3(900, 0, 0)
+                new Vector3(900, 0, 0),
+                new Vector3(1200, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
                 ctx.zoneOrigins[0] + new Vector3(0, 1.1f, -5),
                 ctx.zoneOrigins[1] + new Vector3(-18, 1.1f, 0),
                 ctx.zoneOrigins[2] + new Vector3(-40, 1.1f, 8),
-                ctx.zoneOrigins[3] + new Vector3(-48, 1.1f, 0)
+                ctx.zoneOrigins[3] + new Vector3(-38, 1.1f, 0),
+                ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0)
             };
             ctx.enemySpawns = new[]
             {
                 ctx.zoneOrigins[0] + new Vector3(4, 1.1f, 5),
                 ctx.zoneOrigins[1] + new Vector3(8, 1.1f, 8),
                 ctx.zoneOrigins[2] + new Vector3(15, 1.1f, 9),
-                ctx.zoneOrigins[3] + new Vector3(0, 1.1f, 8)
+                ctx.zoneOrigins[3] + new Vector3(10, 1.1f, 5),
+                ctx.zoneOrigins[4] + new Vector3(0, 1.1f, 8)
             };
 
             BuildHome(ctx);
             BuildDojo(ctx);
             BuildStreet(ctx);
+            BuildJobSquare(ctx);
             BuildPlaza(ctx);
         }
 
@@ -213,11 +217,75 @@ namespace AdversityRoad.World
             MakePortal(ctx, o + new Vector3(50f, 0, 8), 3, ctx.playerSpawns[3]);
         }
 
-        // ================= 第四区：城市广场 =================
+        // ================= 第四区：求职荒原 =================
+
+        static void BuildJobSquare(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[3];
+
+            Box(ctx, "Job_Ground", o + new Vector3(0, -0.25f, 0), new Vector3(84, 0.5f, 64),
+                new Color(0.55f, 0.5f, 0.42f));
+            Ring(ctx, o, new Vector2(42, 32), 4, new Color(0.4f, 0.36f, 0.3f));
+
+            // 漫天简历纸片：悬浮的白色纸页
+            var rng = new System.Random(88);
+            for (int i = 0; i < 34; i++)
+            {
+                var paper = Decoration(ctx, "Resume",
+                    o + new Vector3(-36 + (float)rng.NextDouble() * 72,
+                        0.4f + (float)rng.NextDouble() * 3.4f,
+                        -28 + (float)rng.NextDouble() * 56),
+                    new Vector3(0.5f, 0.02f, 0.7f), new Color(0.93f, 0.93f, 0.9f));
+                paper.transform.rotation = Quaternion.Euler(
+                    (float)rng.NextDouble() * 50 - 25, (float)rng.NextDouble() * 360,
+                    (float)rng.NextDouble() * 50 - 25);
+            }
+
+            // 面试之门：一排紧闭的高门，唯一一扇透光
+            for (int i = 0; i < 5; i++)
+            {
+                float x = -24 + i * 12;
+                Box(ctx, "DoorPillar", o + new Vector3(x - 1.6f, 2.4f, 22), new Vector3(0.8f, 4.8f, 0.8f),
+                    new Color(0.35f, 0.33f, 0.3f));
+                Box(ctx, "DoorPillar", o + new Vector3(x + 1.6f, 2.4f, 22), new Vector3(0.8f, 4.8f, 0.8f),
+                    new Color(0.35f, 0.33f, 0.3f));
+                Decoration(ctx, "DoorTop", o + new Vector3(x, 5f, 22), new Vector3(4.4f, 0.6f, 1f),
+                    new Color(0.3f, 0.28f, 0.26f));
+                Decoration(ctx, "DoorPanel", o + new Vector3(x, 2.3f, 22.1f), new Vector3(2.6f, 4.4f, 0.15f),
+                    i == 2 ? new Color(1f, 0.9f, 0.55f) : new Color(0.16f, 0.15f, 0.15f));
+            }
+
+            // 审判台：高台上的空椅——无回应的化身
+            Box(ctx, "JudgeStand", o + new Vector3(10, 0.8f, 8), new Vector3(8, 1.6f, 6),
+                new Color(0.42f, 0.4f, 0.38f));
+            Decoration(ctx, "JudgeChair", o + new Vector3(10, 2.4f, 9.5f), new Vector3(1.6f, 1.6f, 0.3f),
+                new Color(0.2f, 0.2f, 0.24f));
+            Decoration(ctx, "JudgeSeat", o + new Vector3(10, 1.9f, 8.8f), new Vector3(1.6f, 0.25f, 1.4f),
+                new Color(0.25f, 0.25f, 0.28f));
+
+            // 枯树
+            for (int i = 0; i < 4; i++)
+            {
+                var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                trunk.name = "DeadTree";
+                trunk.transform.position = o + new Vector3(-30 + i * 18, 1.7f, -22 + (i % 2) * 40);
+                trunk.transform.localScale = new Vector3(0.28f, 1.7f, 0.28f);
+                trunk.transform.rotation = Quaternion.Euler(0, 0, (i % 2 == 0 ? 6f : -8f));
+                Paint(ctx, trunk, new Color(0.32f, 0.26f, 0.2f));
+            }
+
+            Lamp(ctx, o + new Vector3(-16, 0, 12));
+            Lamp(ctx, o + new Vector3(20, 0, -12));
+
+            MakePortal(ctx, o + new Vector3(-40f, 0, 0), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(40f, 0, 0), 4, ctx.playerSpawns[4]);
+        }
+
+        // ================= 第五区：城市广场 =================
 
         static void BuildPlaza(WorldContext ctx)
         {
-            Vector3 o = ctx.zoneOrigins[3];
+            Vector3 o = ctx.zoneOrigins[4];
 
             Box(ctx, "Plaza_Ground", o + new Vector3(0, -0.25f, 0), new Vector3(110, 0.5f, 110),
                 new Color(0.5f, 0.5f, 0.52f));
@@ -280,7 +348,7 @@ namespace AdversityRoad.World
             for (int i = 0; i < 4; i++)
                 ctx.pedestrianSpawns.Add(o + new Vector3(-18 + i * 12, 1f, 12 - i * 8));
 
-            MakePortal(ctx, o + new Vector3(-53f, 0, 0), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-53f, 0, 0), 3, ctx.playerSpawns[3] + new Vector3(2, 0, 0));
         }
 
         // ================= 动态生命（NavMesh 烘焙后调用） =================

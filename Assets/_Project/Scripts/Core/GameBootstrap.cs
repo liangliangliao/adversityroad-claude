@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.UI;
 using Unity.AI.Navigation;
 using AdversityRoad.AI;
@@ -36,6 +38,7 @@ namespace AdversityRoad.Core
             // 场景重载时系统单例仍在，但世界内容需要重建
             if (Object.FindFirstObjectByType<PlayerController>() != null) return;
 
+            ApplyComfortAndPerformance();
             EnsureSystems();
             CombatFeedback.Init(baseMaterial);
 
@@ -80,6 +83,28 @@ namespace AdversityRoad.Core
             if (story == null || story.AllCleared)
                 return StoryManager.Chapters[StoryManager.Chapters.Length - 1].zoneIndex;
             return story.Current.zoneIndex;
+        }
+
+        // ================= 舒适度与性能（防晕核心） =================
+
+        void ApplyComfortAndPerformance()
+        {
+            // 安卓默认锁 30 帧，低帧率是眩晕的最大来源之一：拉到刷新率（60-120）
+            QualitySettings.vSyncCount = 0;
+            int hz = Mathf.RoundToInt((float)Screen.currentResolution.refreshRateRatio.value);
+            Application.targetFrameRate = Mathf.Clamp(hz, 60, 120);
+
+            // 后处理防晕：禁用运动模糊/色差/镜头畸变/噪点，压低暗角强度
+            var vol = Object.FindFirstObjectByType<Volume>();
+            if (vol != null && vol.profile != null)
+            {
+                if (vol.profile.TryGet(out MotionBlur mb)) mb.active = false;
+                if (vol.profile.TryGet(out ChromaticAberration ca)) ca.active = false;
+                if (vol.profile.TryGet(out LensDistortion ld)) ld.active = false;
+                if (vol.profile.TryGet(out FilmGrain fg)) fg.active = false;
+                if (vol.profile.TryGet(out Vignette vg) && vg.intensity.value > 0.25f)
+                    vg.intensity.Override(0.25f);
+            }
         }
 
         // ================= 系统 =================
@@ -196,19 +221,6 @@ namespace AdversityRoad.Core
 
         void EquipSkills(SkillExecutor exec)
         {
-            var qibu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
-            qibu.skillId = "qibu_zhan";
-            qibu.displayName = "起步斩";
-            qibu.description = "对抗拖延的第一击：高伤害突进斩。";
-            qibu.staminaCost = 20;
-            qibu.physicalDamage = 40;
-            qibu.postureDamage = 30;
-            qibu.knockback = 3;
-            qibu.cooldown = 6;
-            qibu.castLockTime = 0.5f;
-            qibu.hitboxOpenTime = 0.35f;
-            exec.equippedSkills.Add(qibu);
-
             var dingxin = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             dingxin.skillId = "dingxin_huti";
             dingxin.displayName = "定心护体";
@@ -404,6 +416,20 @@ namespace AdversityRoad.Core
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
             hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
 
+            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
+            hud.momentumPips = new Image[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var pip = new GameObject("MomentumPip" + i, typeof(Image));
+                pip.transform.SetParent(canvasGo.transform, false);
+                UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
+                    new Vector2(40 + i * 46, -252), new Vector2(34, 34));
+                var img = pip.GetComponent<Image>();
+                img.color = new Color(1f, 1f, 1f, 0.18f);
+                img.raycastTarget = false;
+                hud.momentumPips[i] = img;
+            }
+
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);
             UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
@@ -427,6 +453,9 @@ namespace AdversityRoad.Core
             var aiLogPanel = AiLogPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "日志", new Vector2(1, 1), new Vector2(-605, -42),
                 new Vector2(150, 64), new Color(0.4f, 0.4f, 0.3f, 0.8f), aiLogPanel.Toggle, 26);
+            var profilePanel = ProfilePanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "画像", new Vector2(1, 1), new Vector2(-775, -42),
+                new Vector2(150, 64), new Color(0.5f, 0.35f, 0.55f, 0.8f), profilePanel.Toggle, 26);
 
             BuildBattleFlowPanel(canvasGo.transform);
         }

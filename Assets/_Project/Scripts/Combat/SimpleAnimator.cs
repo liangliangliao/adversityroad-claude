@@ -4,7 +4,15 @@ namespace AdversityRoad.Combat
 {
     public enum PoseState
     {
-        Idle, Attack, HeavyAttack, Dodge, Guard, Hit, Stagger, Knockdown, Cast, Death
+        Idle, Attack, HeavyAttack, Dodge, Guard, Hit, Stagger, Knockdown, Cast, Death,
+        // 武术连段（参考黑神话悟空轻棍五段：横扫→上挑→蹬踢→旋身扫→跃劈）
+        AttackUp,       // 上挑
+        AttackKick,     // 蹬踢（腿法）
+        AttackSpin,     // 旋身横扫
+        AttackLeap,     // 跃劈（连段终结）
+        Sweep,          // 蹲伏扫堂腿
+        JumpAttack,     // 空中下劈
+        Charge          // 重击蓄力
     }
 
     /// <summary>

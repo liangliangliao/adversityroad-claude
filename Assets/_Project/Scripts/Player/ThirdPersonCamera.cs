@@ -4,13 +4,15 @@ using AdversityRoad.Mobile;
 namespace AdversityRoad.Player
 {
     /// <summary>
-    /// 第三人称跟随镜头（防眩晕版）：
-    /// - 真机只读触屏转镜头区（旧输入系统会把手指映射成"鼠标"，必须屏蔽）；
-    /// - 触屏灵敏度按屏幕高度归一化，不同分辨率手感一致，且限幅防止猛甩；
-    /// - 自动跟随：移动且一段时间未手动转镜头时，镜头缓缓转到玩家背后，
-    ///   玩家改变方向后镜头自动跟上，无需一直手动掰镜头；
-    /// - 锁定运镜：锁定敌人时镜头自动朝向敌人；
-    /// - 角度/位置双重平滑，专注低时的摇晃改为连续正弦。
+    /// 第三人称跟随镜头（防晕 v3）：
+    /// - 位置刚性跟随（零滞后）：只平滑"转角"，不平滑"位置"，
+    ///   消除橡皮筋式游动感——这是眩晕的主因之一；
+    /// - 转角用临界阻尼 SmoothDamp（无过冲、无回弹）；
+    /// - FOV 固定 62°，永不动态变化；
+    /// - 碰撞回缩快、伸出慢（避免镜头突然弹跳）；
+    /// - 震屏改为幅度极小的纵向脉冲（禁用随机抖动）；
+    /// - 专注低不再摇镜头（改由 HUD 暗角表达）；
+    /// - 真机只读触屏转镜头区，灵敏度按屏高归一化并限幅。
     /// </summary>
     public class ThirdPersonCamera : MonoBehaviour
     {
@@ -18,31 +20,48 @@ namespace AdversityRoad.Player
         public Vector3 offset = new Vector3(0, 2.2f, -4.5f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
-        public float touchSensitivity = 200f;
+        public float touchSensitivity = 190f;
         public float minPitch = -20f, maxPitch = 60f;
-        public float rotateSmooth = 12f;
-        public float followSmooth = 16f;
+        [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
+        public float rotationSmoothTime = 0.07f;
+        public float fieldOfView = 62f;
 
         [Header("自动跟随")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 1.0f;   // 手动转镜头后暂停自动跟随的秒数
-        public float autoFollowSpeed = 110f;   // 度/秒：快速转身时镜头迅速跟上
+        public float autoFollowDelay = 1.0f;
+        public float autoFollowSpeed = 110f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
 
         float _yaw, _pitch = 14f;
         float _curYaw, _curPitch = 14f;
+        float _yawVel, _pitchVel;
+        float _boomDist, _boomVel;
         float _kick;
+        float _followBlend;                // 自动跟随渐入渐出
         float _lastManualLook;
         Vector3 _lastTargetPos;
+        float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
+        float _pivotH = 1.55f;
+        float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
+        bool _pivotInit;
 
-        public void Kick(float strength) => _kick = Mathf.Max(_kick, strength);
+        /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
+        public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
+
+        void Awake()
+        {
+            var cam = GetComponent<Camera>();
+            if (cam != null) cam.fieldOfView = fieldOfView;
+            _boomDist = offset.magnitude;
+        }
 
         void LateUpdate()
         {
             if (target == null) return;
             float dt = Time.unscaledDeltaTime;
+            if (dt <= 0) return;
 
             // ---- 输入 ----
             Vector2 touch = MobileInput.ConsumeLook();
@@ -54,9 +73,8 @@ namespace AdversityRoad.Player
                 lookX += Input.GetAxis("Mouse X") * mouseSensitivity;
                 lookY += Input.GetAxis("Mouse Y") * mouseSensitivity;
             }
-            // 限幅：单帧最大转角，防止猛甩造成眩晕
-            lookX = Mathf.Clamp(lookX, -10f, 10f);
-            lookY = Mathf.Clamp(lookY, -8f, 8f);
+            lookX = Mathf.Clamp(lookX, -9f, 9f);
+            lookY = Mathf.Clamp(lookY, -7f, 7f);
 
             if (Mathf.Abs(lookX) > 0.02f || Mathf.Abs(lookY) > 0.02f)
                 _lastManualLook = Time.unscaledTime;
@@ -64,7 +82,9 @@ namespace AdversityRoad.Player
             _yaw += lookX;
             _pitch = Mathf.Clamp(_pitch - lookY, minPitch, maxPitch);
 
-            // ---- 锁定运镜：镜头自动朝向锁定的敌人 ----
+            float moveSpeed = (target.position - _lastTargetPos).magnitude / dt;
+
+            // ---- 锁定运镜 / 自动跟随（渐入渐出，避免突然接管） ----
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             if (lockTarget != null)
             {
@@ -73,48 +93,68 @@ namespace AdversityRoad.Player
                 if (toEnemy.sqrMagnitude > 0.1f)
                 {
                     float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.6f * dt);
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.4f * dt);
                 }
+                _followBlend = 0;
             }
-            // ---- 自动跟随：移动中且近期未手动转镜头 → 转到玩家背后 ----
-            else if (autoFollow && Time.unscaledTime - _lastManualLook > autoFollowDelay)
+            else if (autoFollow)
             {
-                float moveSpeed = (target.position - _lastTargetPos).magnitude / Mathf.Max(dt, 0.0001f);
-                if (moveSpeed > 0.8f)
+                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 0.8f;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.5f);
+                if (_followBlend > 0.01f)
                 {
                     float wantYaw = target.eulerAngles.y;
                     float speedK = Mathf.Clamp01(moveSpeed / 5f);
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * speedK * dt);
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw,
+                        autoFollowSpeed * speedK * _followBlend * dt);
                 }
             }
             _lastTargetPos = target.position;
 
-            // ---- 平滑与摆位 ----
-            _curYaw = Mathf.LerpAngle(_curYaw, _yaw, rotateSmooth * dt);
-            _curPitch = Mathf.Lerp(_curPitch, _pitch, rotateSmooth * dt);
+            // ---- 临界阻尼转角（无过冲），位置刚性跟随（零滞后） ----
+            _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotationSmoothTime,
+                Mathf.Infinity, dt);
+            _curPitch = Mathf.SmoothDamp(_curPitch, _pitch, ref _pitchVel, rotationSmoothTime,
+                Mathf.Infinity, dt);
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
-            Vector3 desired = target.position + rot * offset;
 
-            if (player != null && player.Stats.focus < player.Stats.maxFocus * 0.3f)
-            {
-                float s = (1f - player.Stats.focus / (player.Stats.maxFocus * 0.3f)) * 0.07f;
-                desired += new Vector3(
-                    Mathf.Sin(Time.time * 9f), Mathf.Sin(Time.time * 11.3f), 0) * s;
-            }
+            // 物理感取景：水平刚性跟随，纵向软化（GDC 稳定镜头原则——
+            // 不复制角色每个纵向小动作，跳跃/落地时镜头柔和跟进）
+            float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
+            _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
+            float targetPivotY = target.position.y + _pivotH;
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotInit = true; }
+            _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
+                Mathf.Infinity, dt);
+            Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
 
+            // 动态构图：战斗拉近压低、疾跑微拉远（平滑过渡，绝不动 FOV）
+            float wantFactor = lockTarget != null ? 0.88f : (moveSpeed > 4.5f ? 1.1f : 1f);
+            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 2.2f * dt);
+
+            Vector3 boomDir = (rot * offset).normalized;
+            float maxDist = offset.magnitude * _lenFactor;
+
+            // ---- 碰撞：回缩快、伸出慢，避免弹跳 ----
+            float wantDist = maxDist;
+            if (Physics.SphereCast(pivot, 0.25f, boomDir, out RaycastHit hit, maxDist))
+                wantDist = Mathf.Max(0.5f, hit.distance - 0.1f);
+            float smooth = wantDist < _boomDist ? 0.03f : 0.3f;
+            _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
+                Mathf.Infinity, dt);
+
+            Vector3 pos = pivot + boomDir * _boomDist;
+
+            // ---- 受击纵向脉冲（幅度小、衰减快） ----
             if (_kick > 0.001f)
             {
-                desired += Random.insideUnitSphere * _kick * 0.12f;
-                _kick = Mathf.Lerp(_kick, 0, 8f * dt);
+                pos.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.06f;
+                _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
             }
 
-            Vector3 pivot = target.position + Vector3.up * 1.5f;
-            if (Physics.Linecast(pivot, desired, out RaycastHit hit))
-                desired = hit.point + hit.normal * 0.3f;
-
-            transform.position = Vector3.Lerp(transform.position, desired, followSmooth * dt);
-            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * 0.3f - transform.position);
+            transform.position = pos;
+            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * 0.25f - pos);
         }
     }
 }

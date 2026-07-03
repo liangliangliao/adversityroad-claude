@@ -9,7 +9,8 @@ namespace AdversityRoad.AI
         TomorrowPhantom,        // 明日幻影（内心·拖延）
         CoughAssassin,          // 咳声刺客（混合·噪声）
         ShameMirror,            // 羞耻镜像（内心·羞耻）
-        ProcrastinationShadow   // 拖延影魔（Boss 原型）
+        ProcrastinationShadow,  // 拖延影魔（Boss 原型）
+        NoReplyKing             // 无回应之王（求职荒原 Boss：拒信飞刃）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -60,6 +61,7 @@ namespace AdversityRoad.AI
                 case EnemyType.TomorrowPhantom: return "明日幻影";
                 case EnemyType.CoughAssassin: return "咳声刺客";
                 case EnemyType.ShameMirror: return "羞耻镜像";
+                case EnemyType.NoReplyKing: return "无回应之王";
                 default: return "拖延影魔";
             }
         }
@@ -72,6 +74,7 @@ namespace AdversityRoad.AI
                 case EnemyType.TomorrowPhantom: return new Color(0.5f, 0.3f, 0.7f);
                 case EnemyType.CoughAssassin: return new Color(0.9f, 0.4f, 0.2f);
                 case EnemyType.ShameMirror: return new Color(0.75f, 0.6f, 0.85f);
+                case EnemyType.NoReplyKing: return new Color(0.62f, 0.66f, 0.75f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -85,14 +88,15 @@ namespace AdversityRoad.AI
                 case EnemyType.TomorrowPhantom: return Combat.WeaponKind.Staff;   // 长棍
                 case EnemyType.CoughAssassin: return Combat.WeaponKind.Claw;      // 利爪
                 case EnemyType.ShameMirror: return Combat.WeaponKind.Sword;       // 镜像之剑
+                case EnemyType.NoReplyKing: return Combat.WeaponKind.Sword;       // 拒信之剑
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
 
-        /// <summary>该类型是否具备远程攻击（心念弹）。</summary>
+        /// <summary>该类型是否具备远程攻击（心念弹/拒信飞刃）。</summary>
         public static bool RangedOf(EnemyType t) =>
             t == EnemyType.SelfDoubtWhisper || t == EnemyType.ShameMirror ||
-            t == EnemyType.ProcrastinationShadow;
+            t == EnemyType.ProcrastinationShadow || t == EnemyType.NoReplyKing;
 
         public static string BaseId(EnemyType t)
         {
@@ -102,6 +106,7 @@ namespace AdversityRoad.AI
                 case EnemyType.TomorrowPhantom: return "enemy_tomorrow_phantom";
                 case EnemyType.CoughAssassin: return "enemy_cough_assassin";
                 case EnemyType.ShameMirror: return "enemy_shame_mirror";
+                case EnemyType.NoReplyKing: return "boss_no_reply_king";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -142,6 +147,14 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Internal,
                         maxHealth = 85, posture = 30, physicalDamage = 6, mentalDamage = 15,
                         aggression = 0.55f, defense = 6, moveSpeed = 3.2f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.NoReplyKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.JobAnxiety, category = EnemyCategory.Hybrid,
+                        maxHealth = 120, posture = 45, physicalDamage = 13, mentalDamage = 17,
+                        aggression = 0.55f, defense = 10, moveSpeed = 3f, attackRange = 2f, detectRange = 15
                     };
                     break;
                 default:
