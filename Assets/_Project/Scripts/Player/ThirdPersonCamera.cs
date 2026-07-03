@@ -55,10 +55,47 @@ namespace AdversityRoad.Player
         /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
 
+        // 多视角预设（参考动作游戏惯例：近身看招 / 标准跟随 / 战术远景）
+        struct CamPreset
+        {
+            public string name;
+            public Vector3 offset;
+            public float pitch;
+        }
+
+        static readonly CamPreset[] Presets =
+        {
+            new CamPreset { name = "近身动作", offset = new Vector3(0.55f, 1.75f, -3.7f), pitch = 7f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.6f, 2.0f, -4.9f), pitch = 10f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.25f, 3.3f, -7.0f), pitch = 21f },
+        };
+
+        public int PresetIndex { get; private set; } = 1;
+
+        /// <summary>循环切换视角预设（「视角」按钮）。</summary>
+        public void CyclePreset()
+        {
+            ApplyPreset((PresetIndex + 1) % Presets.Length, true);
+        }
+
+        void ApplyPreset(int idx, bool announce)
+        {
+            PresetIndex = Mathf.Clamp(idx, 0, Presets.Length - 1);
+            var p = Presets[PresetIndex];
+            offset = p.offset;
+            defaultPitch = p.pitch;
+            _pitch = p.pitch;
+            _boomDist = offset.magnitude;
+            PlayerPrefs.SetInt("cam_preset", PresetIndex);
+            if (announce)
+                Core.GameEvents.RaiseSubtitle("镜头视角：" + p.name);
+        }
+
         void Awake()
         {
             var cam = GetComponent<Camera>();
             if (cam != null) cam.fieldOfView = fieldOfView;
+            ApplyPreset(PlayerPrefs.GetInt("cam_preset", 1), false);
             _boomDist = offset.magnitude;
         }
 
@@ -148,8 +185,9 @@ namespace AdversityRoad.Player
             float wantFactor;
             if (lockTarget != null)
             {
+                // 贴近取景：近身缠斗时镜头压近看清拳脚细节，拉开时同框
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
-                wantFactor = Mathf.Clamp(0.85f + enemyDist * 0.06f, 0.95f, 1.45f);
+                wantFactor = Mathf.Clamp(0.68f + enemyDist * 0.07f, 0.8f, 1.35f);
             }
             else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);

@@ -19,6 +19,17 @@ namespace AdversityRoad.UI
         InputField _input;
         Text _result;
         PlayerProfile _pendingProfile;
+        readonly List<(Button btn, string phrase, bool[] state)> _quickTags =
+            new List<(Button, string, bool[])>();
+
+        static readonly (string label, string phrase)[] QuickTagDefs =
+        {
+            ("总是拖延", "我总是拖延，事情想做却迟迟不开始，明天再说"),
+            ("怕被议论", "害怕被议论被看不起，别人的眼神咳嗽让我分心"),
+            ("求职焦虑", "找工作投简历没有回应，面试被拒，很焦虑"),
+            ("不敢拒绝", "不敢拒绝别人，被欺负被借钱不还也不吭声"),
+            ("自我怀疑", "我常常自我怀疑，觉得自己不行做不到"),
+        };
 
         static readonly List<SceneTemplate> ZoneTemplates = new List<SceneTemplate>
         {
@@ -53,7 +64,26 @@ namespace AdversityRoad.UI
 
             _input = UiUtil.MakeInput(_panel.transform,
                 "例：最近总是拖延，定了目标又不敢开始；在人多的地方容易分心，总觉得别人在议论我……",
-                new Vector2(0.5f, 1f), new Vector2(0, -262), new Vector2(1160, 220), true);
+                new Vector2(0.5f, 1f), new Vector2(0, -238), new Vector2(1160, 170), true);
+
+            // 快答问卷：点亮符合自己的标签（与文字描述叠加分析）
+            for (int i = 0; i < QuickTagDefs.Length; i++)
+            {
+                var def = QuickTagDefs[i];
+                var state = new bool[1];
+                var btn = UiUtil.MakeButton(_panel.transform, def.label, new Vector2(0.5f, 1f),
+                    new Vector2(-448 + i * 224, -358), new Vector2(210, 58),
+                    new Color(0.25f, 0.25f, 0.3f, 0.95f), null, 22);
+                var captured = (btn, def.phrase, state);
+                btn.onClick.AddListener(() =>
+                {
+                    state[0] = !state[0];
+                    btn.GetComponent<Image>().color = state[0]
+                        ? new Color(0.8f, 0.5f, 0.2f, 0.95f)
+                        : new Color(0.25f, 0.25f, 0.3f, 0.95f);
+                });
+                _quickTags.Add(captured);
+            }
 
             var resultBg = new GameObject("ResultBg", typeof(Image));
             resultBg.transform.SetParent(_panel.transform, false);
@@ -82,10 +112,12 @@ namespace AdversityRoad.UI
 
         void Analyze()
         {
-            string text = _input.text;
+            string text = _input.text ?? "";
+            foreach (var (btn, phrase, state) in _quickTags)
+                if (state[0]) text += "。" + phrase;
             if (string.IsNullOrWhiteSpace(text))
             {
-                _result.text = "请先写点什么——哪怕一句话。";
+                _result.text = "请写点什么，或点亮上面符合你的标签。";
                 return;
             }
             var safety = GameManager.Instance != null ? GameManager.Instance.safety : null;

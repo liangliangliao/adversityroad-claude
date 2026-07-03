@@ -469,6 +469,16 @@ namespace AdversityRoad.Core
             var movesPanel = MovesPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "招式", new Vector2(1, 1), new Vector2(-945, -42),
                 new Vector2(150, 64), new Color(0.55f, 0.45f, 0.25f, 0.8f), movesPanel.Toggle, 26);
+            UiUtil.MakeButton(canvasGo.transform, "视角", new Vector2(1, 1), new Vector2(-95, -116),
+                new Vector2(150, 64), new Color(0.35f, 0.45f, 0.55f, 0.8f), () =>
+                {
+                    var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+                    if (cam != null) cam.CyclePreset();
+                }, 26);
+
+            // 第五阶段：画像驱动的个性化遭遇战
+            var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();
+            director.spawner = SpawnEnemy;
 
             BuildBattleFlowPanel(canvasGo.transform);
         }

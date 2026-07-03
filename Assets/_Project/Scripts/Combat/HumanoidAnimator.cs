@@ -386,12 +386,15 @@ namespace AdversityRoad.Combat
                 new Vector3(0, pelvisY, 0), k2);
             J(rig.torso, torsoP, torsoY, torsoR, k2);
             J(rig.head, headP, headY, 0, k2);
-            J(rig.shoulderL, shLp, 0, shLr, k2);
-            J(rig.shoulderR, shRp, 0, shRr, k2);
+            // 肩/髋俯仰在应用时取负：肢体几何向下延伸，绕 X 正角会转向身后，
+            // 取负后本文件中所有姿态角语义统一为「正值=向前方出击」——
+            // 出拳打向正前方、踢腿踢向正前方（修复拳脚方向反了的问题）
+            J(rig.shoulderL, -shLp, 0, shLr, k2);
+            J(rig.shoulderR, -shRp, 0, shRr, k2);
             J(rig.elbowL, -elL, 0, 0, k2);
             J(rig.elbowR, -elR, 0, 0, k2);
-            J(rig.hipL, hipLp, 0, 0, k2);
-            J(rig.hipR, hipRp, 0, 0, k2);
+            J(rig.hipL, -hipLp, 0, 0, k2);
+            J(rig.hipR, -hipRp, 0, 0, k2);
             J(rig.kneeL, kneeLp, 0, 0, k2);
             J(rig.kneeR, kneeRp, 0, 0, k2);
             J(rig.footL, footLp, 0, 0, k2);
