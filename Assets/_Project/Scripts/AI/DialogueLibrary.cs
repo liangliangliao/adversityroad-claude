@@ -54,6 +54,11 @@ namespace AdversityRoad.AI
             string global = cfg.globalPrompt;
             string scene = cfg.GetScenePrompt(zoneId);
 
+            // 云端台词池：预取缓存即取即用，池空时无缝回退本地模板（零延迟）
+            if (CloudDialogueService.Instance != null &&
+                CloudDialogueService.Instance.TryGetLine(axis, zoneId, out string cloudLine))
+                return cloudLine;
+
             if (CloudProvider != null)
             {
                 try

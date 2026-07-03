@@ -28,6 +28,10 @@ namespace AdversityRoad.Data
         public float knockback = 0f;
         public float mentalRestore = 0f;   // 定心护体/自我确认类恢复技能
 
+        [Header("远程（斩念气刃等投射类技能）")]
+        public bool isRanged = false;
+        public float projectileSpeed = 16f;
+
         [Header("时序")]
         public float cooldown = 5f;
         public float castLockTime = 0.6f;

@@ -76,6 +76,24 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>各类型敌人的兵器：不同敌方持不同兵器。</summary>
+        public static Combat.WeaponKind WeaponOf(EnemyType t)
+        {
+            switch (t)
+            {
+                case EnemyType.SelfDoubtWhisper: return Combat.WeaponKind.None;   // 纯心念远程
+                case EnemyType.TomorrowPhantom: return Combat.WeaponKind.Staff;   // 长棍
+                case EnemyType.CoughAssassin: return Combat.WeaponKind.Claw;      // 利爪
+                case EnemyType.ShameMirror: return Combat.WeaponKind.Sword;       // 镜像之剑
+                default: return Combat.WeaponKind.Blade;                          // 影魔大刀
+            }
+        }
+
+        /// <summary>该类型是否具备远程攻击（心念弹）。</summary>
+        public static bool RangedOf(EnemyType t) =>
+            t == EnemyType.SelfDoubtWhisper || t == EnemyType.ShameMirror ||
+            t == EnemyType.ProcrastinationShadow;
+
         public static string BaseId(EnemyType t)
         {
             switch (t)
@@ -144,6 +162,7 @@ namespace AdversityRoad.AI
             p.defense *= Mathf.Lerp(1f, k, 0.6f);
             p.displayName = TierLabel(tier) + "·" + TypeLabel(type);
             p.enemyId = uniqueId ? BaseId(type) + "_extra_" + (++_extraCounter) : BaseId(type);
+            p.rangedAttack = RangedOf(type);
             if (tier == EnemyTier.Chief) p.category = EnemyCategory.Boss;
             return p;
         }

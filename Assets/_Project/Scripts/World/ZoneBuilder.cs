@@ -185,6 +185,19 @@ namespace AdversityRoad.World
                 Lamp(ctx, o + new Vector3(x + 10, 0, -5.2f));
             }
 
+            // 行道树 / 长椅 / 垃圾桶 / 斑马线 / 公交站
+            for (int x = -35; x <= 45; x += 20)
+            {
+                Tree(ctx, o + new Vector3(x, 0, 11.5f));
+                Tree(ctx, o + new Vector3(x - 8, 0, -11.5f));
+            }
+            Bench(ctx, o + new Vector3(-15, 0, 10), 0);
+            Bench(ctx, o + new Vector3(20, 0, -10), 180);
+            TrashBin(ctx, o + new Vector3(-12, 0, 10.5f));
+            TrashBin(ctx, o + new Vector3(24, 0, -10.5f));
+            Crosswalk(ctx, o + new Vector3(0, 0, 0), false);
+            BusStop(ctx, o + new Vector3(32, 0, 9.5f));
+
             // 车辆路线（双向两车道）
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(-46, 0.55f, -2), b = o + new Vector3(46, 0.55f, -2) });
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(46, 0.55f, 2), b = o + new Vector3(-46, 0.55f, 2) });
@@ -247,6 +260,19 @@ namespace AdversityRoad.World
             }
             Lamp(ctx, o + new Vector3(40, 0, 26));
             Lamp(ctx, o + new Vector3(-40, 0, 34));
+
+            // 广场绿化与休憩设施
+            for (int i = 0; i < 8; i++)
+            {
+                float ang = i * Mathf.PI / 4f;
+                Tree(ctx, o + new Vector3(Mathf.Cos(ang) * 26, 0, Mathf.Sin(ang) * 26));
+            }
+            Bench(ctx, o + new Vector3(6, 0, -14), 0);
+            Bench(ctx, o + new Vector3(-6, 0, -14), 0);
+            Bench(ctx, o + new Vector3(0, 0, -3), 180);
+            TrashBin(ctx, o + new Vector3(9, 0, -14));
+            Crosswalk(ctx, o + new Vector3(0, 0, 30), false);
+            Crosswalk(ctx, o + new Vector3(-30, 0, 0), true);
 
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(-52, 0.55f, 28), b = o + new Vector3(52, 0.55f, 28) });
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(-28, 0.55f, -52), b = o + new Vector3(-28, 0.55f, 52) });
@@ -386,6 +412,79 @@ namespace AdversityRoad.World
                 ctx.dayNight.lamps.Add(l);
                 ctx.dayNight.lampHeads.Add(head.GetComponent<MeshRenderer>());
             }
+        }
+
+        /// <summary>行道树：树干+双层树冠。</summary>
+        static void Tree(WorldContext ctx, Vector3 basePos)
+        {
+            var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            trunk.name = "TreeTrunk";
+            trunk.transform.position = basePos + new Vector3(0, 1.4f, 0);
+            trunk.transform.localScale = new Vector3(0.3f, 1.4f, 0.3f);
+            Paint(ctx, trunk, new Color(0.4f, 0.28f, 0.16f));
+
+            var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            crown.name = "TreeCrown";
+            Object.DestroyImmediate(crown.GetComponent<Collider>());
+            crown.transform.position = basePos + new Vector3(0, 3.4f, 0);
+            crown.transform.localScale = Vector3.one * 2.6f;
+            Paint(ctx, crown, new Color(0.2f, 0.45f, 0.2f));
+
+            var crown2 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            crown2.name = "TreeCrown2";
+            Object.DestroyImmediate(crown2.GetComponent<Collider>());
+            crown2.transform.position = basePos + new Vector3(0.5f, 4.2f, 0.3f);
+            crown2.transform.localScale = Vector3.one * 1.8f;
+            Paint(ctx, crown2, new Color(0.26f, 0.52f, 0.24f));
+        }
+
+        static void Bench(WorldContext ctx, Vector3 basePos, float yRot)
+        {
+            var seat = Box(ctx, "Bench", basePos + new Vector3(0, 0.45f, 0),
+                new Vector3(2.2f, 0.12f, 0.6f), new Color(0.5f, 0.35f, 0.2f));
+            seat.transform.rotation = Quaternion.Euler(0, yRot, 0);
+            var back = Decoration(ctx, "BenchBack", basePos + new Vector3(0, 0.85f, -0.28f),
+                new Vector3(2.2f, 0.5f, 0.08f), new Color(0.45f, 0.32f, 0.18f));
+            back.transform.RotateAround(basePos, Vector3.up, yRot);
+            for (int i = -1; i <= 1; i += 2)
+            {
+                var leg = Decoration(ctx, "BenchLeg", basePos + new Vector3(i * 0.9f, 0.22f, 0),
+                    new Vector3(0.12f, 0.45f, 0.5f), new Color(0.2f, 0.2f, 0.22f));
+                leg.transform.RotateAround(basePos, Vector3.up, yRot);
+            }
+        }
+
+        static void TrashBin(WorldContext ctx, Vector3 basePos)
+        {
+            var bin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            bin.name = "TrashBin";
+            bin.transform.position = basePos + new Vector3(0, 0.45f, 0);
+            bin.transform.localScale = new Vector3(0.5f, 0.45f, 0.5f);
+            Paint(ctx, bin, new Color(0.2f, 0.4f, 0.28f));
+        }
+
+        /// <summary>斑马线：一组白色条纹。</summary>
+        static void Crosswalk(WorldContext ctx, Vector3 center, bool alongZ)
+        {
+            for (int i = -3; i <= 3; i++)
+            {
+                Vector3 offset = alongZ ? new Vector3(0, 0, i * 1.2f) : new Vector3(i * 1.2f, 0, 0);
+                Vector3 size = alongZ ? new Vector3(7.2f, 0.05f, 0.6f) : new Vector3(0.6f, 0.05f, 7.2f);
+                Decoration(ctx, "Zebra", center + offset + new Vector3(0, 0.06f, 0), size,
+                    new Color(0.92f, 0.92f, 0.92f));
+            }
+        }
+
+        static void BusStop(WorldContext ctx, Vector3 basePos)
+        {
+            Box(ctx, "BusStopBack", basePos + new Vector3(0, 1.3f, 0.9f),
+                new Vector3(4f, 2.4f, 0.12f), new Color(0.55f, 0.6f, 0.65f));
+            Decoration(ctx, "BusStopRoof", basePos + new Vector3(0, 2.6f, 0.2f),
+                new Vector3(4.4f, 0.1f, 1.8f), new Color(0.3f, 0.35f, 0.42f));
+            Box(ctx, "BusStopSeat", basePos + new Vector3(0, 0.45f, 0.6f),
+                new Vector3(3.2f, 0.12f, 0.5f), new Color(0.5f, 0.35f, 0.2f));
+            Decoration(ctx, "BusSign", basePos + new Vector3(1.8f, 2f, 0.86f),
+                new Vector3(0.8f, 0.8f, 0.06f), new Color(0.2f, 0.5f, 0.85f));
         }
 
         static void Mire(WorldContext ctx, Vector3 basePos, Vector3 size)

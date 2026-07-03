@@ -24,6 +24,12 @@ namespace AdversityRoad.Core
         public string globalPrompt = "";
         public List<ScenePrompt> scenePrompts = new List<ScenePrompt>();
 
+        [Header("云端 LLM（OpenAI 兼容 Chat 接口）")]
+        public bool useCloud = false;
+        public string provider = "openrouter";   // openrouter / deepseek / edenai
+        public string apiKey = "";
+        public string model = "";                // 留空用各提供商默认模型
+
         static string FilePath => Application.persistentDataPath + "/aiprompts.json";
         static AIPromptConfig _cached;
 
@@ -36,8 +42,30 @@ namespace AdversityRoad.Core
                     _cached = JsonUtility.FromJson<AIPromptConfig>(File.ReadAllText(FilePath));
             }
             catch { /* 配置损坏时回退默认 */ }
-            if (_cached == null) _cached = new AIPromptConfig();
+            if (_cached == null)
+            {
+                _cached = new AIPromptConfig();
+                _cached.ApplyDefaultTemplates();
+            }
             return _cached;
+        }
+
+        /// <summary>默认提示词模板：首次运行自动填充，玩家可在游戏内修改。</summary>
+        public void ApplyDefaultTemplates()
+        {
+            if (string.IsNullOrEmpty(globalPrompt))
+                globalPrompt = "紧盯玩家的拖延、自我怀疑和对他人眼光的敏感；" +
+                               "用冷静而阴柔的短句施压；偶尔假装体贴地劝玩家放弃";
+            SetIfEmpty("home", "深夜独居的房间；落灰的计划表；劝人躺回床上、明天再说");
+            SetIfEmpty("dojo", "嘲笑训练是花架子；质疑坚持不了三天；练了也改变不了什么");
+            SetIfEmpty("street", "街上的议论声、咳嗽声、目光都冲着玩家来；劝人缩回家里");
+            SetIfEmpty("plaza", "终局审判口吻；细数玩家过去的失败；断言他走不到终点");
+        }
+
+        void SetIfEmpty(string sceneId, string prompt)
+        {
+            if (string.IsNullOrEmpty(GetScenePrompt(sceneId)))
+                SetScenePrompt(sceneId, prompt);
         }
 
         public void Save()
