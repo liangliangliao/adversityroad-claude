@@ -15,6 +15,8 @@ namespace AdversityRoad.Player
         [Header("移动")]
         public float walkSpeed = 3.5f;
         public float runSpeed = 6.5f;
+        public float acceleration = 26f;           // 起步加速度（防晕：速度不突变）
+        public float deceleration = 34f;           // 停步减速度
         public float rotateSpeed = 14f;
         public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率
         public float jumpForce = 7f;
@@ -39,6 +41,7 @@ namespace AdversityRoad.Player
         float _dodgeTimer, _iframeTimer;
         Vector3 _dodgeDir;
         Vector3 _lastPos;
+        Vector3 _hVel;   // 平滑后的水平速度
 
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         public float MoveSpeedMultiplier { get; set; } = 1f;
@@ -119,7 +122,11 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            _cc.Move(moveDir * speed * dt + Vector3.up * _vy * dt);
+            // 加减速平滑：世界移动无速度突变（防晕关键之一）
+            Vector3 targetVel = moveDir * speed;
+            float a = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? acceleration : deceleration;
+            _hVel = Vector3.MoveTowards(_hVel, targetVel, a * dt);
+            _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
             // 快速灵活转身：目标夹角越大转得越快，掉头不拖泥带水
             if (moveDir.sqrMagnitude > 0.01f)
