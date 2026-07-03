@@ -17,25 +17,26 @@ namespace AdversityRoad.Player
     public class ThirdPersonCamera : MonoBehaviour
     {
         public Transform target;
-        public Vector3 offset = new Vector3(0, 2.2f, -4.5f);
+        [Tooltip("抬高拉远：视野开阔不压低画面")]
+        public Vector3 offset = new Vector3(0, 2.8f, -5.4f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
-        public float minPitch = -20f, maxPitch = 60f;
+        public float minPitch = -25f, maxPitch = 60f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
-        public float rotationSmoothTime = 0.07f;
-        public float fieldOfView = 62f;
+        public float rotationSmoothTime = 0.11f;
+        public float fieldOfView = 66f;
 
-        [Header("自动跟随")]
+        [Header("自动跟随（转向时镜头缓跟，减小晃动幅度）")]
         public bool autoFollow = true;
         public float autoFollowDelay = 1.0f;
-        public float autoFollowSpeed = 110f;
+        public float autoFollowSpeed = 68f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
 
-        float _yaw, _pitch = 14f;
-        float _curYaw, _curPitch = 14f;
+        float _yaw, _pitch = 12f;
+        float _curYaw, _curPitch = 12f;
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
@@ -99,7 +100,7 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 0.8f;
+                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 1.5f;
                 _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.5f);
                 if (_followBlend > 0.01f)
                 {
@@ -129,9 +130,9 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
 
-            // 动态构图：战斗拉近压低、疾跑微拉远（平滑过渡，绝不动 FOV）
-            float wantFactor = lockTarget != null ? 0.88f : (moveSpeed > 4.5f ? 1.1f : 1f);
-            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 2.2f * dt);
+            // 动态构图：战斗微拉近、疾跑微拉远（幅度收小，平滑过渡，绝不动 FOV）
+            float wantFactor = lockTarget != null ? 0.93f : (moveSpeed > 4.2f ? 1.04f : 1f);
+            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);
 
             Vector3 boomDir = (rot * offset).normalized;
             float maxDist = offset.magnitude * _lenFactor;

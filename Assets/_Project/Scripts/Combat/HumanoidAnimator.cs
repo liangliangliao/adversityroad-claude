@@ -160,6 +160,71 @@ namespace AdversityRoad.Combat
                     swinging = _t < 0.36f;
                     break;
                 }
+                case PoseState.PunchJab: // 右直拳：手臂朝正前方快速伸出（拳打在前方）
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.24f));
+                    shRp = 88f;                                  // 大臂抬平指向前
+                    shRr = -6f;
+                    elR = Mathf.Lerp(95f, 4f, k);                // 肘由屈到伸=出拳
+                    shLp = 55f; elL = 105f; shLr = 14f;          // 左手护面
+                    torsoY = Mathf.Lerp(-14f, 12f, k);           // 转腰送肩
+                    torsoP += 4f;
+                    swinging = _t < 0.26f;
+                    break;
+                }
+                case PoseState.PunchCross: // 左直拳：交替出拳，反向转腰
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.24f));
+                    shLp = 88f;
+                    shLr = 6f;
+                    elL = Mathf.Lerp(95f, 4f, k);
+                    shRp = 55f; elR = 105f; shRr = -14f;         // 右手护面
+                    torsoY = Mathf.Lerp(14f, -12f, k);
+                    torsoP += 4f;
+                    swinging = _t < 0.26f;
+                    break;
+                }
+                case PoseState.SideKick: // 侧踢：右腿侧向蹬出，躯干侧倾平衡
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.32f));
+                    hipRp = Mathf.Lerp(20f, 92f, k);
+                    kneeRp = Mathf.Lerp(90f, 5f, k);
+                    footRp = -18f;
+                    hipLp = -6f; kneeLp = 14f;
+                    torsoP = -6f;
+                    torsoR = Mathf.Lerp(0f, -16f, k);
+                    shLp = 30f; shRp = -25f; shLr = 45f; shRr = -45f;
+                    elL = elR = 45f;
+                    swinging = _t < 0.34f;
+                    break;
+                }
+                case PoseState.SpinKick: // 后旋踢：整身旋转，腿平扫
+                {
+                    float k = Mathf.Clamp01(_t / 0.44f);
+                    visual.localRotation = Quaternion.Euler(0, k * 360f, 0);
+                    visual.localPosition = Vector3.zero;
+                    hipRp = 85f; kneeRp = 8f; footRp = -12f;
+                    hipLp = 18f; kneeLp = 28f;
+                    torsoP = 12f; torsoR = -10f;
+                    shLp = 40f; shLr = 50f; shRp = 30f; shRr = -50f;
+                    elL = elR = 30f;
+                    directBody = true;
+                    swinging = _t < 0.46f;
+                    break;
+                }
+                case PoseState.JumpKick: // 飞踢：腾空正蹬，后腿收紧
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.3f));
+                    hipRp = Mathf.Lerp(30f, 100f, k);
+                    kneeRp = Mathf.Lerp(90f, 4f, k);
+                    footRp = -22f;
+                    hipLp = 60f; kneeLp = 110f;                  // 收腿
+                    torsoP = -18f;
+                    shLp = 40f; shRp = -35f; shLr = 40f; shRr = -40f;
+                    elL = elR = 55f;
+                    swinging = _t < 0.4f;
+                    break;
+                }
                 case PoseState.AttackSpin: // 旋身横扫：整身转一周，兵器水平外展
                 {
                     float k = Mathf.Clamp01(_t / 0.42f);

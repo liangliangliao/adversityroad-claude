@@ -12,13 +12,13 @@ namespace AdversityRoad.Player
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        [Header("移动")]
-        public float walkSpeed = 3.5f;
-        public float runSpeed = 6.5f;
-        public float acceleration = 26f;           // 起步加速度（防晕：速度不突变）
-        public float deceleration = 34f;           // 停步减速度
-        public float rotateSpeed = 14f;
-        public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率
+        [Header("移动（速度按真实体感收敛，防晕）")]
+        public float walkSpeed = 2.6f;
+        public float runSpeed = 5.2f;
+        public float acceleration = 18f;           // 起步加速度（防晕：速度不突变）
+        public float deceleration = 26f;           // 停步减速度
+        public float rotateSpeed = 11f;
+        public float quickTurnMultiplier = 1.7f;   // 大角度转身加速倍率
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -84,7 +84,9 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            if (_combat != null && _combat.IsActionLocked) { ApplyGravityOnly(dt); return; }
+            // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招
+            if (_combat != null && _combat.IsHardLocked) { ApplyGravityOnly(dt); return; }
+            bool attacking = _combat != null && _combat.Current == CombatState.LightAttack;
 
             // 蹲伏切换（潜行/低姿态）
             if (Input.GetKeyDown(KeyCode.C) || MobileInput.GetDown("Crouch")) ToggleCrouch();
@@ -100,6 +102,7 @@ namespace AdversityRoad.Player
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
+            if (attacking) speed *= 0.55f;   // 出招中可移动但步幅收紧（KOF 走 A）
 
             if (_cc.isGrounded)
             {
@@ -131,12 +134,13 @@ namespace AdversityRoad.Player
             _hVel = Vector3.MoveTowards(_hVel, targetVel, a * dt);
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
-            // 快速灵活转身：目标夹角越大转得越快，掉头不拖泥带水
+            // 快速灵活转身：目标夹角越大转得越快；出招中保持攻击朝向仅缓慢修正
             if (moveDir.sqrMagnitude > 0.01f)
             {
                 Quaternion target = Quaternion.LookRotation(moveDir);
                 float ang = Quaternion.Angle(transform.rotation, target);
                 float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
+                if (attacking) rs = 5f;
                 transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
             }
         }

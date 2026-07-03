@@ -7,15 +7,16 @@ using AdversityRoad.Mobile;
 namespace AdversityRoad.Combat
 {
     /// <summary>
-    /// 玩家战斗控制（借鉴黑神话悟空的战斗框架）：
-    /// - 轻击五段连招（横斩→上挑→蹬踢→旋身扫→跃劈），带输入缓冲与前摇取消窗口；
-    /// - 「意势」资源（0-3 点）：命中轻击、完美闪避、蓄力均可积攒，重击释放时消耗增伤，
-    ///   满势时脚下亮起意志光环；
-    /// - 重击按住蓄力（沉腰举械），松开释放：势≥2 触发旋风终结，否则蓄力重劈；
-    ///   连段中轻点重击派生「切手技」快速上挑；
-    /// - 完美闪避：在敌人攻击命中瞬间翻滚成功 → 短暂时缓 + 势+1 + 下一击必暴击；
-    /// - 空中攻击=下劈坠击；蹲伏攻击=扫堂腿（高削韧）；
-    /// - 格挡（边界盾）/ 精准格挡（定心格挡）化解心理攻击。
+    /// 玩家战斗控制（黑神话悟空框架 × KOF 拳脚体系）：
+    /// - 拳/腿双系普攻（KOF 拳脚分立）：攻=兵器/拳系，腿=脚技系，两系可互相
+    ///   衔接组成连段路线（拳拳腿、腿腿拳、拳腿拳……），带输入缓冲与取消窗口；
+    ///   拳系伤害高，腿系削韧强；
+    /// - 指令技（KOF 方向+按键）：前+重=突进肘击，后+重=吹飞踢（大击退，KOF CD 吹飞）；
+    /// - 「意势」资源（0-3）：命中/完美闪避/蓄力积攒；
+    /// - 重击按住蓄力，松开释放：势=3 触发超必杀「觉醒·乱舞」（KOF 超杀式连续技），
+    ///   势=2 旋风终结；连段中轻点重=切手技；
+    /// - 完美闪避（时缓+返势+必暴击）、空中下劈、蹲伏扫堂腿；
+    /// - 受身（KOF 受身）：被击倒瞬间按闪避快速翻身起立带无敌帧。
     /// </summary>
     [RequireComponent(typeof(CombatStateMachine))]
     public class PlayerCombatController : MonoBehaviour
@@ -27,11 +28,11 @@ namespace AdversityRoad.Combat
         public float comboResetTime = 1.1f;
         public float autoAimRange = 5f;
 
-        [Header("重击 / 蓄力")]
+        [Header("重击 / 蓄力 / 指令技")]
         public float heavyDamage = 30f;
-        public float heavyStamina = 22f;
         public float maxChargeTime = 1.2f;
         public float chargeStaminaPerSec = 9f;
+        public float tapThreshold = 0.18f;   // 轻点/长按分界
 
         [Header("格挡 / 精准格挡")]
         public float guardMentalReduction = 0.7f;
@@ -43,22 +44,51 @@ namespace AdversityRoad.Combat
 
         [Header("状态可视化（运行时注入）")]
         public GameObject guardShield;
-        public GameObject innerAura;   // 满势光环
+        public GameObject innerAura;
 
-        // 连段表：姿态 / 伤害倍率 / 削韧 / 突进 / 前摇 / 开框时长 / 段时长 / 可取消点
         struct ComboStage
         {
             public PoseState pose;
             public float dmg, posture, lunge, windup, open, length, cancelAt;
         }
 
-        static readonly ComboStage[] Combo =
+        // 拳系（直拳朝正前方交替出击）：伤害高
+        static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.Attack,     dmg = 1.0f, posture = 8,  lunge = 0.5f, windup = 0.10f, open = 0.22f, length = 0.42f, cancelAt = 0.28f },
-            new ComboStage { pose = PoseState.AttackUp,   dmg = 1.1f, posture = 10, lunge = 0.4f, windup = 0.10f, open = 0.22f, length = 0.40f, cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.AttackKick, dmg = 1.2f, posture = 18, lunge = 0.7f, windup = 0.12f, open = 0.24f, length = 0.46f, cancelAt = 0.30f },
-            new ComboStage { pose = PoseState.AttackSpin, dmg = 1.35f, posture = 14, lunge = 0.3f, windup = 0.10f, open = 0.34f, length = 0.52f, cancelAt = 0.36f },
-            new ComboStage { pose = PoseState.AttackLeap, dmg = 1.8f, posture = 26, lunge = 0.9f, windup = 0.16f, open = 0.30f, length = 0.62f, cancelAt = 0.6f },
+            new ComboStage { pose = PoseState.PunchJab,   dmg = 1.0f,  posture = 8,  lunge = 0.45f, windup = 0.08f, open = 0.18f, length = 0.32f, cancelAt = 0.20f },
+            new ComboStage { pose = PoseState.PunchCross, dmg = 1.1f,  posture = 9,  lunge = 0.45f, windup = 0.08f, open = 0.18f, length = 0.32f, cancelAt = 0.20f },
+            new ComboStage { pose = PoseState.AttackUp,   dmg = 1.3f,  posture = 12, lunge = 0.4f,  windup = 0.10f, open = 0.22f, length = 0.42f, cancelAt = 0.28f },
+            new ComboStage { pose = PoseState.AttackLeap, dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.16f, open = 0.30f, length = 0.62f, cancelAt = 0.6f },
+        };
+
+        // 腿系（脚技）：削韧强
+        static readonly ComboStage[] KickChain =
+        {
+            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.12f, open = 0.24f, length = 0.46f, cancelAt = 0.30f },
+            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.12f, open = 0.24f, length = 0.46f, cancelAt = 0.30f },
+            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.12f, open = 0.32f, length = 0.54f, cancelAt = 0.38f },
+            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.14f, open = 0.32f, length = 0.58f, cancelAt = 0.56f },
+        };
+
+        enum AttackBtn { None, Punch, Kick }
+
+        // 组合技配方（e：武术技能不是一键生成，而是玩家打出来的组合）
+        struct Recipe
+        {
+            public string seq;    // P=拳 K=腿
+            public string name;
+            public float mult;
+        }
+
+        static readonly Recipe[] Recipes =
+        {
+            new Recipe { seq = "PPKK", name = "双龙出海", mult = 1.55f },
+            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 1.5f },
+            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 1.5f },
+            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.3f },
+            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.35f },
+            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.25f },
+            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.25f },
         };
 
         PlayerController _player;
@@ -66,19 +96,23 @@ namespace AdversityRoad.Combat
         CharacterController _cc;
         HumanoidAnimator _anim;
 
-        int _stage = -1;               // 当前连段下标（-1 空闲）
-        float _stageT;                 // 当前段计时
-        bool _buffered;                // 输入缓冲
+        int _depth = -1;              // 连段深度（-1 空闲）
+        float _stageT;
+        ComboStage _cur;
+        string _seq = "";             // 本次连段的拳腿序列（组合技识别）
+        AttackBtn _buffered = AttackBtn.None;
         float _lastAttackEnd;
         Coroutine _hitboxRoutine;
+        Coroutine _ranwuRoutine;
 
-        int _momentum;                 // 意势 0-3
-        bool _critNext;                // 完美闪避奖励
+        int _momentum;
+        bool _critNext;
         float _lastPerfect;
 
         bool _charging;
         float _chargeT;
         float _chargeGained;
+        float _heavyDirDot;            // 按下重键时的前后方向意图
 
         float _parryTimer;
 
@@ -99,17 +133,23 @@ namespace AdversityRoad.Combat
             float dt = Time.deltaTime;
             if (_parryTimer > 0) _parryTimer -= dt;
 
-            // 连段计时与收招
-            if (_stage >= 0)
+            // 受身：被击倒瞬间按闪避快速翻身（KOF 受身）
+            if (_fsm.Current == CombatState.Knockdown &&
+                (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge")))
+            {
+                _fsm.RequestState(CombatState.Locomotion);
+                _player.SetInvincible(0.6f);
+                GameEvents.RaiseSubtitle("受身！");
+                return;
+            }
+
+            // 连段推进
+            if (_depth >= 0)
             {
                 _stageT += dt;
-                var s = Combo[_stage];
-                if (_buffered && _stageT >= s.cancelAt) AdvanceCombo();
-                else if (_stageT >= s.length) EndCombo();
-            }
-            else if (Time.time - _lastAttackEnd > comboResetTime)
-            {
-                _buffered = false;
+                if (_buffered != AttackBtn.None && _stageT >= _cur.cancelAt)
+                    NextStage(_buffered);
+                else if (_stageT >= _cur.length) EndCombo();
             }
 
             // 格挡
@@ -117,8 +157,6 @@ namespace AdversityRoad.Combat
             if (Input.GetKeyDown(KeyCode.LeftControl) || MobileInput.GetDown("Guard")) _parryTimer = parryWindow;
             if (guardShield != null && guardShield.activeSelf != (IsGuarding && !_fsm.IsActionLocked))
                 guardShield.SetActive(IsGuarding && !_fsm.IsActionLocked);
-
-            // 满势光环
             if (innerAura != null && innerAura.activeSelf != (_momentum >= 3))
                 innerAura.SetActive(_momentum >= 3);
 
@@ -126,21 +164,21 @@ namespace AdversityRoad.Combat
             bool desktop = !Application.isMobilePlatform;
             bool mouseOverUI = UnityEngine.EventSystems.EventSystem.current != null
                 && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
-            bool lightDown = (desktop && Input.GetMouseButtonDown(0) && !mouseOverUI) || MobileInput.GetDown("Light");
+            bool punchDown = (desktop && Input.GetMouseButtonDown(0) && !mouseOverUI) || MobileInput.GetDown("Light");
+            bool kickDown = (desktop && Input.GetKeyDown(KeyCode.E)) || MobileInput.GetDown("Kick");
             bool heavyDown = (desktop && Input.GetMouseButtonDown(1)) || MobileInput.GetDown("Heavy");
             bool heavyHeld = (desktop && Input.GetMouseButton(1)) || MobileInput.GetHeld("Heavy");
 
-            // ---- 蓄力重击 ----
+            // ---- 蓄力 / 指令技 ----
             if (_charging)
             {
                 _chargeT += dt;
-                if (_player.Stats.SpendStamina(chargeStaminaPerSec * dt) == false || _chargeT >= maxChargeTime + 0.4f)
+                if (!_player.Stats.SpendStamina(chargeStaminaPerSec * dt) || _chargeT >= maxChargeTime + 0.4f)
                 {
                     ReleaseHeavy();
                 }
                 else
                 {
-                    // 蓄力积势：每 0.55 秒 +1
                     if (_chargeT - _chargeGained > 0.55f && _momentum < 3)
                     {
                         _chargeGained = _chargeT;
@@ -153,58 +191,99 @@ namespace AdversityRoad.Combat
 
             if (heavyDown)
             {
-                // 连段中轻点重击 → 切手技（快速反手上挑）
-                if (_stage >= 1 && _stageT >= 0.12f) { QiShou(); return; }
-                if (!_fsm.IsActionLocked || _stage >= 0) StartCharge();
+                if (_depth >= 1 && _stageT >= 0.12f) { QiShou(); return; }
+                _heavyDirDot = MoveIntentForwardDot();
+                StartCharge();
                 return;
             }
 
-            if (lightDown)
+            AttackBtn pressed = punchDown ? AttackBtn.Punch : kickDown ? AttackBtn.Kick : AttackBtn.None;
+            if (pressed != AttackBtn.None)
             {
-                if (_stage >= 0) { _buffered = true; return; }
+                if (_depth >= 0) { _buffered = pressed; return; }
                 if (_fsm.IsActionLocked) return;
-                if (!_cc.isGrounded) { JumpAttack(); return; }
+                if (!_cc.isGrounded)
+                {
+                    // 跳跃派生：跳+拳=下劈坠击，跳+腿=飞踢
+                    if (pressed == AttackBtn.Kick) JumpKickAttack(); else JumpAttack();
+                    return;
+                }
                 if (_player.IsCrouched) { SweepAttack(); return; }
-                StartCombo();
+                _depth = -1;
+                _seq = "";
+                NextStage(pressed);
             }
         }
 
-        // ================= 连段 =================
-
-        void StartCombo()
+        /// <summary>移动输入相对角色朝向的前后分量（指令技判定）。</summary>
+        float MoveIntentForwardDot()
         {
-            _stage = -1;
-            AdvanceCombo();
+            Vector2 mv = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"))
+                         + MobileInput.Move;
+            if (mv.sqrMagnitude < 0.09f) return 0;
+            Transform cam = Camera.main != null ? Camera.main.transform : null;
+            Vector3 dir;
+            if (cam != null)
+            {
+                Vector3 f = cam.forward; f.y = 0; f.Normalize();
+                Vector3 r = cam.right; r.y = 0; r.Normalize();
+                dir = (f * mv.y + r * mv.x).normalized;
+            }
+            else dir = new Vector3(mv.x, 0, mv.y).normalized;
+            return Vector3.Dot(dir, transform.forward);
         }
 
-        void AdvanceCombo()
+        // ================= 拳/腿连段 =================
+
+        void NextStage(AttackBtn btn)
         {
-            _buffered = false;
-            int next = Mathf.Min(_stage + 1, Combo.Length - 1);
-            if (_stage == Combo.Length - 1) next = 0; // 终结后回首段
-            var s = Combo[next];
+            _buffered = AttackBtn.None;
+            int nextDepth = _depth + 1;
+            if (nextDepth > 3) nextDepth = 0;
+            var chain = btn == AttackBtn.Kick ? KickChain : PunchChain;
+            var s = chain[nextDepth];
             if (!_player.Stats.SpendStamina(staminaPerHit)) { EndCombo(); return; }
 
-            _stage = next;
+            _depth = nextDepth;
+            _cur = s;
             _stageT = 0;
+            _seq += btn == AttackBtn.Kick ? "K" : "P";
             _fsm.RequestState(CombatState.LightAttack, s.length);
             _fsm.InCombat = true;
             PlayPose(s.pose);
             FaceAndLunge(s.lunge);
 
             float dmg = baseDamage * s.dmg * CritMult();
-            CombatFeedback.SwingArc(transform, next >= 3, new Color(0.45f, 0.75f, 1f));
-            OpenHitboxTimed(s.windup, s.open, dmg, s.posture, next >= 2 ? 2f : 1f, true);
+
+            // 组合技识别：打出配方序列的这一击成为「招式」，增伤+金色刀光
+            bool recipeHit = false;
+            foreach (var r in Recipes)
+            {
+                if (_seq.EndsWith(r.seq))
+                {
+                    dmg *= r.mult;
+                    recipeHit = true;
+                    GameEvents.RaiseSubtitle("招式 ·「" + r.name + "」！");
+                    break;
+                }
+            }
+
+            CombatFeedback.SwingArc(transform, nextDepth >= 2 || recipeHit,
+                recipeHit ? new Color(1f, 0.85f, 0.3f)
+                : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
+            OpenHitboxTimed(s.windup, s.open, dmg, s.posture,
+                (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 1.5f : 0f), true);
         }
 
         void EndCombo()
         {
-            if (_stage >= 0) _lastAttackEnd = Time.time;
-            _stage = -1;
-            _buffered = false;
+            if (_depth >= 0) _lastAttackEnd = Time.time;
+            _depth = -1;
+            _seq = "";
+            _buffered = AttackBtn.None;
         }
 
-        // ================= 重击 / 蓄力 / 切手 =================
+        // ================= 重击 / 蓄力 / 指令技 / 超必杀 =================
 
         void StartCharge()
         {
@@ -221,15 +300,23 @@ namespace AdversityRoad.Combat
         void ReleaseHeavy()
         {
             _charging = false;
+
+            // 轻点（KOF 指令技）：前+重=突进肘击，后+重=吹飞踢
+            if (_chargeT < tapThreshold)
+            {
+                if (_heavyDirDot > 0.4f) { DashStrike(); return; }
+                if (_heavyDirDot < -0.4f) { BlowbackKick(); return; }
+            }
+
             float charge01 = Mathf.Clamp01(_chargeT / maxChargeTime);
             int spent = _momentum;
             SetMomentum(0);
 
+            if (spent >= 3) { StartRanWu(charge01); return; }   // 超必杀
+
             bool finisher = spent >= 2;
-            var pose = finisher ? PoseState.AttackSpin : PoseState.HeavyAttack;
-            float dur = finisher ? 0.55f : 0.65f;
-            _fsm.RequestState(CombatState.HeavyAttack, dur);
-            PlayPose(pose);
+            _fsm.RequestState(CombatState.HeavyAttack, finisher ? 0.55f : 0.65f);
+            PlayPose(finisher ? PoseState.AttackSpin : PoseState.HeavyAttack);
             FaceAndLunge(finisher ? 0.3f : 0.8f);
 
             float dmg = heavyDamage * (1f + 0.6f * charge01 + 0.45f * spent) * CritMult();
@@ -238,6 +325,29 @@ namespace AdversityRoad.Combat
             CombatFeedback.Shake(finisher ? 0.8f : 0.5f);
             OpenHitboxTimed(0.12f, finisher ? 0.4f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
             if (finisher) GameEvents.RaiseSubtitle("旋风终结！消耗 " + spent + " 点意势");
+        }
+
+        /// <summary>前+重：突进肘击（KOF 突进技）。</summary>
+        void DashStrike()
+        {
+            _fsm.RequestState(CombatState.HeavyAttack, 0.5f);
+            PlayPose(PoseState.Attack);
+            FaceAndLunge(2.4f);
+            float dmg = heavyDamage * 0.8f * CritMult();
+            CombatFeedback.SwingArc(transform, true, new Color(0.9f, 0.9f, 0.5f));
+            OpenHitboxTimed(0.08f, 0.28f, dmg, 16f, 2f, false);
+        }
+
+        /// <summary>后+重：吹飞踢（KOF CD 吹飞攻击，大击退拉开身位）。</summary>
+        void BlowbackKick()
+        {
+            _fsm.RequestState(CombatState.HeavyAttack, 0.55f);
+            PlayPose(PoseState.SideKick);
+            FaceAndLunge(0.4f);
+            float dmg = heavyDamage * 0.7f * CritMult();
+            CombatFeedback.Shake(0.6f);
+            OpenHitboxTimed(0.1f, 0.3f, dmg, 34f, 9f, false);
+            GameEvents.RaiseSubtitle("吹飞踢！");
         }
 
         /// <summary>切手技：连段中轻点重击派生的快速反击。</summary>
@@ -252,6 +362,36 @@ namespace AdversityRoad.Combat
             OpenHitboxTimed(0.08f, 0.24f, dmg, 20f, 2.5f, false);
         }
 
+        /// <summary>超必杀「觉醒·乱舞」：满 3 势释放的连续技（KOF 超杀）。</summary>
+        void StartRanWu(float charge01)
+        {
+            if (_ranwuRoutine != null) StopCoroutine(_ranwuRoutine);
+            _ranwuRoutine = StartCoroutine(RanWu(charge01));
+        }
+
+        IEnumerator RanWu(float charge01)
+        {
+            GameEvents.RaiseSubtitle("超必杀 · 觉醒乱舞！");
+            _fsm.RequestState(CombatState.Finisher, 1.5f);
+            _player.SetInvincible(1.6f);
+            PoseState[] seq =
+            {
+                PoseState.PunchJab, PoseState.AttackKick, PoseState.PunchCross,
+                PoseState.SideKick, PoseState.AttackSpin, PoseState.AttackLeap
+            };
+            float per = heavyDamage * (0.45f + 0.15f * charge01);
+            for (int i = 0; i < seq.Length; i++)
+            {
+                PlayPose(seq[i]);
+                FaceAndLunge(0.25f);
+                OpenHitboxTimed(0.04f, 0.12f, per * (i == seq.Length - 1 ? 2f : 1f),
+                    i == seq.Length - 1 ? 40f : 10f, i == seq.Length - 1 ? 6f : 0.5f, false);
+                yield return new WaitForSeconds(i == seq.Length - 1 ? 0.3f : 0.18f);
+            }
+            CombatFeedback.SlowMo(0.25f, 0.4f);
+            CombatFeedback.Shake(1f);
+        }
+
         // ================= 空中 / 蹲伏攻击 =================
 
         void JumpAttack()
@@ -263,6 +403,19 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * 1.5f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
             OpenHitboxTimed(0.14f, 0.42f, dmg, 22f, 2.5f, true);
+        }
+
+        /// <summary>跳+腿：飞踢（KOF 跳踢），带前冲与击退。</summary>
+        void JumpKickAttack()
+        {
+            _fsm.RequestState(CombatState.LightAttack, 0.5f);
+            _fsm.InCombat = true;
+            PlayPose(PoseState.JumpKick);
+            _cc.Move(transform.forward * 1.2f);
+            _player.ForceFall(-9f);
+            float dmg = baseDamage * 1.4f * CritMult();
+            CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
+            OpenHitboxTimed(0.1f, 0.38f, dmg, 26f, 4f, true);
         }
 
         void SweepAttack()
@@ -314,7 +467,7 @@ namespace AdversityRoad.Combat
             yield return new WaitForSeconds(windup);
             weaponHitbox.onHit = h =>
             {
-                if (buildMomentum) AddMomentum(1);   // 命中积势（悟空棍势逻辑）
+                if (buildMomentum) AddMomentum(1);
                 CombatFeedback.HitStop(0.03f);
             };
             weaponHitbox.EnableHitbox(new DamageInfo
@@ -360,7 +513,6 @@ namespace AdversityRoad.Combat
         {
             if (_player.IsInvincible)
             {
-                // 完美闪避：在攻击命中的瞬间翻滚成功
                 if (_player.IsDodging && dmg.physicalDamage > 0 && Time.time - _lastPerfect > 1f)
                 {
                     _lastPerfect = Time.time;
@@ -372,7 +524,6 @@ namespace AdversityRoad.Combat
                 return;
             }
 
-            // 心理伤害
             if (dmg.mentalDamage > 0)
             {
                 float mult = GameManager.Instance != null && GameManager.Instance.safety != null
@@ -394,7 +545,6 @@ namespace AdversityRoad.Combat
                 }
             }
 
-            // 物理伤害
             if (dmg.physicalDamage > 0)
             {
                 float phys = dmg.physicalDamage;

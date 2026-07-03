@@ -52,16 +52,17 @@ namespace AdversityRoad.Mobile
             joy.handle = hrt;
             joy.radius = 110f;
 
-            // ---- 右下角战斗按钮（精简布局）----
-            // 攻=五段连招 | 重=按住蓄力/松开重劈（连段中轻点=切手技）| 闪=翻滚（时机对=完美闪避）
-            // 挡=格挡/定心格挡 | 跳（空中攻=下劈；蹲下攻=扫堂腿）| 气=斩念气刃 | 定=定心护体
-            AddButton("Light", "攻", new Vector2(-180, 210), 175, new Color(0.9f, 0.35f, 0.3f, 0.78f));
-            AddButton("Heavy", "重", new Vector2(-405, 150), 135, new Color(0.85f, 0.55f, 0.2f, 0.78f));
-            AddButton("Dodge", "闪", new Vector2(-185, 450), 135, new Color(0.3f, 0.7f, 0.95f, 0.78f));
-            AddButton("Guard", "挡", new Vector2(-425, 330), 118, new Color(0.4f, 0.8f, 0.5f, 0.75f));
-            AddButton("Jump", "跳", new Vector2(-190, 660), 112, new Color(0.65f, 0.5f, 0.9f, 0.75f));
-            AddButton("Skill2", "气", new Vector2(-610, 250), 105, new Color(0.35f, 0.8f, 0.95f, 0.75f));
-            AddButton("Skill1", "定", new Vector2(-630, 440), 105, new Color(0.4f, 0.55f, 0.9f, 0.75f));
+            // ---- 右下角战斗按钮（KOF 拳腿分立布局）----
+            // 拳/腿=双系连段可混接 | 重=按住蓄力/轻点+方向=指令技 | 闪=翻滚（完美闪避/受身）
+            // 挡=格挡/定心格挡 | 跳（跳+拳=下劈，跳+腿=飞踢，蹲+攻=扫堂腿）| 气/定=技能
+            AddButton("Light", "拳", new Vector2(-180, 210), 165, new Color(0.9f, 0.35f, 0.3f, 0.78f));
+            AddButton("Kick", "腿", new Vector2(-395, 145), 150, new Color(0.95f, 0.6f, 0.25f, 0.78f));
+            AddButton("Dodge", "闪", new Vector2(-185, 445), 130, new Color(0.3f, 0.7f, 0.95f, 0.78f));
+            AddButton("Heavy", "重", new Vector2(-425, 330), 125, new Color(0.8f, 0.45f, 0.15f, 0.8f));
+            AddButton("Guard", "挡", new Vector2(-625, 235), 108, new Color(0.4f, 0.8f, 0.5f, 0.75f));
+            AddButton("Jump", "跳", new Vector2(-190, 655), 112, new Color(0.65f, 0.5f, 0.9f, 0.75f));
+            AddButton("Skill2", "气", new Vector2(-650, 425), 100, new Color(0.35f, 0.8f, 0.95f, 0.75f));
+            AddButton("Skill1", "定", new Vector2(-435, 520), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
         }
 
