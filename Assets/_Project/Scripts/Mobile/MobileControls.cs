@@ -64,6 +64,35 @@ namespace AdversityRoad.Mobile
             AddButton("Skill2", "技2", new Vector2(-580, 570), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
             AddButton("Skill3", "气", new Vector2(-760, 500), 100, new Color(0.35f, 0.8f, 0.95f, 0.75f));
             AddButton("Interact", "互", new Vector2(-750, 170), 95, new Color(0.6f, 0.85f, 0.85f, 0.7f));
+            AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
+        }
+
+        void AddButtonLeft(string btnName, string label, Vector2 pos, float size, Color color)
+        {
+            var go = new GameObject("Btn_" + btnName, typeof(Image));
+            go.transform.SetParent(transform, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0, 0);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = new Vector2(size, size);
+            var img = go.GetComponent<Image>();
+            img.color = color;
+            MakeCircle(img);
+            var vb = go.AddComponent<VirtualButton>();
+            vb.buttonName = btnName;
+            var textGo = new GameObject("Label", typeof(Text));
+            textGo.transform.SetParent(go.transform, false);
+            var trt = textGo.GetComponent<RectTransform>();
+            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+            trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
+            var t = textGo.GetComponent<Text>();
+            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            t.fontSize = Mathf.RoundToInt(size * 0.4f);
+            t.alignment = TextAnchor.MiddleCenter;
+            t.color = Color.white;
+            t.text = label;
+            t.raycastTarget = false;
         }
 
         GameObject CreatePanel(string name, Vector2 anchorMin, Vector2 anchorMax, Color color)

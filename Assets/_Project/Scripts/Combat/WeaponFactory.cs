@@ -16,14 +16,19 @@ namespace AdversityRoad.Combat
     /// </summary>
     public static class WeaponFactory
     {
-        public static WeaponRig Build(WeaponKind kind, Transform hand, Material baseMat)
+        public static WeaponRig Build(WeaponKind kind, Transform hand, Material baseMat) =>
+            Build(kind, hand, baseMat, new Vector3(0.55f, 0.15f, 0.1f), new Vector3(25f, 0, 0));
+
+        /// <summary>指定挂点位置与静息角度（人形骨骼挂右手关节时使用）。</summary>
+        public static WeaponRig Build(WeaponKind kind, Transform hand, Material baseMat,
+            Vector3 localPos, Vector3 localEuler)
         {
             if (kind == WeaponKind.None) return null;
 
             var pivotGo = new GameObject("WeaponPivot");
             pivotGo.transform.SetParent(hand, false);
-            pivotGo.transform.localPosition = new Vector3(0.55f, 0.15f, 0.1f);
-            pivotGo.transform.localRotation = Quaternion.Euler(25f, 0, 0); // 静息时刀刃斜向前上
+            pivotGo.transform.localPosition = localPos;
+            pivotGo.transform.localRotation = Quaternion.Euler(localEuler);
 
             var rig = new WeaponRig { pivot = pivotGo.transform };
 
@@ -54,7 +59,6 @@ namespace AdversityRoad.Combat
                     break;
 
                 case WeaponKind.Staff:
-                    pivotGo.transform.localPosition = new Vector3(0.5f, 0.1f, 0.1f);
                     Part(pivotGo.transform, new Vector3(0, 0.35f, 0), new Vector3(0.08f, 1.7f, 0.08f),
                         new Color(0.5f, 0.35f, 0.2f), baseMat);                       // 长棍
                     Part(pivotGo.transform, new Vector3(0, 1.2f, 0), new Vector3(0.12f, 0.12f, 0.12f),

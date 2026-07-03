@@ -25,8 +25,8 @@ namespace AdversityRoad.Player
 
         [Header("自动跟随")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 1.1f;   // 手动转镜头后暂停自动跟随的秒数
-        public float autoFollowSpeed = 55f;    // 度/秒
+        public float autoFollowDelay = 1.0f;   // 手动转镜头后暂停自动跟随的秒数
+        public float autoFollowSpeed = 110f;   // 度/秒：快速转身时镜头迅速跟上
 
         public PlayerController player;
         public LockOnSystem lockOn;

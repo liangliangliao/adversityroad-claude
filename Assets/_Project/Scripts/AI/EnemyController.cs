@@ -21,7 +21,7 @@ namespace AdversityRoad.AI
         public Hitbox attackHitbox;
         public Transform[] patrolPoints;
 
-        [HideInInspector] public SimpleAnimator poser;
+        [HideInInspector] public HumanoidAnimator poser;
         [HideInInspector] public EnemyStatusBar statusBar;
         [HideInInspector] public EnemyDialogue dialogue;
 
@@ -72,6 +72,14 @@ namespace AdversityRoad.AI
             {
                 statusBar.SetHealth(_hp, profile.maxHealth);
                 statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
+            }
+
+            // 把移动速度喂给人形动画（步行/奔跑步态）
+            if (poser != null)
+            {
+                float v = AgentReady ? _agent.velocity.magnitude
+                    : (State == EnemyState.Chase ? profile.moveSpeed : 0f);
+                poser.SetLocomotion(v / Mathf.Max(0.5f, profile.moveSpeed) * 0.85f, false, true);
             }
 
             if (State == EnemyState.Stagger)

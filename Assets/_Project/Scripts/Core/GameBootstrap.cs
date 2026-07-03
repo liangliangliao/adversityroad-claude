@@ -147,7 +147,7 @@ namespace AdversityRoad.Core
             root.AddComponent<LockOnSystem>();
             var skillExec = root.AddComponent<SkillExecutor>();
 
-            var poser = root.AddComponent<SimpleAnimator>();
+            var poser = root.AddComponent<HumanoidAnimator>();
             poser.visual = visualRoot.transform;
             poser.fsm = fsm;
 
@@ -287,11 +287,21 @@ namespace AdversityRoad.Core
             root.transform.position = pos;
             root.transform.localScale = Vector3.one * scale;
 
-            var visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            visual.name = "Visual";
-            Object.DestroyImmediate(visual.GetComponent<Collider>());
-            visual.transform.SetParent(root.transform, false);
-            Paint(visual, EnemyCatalog.TypeColor(type));
+            // 心魔人形：完整人体骨骼，主题色着装、暗肤、赤瞳
+            var visualRoot = new GameObject("Visual");
+            visualRoot.transform.SetParent(root.transform, false);
+            Color tc = EnemyCatalog.TypeColor(type);
+            var rig = HumanoidRig.Build(visualRoot.transform, new HumanoidRig.Config
+            {
+                skin = new Color(tc.r * 0.5f + 0.15f, tc.g * 0.5f + 0.12f, tc.b * 0.5f + 0.18f),
+                top = tc,
+                bottom = new Color(tc.r * 0.55f, tc.g * 0.55f, tc.b * 0.55f),
+                shoes = new Color(0.12f, 0.1f, 0.14f),
+                hair = new Color(0.08f, 0.06f, 0.1f),
+                eye = new Color(0.9f, 0.15f, 0.15f),
+                hasHat = false,
+                bulk = tier == EnemyTier.Chief ? 1.22f : 1f
+            }, baseMaterial);
 
             var body = root.AddComponent<CapsuleCollider>();
             body.height = 2f;
@@ -304,8 +314,9 @@ namespace AdversityRoad.Core
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;
 
-            var poser = root.AddComponent<SimpleAnimator>();
-            poser.visual = visual.transform;
+            var poser = root.AddComponent<HumanoidAnimator>();
+            poser.visual = visualRoot.transform;
+            poser.rig = rig;
             ec.poser = poser;
 
             ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 2.5f);
@@ -314,14 +325,15 @@ namespace AdversityRoad.Core
             dialogue.displayName = profile.displayName;
             ec.dialogue = dialogue;
 
-            // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挥击带刀光
-            var rig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), visual.transform, baseMaterial);
-            if (rig != null)
+            // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挂右手随臂挥舞带刀光
+            var weaponRig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), rig.handR,
+                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(112f, 0, 0));
+            if (weaponRig != null)
             {
-                poser.weaponPivot = rig.pivot;
-                poser.weaponTrail = rig.trail;
+                poser.weaponPivot = weaponRig.pivot;
+                poser.weaponTrail = weaponRig.trail;
             }
-            ec.themeColor = EnemyCatalog.TypeColor(type);
+            ec.themeColor = tc;
             ec.baseMaterial = baseMaterial;
 
             var hurt = new GameObject("Hurtbox");
@@ -412,6 +424,9 @@ namespace AdversityRoad.Core
             UiUtil.MakeButton(canvasGo.transform, "角色", new Vector2(1, 1), new Vector2(-435, -42),
                 new Vector2(150, 64), new Color(0.3f, 0.5f, 0.4f, 0.8f),
                 () => { if (_appearance != null) _appearance.TogglePreset(); }, 26);
+            var aiLogPanel = AiLogPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "日志", new Vector2(1, 1), new Vector2(-605, -42),
+                new Vector2(150, 64), new Color(0.4f, 0.4f, 0.3f, 0.8f), aiLogPanel.Toggle, 26);
 
             BuildBattleFlowPanel(canvasGo.transform);
         }

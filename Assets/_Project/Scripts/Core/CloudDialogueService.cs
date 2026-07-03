@@ -25,6 +25,24 @@ namespace AdversityRoad.Core
         readonly Dictionary<string, Queue<string>> _pools = new Dictionary<string, Queue<string>>();
         readonly HashSet<string> _pending = new HashSet<string>();
 
+        // ---------- AI 调用日志（调试用，「日志」面板查看） ----------
+        public static readonly List<string> Logs = new List<string>();
+        public static event System.Action LogChanged;
+        const int MaxLogs = 80;
+
+        public static void AddLog(string text)
+        {
+            Logs.Add("[" + System.DateTime.Now.ToString("HH:mm:ss") + "] " + text);
+            if (Logs.Count > MaxLogs) Logs.RemoveRange(0, Logs.Count - MaxLogs);
+            LogChanged?.Invoke();
+        }
+
+        public static void ClearLogs()
+        {
+            Logs.Clear();
+            LogChanged?.Invoke();
+        }
+
         public static void Ensure()
         {
             if (Instance != null) return;
@@ -116,6 +134,9 @@ namespace AdversityRoad.Core
                 "{\"role\":\"user\",\"content\":\"" + Esc(user) + "\"}]," +
                 "\"max_tokens\":400,\"temperature\":0.9}";
 
+            AddLog("请求 " + cfg.provider + "/" + model + " → " + zoneId + "×" + AxisName(axis));
+            float startAt = Time.realtimeSinceStartup;
+
             using (var req = new UnityWebRequest(url, "POST"))
             {
                 req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
@@ -125,9 +146,11 @@ namespace AdversityRoad.Core
                 req.timeout = 20;
                 yield return req.SendWebRequest();
 
+                float ms = (Time.realtimeSinceStartup - startAt) * 1000f;
                 if (req.result == UnityWebRequest.Result.Success)
                 {
                     string content = ExtractContent(req.downloadHandler.text);
+                    int added = 0;
                     if (!string.IsNullOrEmpty(content))
                     {
                         if (!_pools.TryGetValue(key, out var q))
@@ -135,16 +158,32 @@ namespace AdversityRoad.Core
                         foreach (var raw in content.Split('\n'))
                         {
                             string line = Sanitize(raw);
-                            if (line.Length >= 2 && line.Length <= 30) q.Enqueue(line);
+                            if (line.Length >= 2 && line.Length <= 30) { q.Enqueue(line); added++; }
                         }
                     }
+                    AddLog("成功 " + Mathf.RoundToInt(ms) + "ms，入池 " + added + " 条（" +
+                           zoneId + "×" + AxisName(axis) + "）" +
+                           (added > 0 ? " 例：" + Snippet(_pools[key]) : " ⚠内容解析为空"));
                 }
                 else
                 {
+                    string bodySnippet = req.downloadHandler != null &&
+                        !string.IsNullOrEmpty(req.downloadHandler.text)
+                        ? req.downloadHandler.text.Substring(0,
+                            Mathf.Min(120, req.downloadHandler.text.Length))
+                        : "";
+                    AddLog("失败 " + Mathf.RoundToInt(ms) + "ms HTTP" + req.responseCode +
+                           " " + req.error + " " + bodySnippet);
                     Debug.LogWarning("[CloudDialogue] " + cfg.provider + " 请求失败: " + req.error);
                 }
             }
             _pending.Remove(key);
+        }
+
+        static string Snippet(Queue<string> q)
+        {
+            foreach (var s in q) return "「" + s + "」";
+            return "";
         }
 
         // ---------- 解析与工具 ----------
