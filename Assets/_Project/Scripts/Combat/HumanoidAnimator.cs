@@ -131,18 +131,28 @@ namespace AdversityRoad.Combat
                     shRr = Mathf.Lerp(-30f, 8f, k);
                     elR = Mathf.Lerp(55f, 8f, k);
                     shLp = Mathf.Lerp(-25f, 12f, k);
-                    torsoY = Mathf.Lerp(-18f, 16f, k);
-                    torsoP += 6f;
+                    // 剑人合一：大幅转腰带身，前脚上步、重心前压
+                    torsoY = Mathf.Lerp(-42f, 40f, k);
+                    torsoP += 10f;
+                    hipRp = Mathf.Lerp(-10f, 34f, k); kneeRp = 30f;
+                    hipLp = Mathf.Lerp(24f, -8f, k);
+                    bodyPos = new Vector3(0, 0, Mathf.Sin(k * Mathf.PI) * 0.28f);
+                    bodyLerp = 20f;
                     swinging = _t < 0.34f;
                     break;
                 }
-                case PoseState.AttackUp: // 上挑：由低向高反手撩击，重心后送
+                case PoseState.AttackUp: // 上挑：由低向高反手撩击，屈膝下沉再拔起
                 {
                     float k = Ease(Mathf.Clamp01(_t / 0.3f));
                     shRp = Mathf.Lerp(15f, 172f, k);
                     shRr = Mathf.Lerp(20f, -18f, k);
                     elR = Mathf.Lerp(10f, 40f, k);
                     shLp = Mathf.Lerp(20f, -30f, k);
+                    hipLp = Mathf.Lerp(40f, 6f, k); hipRp = Mathf.Lerp(40f, 6f, k);
+                    kneeLp = Mathf.Lerp(60f, 12f, k); kneeRp = Mathf.Lerp(60f, 12f, k);
+                    pelvisY += Mathf.Lerp(-0.18f, 0.06f, k);   // 下沉蓄力再拔身
+                    torsoY = Mathf.Lerp(24f, -20f, k);
+                    bodyLerp = 20f;
                     torsoP = Mathf.Lerp(14f, -10f, k);
                     torsoY = Mathf.Lerp(14f, -12f, k);
                     swinging = _t < 0.32f;
@@ -170,11 +180,13 @@ namespace AdversityRoad.Combat
                     elR = Mathf.Lerp(100f, 2f, k);               // 肘由屈到全伸=刺出
                     shLp = Mathf.Lerp(30f, -35f, k);             // 后手向后展开配重
                     shLr = 30f;
-                    torsoP = Mathf.Lerp(4f, 22f, k);             // 弓步前倾
-                    torsoY = Mathf.Lerp(-18f, 8f, k);
-                    hipRp = 35f; kneeRp = 45f;                   // 前弓
-                    hipLp = -22f; kneeLp = 8f;                   // 后箭
-                    pelvisY -= 0.1f * k;
+                    torsoP = Mathf.Lerp(4f, 26f, k);             // 弓步前倾
+                    torsoY = Mathf.Lerp(-22f, 12f, k);
+                    hipRp = Mathf.Lerp(10f, 52f, k); kneeRp = Mathf.Lerp(20f, 58f, k); // 前弓深
+                    hipLp = -28f; kneeLp = 8f;                   // 后箭
+                    pelvisY -= 0.12f * k;
+                    bodyPos = new Vector3(0, 0, Mathf.Lerp(0f, 0.42f, k)); // 整身前刺
+                    bodyLerp = 24f;
                     swinging = _t < 0.3f;
                     break;
                 }

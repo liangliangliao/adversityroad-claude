@@ -13,12 +13,12 @@ namespace AdversityRoad.Player
     public class PlayerController : MonoBehaviour
     {
         [Header("移动（速度按真实体感收敛，防晕）")]
-        public float walkSpeed = 2.6f;
-        public float runSpeed = 5.2f;
-        public float acceleration = 18f;           // 起步加速度（防晕：速度不突变）
-        public float deceleration = 26f;           // 停步减速度
-        public float rotateSpeed = 11f;
-        public float quickTurnMultiplier = 1.7f;   // 大角度转身加速倍率
+        public float walkSpeed = 2.0f;
+        public float runSpeed = 4.0f;
+        public float acceleration = 14f;           // 起步加速度（防晕：速度不突变）
+        public float deceleration = 22f;           // 停步减速度
+        public float rotateSpeed = 10f;
+        public float quickTurnMultiplier = 1.6f;   // 大角度转身加速倍率
         public float jumpForce = 7f;
         public float gravity = -20f;
 

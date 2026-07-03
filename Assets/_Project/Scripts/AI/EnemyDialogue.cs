@@ -10,7 +10,7 @@ namespace AdversityRoad.AI
     /// </summary>
     public class EnemyDialogue : MonoBehaviour
     {
-        public float bubbleHeight = 2.8f;
+        public float bubbleHeight = 3.4f;   // 抬高，避免文字盖住角色
         public string displayName = "敌人";
 
         TextMesh _tm;
@@ -23,8 +23,8 @@ namespace AdversityRoad.AI
             go.transform.localPosition = new Vector3(0, bubbleHeight, 0);
             _tm = go.AddComponent<TextMesh>();
             _tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            _tm.fontSize = 52;
-            _tm.characterSize = 0.05f;
+            _tm.fontSize = 48;
+            _tm.characterSize = 0.028f;     // 缩小气泡：不再遮挡血条与角色
             _tm.anchor = TextAnchor.LowerCenter;
             _tm.alignment = TextAlignment.Center;
             _tm.color = new Color(1f, 0.85f, 0.85f);

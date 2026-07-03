@@ -720,6 +720,8 @@ namespace AdversityRoad.Combat
                     else
                     {
                         _fsm.RequestState(CombatState.HitReaction, 0.4f);
+                        // 受击无敌帧：短暂无敌，杜绝贴身连续掉血
+                        _player.SetInvincible(0.55f);
                     }
                 }
             }

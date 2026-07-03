@@ -11,10 +11,24 @@ namespace AdversityRoad.Mobile
     {
         public bool forceShow = false;
 
+        readonly System.Collections.Generic.List<GameObject> _controls =
+            new System.Collections.Generic.List<GameObject>();
+
         void Start()
         {
             if (!forceShow && !Application.isMobilePlatform) return;
             Build();
+        }
+
+        void OnEnable() => Core.GameEvents.OnPlayerDied += HideControls;
+        void OnDisable() => Core.GameEvents.OnPlayerDied -= HideControls;
+
+        /// <summary>玩家死亡：隐藏摇杆与全部战斗按钮（禁用触屏输入）。</summary>
+        void HideControls(string reason)
+        {
+            foreach (var go in _controls)
+                if (go != null) go.SetActive(false);
+            MobileInput.Move = Vector2.zero;
         }
 
         void Build()
@@ -30,27 +44,37 @@ namespace AdversityRoad.Mobile
                 new Color(0, 0, 0, 0.001f));
             look.AddComponent<TouchLookArea>();
             look.transform.SetAsFirstSibling();
+            _controls.Add(look);
 
-            // ---- 左下角摇杆 ----
-            var joyBg = CreatePanel("Joystick", Vector2.zero, Vector2.zero,
-                new Color(1, 1, 1, 0.15f));
-            var joyRt = joyBg.GetComponent<RectTransform>();
-            joyRt.anchorMin = joyRt.anchorMax = new Vector2(0, 0);
-            joyRt.pivot = new Vector2(0.5f, 0.5f);
-            joyRt.anchoredPosition = new Vector2(260, 260);
-            joyRt.sizeDelta = new Vector2(320, 320);
-            MakeCircle(joyBg.GetComponent<Image>());
+            // ---- 左侧大范围触控区：浮动摇杆（手指落在哪，摇杆就在哪）----
+            var joyArea = CreatePanel("JoystickArea", new Vector2(0f, 0f), new Vector2(0.45f, 0.85f),
+                new Color(0, 0, 0, 0.001f));
+            _controls.Add(joyArea);
+            joyArea.transform.SetAsFirstSibling();
+
+            // 浮动外环（按下时显示并移到触点）
+            var ring = new GameObject("JoyRing", typeof(Image));
+            ring.transform.SetParent(transform, false);
+            var ringRt = ring.GetComponent<RectTransform>();
+            ringRt.sizeDelta = new Vector2(300, 300);
+            ring.GetComponent<Image>().color = new Color(1, 1, 1, 0.14f);
+            ring.GetComponent<Image>().raycastTarget = false;
+            MakeCircle(ring.GetComponent<Image>());
+            _controls.Add(ring);
 
             var handle = new GameObject("Handle", typeof(Image));
-            handle.transform.SetParent(joyBg.transform, false);
+            handle.transform.SetParent(ring.transform, false);
             var hrt = handle.GetComponent<RectTransform>();
             hrt.sizeDelta = new Vector2(130, 130);
-            handle.GetComponent<Image>().color = new Color(1, 1, 1, 0.45f);
+            handle.GetComponent<Image>().color = new Color(1, 1, 1, 0.42f);
+            handle.GetComponent<Image>().raycastTarget = false;
             MakeCircle(handle.GetComponent<Image>());
+            ring.SetActive(false);
 
-            var joy = joyBg.AddComponent<VirtualJoystick>();
+            var joy = joyArea.AddComponent<VirtualJoystick>();
+            joy.ring = ringRt;
             joy.handle = hrt;
-            joy.radius = 110f;
+            joy.radius = 130f;
 
             // ---- 右下角战斗按钮（KOF 拳腿分立布局）----
             // 拳/腿=双系连段可混接 | 重=按住蓄力/轻点+方向=指令技 | 闪=翻滚（完美闪避/受身）
@@ -92,6 +116,7 @@ namespace AdversityRoad.Mobile
             t.color = Color.white;
             t.text = label;
             t.raycastTarget = false;
+            _controls.Add(go);
         }
 
         GameObject CreatePanel(string name, Vector2 anchorMin, Vector2 anchorMax, Color color)
@@ -134,6 +159,7 @@ namespace AdversityRoad.Mobile
             t.color = Color.white;
             t.text = label;
             t.raycastTarget = false;
+            _controls.Add(go);
         }
 
         /// <summary>用内置 Knob 精灵把方形 Image 变圆形；打包后取不到内置精灵时保持方形。</summary>

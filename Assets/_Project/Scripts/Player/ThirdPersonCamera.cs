@@ -21,7 +21,7 @@ namespace AdversityRoad.Player
         public Vector3 offset = new Vector3(0.6f, 2.0f, -4.9f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
-        public float touchSensitivity = 190f;
+        public float touchSensitivity = 130f;
         [Tooltip("俯仰限制收紧+闲时回中，避免卡在俯视角变成上帝视角")]
         public float minPitch = -18f, maxPitch = 38f;
         public float defaultPitch = 10f;   // 低平视角：地平线可见，画面有纵深电影感
@@ -118,8 +118,8 @@ namespace AdversityRoad.Player
                 lookX += Input.GetAxis("Mouse X") * mouseSensitivity;
                 lookY += Input.GetAxis("Mouse Y") * mouseSensitivity;
             }
-            lookX = Mathf.Clamp(lookX, -9f, 9f);
-            lookY = Mathf.Clamp(lookY, -7f, 7f);
+            lookX = Mathf.Clamp(lookX, -6f, 6f);
+            lookY = Mathf.Clamp(lookY, -5f, 5f);
 
             if (Mathf.Abs(lookX) > 0.02f || Mathf.Abs(lookY) > 0.02f)
                 _lastManualLook = Time.unscaledTime;
@@ -142,7 +142,18 @@ namespace AdversityRoad.Player
                 }
                 _followBlend = 0;
             }
-            else if (autoFollow && !Presets[PresetIndex].fp)
+            else if (Presets[PresetIndex].fp)
+            {
+                // 第一人称：改变方向时视线随角色朝向转动（近期未手动看时）
+                if (Time.unscaledTime - _lastManualLook > 0.25f && moveSpeed > 1.2f)
+                {
+                    float wantYaw = target.eulerAngles.y;
+                    float diff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
+                    float sp = Mathf.Lerp(90f, 360f, Mathf.InverseLerp(20f, 150f, diff));
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, sp * dt);
+                }
+            }
+            else if (autoFollow)
             {
                 // 立刻回正：玩家一旦朝新方向移动，镜头迅速切到「该方向的身后」，
                 // 展示新的正前方（玩家掉头/左后/右后转向都会立即跟上）。

@@ -138,6 +138,19 @@ namespace AdversityRoad.AI
             if (_player == null) { PatrolTick(); return; }
             float dist = Vector3.Distance(transform.position, _player.position);
 
+            // 防穿模：与玩家距离过近时互相推开（保持约 1.1 米身位）
+            const float minSep = 1.1f;
+            if (dist < minSep && dist > 0.001f)
+            {
+                Vector3 away = transform.position - _player.position;
+                away.y = 0;
+                Vector3 push = away.normalized * (minSep - dist);
+                if (AgentReady) _agent.Move(push * 0.6f);
+                else transform.position += push * 0.6f;
+                var pcc = _player.GetComponent<CharacterController>();
+                if (pcc != null && pcc.enabled) pcc.Move(-push * 0.4f);
+            }
+
             // 追击/交战中周期性低语（语言层面的持续心理压迫）
             if (State == EnemyState.Chase || State == EnemyState.Attack)
             {

@@ -30,6 +30,8 @@ namespace AdversityRoad.Combat
             var keys = new List<string>(_cooldowns.Keys);
             foreach (var k in keys) _cooldowns[k] = Mathf.Max(0, _cooldowns[k] - Time.deltaTime);
 
+            if (_player != null && _player.Stats.IsDead) return;   // 死亡禁用技能输入
+
             // 数字键 1-4 释放已装备技能
             for (int i = 0; i < Mathf.Min(4, equippedSkills.Count); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);

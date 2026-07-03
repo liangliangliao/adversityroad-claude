@@ -443,9 +443,10 @@ namespace AdversityRoad.Core
             UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -252), new Vector2(400, 40));
             hud.comboText = comboText;
 
-            var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
+            // 任务文字移到按钮行下方，避免被右上角功能按钮遮挡
+            var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 25,
                 TextAnchor.MiddleCenter, Color.white);
-            UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
+            UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -196), new Vector2(1100, 38));
             hud.questText = qText;
 
             var subText = UiUtil.MakeText(canvasGo.transform, "Subtitle", "", 28,
