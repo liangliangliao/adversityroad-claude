@@ -430,6 +430,10 @@ namespace AdversityRoad.Core
                 hud.momentumPips[i] = img;
             }
 
+            // 电影黑边（锁定战斗时滑入）
+            hud.cineTop = MakeCineBar(canvasGo.transform, true);
+            hud.cineBottom = MakeCineBar(canvasGo.transform, false);
+
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
@@ -499,6 +503,22 @@ namespace AdversityRoad.Core
             _battleFlow.detailText = detailText;
             _battleFlow.buttonText = btnText.GetComponentInChildren<Text>();
             panel.SetActive(false);
+        }
+
+        RectTransform MakeCineBar(Transform canvas, bool top)
+        {
+            var go = new GameObject(top ? "CineTop" : "CineBottom", typeof(Image));
+            go.transform.SetParent(canvas, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = top ? new Vector2(0, 1) : new Vector2(0, 0);
+            rt.anchorMax = top ? new Vector2(1, 1) : new Vector2(1, 0);
+            rt.pivot = top ? new Vector2(0.5f, 1) : new Vector2(0.5f, 0);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0, 0);
+            var img = go.GetComponent<Image>();
+            img.color = Color.black;
+            img.raycastTarget = false;
+            return rt;
         }
 
         StatBar CreateBar(Transform parent, string label, int index, Color fillColor)

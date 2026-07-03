@@ -17,13 +17,14 @@ namespace AdversityRoad.Player
     public class ThirdPersonCamera : MonoBehaviour
     {
         public Transform target;
-        public Vector3 offset = new Vector3(0, 2.3f, -4.6f);
+        [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）")]
+        public Vector3 offset = new Vector3(0.6f, 2.0f, -4.9f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
         [Tooltip("俯仰限制收紧+闲时回中，避免卡在俯视角变成上帝视角")]
         public float minPitch = -18f, maxPitch = 38f;
-        public float defaultPitch = 15f;
+        public float defaultPitch = 10f;   // 低平视角：地平线可见，画面有纵深电影感
         public float pitchRecenterDelay = 2.5f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
@@ -38,8 +39,8 @@ namespace AdversityRoad.Player
         public PlayerController player;
         public LockOnSystem lockOn;
 
-        float _yaw, _pitch = 15f;
-        float _curYaw, _curPitch = 15f;
+        float _yaw, _pitch = 10f;
+        float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
@@ -103,23 +104,19 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                // 跟拍者逻辑：只有玩家持续「背离镜头向远处跑」时才缓慢跟上；
-                // 原地转身、横向移动、朝镜头走都不会带动镜头
+                // 移动即回正：玩家一旦朝新方向移动，镜头迅速（但平滑）切到其身后
+                // 展示新的前方远景；偏差越大追得越快；原地转身不动镜头
                 Vector3 vel = (target.position - _lastTargetPos) / dt;
                 vel.y = 0;
-                Vector3 camFwd = transform.forward;
-                camFwd.y = 0;
-                camFwd.Normalize();
-                float awayDot = vel.sqrMagnitude > 0.1f
-                    ? Vector3.Dot(vel.normalized, camFwd) : 0f;
-                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay
-                                  && moveSpeed > 1.8f && awayDot > 0.6f;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.7f);
+                bool moving = moveSpeed > 1.6f;
+                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moving;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.3f);
                 if (_followBlend > 0.01f && vel.sqrMagnitude > 0.1f)
                 {
                     float wantYaw = Quaternion.LookRotation(vel.normalized).eulerAngles.y;
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw,
-                        autoFollowSpeed * _followBlend * dt);
+                    float diff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
+                    float speed = Mathf.Lerp(45f, 160f, Mathf.InverseLerp(15f, 150f, diff));
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
                 }
             }
 
@@ -147,8 +144,14 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
 
-            // 动态构图：战斗微拉近、疾跑微拉远（幅度收小，平滑过渡，绝不动 FOV）
-            float wantFactor = lockTarget != null ? 0.93f : (moveSpeed > 4.2f ? 1.04f : 1f);
+            // 电影感构图：锁定时按敌我距离取景（双人同框），疾跑微拉远
+            float wantFactor;
+            if (lockTarget != null)
+            {
+                float enemyDist = Vector3.Distance(target.position, lockTarget.position);
+                wantFactor = Mathf.Clamp(0.85f + enemyDist * 0.06f, 0.95f, 1.45f);
+            }
+            else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);
 
             Vector3 boomDir = (rot * offset).normalized;

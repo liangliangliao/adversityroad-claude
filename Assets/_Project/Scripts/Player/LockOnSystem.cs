@@ -15,6 +15,17 @@ namespace AdversityRoad.Player
 
         PlayerController _player;
         float _nextScan;
+        bool _wasLocked;
+
+        void LateUpdate()
+        {
+            bool locked = CurrentTarget != null;
+            if (locked != _wasLocked)
+            {
+                _wasLocked = locked;
+                Core.GameEvents.RaiseLockState(locked);
+            }
+        }
 
         void Update()
         {
