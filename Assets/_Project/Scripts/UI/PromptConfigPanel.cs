@@ -173,7 +173,8 @@ namespace AdversityRoad.UI
             {
                 case "dojo": return 1;
                 case "street": return 2;
-                case "plaza": return 3;
+                case "job": return 3;
+                case "plaza": return 4;
                 default: return 0;
             }
         }

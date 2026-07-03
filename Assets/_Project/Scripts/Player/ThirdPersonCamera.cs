@@ -42,6 +42,10 @@ namespace AdversityRoad.Player
         float _followBlend;                // 自动跟随渐入渐出
         float _lastManualLook;
         Vector3 _lastTargetPos;
+        float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
+        float _pivotH = 1.55f;
+        float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
+        bool _pivotInit;
 
         /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
@@ -78,6 +82,8 @@ namespace AdversityRoad.Player
             _yaw += lookX;
             _pitch = Mathf.Clamp(_pitch - lookY, minPitch, maxPitch);
 
+            float moveSpeed = (target.position - _lastTargetPos).magnitude / dt;
+
             // ---- 锁定运镜 / 自动跟随（渐入渐出，避免突然接管） ----
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             if (lockTarget != null)
@@ -93,7 +99,6 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                float moveSpeed = (target.position - _lastTargetPos).magnitude / dt;
                 bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 0.8f;
                 _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.5f);
                 if (_followBlend > 0.01f)
@@ -113,9 +118,23 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
-            Vector3 pivot = target.position + Vector3.up * 1.55f;
+
+            // 物理感取景：水平刚性跟随，纵向软化（GDC 稳定镜头原则——
+            // 不复制角色每个纵向小动作，跳跃/落地时镜头柔和跟进）
+            float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
+            _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
+            float targetPivotY = target.position.y + _pivotH;
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotInit = true; }
+            _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
+                Mathf.Infinity, dt);
+            Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
+
+            // 动态构图：战斗拉近压低、疾跑微拉远（平滑过渡，绝不动 FOV）
+            float wantFactor = lockTarget != null ? 0.88f : (moveSpeed > 4.5f ? 1.1f : 1f);
+            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 2.2f * dt);
+
             Vector3 boomDir = (rot * offset).normalized;
-            float maxDist = offset.magnitude;
+            float maxDist = offset.magnitude * _lenFactor;
 
             // ---- 碰撞：回缩快、伸出慢，避免弹跳 ----
             float wantDist = maxDist;

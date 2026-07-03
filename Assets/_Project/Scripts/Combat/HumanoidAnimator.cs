@@ -33,6 +33,16 @@ namespace AdversityRoad.Combat
             _t = 0;
         }
 
+        /// <summary>
+        /// 连段专用：外部指定攻击姿态，并吞掉本次 FSM 状态变化，
+        /// 避免 MapFromFsm 用默认攻击姿态覆盖连段姿态。
+        /// </summary>
+        public void PlayAttackPose(PoseState p)
+        {
+            if (fsm != null) _lastFsmState = fsm.Current;
+            SetPose(p);
+        }
+
         /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地。</summary>
         public void SetLocomotion(float speed01, bool crouch, bool grounded)
         {
@@ -112,7 +122,7 @@ namespace AdversityRoad.Combat
 
             switch (_pose)
             {
-                case PoseState.Attack:
+                case PoseState.Attack: // 横斩
                 {
                     float k = Ease(Mathf.Clamp01(_t / 0.32f));
                     shRp = Mathf.Lerp(168f, 22f, k);
@@ -122,6 +132,96 @@ namespace AdversityRoad.Combat
                     torsoY = Mathf.Lerp(-18f, 16f, k);
                     torsoP += 6f;
                     swinging = _t < 0.34f;
+                    break;
+                }
+                case PoseState.AttackUp: // 上挑：由低向高反手撩击，重心后送
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.3f));
+                    shRp = Mathf.Lerp(15f, 172f, k);
+                    shRr = Mathf.Lerp(20f, -18f, k);
+                    elR = Mathf.Lerp(10f, 40f, k);
+                    shLp = Mathf.Lerp(20f, -30f, k);
+                    torsoP = Mathf.Lerp(14f, -10f, k);
+                    torsoY = Mathf.Lerp(14f, -12f, k);
+                    swinging = _t < 0.32f;
+                    break;
+                }
+                case PoseState.AttackKick: // 蹬踢：右腿蹬出，躯干后仰，双臂平衡
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.34f));
+                    hipRp = Mathf.Lerp(15f, 105f, k);
+                    kneeRp = Mathf.Lerp(85f, 4f, k);
+                    footRp = -20f;
+                    hipLp = -8f; kneeLp = 12f;   // 支撑腿微屈
+                    torsoP = Mathf.Lerp(8f, -14f, k);
+                    shLp = 45f; shRp = -30f;
+                    shLr = 30f; shRr = -35f;
+                    elL = elR = 60f;
+                    swinging = _t < 0.36f;
+                    break;
+                }
+                case PoseState.AttackSpin: // 旋身横扫：整身转一周，兵器水平外展
+                {
+                    float k = Mathf.Clamp01(_t / 0.42f);
+                    visual.localRotation = Quaternion.Euler(0, k * 360f, 0);
+                    visual.localPosition = Vector3.zero;
+                    shRp = 88f; shRr = -78f;
+                    elR = 8f;
+                    shLp = 60f; shLr = 55f;
+                    torsoP = 10f;
+                    hipLp = 22f; hipRp = 22f; kneeLp = 30f; kneeRp = 30f; // 沉桩
+                    directBody = true;
+                    swinging = _t < 0.44f;
+                    break;
+                }
+                case PoseState.AttackLeap: // 跃劈：小跳跃起双手过顶劈落
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.5f));
+                    bodyPos = new Vector3(0, Mathf.Sin(Mathf.Clamp01(_t / 0.5f) * Mathf.PI) * 0.45f, 0.1f);
+                    bodyLerp = 16f;
+                    shRp = Mathf.Lerp(178f, 18f, k);
+                    shLp = Mathf.Lerp(178f, 18f, k);
+                    elL = elR = Mathf.Lerp(35f, 6f, k);
+                    torsoP = Mathf.Lerp(-14f, 30f, k);
+                    hipLp = Mathf.Lerp(40f, 12f, k); hipRp = Mathf.Lerp(46f, 16f, k);
+                    kneeLp = Mathf.Lerp(70f, 20f, k); kneeRp = Mathf.Lerp(76f, 20f, k);
+                    swinging = _t < 0.52f;
+                    break;
+                }
+                case PoseState.Sweep: // 扫堂腿：深蹲整身速旋，右腿贴地扫出
+                {
+                    float k = Mathf.Clamp01(_t / 0.4f);
+                    visual.localRotation = Quaternion.Euler(0, k * 360f, 0);
+                    visual.localPosition = new Vector3(0, -0.42f, 0);
+                    hipRp = 88f; kneeRp = 6f; footRp = -15f;     // 扫出腿伸直
+                    hipLp = 95f; kneeLp = 120f;                  // 支撑腿深蹲
+                    torsoP = 24f;
+                    shLp = 40f; shRp = 20f; shLr = 40f; shRr = -25f;
+                    directBody = true;
+                    swinging = _t < 0.42f;
+                    break;
+                }
+                case PoseState.JumpAttack: // 空中下劈：收腿、双手过顶下砸
+                {
+                    float k = Ease(Mathf.Clamp01(_t / 0.4f));
+                    shRp = Mathf.Lerp(180f, 24f, k);
+                    shLp = Mathf.Lerp(160f, 30f, k);
+                    elL = elR = Mathf.Lerp(30f, 8f, k);
+                    torsoP = Mathf.Lerp(-8f, 34f, k);
+                    hipLp = 55f; hipRp = 62f;
+                    kneeLp = 85f; kneeRp = 92f;
+                    swinging = _t < 0.45f;
+                    break;
+                }
+                case PoseState.Charge: // 蓄力：兵器高举于后，沉腰蓄势微颤
+                {
+                    shRp = 152f; shRr = -22f; elR = 45f;
+                    shLp = 35f; shLr = 25f; elL = 55f;
+                    torsoP = 12f + Mathf.Sin(_t * 26f) * 1.6f;
+                    torsoY = -14f;
+                    hipLp += 30f; hipRp += 30f;
+                    kneeLp += 42f; kneeRp += 42f;
+                    pelvisY -= 0.14f;
                     break;
                 }
                 case PoseState.HeavyAttack:

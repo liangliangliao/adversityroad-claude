@@ -48,7 +48,8 @@ namespace AdversityRoad.UI
             EnemyType[] types =
             {
                 EnemyType.TomorrowPhantom, EnemyType.CoughAssassin,
-                EnemyType.SelfDoubtWhisper, EnemyType.ShameMirror, EnemyType.ProcrastinationShadow
+                EnemyType.SelfDoubtWhisper, EnemyType.ShameMirror,
+                EnemyType.ProcrastinationShadow, EnemyType.NoReplyKing
             };
             for (int i = 0; i < types.Length; i++)
             {

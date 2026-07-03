@@ -193,18 +193,22 @@ namespace AdversityRoad.AI
             _attackCd = Mathf.Lerp(3.5f, 1.2f, profile.aggression);
             if (_anim != null) _anim.SetTrigger("Attack");
             if (poser != null) poser.SetPose(PoseState.Attack);
-            if (attackHitbox != null)
+            // 前摇 0.28 秒后才开判定框：给玩家读招与完美闪避留窗口
+            Invoke(nameof(OpenAttackHitbox), 0.28f);
+            Invoke(nameof(CloseHitbox), 0.6f);
+        }
+
+        void OpenAttackHitbox()
+        {
+            if (State == EnemyState.Dead || attackHitbox == null) return;
+            attackHitbox.EnableHitbox(new DamageInfo
             {
-                attackHitbox.EnableHitbox(new DamageInfo
-                {
-                    physicalDamage = profile.physicalDamage,
-                    mentalDamage = profile.mentalDamage * 0.3f,
-                    mentalAxis = profile.targetWeakness,
-                    knockback = 1.5f,
-                    attackerId = profile.enemyId
-                });
-                Invoke(nameof(CloseHitbox), 0.4f);
-            }
+                physicalDamage = profile.physicalDamage,
+                mentalDamage = profile.mentalDamage * 0.3f,
+                mentalAxis = profile.targetWeakness,
+                knockback = 1.5f,
+                attackerId = profile.enemyId
+            });
         }
 
         void CloseHitbox() { if (attackHitbox != null) attackHitbox.DisableHitbox(); }

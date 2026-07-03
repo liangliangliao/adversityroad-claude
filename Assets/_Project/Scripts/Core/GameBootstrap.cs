@@ -221,19 +221,6 @@ namespace AdversityRoad.Core
 
         void EquipSkills(SkillExecutor exec)
         {
-            var qibu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
-            qibu.skillId = "qibu_zhan";
-            qibu.displayName = "起步斩";
-            qibu.description = "对抗拖延的第一击：高伤害突进斩。";
-            qibu.staminaCost = 20;
-            qibu.physicalDamage = 40;
-            qibu.postureDamage = 30;
-            qibu.knockback = 3;
-            qibu.cooldown = 6;
-            qibu.castLockTime = 0.5f;
-            qibu.hitboxOpenTime = 0.35f;
-            exec.equippedSkills.Add(qibu);
-
             var dingxin = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             dingxin.skillId = "dingxin_huti";
             dingxin.displayName = "定心护体";
@@ -428,6 +415,20 @@ namespace AdversityRoad.Core
             hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊", 3, new Color(0.6f, 0.4f, 0.9f));
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
             hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
+
+            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
+            hud.momentumPips = new Image[3];
+            for (int i = 0; i < 3; i++)
+            {
+                var pip = new GameObject("MomentumPip" + i, typeof(Image));
+                pip.transform.SetParent(canvasGo.transform, false);
+                UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
+                    new Vector2(40 + i * 46, -252), new Vector2(34, 34));
+                var img = pip.GetComponent<Image>();
+                img.color = new Color(1f, 1f, 1f, 0.18f);
+                img.raycastTarget = false;
+                hud.momentumPips[i] = img;
+            }
 
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);

@@ -49,11 +49,19 @@ namespace AdversityRoad.Core
                 enemyId = "enemy_cough_assassin",
                 title = "第三章 · 噪声街区",
                 intro = "行人、车辆、议论声、咳嗽声……\n每一个声音都在拉扯你的注意力。\n\n在干扰中保持专注，击败【精英·咳声刺客】。\n提示：专注值被打空时锁定会失灵，用「定心格挡」反制心理攻击。",
-                victory = "街道依旧喧嚣，但那些声音再也钻不进你的心里。\n城市广场上，最后的影子在等你——那是你所有的拖延凝成的形状。"
+                victory = "街道依旧喧嚣，但那些声音再也钻不进你的心里。\n街区尽头是一片荒原——漫天飘着无人回复的简历。"
             },
             new ChapterInfo
             {
-                zoneIndex = 3, enemyType = EnemyType.ProcrastinationShadow, enemyTier = EnemyTier.Chief,
+                zoneIndex = 3, enemyType = EnemyType.NoReplyKing, enemyTier = EnemyTier.Chief,
+                enemyId = "boss_no_reply_king",
+                title = "第四章 · 求职荒原",
+                intro = "荒原上漫天飘着简历纸片，五扇面试之门紧闭，只有一扇透着光。\n审判台上坐着一个不说话的王——它的武器是沉默，它的刀刃是拒信。\n\n击败【首领·无回应之王】，夺回「下一次投递」的勇气。\n提示：它会远程掷出拒信飞刃，靠近它、别停下脚步。",
+                victory = "王座崩塌，沉默被打破。\n没有回应不代表没有价值——你还能再投一次。\n最后一站：城市广场，你所有的拖延凝成的旧我在等你。"
+            },
+            new ChapterInfo
+            {
+                zoneIndex = 4, enemyType = EnemyType.ProcrastinationShadow, enemyTier = EnemyTier.Chief,
                 enemyId = "boss_procrastination_shadow",
                 title = "终章 · 城市广场",
                 intro = "华灯初上的广场中央，站着一个巨大的影子。\n它有你的轮廓——那是无数个「明天再说」堆成的旧我。\n\n击败【首领·拖延影魔】，把现在夺回来。",

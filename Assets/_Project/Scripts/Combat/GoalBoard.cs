@@ -20,8 +20,8 @@ namespace AdversityRoad.Combat
                 if (_player == null) return;
             }
             if (Vector3.Distance(transform.position, _player.transform.position) > interactRange) return;
-            if (Input.GetKey(KeyCode.E) || MobileInput.GetHeld("Interact"))
-                _player.Stats.RestoreMental(restorePerSec * Time.deltaTime);
+            // 走近即自动蓄力恢复（无需按键）
+            _player.Stats.RestoreMental(restorePerSec * Time.deltaTime);
         }
     }
 }

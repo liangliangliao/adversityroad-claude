@@ -25,6 +25,7 @@ namespace AdversityRoad.UI
             new SceneTemplate { sceneId = "home", displayName = "独居小屋", primaryAxis = WeaknessAxis.SelfDoubt, themeTag = "自尊", baseIntensity = 0.3f },
             new SceneTemplate { sceneId = "dojo", displayName = "训练武馆", primaryAxis = WeaknessAxis.Procrastination, themeTag = "决断", baseIntensity = 0.45f },
             new SceneTemplate { sceneId = "street", displayName = "噪声街区", primaryAxis = WeaknessAxis.NoiseSensitivity, themeTag = "专注", baseIntensity = 0.6f },
+            new SceneTemplate { sceneId = "job", displayName = "求职荒原", primaryAxis = WeaknessAxis.JobAnxiety, themeTag = "求职", baseIntensity = 0.7f },
             new SceneTemplate { sceneId = "plaza", displayName = "城市广场", primaryAxis = WeaknessAxis.Procrastination, themeTag = "意志", baseIntensity = 0.8f },
         };
 

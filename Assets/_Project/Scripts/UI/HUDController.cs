@@ -19,6 +19,7 @@ namespace AdversityRoad.UI
         public Text questText;
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
+        public Image[] momentumPips; // 意势点（0-3）
 
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
@@ -31,6 +32,7 @@ namespace AdversityRoad.UI
             GameEvents.OnMentalStatChanged += OnMental;
             GameEvents.OnQuestUpdated += OnQuest;
             GameEvents.OnSubtitle += OnSubtitle;
+            GameEvents.OnMomentumChanged += OnMomentum;
         }
 
         void OnDisable()
@@ -39,6 +41,17 @@ namespace AdversityRoad.UI
             GameEvents.OnMentalStatChanged -= OnMental;
             GameEvents.OnQuestUpdated -= OnQuest;
             GameEvents.OnSubtitle -= OnSubtitle;
+            GameEvents.OnMomentumChanged -= OnMomentum;
+        }
+
+        void OnMomentum(int m)
+        {
+            if (momentumPips == null) return;
+            for (int i = 0; i < momentumPips.Length; i++)
+                if (momentumPips[i] != null)
+                    momentumPips[i].color = i < m
+                        ? new Color(1f, 0.82f, 0.3f, 0.95f)
+                        : new Color(1f, 1f, 1f, 0.18f);
         }
 
         void Update()

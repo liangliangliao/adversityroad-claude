@@ -160,6 +160,24 @@ namespace AdversityRoad.Combat
             _hitStopping = false;
         }
 
+        // ---------- 时缓（完美闪避） ----------
+
+        public static void SlowMo(float scale = 0.3f, float realDuration = 0.35f)
+        {
+            Ensure();
+            if (_hitStopping || Time.timeScale < 0.9f) return;
+            _i.StartCoroutine(_i.DoSlowMo(scale, realDuration));
+        }
+
+        IEnumerator DoSlowMo(float scale, float realDuration)
+        {
+            _hitStopping = true;
+            Time.timeScale = scale;
+            yield return new WaitForSecondsRealtime(realDuration);
+            if (Time.timeScale < 0.9f) Time.timeScale = 1f;
+            _hitStopping = false;
+        }
+
         // ---------- 震屏 ----------
 
         public static void Shake(float strength = 0.6f)

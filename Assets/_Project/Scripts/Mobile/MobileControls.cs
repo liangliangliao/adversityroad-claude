@@ -52,18 +52,16 @@ namespace AdversityRoad.Mobile
             joy.handle = hrt;
             joy.radius = 110f;
 
-            // ---- 右下角战斗按钮 ----
-            AddButton("Light", "攻", new Vector2(-180, 200), 150, new Color(0.9f, 0.35f, 0.3f, 0.75f));
-            AddButton("Heavy", "重", new Vector2(-380, 140), 130, new Color(0.85f, 0.55f, 0.2f, 0.75f));
-            AddButton("Dodge", "闪", new Vector2(-180, 420), 130, new Color(0.3f, 0.7f, 0.95f, 0.75f));
-            AddButton("Guard", "挡", new Vector2(-400, 330), 120, new Color(0.4f, 0.8f, 0.5f, 0.75f));
-            AddButton("Lock", "锁", new Vector2(-560, 210), 100, new Color(0.7f, 0.7f, 0.75f, 0.7f));
-            AddButton("Inner", "功", new Vector2(-570, 400), 100, new Color(0.95f, 0.8f, 0.3f, 0.75f));
-            AddButton("Jump", "跳", new Vector2(-180, 620), 110, new Color(0.65f, 0.5f, 0.9f, 0.75f));
-            AddButton("Skill1", "技1", new Vector2(-390, 520), 110, new Color(0.9f, 0.3f, 0.55f, 0.75f));
-            AddButton("Skill2", "技2", new Vector2(-580, 570), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
-            AddButton("Skill3", "气", new Vector2(-760, 500), 100, new Color(0.35f, 0.8f, 0.95f, 0.75f));
-            AddButton("Interact", "互", new Vector2(-750, 170), 95, new Color(0.6f, 0.85f, 0.85f, 0.7f));
+            // ---- 右下角战斗按钮（精简布局）----
+            // 攻=五段连招 | 重=按住蓄力/松开重劈（连段中轻点=切手技）| 闪=翻滚（时机对=完美闪避）
+            // 挡=格挡/定心格挡 | 跳（空中攻=下劈；蹲下攻=扫堂腿）| 气=斩念气刃 | 定=定心护体
+            AddButton("Light", "攻", new Vector2(-180, 210), 175, new Color(0.9f, 0.35f, 0.3f, 0.78f));
+            AddButton("Heavy", "重", new Vector2(-405, 150), 135, new Color(0.85f, 0.55f, 0.2f, 0.78f));
+            AddButton("Dodge", "闪", new Vector2(-185, 450), 135, new Color(0.3f, 0.7f, 0.95f, 0.78f));
+            AddButton("Guard", "挡", new Vector2(-425, 330), 118, new Color(0.4f, 0.8f, 0.5f, 0.75f));
+            AddButton("Jump", "跳", new Vector2(-190, 660), 112, new Color(0.65f, 0.5f, 0.9f, 0.75f));
+            AddButton("Skill2", "气", new Vector2(-610, 250), 105, new Color(0.35f, 0.8f, 0.95f, 0.75f));
+            AddButton("Skill1", "定", new Vector2(-630, 440), 105, new Color(0.4f, 0.55f, 0.9f, 0.75f));
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
         }
 

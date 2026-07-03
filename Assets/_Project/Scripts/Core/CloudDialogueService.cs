@@ -253,6 +253,7 @@ namespace AdversityRoad.Core
                 case "home": return "深夜的独居小屋，桌上是落灰的计划";
                 case "dojo": return "破旧的训练武馆";
                 case "street": return "喧嚣的噪声街区，路人车辆与议论声";
+                case "job": return "漫天简历纸片的求职荒原，紧闭的面试之门";
                 case "plaza": return "华灯初上的城市广场决战地";
                 default: return zoneId;
             }

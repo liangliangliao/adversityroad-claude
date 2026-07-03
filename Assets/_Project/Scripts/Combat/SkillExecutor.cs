@@ -34,10 +34,9 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < Mathf.Min(4, equippedSkills.Count); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);
 
-            // 触屏技能按钮
+            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）
             if (MobileInput.GetDown("Skill1") && equippedSkills.Count > 0) TryCast(equippedSkills[0]);
             if (MobileInput.GetDown("Skill2") && equippedSkills.Count > 1) TryCast(equippedSkills[1]);
-            if (MobileInput.GetDown("Skill3") && equippedSkills.Count > 2) TryCast(equippedSkills[2]);
         }
 
         public bool TryCast(Data.SkillDefinition skill)

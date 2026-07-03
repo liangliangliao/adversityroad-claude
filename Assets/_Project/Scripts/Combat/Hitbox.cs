@@ -11,6 +11,8 @@ namespace AdversityRoad.Combat
     public class Hitbox : MonoBehaviour
     {
         public DamageInfo pendingDamage;
+        /// <summary>命中回调（连段积势、命中特效等）。</summary>
+        public System.Action<Hurtbox> onHit;
         Collider _col;
         readonly HashSet<Hurtbox> _hitThisSwing = new HashSet<Hurtbox>();
 
@@ -38,6 +40,7 @@ namespace AdversityRoad.Combat
             if (hurt.OwnerRoot == transform.root) return; // 不打自己
             _hitThisSwing.Add(hurt);
             hurt.ReceiveHit(pendingDamage);
+            onHit?.Invoke(hurt);
         }
     }
 }

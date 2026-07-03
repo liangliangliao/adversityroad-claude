@@ -53,6 +53,9 @@ namespace AdversityRoad.Player
         /// <summary>倒地起身等外部授予的无敌帧。</summary>
         public void SetInvincible(float duration) => _iframeTimer = Mathf.Max(_iframeTimer, duration);
 
+        /// <summary>空中下劈等强制下坠。</summary>
+        public void ForceFall(float verticalVelocity) => _vy = Mathf.Min(_vy, verticalVelocity);
+
         void Awake()
         {
             _cc = GetComponent<CharacterController>();
