@@ -43,7 +43,10 @@ namespace AdversityRoad.Combat
 
         // ---------- 伤害数字 ----------
 
-        public static void DamageNumber(Vector3 pos, string text, Color color)
+        public static void DamageNumber(Vector3 pos, string text, Color color) =>
+            DamageNumber(pos, text, color, 1f);
+
+        public static void DamageNumber(Vector3 pos, string text, Color color, float scale)
         {
             Ensure();
             var go = new GameObject("DmgNum");
@@ -52,7 +55,7 @@ namespace AdversityRoad.Combat
             tm.text = text;
             tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tm.fontSize = 46;
-            tm.characterSize = 0.06f;
+            tm.characterSize = 0.06f * scale;
             tm.anchor = TextAnchor.MiddleCenter;
             tm.color = color;
             var r = go.GetComponent<MeshRenderer>();
@@ -158,6 +161,70 @@ namespace AdversityRoad.Combat
             yield return new WaitForSecondsRealtime(duration);
             if (Time.timeScale < 0.9f) Time.timeScale = prev; // 期间未被面板改动才恢复
             _hitStopping = false;
+        }
+
+        // ---------- 命中火花：放射状光条爆开（打击感核心） ----------
+
+        public static void HitSpark(Vector3 pos, Color color, int count = 7)
+        {
+            Ensure();
+            Vector3 center = pos + Vector3.up * 1.2f;
+            for (int i = 0; i < count; i++)
+            {
+                var spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(spark.GetComponent<Collider>());
+                spark.transform.position = center;
+                spark.transform.rotation = Random.rotation;
+                spark.transform.localScale = new Vector3(0.05f, 0.05f, Random.Range(0.4f, 0.9f));
+                spark.GetComponent<MeshRenderer>().sharedMaterial =
+                    Mat(Color.Lerp(color, Color.white, 0.6f));
+                _i.StartCoroutine(_i.SparkFly(spark));
+            }
+        }
+
+        IEnumerator SparkFly(GameObject spark)
+        {
+            Vector3 dir = spark.transform.forward;
+            float t = 0;
+            while (t < 0.16f && spark != null)
+            {
+                t += Time.deltaTime;
+                spark.transform.position += dir * 9f * Time.deltaTime;
+                spark.transform.localScale = Vector3.Lerp(spark.transform.localScale,
+                    Vector3.zero, t / 0.16f);
+                yield return null;
+            }
+            if (spark != null) Destroy(spark);
+        }
+
+        // ---------- 招式冲击波：组合技触发的金色扩散环 ----------
+
+        public static void RecipeBurst(Vector3 pos, Color color)
+        {
+            Ensure();
+            var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(ring.GetComponent<Collider>());
+            ring.transform.position = pos + Vector3.up * 0.15f;
+            ring.GetComponent<MeshRenderer>().sharedMaterial =
+                Mat(Color.Lerp(color, Color.white, 0.35f));
+            _i.StartCoroutine(_i.RingExpand(ring));
+            HitSpark(pos, color, 10);
+            Shake(0.7f);
+            SlowMo(0.55f, 0.12f);
+        }
+
+        IEnumerator RingExpand(GameObject ring)
+        {
+            float t = 0;
+            while (t < 0.3f && ring != null)
+            {
+                t += Time.deltaTime;
+                float k = t / 0.3f;
+                float r = Mathf.Lerp(1.2f, 6.5f, k);
+                ring.transform.localScale = new Vector3(r, 0.04f * (1f - k) + 0.01f, r);
+                yield return null;
+            }
+            if (ring != null) Destroy(ring);
         }
 
         // ---------- 时缓（完美闪避） ----------

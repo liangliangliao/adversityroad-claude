@@ -18,7 +18,8 @@ namespace AdversityRoad.Combat
         PunchCross,     // 左直拳（交替出拳）
         SideKick,       // 侧踢
         SpinKick,       // 后旋踢
-        JumpKick        // 飞踢
+        JumpKick,       // 飞踢
+        SwordThrust     // 剑式·突刺（弓步直刺）
     }
 
     /// <summary>

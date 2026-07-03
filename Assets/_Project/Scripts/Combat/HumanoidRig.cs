@@ -92,26 +92,26 @@ namespace AdversityRoad.Combat
         static Transform BuildArm(Transform shoulder, Config cfg, out Transform hand)
         {
             Geo(shoulder, PrimitiveType.Cube, new Vector3(0, -0.16f, 0),
-                new Vector3(0.11f, 0.34f, 0.11f), cfg.top);                          // 上臂（袖）
+                new Vector3(0.14f, 0.34f, 0.14f), cfg.top);                          // 上臂（袖）
             var elbow = Joint(shoulder, "Elbow", new Vector3(0, -0.32f, 0));
             Geo(elbow, PrimitiveType.Cube, new Vector3(0, -0.14f, 0),
-                new Vector3(0.09f, 0.3f, 0.09f), cfg.skin);                          // 前臂
+                new Vector3(0.11f, 0.3f, 0.11f), cfg.skin);                          // 前臂
             hand = Joint(elbow, "Hand", new Vector3(0, -0.3f, 0));
             Geo(hand, PrimitiveType.Cube, new Vector3(0, -0.05f, 0.01f),
-                new Vector3(0.1f, 0.13f, 0.07f), cfg.skin);                          // 手掌
+                new Vector3(0.13f, 0.15f, 0.1f), Darker(cfg.skin, 0.8f));            // 缠布拳套（醒目）
             return elbow;
         }
 
         static Transform BuildLeg(Transform hip, Config cfg, float b, out Transform foot)
         {
             Geo(hip, PrimitiveType.Cube, new Vector3(0, -0.23f, 0),
-                new Vector3(0.15f * b, 0.46f, 0.16f * b), cfg.bottom);               // 大腿
+                new Vector3(0.18f * b, 0.46f, 0.19f * b), cfg.bottom);               // 大腿
             var knee = Joint(hip, "Knee", new Vector3(0, -0.46f, 0));
             Geo(knee, PrimitiveType.Cube, new Vector3(0, -0.2f, 0),
-                new Vector3(0.12f, 0.4f, 0.13f), Darker(cfg.bottom, 0.85f));         // 小腿
+                new Vector3(0.15f, 0.4f, 0.16f), Darker(cfg.bottom, 0.85f));         // 小腿
             foot = Joint(knee, "Foot", new Vector3(0, -0.4f, 0));
-            Geo(foot, PrimitiveType.Cube, new Vector3(0, -0.035f, 0.08f),
-                new Vector3(0.14f, 0.09f, 0.32f), cfg.shoes);                        // 脚
+            Geo(foot, PrimitiveType.Cube, new Vector3(0, -0.035f, 0.09f),
+                new Vector3(0.16f, 0.11f, 0.36f), cfg.shoes);                        // 战靴（醒目）
             return knee;
         }
 

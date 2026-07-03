@@ -356,8 +356,14 @@ namespace AdversityRoad.World
         public static void SpawnLife(WorldContext ctx)
         {
             var rng = new System.Random(11);
-            foreach (var pos in ctx.pedestrianSpawns)
+            foreach (var rawPos in ctx.pedestrianSpawns)
             {
+                // 吸附到 NavMesh 地面，吸附失败则不生成（避免悬空行人）
+                Vector3 pos = rawPos;
+                if (UnityEngine.AI.NavMesh.SamplePosition(rawPos, out UnityEngine.AI.NavMeshHit navHit,
+                        4f, UnityEngine.AI.NavMesh.AllAreas))
+                    pos = navHit.position + Vector3.up * 1f;
+                else continue;
                 var ped = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 ped.name = "Pedestrian";
                 ped.transform.position = pos;

@@ -339,7 +339,7 @@ namespace AdversityRoad.Core
 
             // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挂右手随臂挥舞带刀光
             var weaponRig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), rig.handR,
-                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(112f, 0, 0));
+                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(-32f, 0, 8f));
             if (weaponRig != null)
             {
                 poser.weaponPivot = weaponRig.pivot;
@@ -430,6 +430,16 @@ namespace AdversityRoad.Core
                 hud.momentumPips[i] = img;
             }
 
+            // 电影黑边（锁定战斗时滑入）
+            hud.cineTop = MakeCineBar(canvasGo.transform, true);
+            hud.cineBottom = MakeCineBar(canvasGo.transform, false);
+
+            // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
+            var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
+                TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -252), new Vector2(400, 40));
+            hud.comboText = comboText;
+
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);
             UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
@@ -459,6 +469,22 @@ namespace AdversityRoad.Core
             var movesPanel = MovesPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "招式", new Vector2(1, 1), new Vector2(-945, -42),
                 new Vector2(150, 64), new Color(0.55f, 0.45f, 0.25f, 0.8f), movesPanel.Toggle, 26);
+            UiUtil.MakeButton(canvasGo.transform, "视角", new Vector2(1, 1), new Vector2(-95, -116),
+                new Vector2(150, 64), new Color(0.35f, 0.45f, 0.55f, 0.8f), () =>
+                {
+                    var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+                    if (cam != null) cam.CyclePreset();
+                }, 26);
+            var debugPanel = DebugMovesPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "测试", new Vector2(1, 1), new Vector2(-265, -116),
+                new Vector2(150, 64), new Color(0.45f, 0.35f, 0.5f, 0.8f), debugPanel.Toggle, 26);
+            var settingsPanel = SettingsPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "设置", new Vector2(1, 1), new Vector2(-435, -116),
+                new Vector2(150, 64), new Color(0.4f, 0.4f, 0.45f, 0.8f), settingsPanel.Toggle, 26);
+
+            // 第五阶段：画像驱动的个性化遭遇战
+            var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();
+            director.spawner = SpawnEnemy;
 
             BuildBattleFlowPanel(canvasGo.transform);
         }
@@ -493,6 +519,22 @@ namespace AdversityRoad.Core
             _battleFlow.detailText = detailText;
             _battleFlow.buttonText = btnText.GetComponentInChildren<Text>();
             panel.SetActive(false);
+        }
+
+        RectTransform MakeCineBar(Transform canvas, bool top)
+        {
+            var go = new GameObject(top ? "CineTop" : "CineBottom", typeof(Image));
+            go.transform.SetParent(canvas, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = top ? new Vector2(0, 1) : new Vector2(0, 0);
+            rt.anchorMax = top ? new Vector2(1, 1) : new Vector2(1, 0);
+            rt.pivot = top ? new Vector2(0.5f, 1) : new Vector2(0.5f, 0);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0, 0);
+            var img = go.GetComponent<Image>();
+            img.color = Color.black;
+            img.raycastTarget = false;
+            return rt;
         }
 
         StatBar CreateBar(Transform parent, string label, int index, Color fillColor)

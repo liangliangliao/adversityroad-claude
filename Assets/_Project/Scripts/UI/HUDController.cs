@@ -20,6 +20,10 @@ namespace AdversityRoad.UI
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
         public Image[] momentumPips; // 意势点（0-3）
+        public Text comboText;       // 当前连段序列（拳·拳·腿）
+        public RectTransform cineTop, cineBottom;   // 锁定战斗时的电影黑边
+
+        float _cineHeight;
 
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
@@ -33,6 +37,8 @@ namespace AdversityRoad.UI
             GameEvents.OnQuestUpdated += OnQuest;
             GameEvents.OnSubtitle += OnSubtitle;
             GameEvents.OnMomentumChanged += OnMomentum;
+            GameEvents.OnComboSeqChanged += OnComboSeq;
+            GameEvents.OnLockStateChanged += OnLockState;
         }
 
         void OnDisable()
@@ -42,6 +48,15 @@ namespace AdversityRoad.UI
             GameEvents.OnQuestUpdated -= OnQuest;
             GameEvents.OnSubtitle -= OnSubtitle;
             GameEvents.OnMomentumChanged -= OnMomentum;
+            GameEvents.OnComboSeqChanged -= OnComboSeq;
+            GameEvents.OnLockStateChanged -= OnLockState;
+        }
+
+        void OnLockState(bool locked) => _cineHeight = locked ? 52f : 0f;
+
+        void OnComboSeq(string seq)
+        {
+            if (comboText != null) comboText.text = seq;
         }
 
         void OnMomentum(int m)
@@ -65,6 +80,15 @@ namespace AdversityRoad.UI
             }
             if (subtitleText != null && subtitleText.text.Length > 0 && Time.unscaledTime > _subtitleHideAt)
                 subtitleText.text = "";
+
+            // 电影黑边平滑滑入/滑出
+            if (cineTop != null)
+            {
+                float h = Mathf.Lerp(cineTop.sizeDelta.y, _cineHeight, 5f * Time.unscaledDeltaTime);
+                cineTop.sizeDelta = new Vector2(cineTop.sizeDelta.x, h);
+                if (cineBottom != null)
+                    cineBottom.sizeDelta = new Vector2(cineBottom.sizeDelta.x, h);
+            }
         }
 
         void Pulse(Color color, float alpha)

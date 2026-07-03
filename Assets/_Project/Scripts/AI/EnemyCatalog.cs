@@ -36,8 +36,8 @@ namespace AdversityRoad.AI
             switch (t)
             {
                 case EnemyTier.Novice: return 0.55f;
-                case EnemyTier.Elite: return 1.6f;
-                case EnemyTier.Chief: return 2.5f;
+                case EnemyTier.Elite: return 1.5f;
+                case EnemyTier.Chief: return 2.1f;
                 default: return 1f;
             }
         }

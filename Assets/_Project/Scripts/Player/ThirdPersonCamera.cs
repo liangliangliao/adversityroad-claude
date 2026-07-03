@@ -17,26 +17,30 @@ namespace AdversityRoad.Player
     public class ThirdPersonCamera : MonoBehaviour
     {
         public Transform target;
-        [Tooltip("抬高拉远：视野开阔不压低画面")]
-        public Vector3 offset = new Vector3(0, 2.8f, -5.4f);
+        [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）")]
+        public Vector3 offset = new Vector3(0.6f, 2.0f, -4.9f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
-        public float minPitch = -25f, maxPitch = 60f;
+        [Tooltip("俯仰限制收紧+闲时回中，避免卡在俯视角变成上帝视角")]
+        public float minPitch = -18f, maxPitch = 38f;
+        public float defaultPitch = 10f;   // 低平视角：地平线可见，画面有纵深电影感
+        public float pitchRecenterDelay = 2.5f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
         public float fieldOfView = 66f;
 
-        [Header("自动跟随（转向时镜头缓跟，减小晃动幅度）")]
+        [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
+                "左右转向/横移绝不转动镜头（符合真实摄影师行为）")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 1.0f;
-        public float autoFollowSpeed = 68f;
+        public float autoFollowDelay = 1.2f;
+        public float autoFollowSpeed = 50f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
 
-        float _yaw, _pitch = 12f;
-        float _curYaw, _curPitch = 12f;
+        float _yaw, _pitch = 10f;
+        float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
@@ -47,14 +51,54 @@ namespace AdversityRoad.Player
         float _pivotH = 1.55f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         bool _pivotInit;
+        Transform _head;                    // 第一人称时隐藏头部（显露手臂与兵器）
 
         /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
+
+        // 多视角预设（参考动作游戏惯例：近身看招 / 标准跟随 / 战术远景）
+        struct CamPreset
+        {
+            public string name;
+            public Vector3 offset;
+            public float pitch;
+            public bool fp;   // 第一人称
+        }
+
+        static readonly CamPreset[] Presets =
+        {
+            new CamPreset { name = "近身动作", offset = new Vector3(0.55f, 1.75f, -3.7f), pitch = 7f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.6f, 2.0f, -4.9f), pitch = 10f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.25f, 3.3f, -7.0f), pitch = 21f },
+            new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = 2f, fp = true },
+        };
+
+        public int PresetIndex { get; private set; } = 1;
+
+        /// <summary>循环切换视角预设（「视角」按钮）。</summary>
+        public void CyclePreset()
+        {
+            ApplyPreset((PresetIndex + 1) % Presets.Length, true);
+        }
+
+        void ApplyPreset(int idx, bool announce)
+        {
+            PresetIndex = Mathf.Clamp(idx, 0, Presets.Length - 1);
+            var p = Presets[PresetIndex];
+            offset = p.offset;
+            defaultPitch = p.pitch;
+            _pitch = p.pitch;
+            _boomDist = offset.magnitude;
+            PlayerPrefs.SetInt("cam_preset", PresetIndex);
+            if (announce)
+                Core.GameEvents.RaiseSubtitle("镜头视角：" + p.name);
+        }
 
         void Awake()
         {
             var cam = GetComponent<Camera>();
             if (cam != null) cam.fieldOfView = fieldOfView;
+            ApplyPreset(PlayerPrefs.GetInt("cam_preset", 1), false);
             _boomDist = offset.magnitude;
         }
 
@@ -98,18 +142,29 @@ namespace AdversityRoad.Player
                 }
                 _followBlend = 0;
             }
-            else if (autoFollow)
+            else if (autoFollow && !Presets[PresetIndex].fp)
             {
-                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moveSpeed > 1.5f;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.5f);
-                if (_followBlend > 0.01f)
+                // 移动即回正：玩家一旦朝新方向移动，镜头迅速（但平滑）切到其身后
+                // 展示新的前方远景；偏差越大追得越快；原地转身不动镜头
+                Vector3 vel = (target.position - _lastTargetPos) / dt;
+                vel.y = 0;
+                bool moving = moveSpeed > 1.6f;
+                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moving;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.3f);
+                if (_followBlend > 0.01f && vel.sqrMagnitude > 0.1f)
                 {
-                    float wantYaw = target.eulerAngles.y;
-                    float speedK = Mathf.Clamp01(moveSpeed / 5f);
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw,
-                        autoFollowSpeed * speedK * _followBlend * dt);
+                    float wantYaw = Quaternion.LookRotation(vel.normalized).eulerAngles.y;
+                    float diff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
+                    float speed = Mathf.Lerp(45f, 160f, Mathf.InverseLerp(15f, 150f, diff));
+                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
                 }
             }
+
+            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视（第一人称不干预）
+            if (!Presets[PresetIndex].fp &&
+                Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
+                _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+
             _lastTargetPos = target.position;
 
             // ---- 临界阻尼转角（无过冲），位置刚性跟随（零滞后） ----
@@ -119,6 +174,21 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
+
+            // ---- 第一人称：镜头在眼位，隐藏头部，手臂与兵器动作直观可见 ----
+            SetHeadVisible(!Presets[PresetIndex].fp);
+            if (Presets[PresetIndex].fp)
+            {
+                Vector3 eye = target.position + Vector3.up * 0.75f + rot * new Vector3(0, 0, 0.12f);
+                if (_kick > 0.001f)
+                {
+                    eye.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.03f;
+                    _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
+                }
+                transform.position = eye;
+                transform.rotation = rot;
+                return;
+            }
 
             // 物理感取景：水平刚性跟随，纵向软化（GDC 稳定镜头原则——
             // 不复制角色每个纵向小动作，跳跃/落地时镜头柔和跟进）
@@ -130,8 +200,15 @@ namespace AdversityRoad.Player
                 Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(target.position.x, _pivotY, target.position.z);
 
-            // 动态构图：战斗微拉近、疾跑微拉远（幅度收小，平滑过渡，绝不动 FOV）
-            float wantFactor = lockTarget != null ? 0.93f : (moveSpeed > 4.2f ? 1.04f : 1f);
+            // 电影感构图：锁定时按敌我距离取景（双人同框），疾跑微拉远
+            float wantFactor;
+            if (lockTarget != null)
+            {
+                // 贴近取景：近身缠斗时镜头压近看清拳脚细节，拉开时同框
+                float enemyDist = Vector3.Distance(target.position, lockTarget.position);
+                wantFactor = Mathf.Clamp(0.68f + enemyDist * 0.07f, 0.8f, 1.35f);
+            }
+            else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);
 
             Vector3 boomDir = (rot * offset).normalized;
@@ -156,6 +233,17 @@ namespace AdversityRoad.Player
 
             transform.position = pos;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * 0.25f - pos);
+        }
+
+        void SetHeadVisible(bool visible)
+        {
+            if (_head == null && player != null)
+            {
+                var app = player.GetComponent<PlayerAppearance>();
+                if (app != null && app.Rig != null) _head = app.Rig.head;
+            }
+            if (_head != null && _head.gameObject.activeSelf != visible)
+                _head.gameObject.SetActive(visible);
         }
     }
 }

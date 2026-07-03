@@ -15,6 +15,8 @@ namespace AdversityRoad.Core
         public static event Action<int> OnChapterAdvanced;      // 章节推进（参数：新章节序号）
         public static event Action<string> OnSubtitle;          // 底部字幕：敌人台词/系统提示
         public static event Action<int> OnMomentumChanged;      // 意势变化（0-3）
+        public static event Action<string> OnComboSeqChanged;   // 连段序列（"拳·拳·腿"）
+        public static event Action<bool> OnLockStateChanged;    // 锁定敌人状态（电影黑边）
 
         public static void RaisePlayerHpChanged(float cur, float max) => OnPlayerHpChanged?.Invoke(cur, max);
         public static void RaiseMentalStatChanged(string stat, float cur, float max) => OnMentalStatChanged?.Invoke(stat, cur, max);
@@ -26,5 +28,7 @@ namespace AdversityRoad.Core
         public static void RaiseChapterAdvanced(int chapter) => OnChapterAdvanced?.Invoke(chapter);
         public static void RaiseSubtitle(string text) => OnSubtitle?.Invoke(text);
         public static void RaiseMomentumChanged(int m) => OnMomentumChanged?.Invoke(m);
+        public static void RaiseComboSeq(string seq) => OnComboSeqChanged?.Invoke(seq);
+        public static void RaiseLockState(bool locked) => OnLockStateChanged?.Invoke(locked);
     }
 }
