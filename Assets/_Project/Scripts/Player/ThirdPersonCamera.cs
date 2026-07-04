@@ -34,17 +34,15 @@ namespace AdversityRoad.Player
         public float followSmoothTime = 0.05f;
         public float fieldOfView = 66f;
 
-        [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
-                "左右转向/横移绝不转动镜头（符合真实摄影师行为）")]
+        [Header("跟拍者式自动跟随：玩家转身/改变方向后，镜头延迟一小段再缓慢转到" +
+                "移动方向的身后（延迟+死区+缓入缓出+限速，参考主流第三人称防晕运镜）")]
         public bool autoFollow = true;
         public float autoFollowDelay = 0.35f;
         public float autoFollowSpeed = 50f;
-        [Tooltip("自动跟随最大转速（度/秒）：封顶，防止摇杆一动整屏猛甩——移动晕屏主因")]
-        public float followMaxSpeed = 85f;
-        [Tooltip("触发自动跟随所需的「远离镜头」程度（0–1）：低于此值视为横移/朝镜头跑，绝不转镜头")]
-        [Range(0f, 1f)] public float followAwayThreshold = 0.4f;
-        [Tooltip("自动跟随死区角度：航向偏差小于此值时转速降到最低，避免小幅晃动")]
-        public float followDeadAngle = 22f;
+        [Tooltip("自动跟随最大转速（度/秒）：封顶，掉头回正也平滑不猛甩")]
+        public float followMaxSpeed = 120f;
+        [Tooltip("自动跟随死区角度：航向偏差小于此值不转镜头，忽略摇杆微抖")]
+        public float followDeadAngle = 15f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
@@ -158,29 +156,26 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow && !Presets[PresetIndex].fp)
             {
-                // 真·跟拍者（兑现设计意图：左右转向/横移绝不转镜头）：
-                // 只有当玩家「持续朝远离镜头的方向奔跑」时，才把镜头缓慢挪到身后；
-                // 朝镜头跑 / 左右横移 / 摇杆微调都不摇镜头。转速低且封顶——
-                // 「摇杆一动整屏猛甩」正是移动晕屏、看不清敌人的根源。
-                Vector3 camFwd = new Vector3(Mathf.Sin(_yaw * Mathf.Deg2Rad), 0f,
-                    Mathf.Cos(_yaw * Mathf.Deg2Rad));
-                Vector3 moveDir = frameDelta.sqrMagnitude > 1e-4f
-                    ? frameDelta.normalized : Vector3.zero;
-                // 移动方向与镜头前方的一致度：>阈值才算「背离镜头跑远」，需要回正
-                bool runningAway = moveSpeed > 2f
-                    && Vector3.Dot(moveDir, camFwd) > followAwayThreshold;
-                bool wantFollow = runningAway
-                    && Time.unscaledTime - _lastManualLook > autoFollowDelay;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.45f);
+                // 跟拍者式回正（参考主流第三人称防晕运镜的四要素）：
+                //   ① 延迟——玩家刚动/微调时不抢镜，先让他自己走；
+                //   ② 死区——航向偏差很小时不动，忽略摇杆微抖与直行抖动；
+                //   ③ 缓入缓出——转速用 SmoothStep 随偏差平滑增长，起步与收尾都不生硬；
+                //   ④ 限速——转速封顶，转身/掉头后平滑转到「移动方向的身后」而非猛甩。
+                // 目标朝向用角色正前方（PlayerController 已让角色朝移动方向），转身后
+                // 镜头即随之切到新的正前方。
+                bool moving = moveSpeed > 1.8f;
+                bool wantFollow = moving && Time.unscaledTime - _lastManualLook > autoFollowDelay;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.4f);
                 if (_followBlend > 0.01f)
                 {
-                    float wantYaw = target.eulerAngles.y;   // 角色正前方
+                    float wantYaw = target.eulerAngles.y;   // 角色（=移动）正前方
                     float absDiff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
-                    // 死区外温柔慢跟：转速随偏差线性增长但低且封顶，绝不猛甩
-                    if (absDiff > 1f)
+                    if (absDiff > followDeadAngle)
                     {
-                        float speed = Mathf.Lerp(12f, followMaxSpeed,
-                            Mathf.InverseLerp(followDeadAngle, 120f, absDiff));
+                        // 偏差越大转得越快（缓入缓出）但封顶：小转柔和、掉头也不猛甩
+                        float t = Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(followDeadAngle, 150f, absDiff));
+                        float speed = Mathf.Lerp(20f, followMaxSpeed, t);
                         _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
                     }
                 }
