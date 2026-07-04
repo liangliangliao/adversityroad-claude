@@ -35,13 +35,29 @@ namespace AdversityRoad.Combat
         bool _ready;   // 临战：站立时进入格斗预备架势（而非松垮的垂手待机）
         float _phase;
 
+        // 动捕模式（Playables 驱动 Mixamo 人形）：有资源时接管，无则走下方程序化骨骼
+        PlayableAnimator _mecanim;
+        int _poseSerial, _lastMecanimSerial = -1;
+        bool Mecanim => _mecanim != null && _mecanim.Valid;
+
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
+
+        /// <summary>切到动捕模式：成功接管返回 true；失败保持程序化骨骼。</summary>
+        public bool TryEnableMecanim(Animator animator)
+        {
+            _mecanim = new PlayableAnimator(animator);
+            if (!_mecanim.Valid) { _mecanim = null; return false; }
+            return true;
+        }
+
+        void OnDestroy() { if (_mecanim != null) _mecanim.Destroy(); }
 
         public void SetPose(PoseState p)
         {
             _pose = p;
             _t = 0;
+            _poseSerial++;   // 每次设招（含同名连招重触发）都递增，供动捕层重放动作
         }
 
         /// <summary>
@@ -64,9 +80,24 @@ namespace AdversityRoad.Combat
 
         void Update()
         {
-            if (rig == null || visual == null) return;
             float dt = Time.deltaTime;
             if (fsm != null) MapFromFsm();
+
+            // 动捕模式：用 Playables 播 Mixamo 片段，跳过下方程序化骨骼
+            if (Mecanim)
+            {
+                _mecanim.SetLocomotion(_speed01);
+                _mecanim.SetReady(_ready);
+                if (_poseSerial != _lastMecanimSerial)
+                {
+                    _lastMecanimSerial = _poseSerial;
+                    if (_pose != PoseState.Idle) _mecanim.PlayAction(_pose);
+                }
+                _mecanim.Tick(dt);
+                return;
+            }
+
+            if (rig == null || visual == null) return;
             _t += dt;
             float T = _t;
 

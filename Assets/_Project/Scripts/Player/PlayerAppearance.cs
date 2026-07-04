@@ -79,6 +79,12 @@ namespace AdversityRoad.Player
                 weapon = WeaponKind.Blade;
             }
 
+            // 优先动捕模型（Resources/Characters/PlayerModel）；无资源则回退程序化方块骨骼
+            Rig = null;
+            if (poser != null &&
+                MecanimCharacter.TryBuild(visualRoot, poser, true, baseMaterial, weapon))
+                return;
+
             Rig = HumanoidRig.Build(visualRoot, cfg, baseMaterial);
             if (poser != null)
             {
