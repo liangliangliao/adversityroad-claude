@@ -42,6 +42,35 @@ namespace AdversityRoad.Combat
             return m;
         }
 
+        /// <summary>特效材质：半透明加色（发光感），用于刀光/冲击环等——避免实心大色块。</summary>
+        static Material MatFX(Color c, float alpha)
+        {
+            var m = Mat(c);
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);            // URP 透明
+            if (m.HasProperty("_SrcBlend")) m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (m.HasProperty("_DstBlend")) m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One); // 加色=能量光
+            if (m.HasProperty("_ZWrite")) m.SetInt("_ZWrite", 0);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0f);
+            m.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            Color cc = c; cc.a = alpha;
+            m.color = cc;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cc);
+            return m;
+        }
+
+        static void FadeAlpha(GameObject go, float mul)
+        {
+            var r = go != null ? go.GetComponent<MeshRenderer>() : null;
+            if (r == null) return;
+            var m = r.sharedMaterial;
+            Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
+            c.a *= mul;
+            m.color = c;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+        }
+
         // ---------- 伤害数字 ----------
 
         public static void DamageNumber(Vector3 pos, string text, Color color) =>
@@ -198,34 +227,80 @@ namespace AdversityRoad.Combat
             if (spark != null) Destroy(spark);
         }
 
-        // ---------- 招式冲击波：组合技触发的金色扩散环 ----------
+        // ---------- 能量爆发（组合技/大招）：借鉴动作大作的"光爆"而非大色块 ----------
+        // 组合：强闪光球 + 密集放射光条 + 上升火星 + 细亮冲击环 + 顿帧/时缓/震屏。
+        // 用加色半透明的暖橙-白光，读作"能量光"而非涂了一片米黄色实体。
 
-        public static void RecipeBurst(Vector3 pos, Color color)
+        public static void RecipeBurst(Vector3 pos, Color color) => EnergyBurst(pos, color, 0.85f);
+
+        /// <summary>能量光爆。power≈0.85 组合技，≈1.6 大招。core=能量主色（暖色更"燃"）。</summary>
+        public static void EnergyBurst(Vector3 pos, Color core, float power)
         {
             Ensure();
-            var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            Object.DestroyImmediate(ring.GetComponent<Collider>());
-            ring.transform.position = pos + Vector3.up * 0.15f;
-            ring.GetComponent<MeshRenderer>().sharedMaterial =
-                Mat(Color.Lerp(color, Color.white, 0.35f));
-            _i.StartCoroutine(_i.RingExpand(ring));
-            HitSpark(pos, color, 10);
-            Shake(0.7f);
-            SlowMo(0.55f, 0.12f);
+            // 提亮加饱和，暖色再朝橙偏一点，读作"能量光"而非平铺的米黄实体
+            Color hot = Color.Lerp(core, new Color(1f, 0.6f, 0.2f), core.b < core.r ? 0.4f : 0.15f);
+            Vector3 c = pos + Vector3.up * 1.05f;
+
+            // 强闪光球：瞬间胀大发光后极快消散
+            var flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Object.DestroyImmediate(flash.GetComponent<Collider>());
+            flash.transform.position = c;
+            flash.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(hot, Color.white, 0.78f), 0.9f);
+            _i.StartCoroutine(_i.FlashPop(flash, 0.5f + power));
+
+            // 更密集/更长的放射光条（向四周迸射的能量），替代地面圆盘——
+            // 不再有"米黄色圆圈"平铺在地上。
+            HitSpark(pos, Color.Lerp(hot, Color.white, 0.4f), Mathf.RoundToInt(16 + power * 12));
+            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(8 + power * 8)));
+
+            Shake(0.4f + power * 0.25f);
+            SlowMo(0.6f, 0.08f + power * 0.05f);
         }
 
-        IEnumerator RingExpand(GameObject ring)
+        IEnumerator FlashPop(GameObject go, float maxR)
         {
-            float t = 0;
-            while (t < 0.3f && ring != null)
+            float t = 0, dur = 0.16f;
+            while (t < dur && go != null)
             {
                 t += Time.deltaTime;
-                float k = t / 0.3f;
-                float r = Mathf.Lerp(1.2f, 6.5f, k);
-                ring.transform.localScale = new Vector3(r, 0.04f * (1f - k) + 0.01f, r);
+                float k = t / dur;
+                go.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, maxR, Mathf.Sqrt(k));
+                FadeAlpha(go, 1f - Time.deltaTime / dur * 1.7f);
                 yield return null;
             }
-            if (ring != null) Destroy(ring);
+            if (go != null) Destroy(go);
+        }
+
+        IEnumerator EmberRise(Vector3 center, Color color, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var e = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(e.GetComponent<Collider>());
+                e.transform.position = center + Random.insideUnitSphere * 0.35f;
+                e.transform.localScale = Vector3.one * Random.Range(0.05f, 0.12f);
+                e.GetComponent<MeshRenderer>().sharedMaterial =
+                    MatFX(Color.Lerp(color, Color.white, 0.3f), 0.95f);
+                _i.StartCoroutine(_i.EmberFly(e));
+            }
+            yield break;
+        }
+
+        IEnumerator EmberFly(GameObject e)
+        {
+            Vector3 v = new Vector3(Random.Range(-1.3f, 1.3f), Random.Range(1.8f, 3.6f),
+                Random.Range(-1.3f, 1.3f));
+            float t = 0, life = Random.Range(0.4f, 0.8f);
+            while (t < life && e != null)
+            {
+                t += Time.deltaTime;
+                v.y -= 5f * Time.deltaTime;                      // 受"重力"回落，像迸溅火星
+                e.transform.position += v * Time.deltaTime;
+                FadeAlpha(e, 1f - Time.deltaTime / life);
+                yield return null;
+            }
+            if (e != null) Destroy(e);
         }
 
         // ---------- 时缓（完美闪避） ----------
@@ -269,24 +344,28 @@ namespace AdversityRoad.Combat
             GameAudio.Play(GameAudio.Sfx.Swing, heavy ? 0.9f : 0.6f);
             var arc = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.Destroy(arc.GetComponent<Collider>());
-            arc.transform.position = owner.position + owner.forward * 1.1f + Vector3.up * 1.1f;
-            arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, heavy ? 0 : Random.Range(-30f, 30f));
+            // 一道细窄的斜向刀光，出现在身前偏上（不再是横铺一大片色块）
+            arc.transform.position = owner.position + owner.forward * 0.95f + Vector3.up * 1.25f;
+            float tilt = (heavy ? Random.Range(-14f, 14f) : Random.Range(-42f, 42f)) + 58f;
+            arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, tilt);
             arc.GetComponent<MeshRenderer>().sharedMaterial =
-                Mat(Color.Lerp(color, Color.white, 0.5f));
+                MatFX(Color.Lerp(color, Color.white, 0.4f), heavy ? 0.55f : 0.42f);
             _i.StartCoroutine(_i.ArcAnim(arc, heavy));
         }
 
         IEnumerator ArcAnim(GameObject arc, bool heavy)
         {
-            float dur = heavy ? 0.22f : 0.14f;
+            float dur = heavy ? 0.16f : 0.12f;
             float t = 0;
-            Vector3 max = heavy ? new Vector3(2.6f, 0.06f, 1.6f) : new Vector3(1.9f, 0.05f, 1.1f);
+            // 细长弧刃：长度方向拉长、厚度极薄（Z≈0.03），像一道光而非实体板
+            Vector3 max = heavy ? new Vector3(2.0f, 0.14f, 0.03f) : new Vector3(1.45f, 0.1f, 0.03f);
             while (t < dur && arc != null)
             {
                 t += Time.deltaTime;
                 float k = t / dur;
-                arc.transform.localScale = Vector3.Lerp(new Vector3(0.3f, 0.04f, 0.2f), max,
+                arc.transform.localScale = Vector3.Lerp(new Vector3(0.35f, 0.05f, 0.03f), max,
                     Mathf.Sin(k * Mathf.PI));
+                FadeAlpha(arc, 1f - Time.deltaTime / dur * 1.3f);   // 快速淡出
                 yield return null;
             }
             if (arc != null) Destroy(arc);

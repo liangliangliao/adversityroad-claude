@@ -308,17 +308,36 @@ namespace AdversityRoad.Core
             var visualRoot = new GameObject("Visual");
             visualRoot.transform.SetParent(root.transform, false);
             Color tc = EnemyCatalog.TypeColor(type);
-            var rig = HumanoidRig.Build(visualRoot.transform, new HumanoidRig.Config
+            var weaponKind = EnemyCatalog.WeaponOf(type);
+
+            var poser = root.AddComponent<HumanoidAnimator>();
+            poser.visual = visualRoot.transform;
+
+            // 优先动捕模型；无资源则回退程序化方块骨骼
+            HumanoidRig rig = null;
+            if (!MecanimCharacter.TryBuild(visualRoot.transform, poser, false, baseMaterial, weaponKind))
             {
-                skin = new Color(tc.r * 0.5f + 0.15f, tc.g * 0.5f + 0.12f, tc.b * 0.5f + 0.18f),
-                top = tc,
-                bottom = new Color(tc.r * 0.55f, tc.g * 0.55f, tc.b * 0.55f),
-                shoes = new Color(0.12f, 0.1f, 0.14f),
-                hair = new Color(0.08f, 0.06f, 0.1f),
-                eye = new Color(0.9f, 0.15f, 0.15f),
-                hasHat = false,
-                bulk = tier == EnemyTier.Chief ? 1.22f : 1f
-            }, baseMaterial);
+                rig = HumanoidRig.Build(visualRoot.transform, new HumanoidRig.Config
+                {
+                    skin = new Color(tc.r * 0.5f + 0.15f, tc.g * 0.5f + 0.12f, tc.b * 0.5f + 0.18f),
+                    top = tc,
+                    bottom = new Color(tc.r * 0.55f, tc.g * 0.55f, tc.b * 0.55f),
+                    shoes = new Color(0.12f, 0.1f, 0.14f),
+                    hair = new Color(0.08f, 0.06f, 0.1f),
+                    eye = new Color(0.9f, 0.15f, 0.15f),
+                    hasHat = false,
+                    bulk = tier == EnemyTier.Chief ? 1.22f : 1f
+                }, baseMaterial);
+                poser.rig = rig;
+                // 兵器：挂右手随臂挥舞带刀光
+                var weaponRig = WeaponFactory.Build(weaponKind, rig.handR,
+                    baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(-32f, 0, 8f));
+                if (weaponRig != null)
+                {
+                    poser.weaponPivot = weaponRig.pivot;
+                    poser.weaponTrail = weaponRig.trail;
+                }
+            }
 
             var body = root.AddComponent<CapsuleCollider>();
             body.height = 2f;
@@ -327,13 +346,14 @@ namespace AdversityRoad.Core
             var agent = root.AddComponent<NavMeshAgent>();
             agent.speed = profile.moveSpeed;
             agent.stoppingDistance = profile.attackRange * 0.8f;
+            // 关键：NavMeshAgent 默认把根节点贴在导航面上，而人形骨骼的脚在根节点
+            // 下方约 1.1 单位，会导致下半身埋进地面。抬高 baseOffset 让双脚落地。
+            // baseOffset 会被 Agent 按自身缩放换算，这里用不含 scale 的常数，
+            // 大体型敌人（首领）才不会浮空（用 *scale 会二次放大导致悬空）。
+            agent.baseOffset = 1.1f;
 
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;
-
-            var poser = root.AddComponent<HumanoidAnimator>();
-            poser.visual = visualRoot.transform;
-            poser.rig = rig;
             ec.poser = poser;
 
             ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 2.5f);
@@ -342,14 +362,6 @@ namespace AdversityRoad.Core
             dialogue.displayName = profile.displayName;
             ec.dialogue = dialogue;
 
-            // 兵器：不同敌方持不同兵器（棍/爪/剑/刀），挂右手随臂挥舞带刀光
-            var weaponRig = WeaponFactory.Build(EnemyCatalog.WeaponOf(type), rig.handR,
-                baseMaterial, new Vector3(0, -0.06f, 0.03f), new Vector3(-32f, 0, 8f));
-            if (weaponRig != null)
-            {
-                poser.weaponPivot = weaponRig.pivot;
-                poser.weaponTrail = weaponRig.trail;
-            }
             ec.themeColor = tc;
             ec.baseMaterial = baseMaterial;
 

@@ -37,6 +37,7 @@ namespace AdversityRoad.Player
         CharacterController _cc;
         CombatStateMachine _combat;
         HumanoidAnimator _anim;
+        LockOnSystem _lockOn;
         float _vy;
         float _dodgeTimer, _iframeTimer;
         Vector3 _dodgeDir;
@@ -156,6 +157,11 @@ namespace AdversityRoad.Player
             planar.y = 0;
             float speed01 = Mathf.Clamp01(planar.magnitude / dt / Mathf.Max(0.1f, runSpeed));
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded);
+            // 临战架势：附近有可锁定的敌人 / 正在交战时，静立摆出格斗预备架势
+            if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
+            bool ready = (_lockOn != null && _lockOn.CurrentTarget != null)
+                || (_combat != null && _combat.InCombat);
+            _anim.SetCombatReady(ready);
             _lastPos = transform.position;
         }
 
