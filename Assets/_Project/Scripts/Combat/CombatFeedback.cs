@@ -227,33 +227,97 @@ namespace AdversityRoad.Combat
             if (spark != null) Destroy(spark);
         }
 
-        // ---------- 招式冲击波：组合技触发的金色扩散环 ----------
+        // ---------- 能量爆发（组合技/大招）：借鉴动作大作的"光爆"而非大色块 ----------
+        // 组合：强闪光球 + 密集放射光条 + 上升火星 + 细亮冲击环 + 顿帧/时缓/震屏。
+        // 用加色半透明的暖橙-白光，读作"能量光"而非涂了一片米黄色实体。
 
-        public static void RecipeBurst(Vector3 pos, Color color)
+        public static void RecipeBurst(Vector3 pos, Color color) => EnergyBurst(pos, color, 0.85f);
+
+        /// <summary>能量光爆。power≈0.85 组合技，≈1.6 大招。core=能量主色（暖色更"燃"）。</summary>
+        public static void EnergyBurst(Vector3 pos, Color core, float power)
         {
             Ensure();
+            // 提亮加饱和，暖色再朝橙偏一点，读作"能量光"而非平铺的米黄实体
+            Color hot = Color.Lerp(core, new Color(1f, 0.6f, 0.2f), core.b < core.r ? 0.4f : 0.15f);
+            Vector3 c = pos + Vector3.up * 1.05f;
+
+            // 强闪光球：瞬间胀大发光后极快消散
+            var flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Object.DestroyImmediate(flash.GetComponent<Collider>());
+            flash.transform.position = c;
+            flash.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(hot, Color.white, 0.78f), 0.9f);
+            _i.StartCoroutine(_i.FlashPop(flash, 0.5f + power));
+
+            HitSpark(pos, Color.Lerp(hot, Color.white, 0.35f), Mathf.RoundToInt(10 + power * 8));
+            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(6 + power * 6)));
+
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Object.DestroyImmediate(ring.GetComponent<Collider>());
             ring.transform.position = pos + Vector3.up * 0.12f;
             ring.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.3f), 0.5f);
-            _i.StartCoroutine(_i.RingExpand(ring));
-            HitSpark(pos, color, 8);
-            Shake(0.55f);
-            SlowMo(0.6f, 0.1f);
+                MatFX(Color.Lerp(hot, Color.white, 0.35f), 0.5f);
+            _i.StartCoroutine(_i.RingExpand(ring, 0.9f + power * 1.4f));
+
+            Shake(0.4f + power * 0.25f);
+            SlowMo(0.6f, 0.08f + power * 0.05f);
         }
 
-        IEnumerator RingExpand(GameObject ring)
+        IEnumerator FlashPop(GameObject go, float maxR)
         {
-            float t = 0;
-            const float dur = 0.28f;
-            while (t < dur && ring != null)
+            float t = 0, dur = 0.16f;
+            while (t < dur && go != null)
             {
                 t += Time.deltaTime;
                 float k = t / dur;
-                float r = Mathf.Lerp(0.8f, 3.8f, k);              // 收敛半径，不再铺满地面
+                go.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, maxR, Mathf.Sqrt(k));
+                FadeAlpha(go, 1f - Time.deltaTime / dur * 1.7f);
+                yield return null;
+            }
+            if (go != null) Destroy(go);
+        }
+
+        IEnumerator EmberRise(Vector3 center, Color color, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var e = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(e.GetComponent<Collider>());
+                e.transform.position = center + Random.insideUnitSphere * 0.35f;
+                e.transform.localScale = Vector3.one * Random.Range(0.05f, 0.12f);
+                e.GetComponent<MeshRenderer>().sharedMaterial =
+                    MatFX(Color.Lerp(color, Color.white, 0.3f), 0.95f);
+                _i.StartCoroutine(_i.EmberFly(e));
+            }
+            yield break;
+        }
+
+        IEnumerator EmberFly(GameObject e)
+        {
+            Vector3 v = new Vector3(Random.Range(-1.3f, 1.3f), Random.Range(1.8f, 3.6f),
+                Random.Range(-1.3f, 1.3f));
+            float t = 0, life = Random.Range(0.4f, 0.8f);
+            while (t < life && e != null)
+            {
+                t += Time.deltaTime;
+                v.y -= 5f * Time.deltaTime;                      // 受"重力"回落，像迸溅火星
+                e.transform.position += v * Time.deltaTime;
+                FadeAlpha(e, 1f - Time.deltaTime / life);
+                yield return null;
+            }
+            if (e != null) Destroy(e);
+        }
+
+        IEnumerator RingExpand(GameObject ring, float maxR)
+        {
+            float t = 0;
+            const float dur = 0.3f;
+            while (t < dur && ring != null)
+            {
+                t += Time.deltaTime;
+                float r = Mathf.Lerp(0.6f, maxR, t / dur);
                 ring.transform.localScale = new Vector3(r, 0.02f, r);
-                FadeAlpha(ring, 1f - Time.deltaTime / dur * 1.4f); // 边扩边淡出
+                FadeAlpha(ring, 1f - Time.deltaTime / dur * 1.4f);
                 yield return null;
             }
             if (ring != null) Destroy(ring);

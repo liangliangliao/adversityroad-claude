@@ -47,17 +47,13 @@ namespace AdversityRoad.Player
         public float autoFollowDelay = 0.3f;
         public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
 
-        [Header("探索镜头：角度基本固定，持续同向移动后把镜头转到玩家背后（面朝方向）")]
-        [Tooltip("需持续朝同一方向移动多久，镜头才开始回正（秒）——够短才能可靠转到身后")]
-        public float exploreSustainDelay = 0.45f;
-        [Tooltip("移动方向抖动在此角度内视为「同一方向」；超过即重置计时（掉头/大调整会延迟回正）")]
-        public float exploreHeadingBand = 55f;
-        [Tooltip("镜头与移动方向偏差小于此角度就不必回正（避免细抖）")]
-        public float exploreReorientAngle = 8f;
-        [Tooltip("探索回正平滑时间：偏大=慢=稳，偏小=快=跟手")]
-        public float exploreTurnSmoothTime = 0.45f;
-        [Tooltip("探索回正最大转速（度/秒）：慢慢转过去、稳中带准")]
-        public float exploreMaxSpeed = 110f;
+        [Header("探索镜头：玩家一转向，镜头立刻开始平稳缓慢地转到其背后（面朝方向）")]
+        [Tooltip("镜头与角色朝向偏差小于此角度就不必回正（避免细抖）")]
+        public float exploreReorientAngle = 6f;
+        [Tooltip("回正平滑时间（临界阻尼弹簧）：偏大=更缓更稳。控制「缓慢跟随」的慢")]
+        public float exploreTurnSmoothTime = 0.55f;
+        [Tooltip("回正最大转速（度/秒）：封顶让掉头也平稳不猛甩")]
+        public float exploreMaxSpeed = 85f;
 
         [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
         [Tooltip("大招时的取景距离系数（<1 拉近）")]
@@ -72,9 +68,6 @@ namespace AdversityRoad.Player
         float _boomDist, _boomVel;
         float _kick;
         float _yawFollowVel;               // 回正弹簧速度（SmoothDampAngle 用）
-        float _sustainT;                   // 已持续同向移动时长（探索回正的时间门限）
-        float _smoothHeading, _headingVel; // 低通后的移动方向（判定"同一方向"用）
-        bool _headingInit;
         float _ultimateTimer, _ultimateBlend;   // 大招镜头计时与渐入渐出
         float _lastManualLook;
         Vector3 _lastTargetPos;
@@ -165,7 +158,9 @@ namespace AdversityRoad.Player
                 _lastManualLook = Time.unscaledTime;
 
             _yaw += lookX;
-            _pitch = Mathf.Clamp(_pitch - lookY, minPitch, maxPitch);
+            // 第一人称放开俯仰范围：低头能看见自己的手/脚/剑，抬头能看见天空
+            bool fpNow = Presets[PresetIndex].fp;
+            _pitch = Mathf.Clamp(_pitch - lookY, fpNow ? -72f : minPitch, fpNow ? 80f : maxPitch);
 
             // 只按水平位移判定移动：跳跃/台阶的纵向起伏不应误触发运镜与变焦
             Vector3 frameDelta = target.position - _lastTargetPos;
@@ -188,35 +183,27 @@ namespace AdversityRoad.Player
                     float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
                     _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.4f * dt);
                 }
-                _sustainT = 0f; _headingInit = false; _yawFollowVel = 0f;
+                _yawFollowVel = 0f;
             }
             else if (autoFollow)
             {
-                // 探索镜头：角度基本固定；只有玩家【持续朝同一方向移动超过 exploreSustainDelay】，
-                // 镜头才【慢速】转到移动方向的身后。规则要点：
-                //   · 移动方向抖动超过 exploreHeadingBand 即重置计时 → 左右小调整/摇杆微抖不转镜头；
-                //   · 掉头时方向突变 → 计时清零 → 角色可立刻回头，但镜头延迟一会儿才慢慢跟；
-                //   · 回正用大平滑时间 + 低转速上限的 SmoothDampAngle，转得很慢、不晃眼。
-                bool moving = moveSpeed > 1.6f;
+                // 探索镜头：玩家一改变朝向，镜头【立刻开始】平稳缓慢地转到其背后
+                // （面朝方向），无需先"持续朝一个方向走一段时间"。
+                //   · 目标 = 角色朝向（PlayerController 已让角色即时朝移动方向），转身即跟；
+                //   · 用大平滑时间的临界阻尼弹簧 SmoothDampAngle：小抖动只带来极轻微慢移
+                //     不晃屏，大转向/掉头则平稳缓慢地归位到身后，绝不猛甩。
+                bool moving = moveSpeed > 1.4f;
                 bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
-                if (moving && !manualRecently && frameDelta.sqrMagnitude > 1e-4f)
+                if (moving && !manualRecently)
                 {
-                    float heading = Quaternion.LookRotation(frameDelta).eulerAngles.y;
-                    if (!_headingInit) { _smoothHeading = heading; _headingInit = true; }
-                    float headingJitter = Mathf.Abs(Mathf.DeltaAngle(heading, _smoothHeading));
-                    _smoothHeading = Mathf.SmoothDampAngle(_smoothHeading, heading,
-                        ref _headingVel, 0.18f, Mathf.Infinity, dt);
-                    // 方向稳定→累积时长；方向大变（转向/掉头）→清零，延迟镜头跟随
-                    _sustainT = headingJitter < exploreHeadingBand ? _sustainT + dt : 0f;
-
-                    float yawOffset = Mathf.Abs(Mathf.DeltaAngle(_yaw, _smoothHeading));
-                    if (_sustainT >= exploreSustainDelay && yawOffset > exploreReorientAngle)
-                        _yaw = Mathf.SmoothDampAngle(_yaw, _smoothHeading, ref _yawFollowVel,
+                    float heading = target.eulerAngles.y;   // 角色（=移动）正前方
+                    if (Mathf.Abs(Mathf.DeltaAngle(_yaw, heading)) > exploreReorientAngle)
+                        _yaw = Mathf.SmoothDampAngle(_yaw, heading, ref _yawFollowVel,
                             exploreTurnSmoothTime, exploreMaxSpeed, dt);
                 }
                 else
                 {
-                    _sustainT = 0f; _headingInit = false; _yawFollowVel = 0f;
+                    _yawFollowVel = 0f;
                 }
             }
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
@@ -243,14 +230,17 @@ namespace AdversityRoad.Player
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
 
-            // ---- 第一人称：镜头在「眼睛」高度（不再蹲着感），略微俯视让身前的
-            //      手臂/兵器/腿在挥击时进入画面（符合真实第一人称近战取景） ----
+            // ---- 第一人称：真实的「眼睛」视角 ----
+            //   · 镜头在头部眼睛高度、脸的正前方（不在体内，平视看到前方而非自己身体）；
+            //   · 俯仰自由：低头看见自己的手/脚/剑，抬头看见天空；
+            //   · 只隐藏头部，躯干/手臂/腿/兵器都在——挥剑、踢腿时低头即可看见其在空中运动。
             SetHeadVisible(!Presets[PresetIndex].fp);
             if (Presets[PresetIndex].fp)
             {
-                // 眼位抬到模型头部眼睛高度（根节点上方约 0.92），略向下看 7°
-                Quaternion fpRot = Quaternion.Euler(_curPitch + 7f, _curYaw, 0);
-                Vector3 eye = target.position + Vector3.up * 0.92f + fpRot * new Vector3(0, 0, 0.04f);
+                Quaternion fpRot = Quaternion.Euler(_curPitch, _curYaw, 0);
+                // 眼位：眼睛高度 + 沿水平朝向前移到脸前（避免镜头陷在身体里看到自己后背）
+                Vector3 fwdH = Quaternion.Euler(0, _curYaw, 0) * Vector3.forward;
+                Vector3 eye = target.position + Vector3.up * 0.86f + fwdH * 0.22f;
                 if (_kick > 0.001f)
                 {
                     eye.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.03f;
