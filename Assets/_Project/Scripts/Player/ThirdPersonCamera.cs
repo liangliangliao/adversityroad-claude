@@ -99,7 +99,7 @@ namespace AdversityRoad.Player
             new CamPreset { name = "近身动作", offset = new Vector3(0.55f, 1.75f, -3.7f), pitch = 7f },
             new CamPreset { name = "标准跟随", offset = new Vector3(0.6f, 2.0f, -4.9f), pitch = 10f },
             new CamPreset { name = "战术远景", offset = new Vector3(0.25f, 3.3f, -7.0f), pitch = 21f },
-            new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = 2f, fp = true },
+            new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
 
         public int PresetIndex { get; private set; } = 1;
@@ -238,9 +238,9 @@ namespace AdversityRoad.Player
             if (Presets[PresetIndex].fp)
             {
                 Quaternion fpRot = Quaternion.Euler(_curPitch, _curYaw, 0);
-                // 眼位：眼睛高度 + 沿水平朝向前移到脸前（避免镜头陷在身体里看到自己后背）
-                Vector3 fwdH = Quaternion.Euler(0, _curYaw, 0) * Vector3.forward;
-                Vector3 eye = target.position + Vector3.up * 0.86f + fwdH * 0.22f;
+                // 眼位就在头部眼睛高度（不前移到身体前方，否则身体在镜头后方就看不见了）。
+                // 身体位于镜头正下方 → 低头即见自己的躯干/手/腿/剑，抬头见天空。
+                Vector3 eye = target.position + Vector3.up * 0.86f;
                 if (_kick > 0.001f)
                 {
                     eye.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.03f;

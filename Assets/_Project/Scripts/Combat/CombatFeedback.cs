@@ -249,15 +249,10 @@ namespace AdversityRoad.Combat
                 MatFX(Color.Lerp(hot, Color.white, 0.78f), 0.9f);
             _i.StartCoroutine(_i.FlashPop(flash, 0.5f + power));
 
-            HitSpark(pos, Color.Lerp(hot, Color.white, 0.35f), Mathf.RoundToInt(10 + power * 8));
-            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(6 + power * 6)));
-
-            var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            Object.DestroyImmediate(ring.GetComponent<Collider>());
-            ring.transform.position = pos + Vector3.up * 0.12f;
-            ring.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(hot, Color.white, 0.35f), 0.5f);
-            _i.StartCoroutine(_i.RingExpand(ring, 0.9f + power * 1.4f));
+            // 更密集/更长的放射光条（向四周迸射的能量），替代地面圆盘——
+            // 不再有"米黄色圆圈"平铺在地上。
+            HitSpark(pos, Color.Lerp(hot, Color.white, 0.4f), Mathf.RoundToInt(16 + power * 12));
+            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(8 + power * 8)));
 
             Shake(0.4f + power * 0.25f);
             SlowMo(0.6f, 0.08f + power * 0.05f);
@@ -306,21 +301,6 @@ namespace AdversityRoad.Combat
                 yield return null;
             }
             if (e != null) Destroy(e);
-        }
-
-        IEnumerator RingExpand(GameObject ring, float maxR)
-        {
-            float t = 0;
-            const float dur = 0.3f;
-            while (t < dur && ring != null)
-            {
-                t += Time.deltaTime;
-                float r = Mathf.Lerp(0.6f, maxR, t / dur);
-                ring.transform.localScale = new Vector3(r, 0.02f, r);
-                FadeAlpha(ring, 1f - Time.deltaTime / dur * 1.4f);
-                yield return null;
-            }
-            if (ring != null) Destroy(ring);
         }
 
         // ---------- 时缓（完美闪避） ----------

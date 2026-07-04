@@ -73,17 +73,18 @@ namespace AdversityRoad.Combat
             // ---------- 步态循环 ----------
             // 步态：走路小步摆，奔跑大步幅+摆臂屈肘+前倾冲刺感
             float swing = moving ? Mathf.Sin(_phase) : 0;
-            float legAmp = Mathf.Lerp(13f, 56f, _speed01);
-            float armAmp = Mathf.Lerp(6f, 48f, _speed01);
+            float legAmp = Mathf.Lerp(18f, 58f, _speed01);
+            float armAmp = Mathf.Lerp(16f, 54f, _speed01);
             hipLp = swing * legAmp;
             hipRp = -swing * legAmp;
-            kneeLp = Mathf.Max(0, Mathf.Sin(_phase - 1.9f)) * Mathf.Lerp(12f, 82f, _speed01);
-            kneeRp = Mathf.Max(0, Mathf.Sin(_phase + 1.25f)) * Mathf.Lerp(12f, 82f, _speed01);
+            kneeLp = Mathf.Max(0, Mathf.Sin(_phase - 1.9f)) * Mathf.Lerp(20f, 92f, _speed01);
+            kneeRp = Mathf.Max(0, Mathf.Sin(_phase + 1.25f)) * Mathf.Lerp(20f, 92f, _speed01);
             shLp = -swing * armAmp;
             shRp = swing * armAmp;
-            elL += _speed01 * 55f;   // 奔跑屈肘摆臂
-            elR += _speed01 * 55f;
-            torsoP += _speed01 * 7f; // 冲刺前倾
+            // 手臂始终弯曲（走路微屈、奔跑接近 90°）——这是"像真人跑"最关键的一笔，
+            // 直臂摆动最显机械。屈肘让前臂/手抬向胸前，摆动更有力。
+            if (moving) { elL += Mathf.Lerp(16f, 78f, _speed01); elR += Mathf.Lerp(16f, 78f, _speed01); }
+            torsoP += _speed01 * 13f; // 奔跑上身明显前倾冲刺
             if (moving)
             {
                 pelvisY += Mathf.Abs(Mathf.Cos(_phase)) * 0.055f * _speed01;
