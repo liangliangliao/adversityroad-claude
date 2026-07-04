@@ -39,15 +39,22 @@ namespace AdversityRoad.Player
         public float followSmoothTime = 0.05f;
         public float fieldOfView = 66f;
 
-        [Header("跟拍者式自动跟随：玩家转身/改变方向后，镜头延迟一小段再缓慢转到" +
-                "移动方向的身后（延迟+死区+缓入缓出+限速，参考主流第三人称防晕运镜）")]
+        [Header("跟拍者式自动回正（迟滞门限 + 临界阻尼弹簧，参考主流第三人称防晕运镜）：" +
+                "只在玩家【大幅转向/掉头】后把镜头平滑转到移动方向的身后；" +
+                "日常小幅转向/摇杆微调一律不动镜头——根治「摇杆一动整屏晃」")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 0.35f;
-        public float autoFollowSpeed = 50f;
-        [Tooltip("自动跟随最大转速（度/秒）：封顶，掉头回正也平滑不猛甩")]
-        public float followMaxSpeed = 120f;
-        [Tooltip("自动跟随死区角度：航向偏差小于此值不转镜头，忽略摇杆微抖")]
-        public float followDeadAngle = 15f;
+        [Tooltip("停止手动转镜后隔多久才允许自动回正（避免与玩家转镜打架）")]
+        public float autoFollowDelay = 0.3f;
+        public float autoFollowSpeed = 50f;   // 锁定时追向敌人的转速
+        [Tooltip("回正【启动】阈值：移动方向与镜头偏差超过此角度才开始回正——" +
+                 "低于它的小幅转向/摇杆微调永不动镜头（防晕关键）")]
+        public float followEngageAngle = 40f;
+        [Tooltip("回正【停止】阈值：偏差小于此角度即停（迟滞，避免来回追与抖动）")]
+        public float followDisengageAngle = 6f;
+        [Tooltip("回正平滑时间（临界阻尼弹簧）：越小归位越快、越大越柔，无过冲无抖动")]
+        public float followTurnSmoothTime = 0.34f;
+        [Tooltip("回正最大转速（度/秒）：封顶，掉头也不会瞬甩")]
+        public float followMaxSpeed = 150f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
@@ -57,7 +64,8 @@ namespace AdversityRoad.Player
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
-        float _followBlend;                // 自动跟随渐入渐出
+        float _yawFollowVel;               // 回正弹簧速度（SmoothDampAngle 用）
+        bool _following;                   // 迟滞状态：是否正在回正
         float _lastManualLook;
         Vector3 _lastTargetPos;
         float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
@@ -158,32 +166,36 @@ namespace AdversityRoad.Player
                     float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
                     _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.4f * dt);
                 }
-                _followBlend = 0;
+                _following = false;
+                _yawFollowVel = 0f;
             }
-            else if (autoFollow && !Presets[PresetIndex].fp)
+            else if (autoFollow)   // 所有视角（含第一人称）统一回正
             {
-                // 跟拍者式回正（参考主流第三人称防晕运镜的四要素）：
-                //   ① 延迟——玩家刚动/微调时不抢镜，先让他自己走；
-                //   ② 死区——航向偏差很小时不动，忽略摇杆微抖与直行抖动；
-                //   ③ 缓入缓出——转速用 SmoothStep 随偏差平滑增长，起步与收尾都不生硬；
-                //   ④ 限速——转速封顶，转身/掉头后平滑转到「移动方向的身后」而非猛甩。
-                // 目标朝向用角色正前方（PlayerController 已让角色朝移动方向），转身后
-                // 镜头即随之切到新的正前方。
-                bool moving = moveSpeed > 1.8f;
-                bool wantFollow = moving && Time.unscaledTime - _lastManualLook > autoFollowDelay;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.4f);
-                if (_followBlend > 0.01f)
+                // === 迟滞门限 + 临界阻尼弹簧回正 ===
+                // 目标 = 玩家「移动方向」的身后。用速度方向（本帧水平位移）而非瞬时朝向，
+                // 天然滤抖、更稳。核心是两个阈值构成的「迟滞」：
+                //   · 偏差 > engage 才【启动】回正 → 小幅转向/摇杆微调（低于阈值）永不动镜头，
+                //     这就是「摇杆一动整屏晃」的根治：日常走位镜头纹丝不动；
+                //   · 一旦启动，持续到偏差 < disengage 才【停止】 → 掉头/大转向后一定回正到
+                //     新的正前方（解决转身后镜头不归位）；
+                //   · 回正用 SmoothDampAngle（临界阻尼，无过冲无抖动、自动缓入缓出、限速封顶）。
+                bool moving = moveSpeed > 1.6f;
+                bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
+                if (moving && !manualRecently && frameDelta.sqrMagnitude > 1e-4f)
                 {
-                    float wantYaw = target.eulerAngles.y;   // 角色（=移动）正前方
+                    float wantYaw = Quaternion.LookRotation(frameDelta).eulerAngles.y;
                     float absDiff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
-                    if (absDiff > followDeadAngle)
-                    {
-                        // 偏差越大转得越快（缓入缓出）但封顶：小转柔和、掉头也不猛甩
-                        float t = Mathf.SmoothStep(0f, 1f,
-                            Mathf.InverseLerp(followDeadAngle, 150f, absDiff));
-                        float speed = Mathf.Lerp(20f, followMaxSpeed, t);
-                        _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
-                    }
+                    if (!_following && absDiff > followEngageAngle) _following = true;
+                    else if (_following && absDiff < followDisengageAngle) _following = false;
+
+                    if (_following)
+                        _yaw = Mathf.SmoothDampAngle(_yaw, wantYaw, ref _yawFollowVel,
+                            followTurnSmoothTime, followMaxSpeed, dt);
+                }
+                else
+                {
+                    _following = false;
+                    _yawFollowVel = 0f;
                 }
             }
 
