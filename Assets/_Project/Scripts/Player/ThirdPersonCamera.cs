@@ -34,11 +34,15 @@ namespace AdversityRoad.Player
         public float followSmoothTime = 0.05f;
         public float fieldOfView = 66f;
 
-        [Header("跟拍者式自动跟随：只在玩家背离镜头跑远时缓慢跟上；" +
-                "左右转向/横移绝不转动镜头（符合真实摄影师行为）")]
+        [Header("跟拍者式自动跟随：玩家转身/改变方向后，镜头延迟一小段再缓慢转到" +
+                "移动方向的身后（延迟+死区+缓入缓出+限速，参考主流第三人称防晕运镜）")]
         public bool autoFollow = true;
         public float autoFollowDelay = 0.35f;
         public float autoFollowSpeed = 50f;
+        [Tooltip("自动跟随最大转速（度/秒）：封顶，掉头回正也平滑不猛甩")]
+        public float followMaxSpeed = 120f;
+        [Tooltip("自动跟随死区角度：航向偏差小于此值不转镜头，忽略摇杆微抖")]
+        public float followDeadAngle = 15f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
@@ -152,19 +156,28 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow && !Presets[PresetIndex].fp)
             {
-                // 立刻回正：玩家一旦朝新方向移动，镜头迅速切到「该方向的身后」，
-                // 展示新的正前方（玩家掉头/左后/右后转向都会立即跟上）。
-                // 跟随目标用角色朝向（PlayerController 已让角色朝移动方向），比速度矢量稳。
-                bool moving = moveSpeed > 1.4f;
-                bool wantFollow = Time.unscaledTime - _lastManualLook > autoFollowDelay && moving;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.2f);
+                // 跟拍者式回正（参考主流第三人称防晕运镜的四要素）：
+                //   ① 延迟——玩家刚动/微调时不抢镜，先让他自己走；
+                //   ② 死区——航向偏差很小时不动，忽略摇杆微抖与直行抖动；
+                //   ③ 缓入缓出——转速用 SmoothStep 随偏差平滑增长，起步与收尾都不生硬；
+                //   ④ 限速——转速封顶，转身/掉头后平滑转到「移动方向的身后」而非猛甩。
+                // 目标朝向用角色正前方（PlayerController 已让角色朝移动方向），转身后
+                // 镜头即随之切到新的正前方。
+                bool moving = moveSpeed > 1.8f;
+                bool wantFollow = moving && Time.unscaledTime - _lastManualLook > autoFollowDelay;
+                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.4f);
                 if (_followBlend > 0.01f)
                 {
-                    float wantYaw = target.eulerAngles.y;   // 角色正前方
-                    float diff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
-                    // 偏差越大追得越快：小偏差柔和跟随，大转向（掉头）近乎瞬切
-                    float speed = Mathf.Lerp(70f, 420f, Mathf.InverseLerp(20f, 150f, diff));
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
+                    float wantYaw = target.eulerAngles.y;   // 角色（=移动）正前方
+                    float absDiff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
+                    if (absDiff > followDeadAngle)
+                    {
+                        // 偏差越大转得越快（缓入缓出）但封顶：小转柔和、掉头也不猛甩
+                        float t = Mathf.SmoothStep(0f, 1f,
+                            Mathf.InverseLerp(followDeadAngle, 150f, absDiff));
+                        float speed = Mathf.Lerp(20f, followMaxSpeed, t);
+                        _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
+                    }
                 }
             }
 

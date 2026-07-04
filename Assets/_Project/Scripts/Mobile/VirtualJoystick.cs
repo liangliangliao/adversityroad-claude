@@ -9,9 +9,9 @@ namespace AdversityRoad.Mobile
     {
         public RectTransform handle;
         public float radius = 100f;
-        [Tooltip("死区：手指微小抖动（低于此归一化幅度）不产生输入，" +
-                 "超过后重新映射到 0–1，避免死区边缘的输入跳变——防止走路时镜头/角色被抖动带偏")]
-        [Range(0f, 0.4f)] public float deadZone = 0.12f;
+        [Tooltip("死区：仅滤掉贴近中心的静止噪声，保持全向 360° 全量程手感。" +
+                 "超过死区后重新映射到 0–1，避免边缘跳变；设 0 即完全无死区")]
+        [Range(0f, 0.4f)] public float deadZone = 0.06f;
 
         RectTransform _rt;
 
