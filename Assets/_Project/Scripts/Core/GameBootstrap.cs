@@ -169,6 +169,7 @@ namespace AdversityRoad.Core
             _player = root.AddComponent<PlayerController>();
             var fsm = root.AddComponent<CombatStateMachine>();
             root.AddComponent<StanceSystem>();     // 五种战斗姿态（Awake 早于 PlayerCombatController.Awake 读取）
+            root.AddComponent<EquipmentSystem>();  // 兵器与装备套装（Awake 早于 PlayerCombatController.Awake 读取）
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
             var skillExec = root.AddComponent<SkillExecutor>();
@@ -502,6 +503,9 @@ namespace AdversityRoad.Core
             var reflectionPanel = ReflectionPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
                 new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
+            var equipmentPanel = EquipmentPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "装备", new Vector2(1, 1), new Vector2(-775, -116),
+                new Vector2(150, 64), new Color(0.5f, 0.4f, 0.3f, 0.8f), equipmentPanel.Toggle, 26);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();

@@ -133,7 +133,11 @@ namespace AdversityRoad.UI
             if (stats != null)
             {
                 stats.ReduceRumination(999f);
-                stats.RestoreMental(25f);
+                float bonus = 0f;
+                var pc = FindObjectOfType<PlayerController>();
+                var equip = pc != null ? pc.GetComponent<Combat.EquipmentSystem>() : null;
+                if (equip != null) bonus = equip.ArchiveBonus;   // 公平复盘套/旧我整合套强化归档回补
+                stats.RestoreMental(25f + bonus);
             }
             GameEvents.RaiseSubtitle("已归档：事实留下，反刍清零。旧事进入档案，不再无限回放。");
             Refresh();

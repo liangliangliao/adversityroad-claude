@@ -124,6 +124,7 @@ namespace AdversityRoad.Combat
         public int Momentum => _momentum;
 
         StanceSystem _stance;
+        EquipmentSystem _equipment;
 
         void Awake()
         {
@@ -131,6 +132,7 @@ namespace AdversityRoad.Combat
             _fsm = GetComponent<CombatStateMachine>();
             _cc = GetComponent<CharacterController>();
             _stance = GetComponent<StanceSystem>();
+            _equipment = GetComponent<EquipmentSystem>();
         }
 
         void Update()
@@ -562,6 +564,7 @@ namespace AdversityRoad.Combat
                     heavy ? 1f : 0.8f);
             };
             float outMult = _stance != null ? _stance.OutgoingPhysicalMult() : 1f;
+            if (_equipment != null) outMult *= _equipment.OutgoingPhysicalMult();
             weaponHitbox.EnableHitbox(new DamageInfo
             {
                 physicalDamage = dmg * outMult,
@@ -689,6 +692,8 @@ namespace AdversityRoad.Combat
                 float mental = dmg.mentalDamage * mult;
                 // 姿态减伤：把姿态切到与来袭弱点轴匹配的一档，可大幅削减这次心理伤害
                 if (_stance != null) mental *= _stance.IncomingMentalMult(dmg.mentalAxis);
+                // 装备套装减伤：与姿态叠乘（边界守卫/专注夺回/行动起步/旧我整合各护对应弱点轴）
+                if (_equipment != null) mental *= _equipment.IncomingMentalMult(dmg.mentalAxis);
 
                 if (_parryTimer > 0)
                 {

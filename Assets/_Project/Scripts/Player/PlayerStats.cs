@@ -27,6 +27,9 @@ namespace AdversityRoad.Player
         public float mentalRegenPerSec = 2f;
         public float ruminationDecayPerSec = 1.5f;
 
+        // 反刍累积倍率（由装备套装设置）：公平复盘套/旧我整合套让刺痛更难转化为反刍。
+        public float ruminationGainMult = 1f;
+
         public bool IsDead => hp <= 0;
 
         public void TickRegen(float dt, bool inCombat)
@@ -53,7 +56,8 @@ namespace AdversityRoad.Player
         public bool TakeMentalDamage(Personalization.WeaknessAxis axis, float dmg)
         {
             // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
-            AddRumination(dmg * 0.4f);
+            // 装备套装（公平复盘/旧我整合）可降低这一累积倍率。
+            AddRumination(dmg * 0.4f * ruminationGainMult);
             switch (axis)
             {
                 case Personalization.WeaknessAxis.Procrastination:
