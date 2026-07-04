@@ -36,6 +36,9 @@ namespace AdversityRoad.AI
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
+        bool _telegraphing;       // 是否处于前摇（脉冲放大红圈/警示，让读招更醒目）
+        Vector3 _dangerRingBaseScale;
+        float _telegraphT;
 
         /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
         [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
@@ -87,6 +90,7 @@ namespace AdversityRoad.AI
             _dangerRing.transform.SetParent(transform, false);
             _dangerRing.transform.localPosition = new Vector3(0, -0.95f, 0);
             _dangerRing.transform.localScale = new Vector3(2.6f, 0.03f, 2.6f);
+            _dangerRingBaseScale = _dangerRing.transform.localScale;
             var rr = _dangerRing.GetComponent<MeshRenderer>();
             Material m = baseMaterial != null ? new Material(baseMaterial)
                 : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
@@ -98,8 +102,31 @@ namespace AdversityRoad.AI
 
         void ShowTelegraph(bool on)
         {
+            _telegraphing = on;
+            _telegraphT = 0f;
             if (_alertMark != null) _alertMark.text = on ? "！" : "";
-            if (_dangerRing != null) _dangerRing.SetActive(on);
+            if (_dangerRing != null)
+            {
+                _dangerRing.SetActive(on);
+                if (on) _dangerRing.transform.localScale = _dangerRingBaseScale;
+            }
+        }
+
+        /// <summary>前摇脉冲：红圈由小放大到出手、警示「！」跳动，读招窗口一目了然。</summary>
+        void TickTelegraph(float dt)
+        {
+            if (!_telegraphing) return;
+            _telegraphT += dt;
+            if (_dangerRing != null)
+            {
+                // 从 0.6 倍胀到 1.15 倍循环，越临近出手视觉张力越强
+                float pulse = 0.6f + Mathf.PingPong(_telegraphT * 2.4f, 0.55f);
+                _dangerRing.transform.localScale = new Vector3(
+                    _dangerRingBaseScale.x * pulse, _dangerRingBaseScale.y,
+                    _dangerRingBaseScale.z * pulse);
+            }
+            if (_alertMark != null)
+                _alertMark.characterSize = 0.05f * (1f + 0.25f * Mathf.Sin(_telegraphT * 18f));
         }
 
         void Update()
@@ -107,6 +134,7 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
             _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt;
+            TickTelegraph(dt);
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
             if (statusBar != null)
@@ -237,18 +265,20 @@ namespace AdversityRoad.AI
         {
             _attackCd = Mathf.Lerp(3.8f, 1.5f, profile.aggression);
             if (_anim != null) _anim.SetTrigger("Attack");
-            // 前摇 0.45 秒：头顶「！」+脚下红圈亮起=读招/完美闪避窗口，
-            // 蓄势姿态先行，判定框随后才开
+            // 前摇 0.55 秒：头顶「！」跳动 + 脚下红圈脉冲放大 + 警示音 = 明确读招/闪避窗口，
+            // 蓄势姿态先行，判定框随后才开——绝不让玩家"莫名其妙就掉血"。
             ShowTelegraph(true);
+            GameAudio.Play(GameAudio.Sfx.Alert, 0.5f);
             if (poser != null) poser.SetPose(PoseState.Charge);
-            Invoke(nameof(OpenAttackHitbox), 0.45f);
-            Invoke(nameof(CloseHitbox), 0.8f);
+            Invoke(nameof(OpenAttackHitbox), 0.55f);
+            Invoke(nameof(CloseHitbox), 0.85f);
         }
 
         void OpenAttackHitbox()
         {
             ShowTelegraph(false);
             if (State == EnemyState.Dead || attackHitbox == null) return;
+            GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
             if (poser != null) poser.SetPose(PoseState.Attack);
             attackHitbox.EnableHitbox(new DamageInfo
             {
@@ -271,7 +301,8 @@ namespace AdversityRoad.AI
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("凝念");
             ShowTelegraph(true);
-            Invoke(nameof(FireProjectile), 0.4f);
+            GameAudio.Play(GameAudio.Sfx.Alert, 0.4f);
+            Invoke(nameof(FireProjectile), 0.5f);
         }
 
         void FireProjectile()
@@ -415,6 +446,7 @@ namespace AdversityRoad.AI
             if (dialogue != null) dialogue.Show("不……可能……", 2f);
             CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 8);
             CombatFeedback.Shake(0.5f);
+            GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
             Destroy(gameObject, 3f);

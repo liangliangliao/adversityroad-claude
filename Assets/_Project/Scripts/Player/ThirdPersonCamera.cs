@@ -27,22 +27,41 @@ namespace AdversityRoad.Player
         public float minPitch = -18f, maxPitch = 38f;
         public float defaultPitch = 10f;   // 低平视角：地平线可见，画面有纵深电影感
         public float pitchRecenterDelay = 2.5f;
+        [Header("战斗/锁定取景：让玩家与敌人同框居中，镜头降低、靠近")]
+        [Tooltip("锁定时俯仰压低到该角度（战斗更贴地、更有压迫感与临场感）")]
+        public float combatLockPitch = 4f;
+        [Tooltip("锁定取景点偏向「玩家↔敌人中点」的比例：0=只看玩家，1=完全取中点")]
+        [Range(0f, 0.8f)] public float lockCenterBias = 0.42f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
-        [Tooltip("水平跟随平滑时间：极短的临界阻尼，滤掉角色移动的逐帧微抖动又几乎无滞后" +
-                 "（抖动是逐帧高频信号衰减充分，稳态跟随仅微量拖尾，不产生橡皮筋）")]
-        public float followSmoothTime = 0.05f;
+        [Tooltip("水平位置跟随平滑时间（中速）：临界阻尼软跟随——不太快(否则复制抖动)、" +
+                 "不太慢(否则玩家跑出画面)，滤掉逐帧微抖又稳稳跟住位置")]
+        public float followSmoothTime = 0.09f;
         public float fieldOfView = 66f;
 
-        [Header("跟拍者式自动跟随：玩家转身/改变方向后，镜头延迟一小段再缓慢转到" +
-                "移动方向的身后（延迟+死区+缓入缓出+限速，参考主流第三人称防晕运镜）")]
+        [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
+                "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
+                "时间】镜头才慢慢转到身后；小幅左右调整绝不转镜头。遇敌自动切战斗镜头。")]
         public bool autoFollow = true;
-        public float autoFollowDelay = 0.35f;
-        public float autoFollowSpeed = 50f;
-        [Tooltip("自动跟随最大转速（度/秒）：封顶，掉头回正也平滑不猛甩")]
-        public float followMaxSpeed = 120f;
-        [Tooltip("自动跟随死区角度：航向偏差小于此值不转镜头，忽略摇杆微抖")]
-        public float followDeadAngle = 15f;
+        [Tooltip("停止手动转镜后隔多久才允许自动回正（避免与玩家转镜打架）")]
+        public float autoFollowDelay = 0.3f;
+        public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
+
+        [Header("探索镜头：角度基本固定，持续同向移动才慢速回正到身后")]
+        [Tooltip("需持续朝同一方向移动多久，镜头才开始慢慢回正（秒）")]
+        public float exploreSustainDelay = 0.9f;
+        [Tooltip("移动方向抖动在此角度内视为「同一方向」；超过即重置计时（掉头/大调整会延迟回正）")]
+        public float exploreHeadingBand = 30f;
+        [Tooltip("镜头与移动方向偏差小于此角度就不必回正（避免细抖）")]
+        public float exploreReorientAngle = 12f;
+        [Tooltip("探索回正平滑时间：偏大=慢=稳（镜头旋转要慢）")]
+        public float exploreTurnSmoothTime = 0.6f;
+        [Tooltip("探索回正最大转速（度/秒）：很低，慢慢转过去不晃眼")]
+        public float exploreMaxSpeed = 65f;
+
+        [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
+        [Tooltip("大招时的取景距离系数（<1 拉近）")]
+        public float ultimateZoom = 0.66f;
 
         public PlayerController player;
         public LockOnSystem lockOn;
@@ -52,18 +71,26 @@ namespace AdversityRoad.Player
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
         float _kick;
-        float _followBlend;                // 自动跟随渐入渐出
+        float _yawFollowVel;               // 回正弹簧速度（SmoothDampAngle 用）
+        float _sustainT;                   // 已持续同向移动时长（探索回正的时间门限）
+        float _smoothHeading, _headingVel; // 低通后的移动方向（判定"同一方向"用）
+        bool _headingInit;
+        float _ultimateTimer, _ultimateBlend;   // 大招镜头计时与渐入渐出
         float _lastManualLook;
         Vector3 _lastTargetPos;
         float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
         Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
         float _pivotH = 1.55f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
+        float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
         bool _pivotInit;
         Transform _head;                    // 第一人称时隐藏头部（显露手臂与兵器）
 
         /// <summary>受击脉冲：小幅纵向颠簸，快速衰减（防晕：不做随机抖动）。</summary>
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
+
+        /// <summary>大招镜头：短暂拉近取景（配合技能自身的轻微慢动作/命中小震），到点回稳。</summary>
+        public void UltimateShot(float duration) => _ultimateTimer = Mathf.Max(_ultimateTimer, duration);
 
         // 多视角预设（参考动作游戏惯例：近身看招 / 标准跟随 / 战术远景）
         struct CamPreset
@@ -141,10 +168,15 @@ namespace AdversityRoad.Player
             frameDelta.y = 0;
             float moveSpeed = frameDelta.magnitude / dt;
 
-            // ---- 锁定运镜 / 自动跟随（渐入渐出，避免突然接管） ----
+            // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
+            if (_ultimateTimer > 0f) _ultimateTimer -= dt;
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
-            if (lockTarget != null)
+            bool combat = lockTarget != null;
+            bool ultimate = _ultimateTimer > 0f;
+
+            if (combat)
             {
+                // 战斗镜头：优先看敌人——镜头朝「玩家→敌人」方向对齐（中等速度、平滑不乱晃）。
                 Vector3 toEnemy = lockTarget.position - target.position;
                 toEnemy.y = 0;
                 if (toEnemy.sqrMagnitude > 0.1f)
@@ -152,39 +184,50 @@ namespace AdversityRoad.Player
                     float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
                     _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.4f * dt);
                 }
-                _followBlend = 0;
+                _sustainT = 0f; _headingInit = false; _yawFollowVel = 0f;
             }
-            else if (autoFollow && !Presets[PresetIndex].fp)
+            else if (autoFollow)
             {
-                // 跟拍者式回正（参考主流第三人称防晕运镜的四要素）：
-                //   ① 延迟——玩家刚动/微调时不抢镜，先让他自己走；
-                //   ② 死区——航向偏差很小时不动，忽略摇杆微抖与直行抖动；
-                //   ③ 缓入缓出——转速用 SmoothStep 随偏差平滑增长，起步与收尾都不生硬；
-                //   ④ 限速——转速封顶，转身/掉头后平滑转到「移动方向的身后」而非猛甩。
-                // 目标朝向用角色正前方（PlayerController 已让角色朝移动方向），转身后
-                // 镜头即随之切到新的正前方。
-                bool moving = moveSpeed > 1.8f;
-                bool wantFollow = moving && Time.unscaledTime - _lastManualLook > autoFollowDelay;
-                _followBlend = Mathf.MoveTowards(_followBlend, wantFollow ? 1f : 0f, dt / 0.4f);
-                if (_followBlend > 0.01f)
+                // 探索镜头：角度基本固定；只有玩家【持续朝同一方向移动超过 exploreSustainDelay】，
+                // 镜头才【慢速】转到移动方向的身后。规则要点：
+                //   · 移动方向抖动超过 exploreHeadingBand 即重置计时 → 左右小调整/摇杆微抖不转镜头；
+                //   · 掉头时方向突变 → 计时清零 → 角色可立刻回头，但镜头延迟一会儿才慢慢跟；
+                //   · 回正用大平滑时间 + 低转速上限的 SmoothDampAngle，转得很慢、不晃眼。
+                bool moving = moveSpeed > 1.6f;
+                bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
+                if (moving && !manualRecently && frameDelta.sqrMagnitude > 1e-4f)
                 {
-                    float wantYaw = target.eulerAngles.y;   // 角色（=移动）正前方
-                    float absDiff = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
-                    if (absDiff > followDeadAngle)
-                    {
-                        // 偏差越大转得越快（缓入缓出）但封顶：小转柔和、掉头也不猛甩
-                        float t = Mathf.SmoothStep(0f, 1f,
-                            Mathf.InverseLerp(followDeadAngle, 150f, absDiff));
-                        float speed = Mathf.Lerp(20f, followMaxSpeed, t);
-                        _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, speed * _followBlend * dt);
-                    }
+                    float heading = Quaternion.LookRotation(frameDelta).eulerAngles.y;
+                    if (!_headingInit) { _smoothHeading = heading; _headingInit = true; }
+                    float headingJitter = Mathf.Abs(Mathf.DeltaAngle(heading, _smoothHeading));
+                    _smoothHeading = Mathf.SmoothDampAngle(_smoothHeading, heading,
+                        ref _headingVel, 0.18f, Mathf.Infinity, dt);
+                    // 方向稳定→累积时长；方向大变（转向/掉头）→清零，延迟镜头跟随
+                    _sustainT = headingJitter < exploreHeadingBand ? _sustainT + dt : 0f;
+
+                    float yawOffset = Mathf.Abs(Mathf.DeltaAngle(_yaw, _smoothHeading));
+                    if (_sustainT >= exploreSustainDelay && yawOffset > exploreReorientAngle)
+                        _yaw = Mathf.SmoothDampAngle(_yaw, _smoothHeading, ref _yawFollowVel,
+                            exploreTurnSmoothTime, exploreMaxSpeed, dt);
+                }
+                else
+                {
+                    _sustainT = 0f; _headingInit = false; _yawFollowVel = 0f;
                 }
             }
+            _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
 
-            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视（第一人称不干预）
-            if (!Presets[PresetIndex].fp &&
-                Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
-                _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+            // 锁定取景渐入渐出（切锁不跳镜）
+            _lockBlend = Mathf.MoveTowards(_lockBlend, lockTarget != null ? 1f : 0f, dt / 0.5f);
+
+            // 俯仰：锁定时压低到战斗视角（更贴地、更有临场感）；未锁定时闲置回中
+            if (!Presets[PresetIndex].fp && Time.unscaledTime - _lastManualLook > 0.4f)
+            {
+                if (lockTarget != null)
+                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch, 14f * dt);
+                else if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
+                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+            }
 
             _lastTargetPos = target.position;
 
@@ -215,13 +258,20 @@ namespace AdversityRoad.Player
             // 每个逐帧小动作）。水平用极短时间几乎无滞后但滤掉抖动，纵向更软，
             // 跳跃/落地/台阶时镜头柔和跟进。
             float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
+            wantH -= 0.22f * _lockBlend;   // 锁定时略降取景高度：镜头压低看清拳脚交锋
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
-            Vector2 targetXZ = new Vector2(target.position.x, target.position.z);
-            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = targetXZ; _pivotInit = true; }
+            // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）
+            Vector2 focusXZ = new Vector2(target.position.x, target.position.z);
+            if (lockTarget != null)
+            {
+                Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
+                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f, lockCenterBias * _lockBlend);
+            }
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _pivotInit = true; }
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
-            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, targetXZ, ref _pivotXZVel,
+            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, focusXZ, ref _pivotXZVel,
                 followSmoothTime, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
 
@@ -231,10 +281,12 @@ namespace AdversityRoad.Player
             {
                 // 贴近取景：近身缠斗时镜头压近看清拳脚细节，拉开时同框
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
-                wantFactor = Mathf.Clamp(0.68f + enemyDist * 0.07f, 0.8f, 1.35f);
+                wantFactor = Mathf.Clamp(0.6f + enemyDist * 0.06f, 0.72f, 1.3f);
             }
             else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
-            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);
+            // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
+            wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
+            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 2.2f * dt);
 
             Vector3 boomDir = (rot * offset).normalized;
             float maxDist = offset.magnitude * _lenFactor;

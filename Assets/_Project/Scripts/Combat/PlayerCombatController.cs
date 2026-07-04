@@ -294,8 +294,11 @@ namespace AdversityRoad.Combat
             CombatFeedback.SwingArc(transform, nextDepth >= 2 || recipeHit,
                 recipeHit ? new Color(1f, 0.85f, 0.3f)
                 : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
-            OpenHitboxTimed(s.windup, s.open, dmg, s.posture,
-                (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f), true);
+            // 招式分工：腿系主司「击退」（大幅推开、打断敌人突进/连招，拉开身位），
+            // 拳系主司「快攻」（低击退但出手快、可高频衔接，见 PunchChain 更短的帧数）。
+            float knock = (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f);
+            if (btn == AttackBtn.Kick) knock += 3.5f;
+            OpenHitboxTimed(s.windup, s.open, dmg, s.posture, knock, true);
         }
 
         void RaiseSeq()
@@ -452,6 +455,7 @@ namespace AdversityRoad.Combat
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
             _fsm.RequestState(CombatState.Finisher, 1.5f);
             _player.SetInvincible(1.6f);
+            CombatFeedback.UltimateShot(1.7f);   // 大招镜头：短暂拉近，结束回稳
             PoseState[] seq =
             {
                 PoseState.PunchJab, PoseState.AttackKick, PoseState.PunchCross,
@@ -546,9 +550,13 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = h =>
             {
                 if (buildMomentum) AddMomentum(1);
-                // 打击感：命中顿帧随伤害加重
-                CombatFeedback.HitStop(dmg >= heavyDamage ? 0.08f : 0.05f);
-                CombatFeedback.Shake(0.3f);
+                // 打击感：命中顿帧（不晕）随伤害加重 + 打击音效；
+                // 只有重击/大伤害才震屏——普通连段不频繁震屏（防晕）。
+                bool heavy = dmg >= heavyDamage;
+                CombatFeedback.HitStop(heavy ? 0.08f : 0.05f);
+                if (heavy) CombatFeedback.Shake(0.3f);
+                Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
+                    heavy ? 1f : 0.8f);
             };
             weaponHitbox.EnableHitbox(new DamageInfo
             {
@@ -682,6 +690,7 @@ namespace AdversityRoad.Combat
                         _player.Stats.focus + parryFocusRestore);
                     GameEvents.RaiseMentalStatChanged("focus", _player.Stats.focus, _player.Stats.maxFocus);
                     GameEvents.RaiseSubtitle("定心格挡！心理攻击被化解，专注恢复。");
+                    Core.GameAudio.Play(Core.GameAudio.Sfx.Parry);
                 }
                 else
                 {
@@ -694,9 +703,13 @@ namespace AdversityRoad.Combat
             if (dmg.physicalDamage > 0)
             {
                 float phys = dmg.physicalDamage;
-                if (IsGuarding && _player.Stats.SpendStamina(phys * 0.5f)) phys *= 0.2f;
+                bool blocked = IsGuarding && _player.Stats.SpendStamina(phys * 0.5f);
+                if (blocked) phys *= 0.2f;
                 _player.Stats.TakePhysicalDamage(phys);
 
+                Core.GameAudio.Play(blocked ? Core.GameAudio.Sfx.Block
+                    : phys >= knockdownThreshold ? Core.GameAudio.Sfx.HeavyHit
+                    : Core.GameAudio.Sfx.Hurt);
                 CombatFeedback.HitFlash(gameObject);
                 CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(phys).ToString(),
                     new Color(1f, 0.35f, 0.3f));

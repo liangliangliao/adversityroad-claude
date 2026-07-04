@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using AdversityRoad.Player;
+using AdversityRoad.Core;
 
 namespace AdversityRoad.Combat
 {
@@ -253,11 +254,19 @@ namespace AdversityRoad.Combat
             if (cam != null) cam.Kick(strength);
         }
 
+        /// <summary>大招镜头：短暂拉近取景（仅大招调用，普通攻击/移动不触发）。</summary>
+        public static void UltimateShot(float duration)
+        {
+            var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+            if (cam != null) cam.UltimateShot(duration);
+        }
+
         // ---------- 挥击剑气 ----------
 
         public static void SwingArc(Transform owner, bool heavy, Color color)
         {
             Ensure();
+            GameAudio.Play(GameAudio.Sfx.Swing, heavy ? 0.9f : 0.6f);
             var arc = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.Destroy(arc.GetComponent<Collider>());
             arc.transform.position = owner.position + owner.forward * 1.1f + Vector3.up * 1.1f;
