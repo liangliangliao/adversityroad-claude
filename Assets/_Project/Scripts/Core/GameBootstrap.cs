@@ -243,6 +243,17 @@ namespace AdversityRoad.Core
             qiren.projectileScale = 2.2f;
             qiren.momentumCost = 2;
             exec.equippedSkills.Add(qiren);
+
+            // 责任归还：责任转嫁法院核心技能——清除过度负责、把虚假责任球打回法官
+            var guihuan = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            guihuan.skillId = "zeren_guihuan";
+            guihuan.displayName = "责任归还";
+            guihuan.description = "把不属于自己的责任准确还回去：清除过度负责减速，将飞来的虚假责任球打回法官，回补边界。";
+            guihuan.staminaCost = 10;
+            guihuan.cooldown = 6;
+            guihuan.castLockTime = 0.35f;
+            guihuan.isResponsibilityReturn = true;
+            exec.equippedSkills.Add(guihuan);
         }
 
         void BuildCamera()

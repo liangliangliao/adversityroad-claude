@@ -85,6 +85,12 @@ namespace AdversityRoad.Combat
             if (Reached(aim, 1.0f)) ArrivePlayer();
         }
 
+        /// <summary>「责任归还」技能触发：把仍在飞来的虚假责任球强制打回抛球者。</summary>
+        public void ForceReturn()
+        {
+            if (isFalse && !_returning) _returning = true;
+        }
+
         void MoveToward(Vector3 target, float spd)
         {
             transform.position = Vector3.MoveTowards(transform.position, target, spd * Time.deltaTime);

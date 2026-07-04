@@ -36,6 +36,9 @@ namespace AdversityRoad.Data
         [Header("能量消耗：大招需消耗意势（0=不需要）")]
         public int momentumCost = 0;
 
+        [Header("责任归还（责任转嫁法院专属）：清除过度负责、把虚假责任球打回法官")]
+        public bool isResponsibilityReturn = false;
+
         [Header("时序")]
         public float cooldown = 5f;
         public float castLockTime = 0.6f;

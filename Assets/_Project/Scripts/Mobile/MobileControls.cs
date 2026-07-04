@@ -63,6 +63,7 @@ namespace AdversityRoad.Mobile
             AddButton("Jump", "跳", new Vector2(-190, 655), 112, new Color(0.65f, 0.5f, 0.9f, 0.75f));
             AddButton("Skill2", "气", new Vector2(-650, 425), 100, new Color(0.35f, 0.8f, 0.95f, 0.75f));
             AddButton("Skill1", "定", new Vector2(-435, 520), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
+            AddButton("Skill3", "还", new Vector2(-620, 560), 100, new Color(0.35f, 0.75f, 0.55f, 0.78f));
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
         }
 
