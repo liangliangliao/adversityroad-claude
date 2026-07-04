@@ -254,6 +254,13 @@ namespace AdversityRoad.Combat
             if (cam != null) cam.Kick(strength);
         }
 
+        /// <summary>大招镜头：短暂拉近取景（仅大招调用，普通攻击/移动不触发）。</summary>
+        public static void UltimateShot(float duration)
+        {
+            var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+            if (cam != null) cam.UltimateShot(duration);
+        }
+
         // ---------- 挥击剑气 ----------
 
         public static void SwingArc(Transform owner, bool heavy, Color color)

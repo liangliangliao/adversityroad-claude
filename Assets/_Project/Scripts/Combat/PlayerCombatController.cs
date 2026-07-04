@@ -455,6 +455,7 @@ namespace AdversityRoad.Combat
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
             _fsm.RequestState(CombatState.Finisher, 1.5f);
             _player.SetInvincible(1.6f);
+            CombatFeedback.UltimateShot(1.7f);   // 大招镜头：短暂拉近，结束回稳
             PoseState[] seq =
             {
                 PoseState.PunchJab, PoseState.AttackKick, PoseState.PunchCross,
@@ -549,10 +550,11 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = h =>
             {
                 if (buildMomentum) AddMomentum(1);
-                // 打击感：命中顿帧随伤害加重 + 打击音效
+                // 打击感：命中顿帧（不晕）随伤害加重 + 打击音效；
+                // 只有重击/大伤害才震屏——普通连段不频繁震屏（防晕）。
                 bool heavy = dmg >= heavyDamage;
                 CombatFeedback.HitStop(heavy ? 0.08f : 0.05f);
-                CombatFeedback.Shake(0.3f);
+                if (heavy) CombatFeedback.Shake(0.3f);
                 Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
                     heavy ? 1f : 0.8f);
             };
