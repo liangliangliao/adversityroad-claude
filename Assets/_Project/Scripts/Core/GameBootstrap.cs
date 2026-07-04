@@ -16,7 +16,7 @@ namespace AdversityRoad.Core
 {
     /// <summary>
     /// 运行时一键搭建整个游戏世界（CI 无头打包不依赖编辑器建场）：
-    /// 四大区域（独居小屋/训练武馆/噪声街区/城市广场）+ 昼夜循环 + 行人车辆 +
+    /// 六大区域（独居小屋/训练武馆/噪声街区/求职荒原/城市广场/责任转嫁法院）+ 昼夜循环 + 行人车辆 +
     /// 章节剧情 + 每区域一个章节心魔 + 玩家自由添加敌人 + HUD/触屏操控/配置面板。
     /// </summary>
     public class GameBootstrap : MonoBehaviour
@@ -63,7 +63,8 @@ namespace AdversityRoad.Core
                     Personalization.WeaknessAxis.Procrastination,
                     Personalization.WeaknessAxis.SelfDoubt,
                     Personalization.WeaknessAxis.NoiseSensitivity,
-                    Personalization.WeaknessAxis.Shame);
+                    Personalization.WeaknessAxis.Shame,
+                    Personalization.WeaknessAxis.BoundaryConflict);
         }
 
         void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
@@ -362,6 +363,11 @@ namespace AdversityRoad.Core
             hurt.AddComponent<Hurtbox>();
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
+
+            // 全责法官专属：周期性抛掷责任球（真假责任判断机制）
+            if (type == EnemyType.TotalResponsibilityJudge)
+                root.AddComponent<ResponsibilityJudge>();
+
             return root;
         }
 

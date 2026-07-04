@@ -30,8 +30,8 @@ namespace AdversityRoad.World
     {
         public static string CurrentZoneId = "home";
 
-        static readonly string[] ZoneIds = { "home", "dojo", "street", "job", "plaza" };
-        static readonly string[] ZoneNames = { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场" };
+        static readonly string[] ZoneIds = { "home", "dojo", "street", "job", "plaza", "court" };
+        static readonly string[] ZoneNames = { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -48,7 +48,8 @@ namespace AdversityRoad.World
                 new Vector3(300, 0, 0),
                 new Vector3(600, 0, 0),
                 new Vector3(900, 0, 0),
-                new Vector3(1200, 0, 0)
+                new Vector3(1200, 0, 0),
+                new Vector3(1500, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -56,7 +57,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[1] + new Vector3(-18, 1.1f, 0),
                 ctx.zoneOrigins[2] + new Vector3(-40, 1.1f, 8),
                 ctx.zoneOrigins[3] + new Vector3(-38, 1.1f, 0),
-                ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0)
+                ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0),
+                ctx.zoneOrigins[5] + new Vector3(-30, 1.1f, 0)
             };
             ctx.enemySpawns = new[]
             {
@@ -64,7 +66,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[1] + new Vector3(8, 1.1f, 8),
                 ctx.zoneOrigins[2] + new Vector3(15, 1.1f, 9),
                 ctx.zoneOrigins[3] + new Vector3(10, 1.1f, 5),
-                ctx.zoneOrigins[4] + new Vector3(0, 1.1f, 8)
+                ctx.zoneOrigins[4] + new Vector3(0, 1.1f, 8),
+                ctx.zoneOrigins[5] + new Vector3(12, 1.1f, 4)
             };
 
             BuildHome(ctx);
@@ -72,6 +75,7 @@ namespace AdversityRoad.World
             BuildStreet(ctx);
             BuildJobSquare(ctx);
             BuildPlaza(ctx);
+            BuildResponsibilityCourt(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -350,6 +354,92 @@ namespace AdversityRoad.World
                 ctx.pedestrianSpawns.Add(o + new Vector3(-18 + i * 12, 1f, 12 - i * 8));
 
             MakePortal(ctx, o + new Vector3(-53f, 0, 0), 3, ctx.playerSpawns[3] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(53f, 0, 0), 5, ctx.playerSpawns[5]);
+        }
+
+        // ================= 第六区：责任转嫁法院 =================
+
+        static void BuildResponsibilityCourt(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[5];
+
+            // 大厅地面 + 中央责任归属台的深色石纹
+            Box(ctx, "Court_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(70, 0.5f, 60),
+                new Color(0.34f, 0.32f, 0.35f));
+            Decoration(ctx, "CourtAisle", o + new Vector3(0, 0.02f, 0), new Vector3(10, 0.04f, 44),
+                new Color(0.5f, 0.44f, 0.4f));
+            Ring(ctx, o, new Vector2(34, 29), 5, new Color(0.28f, 0.26f, 0.3f));
+
+            // 冷白顶灯：法院的压迫式照明
+            var lampGo = new GameObject("Court_Light");
+            lampGo.transform.position = o + new Vector3(0, 8f, 6);
+            var lamp = lampGo.AddComponent<Light>();
+            lamp.type = LightType.Point;
+            lamp.range = 40;
+            lamp.intensity = 1.0f;
+            lamp.color = new Color(0.85f, 0.88f, 1f);
+
+            // 高耸法官席（Boss 所在的审判台）
+            Box(ctx, "JudgeBench", o + new Vector3(0, 1.1f, 20), new Vector3(16, 2.2f, 5),
+                new Color(0.3f, 0.22f, 0.18f));
+            Box(ctx, "JudgeBenchTop", o + new Vector3(0, 2.35f, 20), new Vector3(17, 0.3f, 5.6f),
+                new Color(0.24f, 0.17f, 0.14f));
+            // 席位后方巨大法槌浮雕
+            Decoration(ctx, "GavelHead", o + new Vector3(0, 4.6f, 22.4f), new Vector3(3.4f, 1.4f, 1.4f),
+                new Color(0.5f, 0.4f, 0.24f));
+            Decoration(ctx, "GavelHandle", o + new Vector3(0, 3.0f, 22.4f), new Vector3(0.5f, 2.6f, 0.5f),
+                new Color(0.42f, 0.32f, 0.2f));
+
+            // 责任天平：中央的判断装置
+            Box(ctx, "ScalePillar", o + new Vector3(0, 1.4f, 4), new Vector3(0.5f, 2.8f, 0.5f),
+                new Color(0.55f, 0.5f, 0.3f));
+            Decoration(ctx, "ScaleBeam", o + new Vector3(0, 2.7f, 4), new Vector3(6, 0.18f, 0.18f),
+                new Color(0.6f, 0.55f, 0.32f));
+            Decoration(ctx, "ScalePanL", o + new Vector3(-2.8f, 2.1f, 4), new Vector3(1.8f, 0.1f, 1.8f),
+                new Color(0.7f, 0.65f, 0.4f));
+            Decoration(ctx, "ScalePanR", o + new Vector3(2.8f, 2.4f, 4), new Vector3(1.8f, 0.1f, 1.8f),
+                new Color(0.7f, 0.65f, 0.4f));
+
+            // 边界圈：站进来短暂恢复边界（安全区），也提示玩家"守住自己的范围"
+            var circle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(circle.GetComponent<Collider>());
+            circle.name = "BoundaryCircle";
+            circle.transform.position = o + new Vector3(-12, 0.04f, -2);
+            circle.transform.localScale = new Vector3(5f, 0.02f, 5f);
+            Paint(ctx, circle, new Color(0.3f, 0.75f, 0.5f));
+            var bcZone = new GameObject("BoundaryCircleZone");
+            bcZone.transform.position = o + new Vector3(-12, 1f, -2);
+            var bcCol = bcZone.AddComponent<BoxCollider>();
+            bcCol.size = new Vector3(5f, 2f, 5f);
+            bcZone.AddComponent<BoundaryCircle>();
+
+            // 两侧文件山（可绕行的障碍）与责任锁链装饰
+            var rng = new System.Random(64);
+            for (int i = 0; i < 4; i++)
+            {
+                float z = -18 + i * 10;
+                float h = 2.2f + (float)rng.NextDouble() * 1.6f;
+                Box(ctx, "FileMountain", o + new Vector3(-24, h / 2, z),
+                    new Vector3(4, h, 4), new Color(0.6f, 0.56f, 0.46f));
+                Box(ctx, "FileMountain", o + new Vector3(24, (h + 0.6f) / 2, z + 4),
+                    new Vector3(4, h + 0.6f, 4), new Color(0.58f, 0.54f, 0.44f));
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                float x = -14 + i * 5.6f;
+                Decoration(ctx, "Chain", o + new Vector3(x, 3.2f, 14),
+                    new Vector3(0.14f, 3.6f, 0.14f), new Color(0.35f, 0.35f, 0.4f));
+            }
+
+            // 陪审团阴影席（无碰撞剪影，营造被围观的压迫感）
+            for (int side = -1; side <= 1; side += 2)
+                for (int i = 0; i < 4; i++)
+                    Decoration(ctx, "JurorShadow",
+                        o + new Vector3(side * 20, 1.1f, -6 + i * 4),
+                        new Vector3(1.0f, 2.2f, 0.6f), new Color(0.12f, 0.12f, 0.16f));
+
+            // 返回城市广场
+            MakePortal(ctx, o + new Vector3(-32f, 0, 0), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
         }
 
         // ================= 动态生命（NavMesh 烘焙后调用） =================

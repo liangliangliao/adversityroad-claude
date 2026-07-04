@@ -33,7 +33,12 @@ namespace AdversityRoad.AI
             { WeaknessAxis.JobAnxiety, new[]
                 { "投出去的简历，石沉大海。", "没有回应，永远没有回应。" } },
             { WeaknessAxis.BoundaryConflict, new[]
-                { "你不好意思拒绝的，一直都是。", "退一步吧，你习惯了。" } },
+                { "你不好意思拒绝的，一直都是。", "退一步吧，你习惯了。",
+                  "这也是你的责任。", "你不管，就是你不够意思。", "你有能力，就该替他扛。",
+                  "就这一次，你先替他承担一下。" } },
+            { WeaknessAxis.FairnessSensitivity, new[]
+                { "这点小事，你也要计较责任？", "谁对谁错，说不清的，各退一步吧。",
+                  "别追究了，追究显得你小气。" } },
             { WeaknessAxis.WillpowerCollapse, new[]
                 { "撑不住就松手，多轻松。", "你的意志，比纸还薄。" } },
         };
@@ -45,6 +50,7 @@ namespace AdversityRoad.AI
             { "street", new[] { "街上每个人都比你从容。", "缩回去吧，这里不欢迎你。" } },
             { "job",    new[] { "投出去的，都石沉大海。", "这扇门，不会为你开。", "已读，不回。" } },
             { "plaza",  new[] { "整座城市都在等着看你失败。", "你走不到终点的。" } },
+            { "court",  new[] { "这也是你的责任。", "全都怪你，签字画押吧。", "你不背，谁背？" } },
         };
 
         static readonly Random Rng = new Random();
