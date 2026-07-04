@@ -323,7 +323,9 @@ namespace AdversityRoad.World
                 float t = -44 + i * 22;
                 Building(ctx, o + new Vector3(t, 0, 48), 14, 12 + (float)rng.NextDouble() * 14, 10, rng);
                 Building(ctx, o + new Vector3(t, 0, -48), 14, 12 + (float)rng.NextDouble() * 14, 10, rng);
-                Building(ctx, o + new Vector3(48, 0, t), 10, 10 + (float)rng.NextDouble() * 12, 14, rng);
+                // 东侧中央（i==2）留出通往责任转嫁法院的大门缺口，不建楼
+                if (i != 2)
+                    Building(ctx, o + new Vector3(48, 0, t), 10, 10 + (float)rng.NextDouble() * 12, 14, rng);
             }
 
             for (int i = 0; i < 4; i++)
@@ -354,7 +356,8 @@ namespace AdversityRoad.World
                 ctx.pedestrianSpawns.Add(o + new Vector3(-18 + i * 12, 1f, 12 - i * 8));
 
             MakePortal(ctx, o + new Vector3(-53f, 0, 0), 3, ctx.playerSpawns[3] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(53f, 0, 0), 5, ctx.playerSpawns[5]);
+            // 责任转嫁法院入口：置于东侧大门缺口内的开阔地（不再被楼体/围墙埋住），显眼可达
+            MakePortal(ctx, o + new Vector3(44f, 0, 0), 5, ctx.playerSpawns[5]);
         }
 
         // ================= 第六区：责任转嫁法院 =================
