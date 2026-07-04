@@ -141,12 +141,16 @@ namespace AdversityRoad.UI
             if (correct)
             {
                 if (_enemy != null) _enemy.OnVerbalCountered();
+                // 姿态契合：当前姿态正好克制这条弱点轴时，额外奖励（更多回补/更快清反刍）
+                var stance = player != null ? player.GetComponent<StanceSystem>() : null;
+                bool aligned = stance != null && stance.CoversAxis(_axis);
                 if (player != null)
                 {
-                    player.Stats.RestoreAxis(_axis, 22f);
-                    player.Stats.ReduceRumination(20f);
+                    player.Stats.RestoreAxis(_axis, aligned ? 34f : 22f);
+                    player.Stats.ReduceRumination(aligned ? 30f : 20f);
                 }
-                GameEvents.RaiseSubtitle("『" + _bestLine + "』——回击命中，对方语塞。");
+                GameEvents.RaiseSubtitle("『" + _bestLine + "』——回击命中，对方语塞。" +
+                    (aligned ? "（姿态契合·加成）" : ""));
                 GameAudio.Play(GameAudio.Sfx.Parry, 0.8f);
             }
             else

@@ -168,6 +168,7 @@ namespace AdversityRoad.Core
 
             _player = root.AddComponent<PlayerController>();
             var fsm = root.AddComponent<CombatStateMachine>();
+            root.AddComponent<StanceSystem>();     // 五种战斗姿态（Awake 早于 PlayerCombatController.Awake 读取）
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
             var skillExec = root.AddComponent<SkillExecutor>();
@@ -445,6 +446,9 @@ namespace AdversityRoad.Core
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
             UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -286), new Vector2(400, 40));
             hud.comboText = comboText;
+
+            // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
+            StanceBar.Create(canvasGo.transform, _player.GetComponent<StanceSystem>());
 
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);
