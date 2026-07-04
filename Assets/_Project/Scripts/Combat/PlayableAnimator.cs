@@ -35,6 +35,8 @@ namespace AdversityRoad.Combat
         float _speed01;
         bool _ready;
 
+        static int _graphSerial;
+
         public bool Valid { get; private set; }
 
         public PlayableAnimator(Animator animator)
@@ -56,7 +58,7 @@ namespace AdversityRoad.Combat
             }
             var combatIdle = Load("CombatIdle") ?? idle;
 
-            _graph = PlayableGraph.Create("CharAnim_" + _animator.GetInstanceID());
+            _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 我们手动推进，配合 timeScale/顿帧
             var output = AnimationPlayableOutput.Create(_graph, "out", _animator);
 
