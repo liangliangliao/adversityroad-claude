@@ -122,6 +122,7 @@ namespace AdversityRoad.Player
                 _dodgeDir = moveDir.sqrMagnitude > 0.01f ? moveDir : transform.forward;
                 // 翻滚方向即刻转身
                 transform.rotation = Quaternion.LookRotation(_dodgeDir);
+                Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
                 _dodgeTimer = dodgeDuration;
                 _iframeTimer = dodgeIFrames;
                 if (_combat != null) _combat.RequestState(CombatState.Dodge);

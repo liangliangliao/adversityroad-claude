@@ -27,6 +27,11 @@ namespace AdversityRoad.Player
         public float minPitch = -18f, maxPitch = 38f;
         public float defaultPitch = 10f;   // 低平视角：地平线可见，画面有纵深电影感
         public float pitchRecenterDelay = 2.5f;
+        [Header("战斗/锁定取景：让玩家与敌人同框居中，镜头降低、靠近")]
+        [Tooltip("锁定时俯仰压低到该角度（战斗更贴地、更有压迫感与临场感）")]
+        public float combatLockPitch = 4f;
+        [Tooltip("锁定取景点偏向「玩家↔敌人中点」的比例：0=只看玩家，1=完全取中点")]
+        [Range(0f, 0.8f)] public float lockCenterBias = 0.42f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
         public float rotationSmoothTime = 0.11f;
         [Tooltip("水平跟随平滑时间：极短的临界阻尼，滤掉角色移动的逐帧微抖动又几乎无滞后" +
@@ -59,6 +64,7 @@ namespace AdversityRoad.Player
         Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
         float _pivotH = 1.55f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
+        float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
         bool _pivotInit;
         Transform _head;                    // 第一人称时隐藏头部（显露手臂与兵器）
 
@@ -181,10 +187,17 @@ namespace AdversityRoad.Player
                 }
             }
 
-            // 俯仰角闲时缓慢回中：避免视角卡在高空俯视（第一人称不干预）
-            if (!Presets[PresetIndex].fp &&
-                Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
-                _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+            // 锁定取景渐入渐出（切锁不跳镜）
+            _lockBlend = Mathf.MoveTowards(_lockBlend, lockTarget != null ? 1f : 0f, dt / 0.5f);
+
+            // 俯仰：锁定时压低到战斗视角（更贴地、更有临场感）；未锁定时闲置回中
+            if (!Presets[PresetIndex].fp && Time.unscaledTime - _lastManualLook > 0.4f)
+            {
+                if (lockTarget != null)
+                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch, 14f * dt);
+                else if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
+                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+            }
 
             _lastTargetPos = target.position;
 
@@ -215,13 +228,20 @@ namespace AdversityRoad.Player
             // 每个逐帧小动作）。水平用极短时间几乎无滞后但滤掉抖动，纵向更软，
             // 跳跃/落地/台阶时镜头柔和跟进。
             float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
+            wantH -= 0.22f * _lockBlend;   // 锁定时略降取景高度：镜头压低看清拳脚交锋
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
-            Vector2 targetXZ = new Vector2(target.position.x, target.position.z);
-            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = targetXZ; _pivotInit = true; }
+            // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）
+            Vector2 focusXZ = new Vector2(target.position.x, target.position.z);
+            if (lockTarget != null)
+            {
+                Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
+                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f, lockCenterBias * _lockBlend);
+            }
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _pivotInit = true; }
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
-            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, targetXZ, ref _pivotXZVel,
+            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, focusXZ, ref _pivotXZVel,
                 followSmoothTime, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
 
@@ -231,7 +251,7 @@ namespace AdversityRoad.Player
             {
                 // 贴近取景：近身缠斗时镜头压近看清拳脚细节，拉开时同框
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
-                wantFactor = Mathf.Clamp(0.68f + enemyDist * 0.07f, 0.8f, 1.35f);
+                wantFactor = Mathf.Clamp(0.6f + enemyDist * 0.06f, 0.72f, 1.3f);
             }
             else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.8f * dt);

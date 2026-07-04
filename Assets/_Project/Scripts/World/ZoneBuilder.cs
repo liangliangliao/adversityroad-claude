@@ -41,6 +41,7 @@ namespace AdversityRoad.World
 
         public static void BuildAll(WorldContext ctx)
         {
+            Player.CameraOcclusionFade.ClearOccluders();   // 重建世界前清空旧遮挡登记
             ctx.zoneOrigins = new[]
             {
                 new Vector3(0, 0, 0),
@@ -510,6 +511,11 @@ namespace AdversityRoad.World
             crown2.transform.position = basePos + new Vector3(0.5f, 4.2f, 0.3f);
             crown2.transform.localScale = Vector3.one * 1.8f;
             Paint(ctx, crown2, new Color(0.26f, 0.52f, 0.24f));
+
+            // 登记为可遮挡物：挡在镜头与玩家之间时自动淡出（树冠无碰撞体，靠登记表识别）
+            Player.CameraOcclusionFade.RegisterOccluder(trunk.GetComponent<Renderer>());
+            Player.CameraOcclusionFade.RegisterOccluder(crown.GetComponent<Renderer>());
+            Player.CameraOcclusionFade.RegisterOccluder(crown2.GetComponent<Renderer>());
         }
 
         static void Bench(WorldContext ctx, Vector3 basePos, float yRot)

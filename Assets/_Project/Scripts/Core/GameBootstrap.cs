@@ -205,16 +205,8 @@ namespace AdversityRoad.Core
             shield.SetActive(false);
             combat.guardShield = shield;
 
-            // 内功光环可视化
-            var aura = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            aura.name = "InnerAura";
-            Object.DestroyImmediate(aura.GetComponent<Collider>());
-            aura.transform.SetParent(root.transform, false);
-            aura.transform.localPosition = new Vector3(0, -0.95f, 0);
-            aura.transform.localScale = new Vector3(1.7f, 0.05f, 1.7f);
-            Paint(aura, new Color(1f, 0.85f, 0.35f));
-            aura.SetActive(false);
-            combat.innerAura = aura;
+            // 满势不再用脚下光环圆盘表达（易糊在地面显脏）——改由 HUD 意势圆点显示，
+            // 保持画面干净。combat.innerAura 留空即可，PlayerCombatController 已做空判断。
 
             EquipSkills(skillExec);
         }
@@ -266,6 +258,15 @@ namespace AdversityRoad.Core
             tpc.player = _player;
             tpc.lockOn = _player.GetComponent<LockOnSystem>();
             _player.cameraTransform = camGo.transform;
+
+            // 遮挡淡出：树木等挡在镜头与玩家之间时自动透明
+            var occ = camGo.GetComponent<CameraOcclusionFade>();
+            if (occ == null) occ = camGo.AddComponent<CameraOcclusionFade>();
+            occ.target = _player.transform;
+
+            // 音效需要一个 AudioListener（运行时建的相机不会自带）
+            if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
+
             // 镜头立即就位，避免开场从原点飞过来
             camGo.transform.position = _player.transform.position + new Vector3(0, 2.5f, -5f);
         }

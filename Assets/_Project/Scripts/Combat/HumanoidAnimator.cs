@@ -62,7 +62,7 @@ namespace AdversityRoad.Combat
             if (moving) _phase += dt * Mathf.Lerp(3.5f, 11.5f, _speed01);
 
             // ---------- 基础目标角 ----------
-            float pelvisY = -0.05f;
+            float pelvisY = -0.05f, pelvisX = 0f;
             float torsoP = Mathf.Lerp(1f, 9f, _speed01), torsoY = 0, torsoR = 0;
             float headP = 0, headY = 0;
             float shLp, shRp, shLr = 4, shRr = -4;   // 肩 pitch / roll
@@ -89,6 +89,24 @@ namespace AdversityRoad.Combat
                 pelvisY += Mathf.Abs(Mathf.Cos(_phase)) * 0.055f * _speed01;
                 footLp = -hipLp * 0.45f;
                 footRp = -hipRp * 0.45f;
+
+                // ---- 次要动作（消除机械感，参考真人步态运动学）----
+                // 步频的两倍是"每一步"的节拍（左右各一次），用于侧向重心转移。
+                float step = Mathf.Sin(_phase);          // 前后摆（与腿同相）
+                float bob2 = Mathf.Cos(_phase * 2f);     // 每步一次的上下/侧向节拍
+                // 脊柱反向扭转：肩带与骨盆做对侧旋转（走路时上身与髋反向拧），
+                // 这是"看起来像人"最关键的一笔——僵直的关键缺失就是它。
+                torsoY += -step * Mathf.Lerp(5f, 13f, _speed01);
+                headY += step * Mathf.Lerp(2f, 6f, _speed01);       // 头略朝行进侧引导视线
+                // 每一步的重心左右转移：骨盆侧摆 + 躯干反向侧倾（钟摆式配重）
+                pelvisX = bob2 * Mathf.Lerp(0.015f, 0.05f, _speed01);
+                torsoR += -bob2 * Mathf.Lerp(2f, 6f, _speed01);
+                headP += -Mathf.Abs(Mathf.Sin(_phase)) * 2.5f * _speed01;  // 落步轻微点头
+                // 手臂不只前后摆：叠加一点外摆与屈肘变化，摆动更松弛自然
+                shLr += step * 4f * _speed01;
+                shRr += step * 4f * _speed01;
+                elL += Mathf.Max(0f, step) * 18f * _speed01;
+                elR += Mathf.Max(0f, -step) * 18f * _speed01;
             }
             else
             {
@@ -401,7 +419,7 @@ namespace AdversityRoad.Combat
                 _pose == PoseState.Hit;
             float k2 = Mathf.Clamp01((attackPose ? 30f : 13f) * dt);
             rig.pelvis.localPosition = Vector3.Lerp(rig.pelvis.localPosition,
-                new Vector3(0, pelvisY, 0), k2);
+                new Vector3(pelvisX, pelvisY, 0), k2);
             J(rig.torso, torsoP, torsoY, torsoR, k2);
             J(rig.head, headP, headY, 0, k2);
             // 肩/髋俯仰在应用时取负：肢体几何向下延伸，绕 X 正角会转向身后，
