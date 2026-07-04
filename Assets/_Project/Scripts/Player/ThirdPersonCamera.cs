@@ -47,17 +47,17 @@ namespace AdversityRoad.Player
         public float autoFollowDelay = 0.3f;
         public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
 
-        [Header("探索镜头：角度基本固定，持续同向移动才慢速回正到身后")]
-        [Tooltip("需持续朝同一方向移动多久，镜头才开始慢慢回正（秒）")]
-        public float exploreSustainDelay = 0.9f;
+        [Header("探索镜头：角度基本固定，持续同向移动后把镜头转到玩家背后（面朝方向）")]
+        [Tooltip("需持续朝同一方向移动多久，镜头才开始回正（秒）——够短才能可靠转到身后")]
+        public float exploreSustainDelay = 0.45f;
         [Tooltip("移动方向抖动在此角度内视为「同一方向」；超过即重置计时（掉头/大调整会延迟回正）")]
-        public float exploreHeadingBand = 30f;
+        public float exploreHeadingBand = 55f;
         [Tooltip("镜头与移动方向偏差小于此角度就不必回正（避免细抖）")]
-        public float exploreReorientAngle = 12f;
-        [Tooltip("探索回正平滑时间：偏大=慢=稳（镜头旋转要慢）")]
-        public float exploreTurnSmoothTime = 0.6f;
-        [Tooltip("探索回正最大转速（度/秒）：很低，慢慢转过去不晃眼")]
-        public float exploreMaxSpeed = 65f;
+        public float exploreReorientAngle = 8f;
+        [Tooltip("探索回正平滑时间：偏大=慢=稳，偏小=快=跟手")]
+        public float exploreTurnSmoothTime = 0.45f;
+        [Tooltip("探索回正最大转速（度/秒）：慢慢转过去、稳中带准")]
+        public float exploreMaxSpeed = 110f;
 
         [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
         [Tooltip("大招时的取景距离系数（<1 拉近）")]
@@ -133,7 +133,11 @@ namespace AdversityRoad.Player
         void Awake()
         {
             var cam = GetComponent<Camera>();
-            if (cam != null) cam.fieldOfView = fieldOfView;
+            if (cam != null)
+            {
+                cam.fieldOfView = fieldOfView;
+                cam.nearClipPlane = 0.04f;   // 第一人称能看清眼前的手/兵器（否则被近裁剪面切掉）
+            }
             ApplyPreset(PlayerPrefs.GetInt("cam_preset", 1), false);
             _boomDist = offset.magnitude;
         }
@@ -239,18 +243,21 @@ namespace AdversityRoad.Player
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
 
-            // ---- 第一人称：镜头在眼位，隐藏头部，手臂与兵器动作直观可见 ----
+            // ---- 第一人称：镜头在「眼睛」高度（不再蹲着感），略微俯视让身前的
+            //      手臂/兵器/腿在挥击时进入画面（符合真实第一人称近战取景） ----
             SetHeadVisible(!Presets[PresetIndex].fp);
             if (Presets[PresetIndex].fp)
             {
-                Vector3 eye = target.position + Vector3.up * 0.75f + rot * new Vector3(0, 0, 0.12f);
+                // 眼位抬到模型头部眼睛高度（根节点上方约 0.92），略向下看 7°
+                Quaternion fpRot = Quaternion.Euler(_curPitch + 7f, _curYaw, 0);
+                Vector3 eye = target.position + Vector3.up * 0.92f + fpRot * new Vector3(0, 0, 0.04f);
                 if (_kick > 0.001f)
                 {
                     eye.y += Mathf.Sin(Time.unscaledTime * 34f) * _kick * 0.03f;
                     _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
                 }
                 transform.position = eye;
-                transform.rotation = rot;
+                transform.rotation = fpRot;
                 return;
             }
 

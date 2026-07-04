@@ -42,6 +42,35 @@ namespace AdversityRoad.Combat
             return m;
         }
 
+        /// <summary>特效材质：半透明加色（发光感），用于刀光/冲击环等——避免实心大色块。</summary>
+        static Material MatFX(Color c, float alpha)
+        {
+            var m = Mat(c);
+            if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);            // URP 透明
+            if (m.HasProperty("_SrcBlend")) m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            if (m.HasProperty("_DstBlend")) m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.One); // 加色=能量光
+            if (m.HasProperty("_ZWrite")) m.SetInt("_ZWrite", 0);
+            if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0f);
+            m.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            Color cc = c; cc.a = alpha;
+            m.color = cc;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cc);
+            return m;
+        }
+
+        static void FadeAlpha(GameObject go, float mul)
+        {
+            var r = go != null ? go.GetComponent<MeshRenderer>() : null;
+            if (r == null) return;
+            var m = r.sharedMaterial;
+            Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
+            c.a *= mul;
+            m.color = c;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+        }
+
         // ---------- 伤害数字 ----------
 
         public static void DamageNumber(Vector3 pos, string text, Color color) =>
@@ -205,24 +234,26 @@ namespace AdversityRoad.Combat
             Ensure();
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Object.DestroyImmediate(ring.GetComponent<Collider>());
-            ring.transform.position = pos + Vector3.up * 0.15f;
+            ring.transform.position = pos + Vector3.up * 0.12f;
             ring.GetComponent<MeshRenderer>().sharedMaterial =
-                Mat(Color.Lerp(color, Color.white, 0.35f));
+                MatFX(Color.Lerp(color, Color.white, 0.3f), 0.5f);
             _i.StartCoroutine(_i.RingExpand(ring));
-            HitSpark(pos, color, 10);
-            Shake(0.7f);
-            SlowMo(0.55f, 0.12f);
+            HitSpark(pos, color, 8);
+            Shake(0.55f);
+            SlowMo(0.6f, 0.1f);
         }
 
         IEnumerator RingExpand(GameObject ring)
         {
             float t = 0;
-            while (t < 0.3f && ring != null)
+            const float dur = 0.28f;
+            while (t < dur && ring != null)
             {
                 t += Time.deltaTime;
-                float k = t / 0.3f;
-                float r = Mathf.Lerp(1.2f, 6.5f, k);
-                ring.transform.localScale = new Vector3(r, 0.04f * (1f - k) + 0.01f, r);
+                float k = t / dur;
+                float r = Mathf.Lerp(0.8f, 3.8f, k);              // 收敛半径，不再铺满地面
+                ring.transform.localScale = new Vector3(r, 0.02f, r);
+                FadeAlpha(ring, 1f - Time.deltaTime / dur * 1.4f); // 边扩边淡出
                 yield return null;
             }
             if (ring != null) Destroy(ring);
@@ -269,24 +300,28 @@ namespace AdversityRoad.Combat
             GameAudio.Play(GameAudio.Sfx.Swing, heavy ? 0.9f : 0.6f);
             var arc = GameObject.CreatePrimitive(PrimitiveType.Cube);
             Object.Destroy(arc.GetComponent<Collider>());
-            arc.transform.position = owner.position + owner.forward * 1.1f + Vector3.up * 1.1f;
-            arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, heavy ? 0 : Random.Range(-30f, 30f));
+            // 一道细窄的斜向刀光，出现在身前偏上（不再是横铺一大片色块）
+            arc.transform.position = owner.position + owner.forward * 0.95f + Vector3.up * 1.25f;
+            float tilt = (heavy ? Random.Range(-14f, 14f) : Random.Range(-42f, 42f)) + 58f;
+            arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, tilt);
             arc.GetComponent<MeshRenderer>().sharedMaterial =
-                Mat(Color.Lerp(color, Color.white, 0.5f));
+                MatFX(Color.Lerp(color, Color.white, 0.4f), heavy ? 0.55f : 0.42f);
             _i.StartCoroutine(_i.ArcAnim(arc, heavy));
         }
 
         IEnumerator ArcAnim(GameObject arc, bool heavy)
         {
-            float dur = heavy ? 0.22f : 0.14f;
+            float dur = heavy ? 0.16f : 0.12f;
             float t = 0;
-            Vector3 max = heavy ? new Vector3(2.6f, 0.06f, 1.6f) : new Vector3(1.9f, 0.05f, 1.1f);
+            // 细长弧刃：长度方向拉长、厚度极薄（Z≈0.03），像一道光而非实体板
+            Vector3 max = heavy ? new Vector3(2.0f, 0.14f, 0.03f) : new Vector3(1.45f, 0.1f, 0.03f);
             while (t < dur && arc != null)
             {
                 t += Time.deltaTime;
                 float k = t / dur;
-                arc.transform.localScale = Vector3.Lerp(new Vector3(0.3f, 0.04f, 0.2f), max,
+                arc.transform.localScale = Vector3.Lerp(new Vector3(0.35f, 0.05f, 0.03f), max,
                     Mathf.Sin(k * Mathf.PI));
+                FadeAlpha(arc, 1f - Time.deltaTime / dur * 1.3f);   // 快速淡出
                 yield return null;
             }
             if (arc != null) Destroy(arc);

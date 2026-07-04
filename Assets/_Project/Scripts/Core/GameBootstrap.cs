@@ -326,6 +326,9 @@ namespace AdversityRoad.Core
             var agent = root.AddComponent<NavMeshAgent>();
             agent.speed = profile.moveSpeed;
             agent.stoppingDistance = profile.attackRange * 0.8f;
+            // 关键：NavMeshAgent 默认把根节点贴在导航面上，而人形骨骼的脚在根节点
+            // 下方约 1.1 单位，会导致下半身埋进地面。抬高 baseOffset 让双脚正好落地。
+            agent.baseOffset = 1.1f * scale;
 
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;
