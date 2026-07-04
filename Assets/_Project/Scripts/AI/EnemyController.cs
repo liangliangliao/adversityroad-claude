@@ -149,6 +149,9 @@ namespace AdversityRoad.AI
                 float v = AgentReady ? _agent.velocity.magnitude
                     : (State == EnemyState.Chase ? profile.moveSpeed : 0f);
                 poser.SetLocomotion(v / Mathf.Max(0.5f, profile.moveSpeed) * 0.85f, false, true);
+                // 交战中静立时摆出格斗预备架势（而非松垮站立）
+                poser.SetCombatReady(State == EnemyState.Chase || State == EnemyState.Attack
+                    || State == EnemyState.MentalAttack);
             }
 
             if (State == EnemyState.Stagger)

@@ -32,7 +32,11 @@ namespace AdversityRoad.Combat
         float _speed01;
         bool _crouch;
         bool _grounded = true;
+        bool _ready;   // 临战：站立时进入格斗预备架势（而非松垮的垂手待机）
         float _phase;
+
+        /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
+        public void SetCombatReady(bool ready) => _ready = ready;
 
         public void SetPose(PoseState p)
         {
@@ -107,6 +111,23 @@ namespace AdversityRoad.Combat
                 shRr += step * 4f * _speed01;
                 elL += Mathf.Max(0f, step) * 18f * _speed01;
                 elR += Mathf.Max(0f, -step) * 18f * _speed01;
+            }
+            else if (_ready && _pose == PoseState.Idle)
+            {
+                // 格斗预备架势：半侧身对敌、双臂抬起护中、屈膝沉桩、踮步左右微晃。
+                // 高手临战绝不垂手站着——这一处最能把"松垮路人"变成"临战高手"。
+                float bob = Mathf.Sin(Time.time * 3.4f);
+                float sway = Mathf.Sin(Time.time * 1.7f);
+                torsoP += 9f; torsoY = 15f;
+                shLp = 48f; shRp = 42f;
+                shLr = 20f + sway * 2f; shRr = -22f - sway * 2f;
+                elL = 95f; elR = 86f;                     // 屈肘持械/抱拳于胸前
+                hipLp = 12f; hipRp = -8f;                 // 左前右后小弓步
+                kneeLp = 28f + bob * 3f; kneeRp = 32f + bob * 3f;  // 屈膝沉桩+踮步
+                footRp = -10f;
+                pelvisY += -0.07f + bob * 0.02f;
+                pelvisX = sway * 0.02f;
+                headP = -2f;
             }
             else
             {
@@ -507,11 +528,13 @@ namespace AdversityRoad.Combat
                 case PoseState.Cast: // 施法：绕腕立剑花一周
                     weaponPivot.localRotation = Quaternion.Euler(0, 0, _t / 0.4f * 360f);
                     break;
-                default: // 静息：刃斜立体侧随呼吸微摆
+                default:
+                    // 临战：刃举于身前中位预备（斜指前上，随踮步微动）；否则静息斜立体侧
+                    Quaternion hold = _ready
+                        ? Quaternion.Euler(-70f + Mathf.Sin(Time.time * 3.4f) * 4f, 10f, -6f)
+                        : rest * Quaternion.Euler(Mathf.Sin(Time.time * 1.6f) * 3f, 0, 0);
                     weaponPivot.localRotation = Quaternion.Slerp(
-                        weaponPivot.localRotation,
-                        rest * Quaternion.Euler(Mathf.Sin(Time.time * 1.6f) * 3f, 0, 0),
-                        8f * Time.deltaTime);
+                        weaponPivot.localRotation, hold, 8f * Time.deltaTime);
                     break;
             }
         }
