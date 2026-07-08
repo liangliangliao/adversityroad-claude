@@ -1,117 +1,89 @@
-# 接入 Mixamo 动捕人形角色（真人级战斗动作）
+# 接入 Mixamo 动捕角色 + 动作（真人级战斗动作）
 
-程序化方块角色有硬性上限，达不到动捕真实度。本项目已写好**动捕集成代码**：
-运行时若发现动捕资源就自动接管（用 Playables 播放 Mixamo 动画片段），
-**找不到资源则自动回退到原来的程序化方块角色**——所以在你导入资源之前，构建始终正常。
-
-你需要做的只有一件事：**从 Mixamo 下载免费人形 + 一套动作，按下方命名放进工程**。
-全部在 Unity 编辑器里操作，约 15–30 分钟，无需写任何代码。
+代码已全部写好。你**只需要把下载好的文件放进指定文件夹**，Unity 会自动把它们配成
+Humanoid、自动给走/跑/待机加循环——**无需在 Inspector 手动设置任何东西**。
+运行时代码会自动加载它们；找不到就回退到原来的方块角色（所以放之前也不影响运行）。
 
 ---
 
-## 一、下载素材（[mixamo.com](https://www.mixamo.com)，免费，需注册）
+## 一、放文件（就两步）
 
-1. **角色**：Characters 里选一个人形（如 `Y Bot`、`X Bot` 或任意角色）→ Download，
-   Format = **FBX for Unity(.fbx)**，Pose = **T-pose**。
-2. **动作**：Animations 里搜索并逐个下载（Format 同上，**勾选 In Place**，无需皮肤 = `Without Skin`）。
-   建议至少下载这些（括号是搜索关键词）：
-
-   | 用途（放置文件名） | Mixamo 搜索关键词 | 循环 |
-   | --- | --- | --- |
-   | `Idle` | idle | ✅ |
-   | `CombatIdle` | sword and shield idle / fighting idle | ✅ |
-   | `Walk` | walking | ✅ |
-   | `Run` | running | ✅ |
-   | `Attack` | sword slash / katana slash | |
-   | `AttackUp` | sword slash up / uppercut slash | |
-   | `SwordThrust` | stab / sword thrust | |
-   | `HeavyAttack` | great sword slash / heavy slash | |
-   | `AttackSpin` | spin attack / 360 sword | |
-   | `AttackLeap` | jump attack / leaping slash | |
-   | `PunchJab` | jab / punch | |
-   | `PunchCross` | cross punch / hook | |
-   | `AttackKick` | front kick / roundhouse kick | |
-   | `SideKick` | side kick | |
-   | `SpinKick` | spin kick / tornado kick | |
-   | `JumpKick` | flying kick | |
-   | `Hit` | hit reaction / hit to body | |
-   | `Knockdown` | knocked down / falling back death 前段 | |
-   | `Death` | dying / death | |
-   | `Dodge` | dodge roll / roll | |
-   | `Guard` | blocking idle | ✅ |
-   | `Cast` | casting spell | |
-   | `Sweep` | low sweep kick | |
-   | `JumpAttack` | 同 AttackLeap 可复用 | |
-
-   > 缺哪个动作，代码会自动忽略该招式（回退到不换姿势），不会报错。至少要有
-   > **Idle / Walk / Run**，否则整个动捕模式判定无效、回退方块角色。
-
----
-
-## 二、导入并设为 Humanoid
-
-1. 把角色 FBX 拖进 `Assets/`（例如 `Assets/_Project/Characters/Model/`）。
-2. 选中该 FBX → Inspector → **Rig** 选项卡 → Animation Type = **Humanoid** → Apply。
-3. 把每个**动作 FBX** 也拖进工程，逐个选中 → **Rig** → Animation Type = **Humanoid**，
-   Avatar Definition = **Copy From Other Avatar** → Source 选第 2 步角色的 Avatar → Apply。
-4. 对 `Idle / Walk / Run / CombatIdle / Guard`：选中动作 → **Animation** 选项卡 →
-   勾选 **Loop Time** → Apply。
-
----
-
-## 三、把动画片段放进 Resources（按约定命名）
-
-代码通过 `Resources.Load` 按**固定路径与文件名**加载，务必一致：
+在工程里建好这个目录结构（没有就新建）：
 
 ```
 Assets/_Project/Resources/Characters/
-├── PlayerModel.prefab        # 见第四步
-├── EnemyModel.prefab         # 可选；没有就复用 PlayerModel
-└── Anims/
-    ├── Idle.anim   Walk.anim   Run.anim   CombatIdle.anim
-    ├── Attack.anim  AttackUp.anim  SwordThrust.anim  HeavyAttack.anim
-    ├── AttackSpin.anim  AttackLeap.anim  JumpAttack.anim  Sweep.anim
-    ├── PunchJab.anim  PunchCross.anim
-    ├── AttackKick.anim  SideKick.anim  SpinKick.anim  JumpKick.anim
-    ├── Hit.anim  Knockdown.anim  Death.anim  Dodge.anim  Guard.anim  Cast.anim
+├── PlayerModel.fbx          ← 玩家角色模型
+├── EnemyModel.fbx           ← 敌人角色模型（可选，不放就复用 PlayerModel）
+└── Anims/                    ← 所有动作 FBX 全部丢这里（不用改名）
+    ├── Maria WProp J J Ong@Idle.fbx
+    ├── Maria WProp J J Ong@Fighting Idle.fbx
+    ├── Maria WProp J J Ong@Walking.fbx
+    ├── Maria WProp J J Ong@Running.fbx
+    ├── Maria WProp J J Ong@Great Sword Slash.fbx
+    ├── Maria WProp J J Ong@Great Sword Slash (1).fbx
+    ├── Maria WProp J J Ong@Great Sword High Slash.fbx
+    ├── Maria WProp J J Ong@Great Sword Jump Attack.fbx
+    ├── Maria WProp J J Ong@Stabbing.fbx
+    ├── Maria WProp J J Ong@Lead Jab.fbx
+    ├── Maria WProp J J Ong@Cross Punch.fbx
+    ├── Maria WProp J J Ong@Kicking.fbx
+    ├── Maria WProp J J Ong@Side Kick.fbx
+    ├── Maria WProp J J Ong@Spin Flip Kick.fbx
+    ├── Maria WProp J J Ong@Flying Kick.fbx
+    ├── Maria WProp J J Ong@Hit Reaction.fbx
+    ├── Maria WProp J J Ong@Knocked Down.fbx
+    ├── Maria WProp J J Ong@Dying.fbx
+    └── Maria WProp J J Ong@Spell Casting.fbx
 ```
 
-取出片段的两种方式（任选）：
-- **简单**：在 FBX 上展开三角箭头 → 选中里面的 AnimationClip → `Ctrl/Cmd+D` 复制出独立
-  `.anim` → 拖进 `Resources/Characters/Anims/` 并**改成上表文件名**。
-- 或直接把导入好的动作 FBX 放到 `Resources/Characters/Anims/` 并把 FBX 改名为上表名字
-  （代码 `Resources.Load<AnimationClip>` 也能取到同名 FBX 内的主片段）。
+**只需两处操作：**
+1. 把角色模型 `Maria WProp J J Ong.fbx` 复制进 `Resources/Characters/`，**改名为 `PlayerModel.fbx`**。
+2. （可选）把 `Paladin WProp J Nordstrom.fbx` 复制进去，**改名为 `EnemyModel.fbx`**。
+3. 其余**所有动作 FBX 原样丢进 `Resources/Characters/Anims/`，不用改名**
+   （代码按 Mixamo 的 `@动作名` 自动识别并分配到招式）。
 
-> 文件名**大小写要完全一致**（`Attack` 不是 `attack`）。
-
----
-
-## 四、做角色预制体（模型 + Animator）
-
-1. 把角色模型 FBX 拖进场景 → 它下面会有骨骼层级。
-2. 选中根物体，Inspector 里确认有 **Animator** 组件，且 **Avatar** = 该模型的 Avatar，
-   **Controller 留空**（我们用 Playables 驱动，不需要 Controller）。
-3. 把这个物体拖回 `Assets/_Project/Resources/Characters/`，命名 **`PlayerModel`**，
-   存成预制体。删除场景里的实例。
-4. 敌人想用不同外观就再做一个 **`EnemyModel`**；否则不做，代码会自动复用 `PlayerModel`。
+> 动作文件名里的 `@Idle` / `@Side Kick` / `@Great Sword Slash` 这些**后缀**是关键，
+> Unity 会用它给动画片段命名，代码据此匹配。别去掉 `@` 后缀就行。
 
 ---
 
-## 五、提交 → 自动构建
+## 二、然后……没有然后了
 
-把 `Assets/_Project/Resources/Characters/` 整个目录（模型、Avatar、.anim、.prefab 及其
-`.meta`）提交并推送到 `main` 或 `claude/**` 分支。GitHub Actions 会打出带动捕动作的 APK。
-
-- 运行时代码检测到 `Resources/Characters/PlayerModel` 即切到动捕模式；
-- 找不到就继续用程序化方块角色（不影响构建）。
+- 放进去后 Unity 会自动导入：**FBX 自动设为 Humanoid，走/跑/待机自动加 Loop**
+  （由 `Assets/_Project/Editor/MixamoImportPostprocessor.cs` 完成）。
+- 如果你是**先放的文件、后拉的这次代码**，对着
+  `Assets/_Project/Resources/Characters` 文件夹右键 → **Reimport** 一次即可让自动设置生效。
+- 直接 **Play**：玩家/敌人就换成 Mixamo 动捕动作了。控制台若报缺 Idle/Walk/Run，
+  说明这三个基础片段没放对（其余动作缺了会自动跳过、不报错）。
 
 ---
 
-## 代码侧（已完成，无需改动）
+## 三、动作 → 招式 对应表（代码里已配好，供你核对）
 
-- `PlayableAnimator.cs`：Playables 图，locomotion(idle/走/跑/临战) 混合 + 招式层交叉淡入。
-- `MecanimCharacter.cs`：实例化模型、进入动捕模式、把兵器挂到右手骨骼。
-- `HumanoidAnimator.cs`：有动捕资源就接管，否则走程序化骨骼（同一套对外接口）。
-- 招式名 = `PoseState` 枚举名，一一对应上表片段。
+| 招式 | 采用的 Mixamo 动作 |
+| --- | --- |
+| 待机 / 临战待机 | Idle / Fighting Idle |
+| 走 / 跑 | Walking / Running |
+| 轻击（横斩） | Great Sword Slash |
+| 连段重斩 / 上撩 | Great Sword Slash (1) / Great Sword High Slash |
+| 突刺 | Stabbing |
+| 跃劈 / 空中劈 | Great Sword Jump Attack |
+| 直拳 / 摆拳 | Lead Jab / Cross Punch |
+| 正蹬 / 侧踢 / 旋踢 / 飞踢 | Kicking / Side Kick / Spin Flip Kick / Flying Kick |
+| 受击 / 倒地 / 死亡 | Hit Reaction / Knocked Down / Dying |
+| 施法 | Spell Casting |
 
-导入后如某招时机/朝向不对，或需要把某动作改成循环/单次，告诉我片段名，我来调交叉淡入与映射。
+绝招「觉醒·乱舞」会自动把上面几招串成连段演出（配酷炫但不遮挡动作的特效）。
+缺哪个动作就自动跳过该招（回到 locomotion），不影响运行。
+
+---
+
+## 四、提交打包
+
+Unity 里能正常 Play 后，把 `Assets/_Project/Resources/Characters/`（模型、动作 FBX 及其
+`.meta`）整个提交推送到 `claude/**` 或 `main`，CI 会打出带动捕动作的 APK 到真机测试。
+
+> 兵器：Mixamo 大剑动作是双手持械，代码暂时把内置的程序化剑挂在右手。若要换成
+> 你下载的 Great Sword 模型，告诉我，我再加武器骨骼挂点。
+
+有任何一招时机/朝向不对，或想调整绝招连段顺序，把片段名发我，我改映射与串招。
