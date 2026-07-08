@@ -60,6 +60,14 @@ namespace AdversityRoad.Combat
             return m;
         }
 
+        /// <summary>去掉特效基元的碰撞体：立即禁用（任何上下文都安全）再延迟销毁。
+        /// 不能用 DestroyImmediate——特效常在物理命中回调里生成，DestroyImmediate 会报错。</summary>
+        static void StripCol(GameObject go)
+        {
+            var c = go.GetComponent<Collider>();
+            if (c != null) { c.enabled = false; Object.Destroy(c); }
+        }
+
         static void FadeAlpha(GameObject go, float mul)
         {
             var r = go != null ? go.GetComponent<MeshRenderer>() : null;
@@ -202,7 +210,7 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < count; i++)
             {
                 var spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Object.DestroyImmediate(spark.GetComponent<Collider>());
+                StripCol(spark);
                 spark.transform.position = center;
                 spark.transform.rotation = Random.rotation;
                 spark.transform.localScale = new Vector3(0.05f, 0.05f, Random.Range(0.4f, 0.9f));
@@ -243,7 +251,7 @@ namespace AdversityRoad.Combat
 
             // 强闪光球：偏侧上生成 + 幅度收敛，避免糊住角色本体（看得清动作是第一位）
             var flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            Object.DestroyImmediate(flash.GetComponent<Collider>());
+            StripCol(flash);
             flash.transform.position = c + Vector3.up * 0.2f;
             flash.GetComponent<MeshRenderer>().sharedMaterial =
                 MatFX(Color.Lerp(hot, Color.white, 0.7f), 0.45f);      // 更透，不刺眼
@@ -276,7 +284,7 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < count; i++)
             {
                 var e = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                Object.DestroyImmediate(e.GetComponent<Collider>());
+                StripCol(e);
                 e.transform.position = center + Random.insideUnitSphere * 0.35f;
                 e.transform.localScale = Vector3.one * Random.Range(0.05f, 0.12f);
                 e.GetComponent<MeshRenderer>().sharedMaterial =
