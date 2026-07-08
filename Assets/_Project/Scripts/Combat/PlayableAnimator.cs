@@ -6,34 +6,58 @@ using UnityEngine.Playables;
 namespace AdversityRoad.Combat
 {
     /// <summary>
-    /// 动捕动画驱动（基于 Playables，纯代码，无需 AnimatorController 手工连线）：
-    /// 用只带 Avatar 的 Animator 播放从 Resources 载入的 Mixamo 人形动画片段。
-    /// 契合本项目「无编辑器手工建场、CI 无头打包」的构建方式。
+    /// 动捕动画驱动（基于 Playables，纯代码，无需 AnimatorController 手工连线）。
     ///
-    /// 资源契约（详见仓库根目录 MIXAMO_SETUP.md）：
-    ///   动画片段放在 Resources/Characters/Anims/ 下，命名与 PoseState 一致
-    ///   （Attack / AttackUp / SwordThrust / HeavyAttack / PunchJab / AttackKick …），
-    ///   外加运动片段 Idle / Walk / Run / CombatIdle（后者可选）。
-    ///   缺 Idle/Walk/Run 任一则判定无效，上层回退到程序化骨骼。
+    /// 直接吃 Mixamo 原始文件：把动作 FBX（形如 `角色@Side Kick.fbx`）放进
+    /// Resources/Characters/Anims/ 即可——Unity 会按 `@后缀` 命名内部动画片段
+    /// （"Side Kick"/"Great Sword Slash"/"Idle"…），本类用 LoadAll 全取出来，
+    /// 按片段名映射到各招式，**无需重命名**。
     ///
-    /// 结构：top[0]=locomotion 混合(idle/combatIdle/walk/run)、top[1]=action 层；
-    /// 出招时对 action 交叉淡入淡出，播完自动回到 locomotion。
+    /// 结构：top[0]=locomotion(idle/临战idle/走/跑) 混合、top[1]=招式层交叉淡入。
+    /// 缺 idle/walk/run 任一则判定无效，上层回退程序化骨骼。
     /// </summary>
     public class PlayableAnimator
     {
+        // Mixamo 片段名（小写）→ 招式。前面的候选优先精确匹配，找不到再按包含匹配。
+        static readonly (PoseState pose, string[] keys)[] ActionMap =
+        {
+            (PoseState.Attack,      new[]{ "great sword slash" }),
+            (PoseState.HeavyAttack, new[]{ "great sword slash (1)", "great sword high slash" }),
+            (PoseState.AttackUp,    new[]{ "great sword high slash", "great sword slash (1)" }),
+            (PoseState.SwordThrust, new[]{ "stabbing", "stab" }),
+            (PoseState.AttackLeap,  new[]{ "great sword jump", "jump attack" }),
+            (PoseState.JumpAttack,  new[]{ "great sword jump", "jump attack" }),
+            (PoseState.AttackSpin,  new[]{ "great sword slash (1)", "spin flip kick" }),
+            (PoseState.PunchJab,    new[]{ "lead jab", "jab" }),
+            (PoseState.PunchCross,  new[]{ "cross punch" }),
+            (PoseState.AttackKick,  new[]{ "kicking" }),
+            (PoseState.SideKick,    new[]{ "side kick" }),
+            (PoseState.SpinKick,    new[]{ "spin flip kick", "spin kick" }),
+            (PoseState.JumpKick,    new[]{ "flying kick" }),
+            (PoseState.Sweep,       new[]{ "spin flip kick" }),
+            (PoseState.Hit,         new[]{ "hit reaction", "hit" }),
+            (PoseState.Knockdown,   new[]{ "knocked down", "knockdown" }),
+            (PoseState.Death,       new[]{ "dying", "death" }),
+            (PoseState.Cast,        new[]{ "spell casting", "cast" }),
+            (PoseState.Guard,       new[]{ "blocking", "block" }),
+            (PoseState.Dodge,       new[]{ "dodge", "roll" }),
+        };
+
         readonly Animator _animator;
         PlayableGraph _graph;
         AnimationMixerPlayable _top;      // 0=loco 1=action
         AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2=walk 3=run
-        AnimationMixerPlayable _actions;  // 每个招式一个输入
+        AnimationMixerPlayable _actions;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
         float[] _actionLen;
         int _actionCount;
 
-        int _cur = -1;          // 当前动作输入下标（-1=无）
+        int _cur = -1;
         float _actionT, _actionW;
         float _speed01;
         bool _ready;
+
+        static int _graphSerial;
 
         public bool Valid { get; private set; }
 
@@ -43,42 +67,61 @@ namespace AdversityRoad.Combat
             Build();
         }
 
-        static AnimationClip Load(string n) => Resources.Load<AnimationClip>("Characters/Anims/" + n);
-        static bool IsLoco(PoseState p) => p == PoseState.Idle;
+        static string Norm(string s) => (s ?? "").Trim().ToLowerInvariant();
+
+        static AnimationClip Pick(Dictionary<string, AnimationClip> d, params string[] keys)
+        {
+            foreach (var k in keys) { if (d.TryGetValue(Norm(k), out var c)) return c; }   // 精确优先
+            foreach (var k in keys)
+            {
+                string n = Norm(k);
+                foreach (var kv in d) if (kv.Key.Contains(n)) return kv.Value;              // 再按包含
+            }
+            return null;
+        }
 
         void Build()
         {
-            var idle = Load("Idle"); var walk = Load("Walk"); var run = Load("Run");
-            if (_animator == null || !_animator.isHuman || idle == null || walk == null || run == null)
-            {
-                Valid = false;
-                return;
-            }
-            var combatIdle = Load("CombatIdle") ?? idle;
+            if (_animator == null || !_animator.isHuman) { Valid = false; return; }
 
-            _graph = PlayableGraph.Create("CharAnim_" + _animator.GetInstanceID());
-            _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 我们手动推进，配合 timeScale/顿帧
+            var byName = new Dictionary<string, AnimationClip>();
+            foreach (var c in Resources.LoadAll<AnimationClip>("Characters/Anims"))
+            {
+                if (c == null) continue;
+                string k = Norm(c.name);
+                if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
+            }
+
+            var idle = Pick(byName, "idle");
+            var walk = Pick(byName, "walking", "walk");
+            var run = Pick(byName, "running", "run");
+            if (idle == null || walk == null || run == null) { Valid = false; return; }
+            var combatIdle = Pick(byName, "fighting idle", "combat idle") ?? idle;
+
+            // 解析招式片段（映射得到的才建输入）
+            var actionList = new List<KeyValuePair<PoseState, AnimationClip>>();
+            foreach (var m in ActionMap)
+            {
+                var clip = Pick(byName, m.keys);
+                if (clip != null) actionList.Add(new KeyValuePair<PoseState, AnimationClip>(m.pose, clip));
+            }
+
+            _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
+            _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
             var output = AnimationPlayableOutput.Create(_graph, "out", _animator);
 
-            // 招式层：为每个有片段的 PoseState 建一个 ClipPlayable
-            var poses = new List<PoseState>();
-            foreach (PoseState p in System.Enum.GetValues(typeof(PoseState)))
-            {
-                if (IsLoco(p)) continue;
-                if (Load(p.ToString()) != null) poses.Add(p);
-            }
-            _actionCount = poses.Count;
+            _actionCount = actionList.Count;
             _actions = AnimationMixerPlayable.Create(_graph, Mathf.Max(1, _actionCount));
             _actionLen = new float[Mathf.Max(1, _actionCount)];
             for (int i = 0; i < _actionCount; i++)
             {
-                var clip = Load(poses[i].ToString());
+                var clip = actionList[i].Value;
                 var cp = AnimationClipPlayable.Create(_graph, clip);
                 cp.SetDuration(clip.length);
-                cp.SetTime(clip.length);           // 起始为"已播完"（权重 0）
+                cp.SetTime(clip.length);
                 _graph.Connect(cp, 0, _actions, i);
                 _actions.SetInputWeight(i, 0f);
-                _actionIndex[poses[i]] = i;
+                _actionIndex[actionList[i].Key] = i;
                 _actionLen[i] = Mathf.Max(0.05f, clip.length);
             }
 
@@ -122,7 +165,6 @@ namespace AdversityRoad.Combat
         {
             if (!Valid) return;
 
-            // 运动混合：idle/combatIdle ↔ walk ↔ run
             float s = _speed01;
             float walkW, runW, idleTot;
             if (s < 0.5f) { walkW = s / 0.5f; runW = 0f; idleTot = 1f - walkW; }
@@ -132,7 +174,6 @@ namespace AdversityRoad.Combat
             _loco.SetInputWeight(2, walkW);
             _loco.SetInputWeight(3, runW);
 
-            // 招式交叉淡入淡出
             if (_cur >= 0)
             {
                 _actionT += dt;

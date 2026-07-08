@@ -241,21 +241,20 @@ namespace AdversityRoad.Combat
             Color hot = Color.Lerp(core, new Color(1f, 0.6f, 0.2f), core.b < core.r ? 0.4f : 0.15f);
             Vector3 c = pos + Vector3.up * 1.05f;
 
-            // 强闪光球：瞬间胀大发光后极快消散
+            // 强闪光球：偏侧上生成 + 幅度收敛，避免糊住角色本体（看得清动作是第一位）
             var flash = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             Object.DestroyImmediate(flash.GetComponent<Collider>());
-            flash.transform.position = c;
+            flash.transform.position = c + Vector3.up * 0.2f;
             flash.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(hot, Color.white, 0.78f), 0.9f);
-            _i.StartCoroutine(_i.FlashPop(flash, 0.5f + power));
+                MatFX(Color.Lerp(hot, Color.white, 0.7f), 0.45f);      // 更透，不刺眼
+            _i.StartCoroutine(_i.FlashPop(flash, 0.35f + power * 0.5f));
 
-            // 更密集/更长的放射光条（向四周迸射的能量），替代地面圆盘——
-            // 不再有"米黄色圆圈"平铺在地上。
-            HitSpark(pos, Color.Lerp(hot, Color.white, 0.4f), Mathf.RoundToInt(16 + power * 12));
-            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(8 + power * 8)));
+            // 放射光条 + 上升火星：数量收敛，点到为止（能量感在，但不遮挡招式）
+            HitSpark(pos, Color.Lerp(hot, Color.white, 0.4f), Mathf.RoundToInt(8 + power * 5));
+            _i.StartCoroutine(_i.EmberRise(c, hot, Mathf.RoundToInt(5 + power * 4)));
 
-            Shake(0.4f + power * 0.25f);
-            SlowMo(0.6f, 0.08f + power * 0.05f);
+            Shake(0.3f + power * 0.15f);
+            SlowMo(0.7f, 0.06f + power * 0.04f);
         }
 
         IEnumerator FlashPop(GameObject go, float maxR)
@@ -349,7 +348,7 @@ namespace AdversityRoad.Combat
             float tilt = (heavy ? Random.Range(-14f, 14f) : Random.Range(-42f, 42f)) + 58f;
             arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, tilt);
             arc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.4f), heavy ? 0.55f : 0.42f);
+                MatFX(Color.Lerp(color, Color.white, 0.35f), heavy ? 0.38f : 0.28f);   // 更透，不盖住招式
             _i.StartCoroutine(_i.ArcAnim(arc, heavy));
         }
 
