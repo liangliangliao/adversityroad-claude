@@ -186,6 +186,10 @@ namespace AdversityRoad.AI
             p.physicalDamage *= Mathf.Lerp(1f, k, 0.8f);
             p.mentalDamage *= Mathf.Lerp(1f, k, 0.8f);
             p.defense *= Mathf.Lerp(1f, k, 0.6f);
+            // 等级=智商/身手：级别越高出手越频繁、防御反应越灵、连招越多
+            //（EnemyController 按 aggression/category 换算出手间隔/前摇/闪格概率/连击数）
+            p.aggression = Mathf.Clamp01(p.aggression * Mathf.Lerp(0.75f, 1.35f,
+                Mathf.InverseLerp(0.55f, 2.1f, k)));
             p.displayName = TierLabel(tier) + "·" + TypeLabel(type);
             p.enemyId = uniqueId ? BaseId(type) + "_extra_" + (++_extraCounter) : BaseId(type);
             p.rangedAttack = RangedOf(type);

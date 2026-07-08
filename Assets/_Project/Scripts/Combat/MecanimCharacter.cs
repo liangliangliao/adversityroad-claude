@@ -21,8 +21,9 @@ namespace AdversityRoad.Combat
     /// </summary>
     public static class MecanimCharacter
     {
-        /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。</summary>
-        public const float TargetHeight = 2.05f;
+        /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。
+        /// 参考黑神话悟空的人物画面占比：配合镜头取景（FOV/距离），角色约占屏高一半。</summary>
+        public const float TargetHeight = 2.3f;
 
         /// <summary>该项目是否配置了动捕资源（有任一模型预制体即认为启用）。</summary>
         public static bool Available =>

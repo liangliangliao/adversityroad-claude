@@ -42,6 +42,9 @@ namespace AdversityRoad.Combat
             return m;
         }
 
+        /// <summary>对外提供能量光材质（半透明加色）：护体屏障等可视化不再用实心色块。</summary>
+        public static Material EnergyMaterial(Color c, float alpha) => MatFX(c, alpha);
+
         /// <summary>特效材质：半透明加色（发光感），用于刀光/冲击环等——避免实心大色块。</summary>
         static Material MatFX(Color c, float alpha)
         {
@@ -155,12 +158,13 @@ namespace AdversityRoad.Combat
         public static void Debris(Vector3 pos, Color color, int count)
         {
             Ensure();
+            count = Mathf.Min(count, 6);   // 碎屑克制：小而透，绝不出现遮视野的大方块
             for (int i = 0; i < count; i++)
             {
                 var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 cube.transform.position = pos + Vector3.up * 1.2f;
-                cube.transform.localScale = Vector3.one * Random.Range(0.08f, 0.2f);
-                cube.GetComponent<MeshRenderer>().sharedMaterial = Mat(color);
+                cube.transform.localScale = Vector3.one * Random.Range(0.04f, 0.1f);
+                cube.GetComponent<MeshRenderer>().sharedMaterial = MatFX(color, 0.85f);
                 var rb = cube.AddComponent<Rigidbody>();
                 rb.linearVelocity = new Vector3(
                     Random.Range(-2.5f, 2.5f), Random.Range(2.5f, 5.5f), Random.Range(-2.5f, 2.5f));
@@ -213,9 +217,9 @@ namespace AdversityRoad.Combat
                 StripCol(spark);
                 spark.transform.position = center;
                 spark.transform.rotation = Random.rotation;
-                spark.transform.localScale = new Vector3(0.05f, 0.05f, Random.Range(0.4f, 0.9f));
+                spark.transform.localScale = new Vector3(0.04f, 0.04f, Random.Range(0.35f, 0.8f));
                 spark.GetComponent<MeshRenderer>().sharedMaterial =
-                    Mat(Color.Lerp(color, Color.white, 0.6f));
+                    MatFX(Color.Lerp(color, Color.white, 0.6f), 0.9f);   // 加色光条而非实体块
                 _i.StartCoroutine(_i.SparkFly(spark));
             }
         }
@@ -269,8 +273,8 @@ namespace AdversityRoad.Combat
             StripCol(disc);
             disc.transform.position = contact;
             disc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.7f);
-            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 0.8f : 0.5f));
+                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.5f);
+            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 0.55f : 0.38f));
 
             HitStop(heavy ? 0.07f : 0.035f);   // 短促卡肉（非晃屏）
         }
@@ -284,8 +288,8 @@ namespace AdversityRoad.Combat
                 StripCol(spark);
                 spark.transform.position = center;
                 spark.transform.rotation = Random.rotation;
-                spark.transform.localScale = new Vector3(0.05f, 0.05f, Random.Range(0.35f, 0.85f));
-                spark.GetComponent<MeshRenderer>().sharedMaterial = Mat(color);
+                spark.transform.localScale = new Vector3(0.04f, 0.04f, Random.Range(0.3f, 0.75f));
+                spark.GetComponent<MeshRenderer>().sharedMaterial = MatFX(color, 0.9f);
                 _i.StartCoroutine(_i.SparkFly(spark));
             }
         }
@@ -433,13 +437,10 @@ namespace AdversityRoad.Combat
             _hitStopping = false;
         }
 
-        // ---------- 震屏 ----------
-
-        public static void Shake(float strength = 0.6f)
-        {
-            var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
-            if (cam != null) cam.Kick(strength);
-        }
+        // ---------- 震屏（已全面停用） ----------
+        // 按用户要求：任何击中（拳/腿/重击/大招）都不晃动屏幕、不闪屏、不掉转镜头。
+        // 打击感完全交给：受击方的受击/击倒/击飞动作 + 短促卡肉(HitStop) + 命中点特效。
+        public static void Shake(float strength = 0.6f) { }
 
         /// <summary>大招镜头：短暂拉近取景（仅大招调用，普通攻击/移动不触发）。</summary>
         public static void UltimateShot(float duration)

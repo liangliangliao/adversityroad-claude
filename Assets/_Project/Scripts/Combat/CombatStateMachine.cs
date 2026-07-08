@@ -48,7 +48,8 @@ namespace AdversityRoad.Combat
             if (Current == CombatState.Death) return false;
             Current = next;
             _stateTimer = autoExitAfter;
-            if (_anim != null && next != CombatState.Locomotion && next != CombatState.Idle)
+            if (_anim != null && _anim.runtimeAnimatorController != null &&
+                next != CombatState.Locomotion && next != CombatState.Idle)
                 _anim.SetTrigger(next.ToString());
             return true;
         }

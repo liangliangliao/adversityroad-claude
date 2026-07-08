@@ -160,9 +160,12 @@ namespace AdversityRoad.Combat
                 else if (_stageT >= _cur.length) EndCombo();
             }
 
-            // 格挡
+            // 格挡（含格挡架势动作：抬臂护身，收招后放下）
+            bool wasGuarding = IsGuarding;
             IsGuarding = Input.GetKey(KeyCode.LeftControl) || MobileInput.GetHeld("Guard");
             if (Input.GetKeyDown(KeyCode.LeftControl) || MobileInput.GetDown("Guard")) _parryTimer = parryWindow;
+            if (IsGuarding != wasGuarding && !_fsm.IsActionLocked && _anim != null)
+                _anim.SetPose(IsGuarding ? PoseState.Guard : PoseState.Idle);
             if (guardShield != null && guardShield.activeSelf != (IsGuarding && !_fsm.IsActionLocked))
                 guardShield.SetActive(IsGuarding && !_fsm.IsActionLocked);
             if (innerAura != null && innerAura.activeSelf != (_momentum >= 3))
@@ -681,6 +684,19 @@ namespace AdversityRoad.Combat
 
         // ================= 受击 =================
 
+        /// <summary>重击击飞：0.35 秒内向后飞退（快出慢收），配合倒地动画读作"被打飞"。</summary>
+        IEnumerator KnockFly(Vector3 dir)
+        {
+            float t = 0;
+            while (t < 0.35f && _fsm.Current == CombatState.Knockdown)
+            {
+                t += Time.deltaTime;
+                float sp = Mathf.Lerp(11f, 0f, t / 0.35f);
+                _cc.Move(dir * sp * Time.deltaTime);
+                yield return null;
+            }
+        }
+
         public void TakeHit(DamageInfo dmg)
         {
             if (_player.IsInvincible)
@@ -723,7 +739,17 @@ namespace AdversityRoad.Combat
             if (dmg.physicalDamage > 0)
             {
                 float phys = dmg.physicalDamage;
-                bool blocked = IsGuarding && _player.Stats.SpendStamina(phys * 0.5f);
+                // 敌方偷袭：从背后被打 = 趁其不备，1.4 倍伤害且格挡无效（格挡只护正面）
+                Vector3 fromSrc = transform.position - dmg.sourcePosition; fromSrc.y = 0;
+                bool backstab = fromSrc.sqrMagnitude > 0.01f &&
+                    Vector3.Dot(transform.forward, fromSrc.normalized) > 0.35f;
+                if (backstab)
+                {
+                    phys *= 1.4f;
+                    CombatFeedback.DamageNumber(transform.position, "被偷袭！",
+                        new Color(1f, 0.45f, 0.2f), 1.25f);
+                }
+                bool blocked = IsGuarding && !backstab && _player.Stats.SpendStamina(phys * 0.5f);
                 if (blocked) phys *= 0.2f;
                 _player.Stats.TakePhysicalDamage(phys);
 
@@ -751,9 +777,12 @@ namespace AdversityRoad.Combat
                 {
                     if (phys >= knockdownThreshold)
                     {
+                        // 重击=被撞飞一段距离重重倒地，起身带无敌帧立刻回到战斗
                         _fsm.RequestState(CombatState.Knockdown, 1.4f);
                         _player.SetInvincible(1.8f);
                         CombatFeedback.HitStop(0.06f);
+                        Vector3 fly = transform.position - dmg.sourcePosition; fly.y = 0;
+                        if (fly.sqrMagnitude > 0.01f) StartCoroutine(KnockFly(fly.normalized));
                     }
                     else
                     {
