@@ -34,9 +34,10 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < Mathf.Min(4, equippedSkills.Count); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);
 
-            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）
+            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）/ 还（责任归还）
             if (MobileInput.GetDown("Skill1") && equippedSkills.Count > 0) TryCast(equippedSkills[0]);
             if (MobileInput.GetDown("Skill2") && equippedSkills.Count > 1) TryCast(equippedSkills[1]);
+            if (MobileInput.GetDown("Skill3") && equippedSkills.Count > 2) TryCast(equippedSkills[2]);
         }
 
         public bool TryCast(Data.SkillDefinition skill)
@@ -68,6 +69,12 @@ namespace AdversityRoad.Combat
 
             _cooldowns[skill.skillId] = skill.cooldown;
             _fsm.RequestState(CombatState.Finisher, skill.castLockTime);
+
+            if (skill.isResponsibilityReturn)
+            {
+                DoResponsibilityReturn();
+                return true;
+            }
 
             if (skill.mentalRestore > 0)
             {
@@ -117,5 +124,27 @@ namespace AdversityRoad.Combat
         }
 
         void CloseHitbox() { if (weaponHitbox != null) weaponHitbox.DisableHitbox(); }
+
+        /// <summary>
+        /// 责任归还：清除「过度负责」减速，把仍在飞来的虚假责任球全部打回法官（每个削韧），
+        /// 并回补边界。象征"把不属于我的部分，准确地还回去"。
+        /// </summary>
+        void DoResponsibilityReturn()
+        {
+            var debuff = GetComponent<OverResponsibilityDebuff>();
+            if (debuff != null) Destroy(debuff);
+
+            int returned = 0;
+            foreach (var ball in FindObjectsOfType<ResponsibilityBall>())
+                if (ball.isFalse) { ball.ForceReturn(); returned++; }
+
+            _player.Stats.RestoreAxis(Personalization.WeaknessAxis.BoundaryConflict, 18f);
+            _player.Stats.ReduceRumination(12f);
+            CombatFeedback.RecipeBurst(transform.position, new Color(0.4f, 0.85f, 0.6f));
+            Core.GameEvents.RaiseSkillBanner("「责任归还」");
+            Core.GameEvents.RaiseSubtitle(returned > 0
+                ? "责任归还——把不属于我的" + returned + "份责任，准确地还了回去。"
+                : "责任归还——我只承担属于自己的那部分。");
+        }
     }
 }

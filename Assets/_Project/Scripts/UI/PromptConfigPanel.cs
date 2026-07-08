@@ -175,6 +175,7 @@ namespace AdversityRoad.UI
                 case "street": return 2;
                 case "job": return 3;
                 case "plaza": return 4;
+                case "court": return 5;
                 default: return 0;
             }
         }

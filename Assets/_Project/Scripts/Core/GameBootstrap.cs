@@ -16,7 +16,7 @@ namespace AdversityRoad.Core
 {
     /// <summary>
     /// 运行时一键搭建整个游戏世界（CI 无头打包不依赖编辑器建场）：
-    /// 四大区域（独居小屋/训练武馆/噪声街区/城市广场）+ 昼夜循环 + 行人车辆 +
+    /// 六大区域（独居小屋/训练武馆/噪声街区/求职荒原/城市广场/责任转嫁法院）+ 昼夜循环 + 行人车辆 +
     /// 章节剧情 + 每区域一个章节心魔 + 玩家自由添加敌人 + HUD/触屏操控/配置面板。
     /// </summary>
     public class GameBootstrap : MonoBehaviour
@@ -63,7 +63,8 @@ namespace AdversityRoad.Core
                     Personalization.WeaknessAxis.Procrastination,
                     Personalization.WeaknessAxis.SelfDoubt,
                     Personalization.WeaknessAxis.NoiseSensitivity,
-                    Personalization.WeaknessAxis.Shame);
+                    Personalization.WeaknessAxis.Shame,
+                    Personalization.WeaknessAxis.BoundaryConflict);
         }
 
         void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
@@ -242,6 +243,17 @@ namespace AdversityRoad.Core
             qiren.projectileScale = 2.2f;
             qiren.momentumCost = 2;
             exec.equippedSkills.Add(qiren);
+
+            // 责任归还：责任转嫁法院核心技能——清除过度负责、把虚假责任球打回法官
+            var guihuan = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            guihuan.skillId = "zeren_guihuan";
+            guihuan.displayName = "责任归还";
+            guihuan.description = "把不属于自己的责任准确还回去：清除过度负责减速，将飞来的虚假责任球打回法官，回补边界。";
+            guihuan.staminaCost = 10;
+            guihuan.cooldown = 6;
+            guihuan.castLockTime = 0.35f;
+            guihuan.isResponsibilityReturn = true;
+            exec.equippedSkills.Add(guihuan);
         }
 
         void BuildCamera()
@@ -374,6 +386,11 @@ namespace AdversityRoad.Core
             hurt.AddComponent<Hurtbox>();
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
+
+            // 全责法官专属：周期性抛掷责任球（真假责任判断机制）
+            if (type == EnemyType.TotalResponsibilityJudge)
+                root.AddComponent<ResponsibilityJudge>();
+
             return root;
         }
 
