@@ -25,7 +25,9 @@ namespace AdversityRoad.Combat
             root.transform.rotation = Quaternion.LookRotation(dir.normalized);
 
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            // 立即禁用+延迟销毁碰撞体（避免在物理/回调上下文里用 DestroyImmediate 报错）
+            var vc = visual.GetComponent<Collider>();
+            if (vc != null) { vc.enabled = false; Object.Destroy(vc); }
             visual.transform.SetParent(root.transform, false);
             visual.transform.localScale =
                 new Vector3(0.25f, 0.25f, 1.1f) * Mathf.Max(0.5f, visualScale);
