@@ -22,7 +22,7 @@ namespace AdversityRoad.Combat
     public static class MecanimCharacter
     {
         /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。</summary>
-        public const float TargetHeight = 1.85f;
+        public const float TargetHeight = 2.05f;
 
         /// <summary>该项目是否配置了动捕资源（有任一模型预制体即认为启用）。</summary>
         public static bool Available =>

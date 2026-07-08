@@ -239,7 +239,6 @@ namespace AdversityRoad.Combat
         // 参考格斗游戏：在【实际接触点】爆一簇火花与一枚朝镜头的白色冲击盘，让玩家
         // 一眼看清「击中了哪里」；重击叠加顿帧、震屏与短促拉近特写，读作"实打实的碰撞"。
 
-        static float _focusCd;
         static int _combo;
         static float _lastComboT;
 
@@ -263,24 +262,17 @@ namespace AdversityRoad.Combat
                         1.2f + Mathf.Min(_combo, 10) * 0.08f);
             }
 
-            // 命中点白色冲击盘：始终朝向镜头，清晰标出命中位置
+            // 命中点小型冲击盘：只标出命中位置，尺寸克制不遮视野。
+            // 按用户要求：普通拳脚命中【不震屏、不切/拉镜头、不闪屏】——
+            // 打击感交给受击方的倒地/击飞/踉跄反应与短促卡肉。
             var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
             StripCol(disc);
             disc.transform.position = contact;
             disc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.9f);
-            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 1.5f : 1.0f));
+                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.7f);
+            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 0.8f : 0.5f));
 
-            HitStop(heavy ? 0.09f : 0.045f);
-            Shake(heavy ? 0.6f : 0.28f);
-
-            // 重击特写：短促拉近取景（带冷却，避免每拳都拉镜头造成眩晕）
-            if (heavy && Time.unscaledTime >= _focusCd)
-            {
-                _focusCd = Time.unscaledTime + 0.6f;
-                var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
-                if (cam != null) cam.UltimateShot(0.18f);
-            }
+            HitStop(heavy ? 0.07f : 0.035f);   // 短促卡肉（非晃屏）
         }
 
         /// <summary>在指定世界点爆一簇放射火花（不加内部高度偏移，用于精确命中点）。</summary>

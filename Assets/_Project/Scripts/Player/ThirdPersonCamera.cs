@@ -19,7 +19,7 @@ namespace AdversityRoad.Player
     {
         public Transform target;
         [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）")]
-        public Vector3 offset = new Vector3(0.55f, 1.75f, -3.6f);
+        public Vector3 offset = new Vector3(0.5f, 1.95f, -4.1f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
@@ -29,7 +29,7 @@ namespace AdversityRoad.Player
         public float pitchRecenterDelay = 2.5f;
         [Header("战斗/锁定取景：让玩家与敌人同框居中，镜头降低、靠近")]
         [Tooltip("锁定时俯仰压低到该角度（战斗更贴地、更有压迫感与临场感）")]
-        public float combatLockPitch = 4f;
+        public float combatLockPitch = 9f;
         [Tooltip("锁定取景点偏向「玩家↔敌人中点」的比例：0=只看玩家，1=完全取中点")]
         [Range(0f, 0.8f)] public float lockCenterBias = 0.42f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
@@ -37,8 +37,8 @@ namespace AdversityRoad.Player
         [Tooltip("水平位置跟随平滑时间（中速）：临界阻尼软跟随——不太快(否则复制抖动)、" +
                  "不太慢(否则玩家跑出画面)，滤掉逐帧微抖又稳稳跟住位置")]
         public float followSmoothTime = 0.09f;
-        // 悟空式取景：镜头近、视野窄（长焦感），角色占画面 1/3~1/2 高，人物有分量
-        public float fieldOfView = 54f;
+        // 悟空式取景：镜头近、视野略窄，人物有分量；但不压得过低过窄（保证看全身+环境）
+        public float fieldOfView = 60f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -97,8 +97,8 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.5f, 1.55f, -2.8f), pitch = 5f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.55f, 1.75f, -3.6f), pitch = 8f },
+            new CamPreset { name = "近身动作", offset = new Vector3(0.5f, 1.7f, -3.2f), pitch = 8f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.5f, 1.95f, -4.1f), pitch = 11f },
             new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 2.7f, -5.4f), pitch = 17f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
@@ -256,7 +256,7 @@ namespace AdversityRoad.Player
             // 每个逐帧小动作）。水平用极短时间几乎无滞后但滤掉抖动，纵向更软，
             // 跳跃/落地/台阶时镜头柔和跟进。
             float wantH = player != null && player.IsCrouched ? 1.15f : 1.55f;
-            wantH -= 0.22f * _lockBlend;   // 锁定时略降取景高度：镜头压低看清拳脚交锋
+            wantH -= 0.1f * _lockBlend;    // 锁定时略降取景高度（幅度小：保证看得到全身）
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
             // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）

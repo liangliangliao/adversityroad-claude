@@ -33,6 +33,7 @@ namespace AdversityRoad.AI
         float _hp, _posture;
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
+        float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
@@ -133,7 +134,7 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
-            _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt;
+            _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt; _defendCd -= dt;
             TickTelegraph(dt);
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
@@ -266,7 +267,7 @@ namespace AdversityRoad.AI
 
         void DoPhysicalAttack()
         {
-            _attackCd = Mathf.Lerp(3.8f, 1.5f, profile.aggression);
+            _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
             if (_anim != null) _anim.SetTrigger("Attack");
             // 前摇 0.55 秒：头顶「！」跳动 + 脚下红圈脉冲放大 + 警示音 = 明确读招/闪避窗口，
             // 蓄势姿态先行，判定框随后才开——绝不让玩家"莫名其妙就掉血"。
@@ -408,7 +409,62 @@ namespace AdversityRoad.AI
         public void TakeHit(DamageInfo dmg)
         {
             if (State == EnemyState.Dead) return;
-            float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense);
+
+            // ---- 偷袭：敌人未察觉（待机/巡逻）时被打 = 趁其不备，1.8 倍伤害且无法防御 ----
+            bool unaware = State == EnemyState.Idle || State == EnemyState.Patrol;
+            float sneakMult = 1f;
+            if (unaware)
+            {
+                sneakMult = 1.8f;
+                CombatFeedback.DamageNumber(transform.position, "偷袭！",
+                    new Color(1f, 0.85f, 0.3f), 1.35f);
+            }
+            // ---- 防御：交战中的敌人有概率闪避（完全躲开）或格挡（大幅减伤），
+            //      概率随敌人级别/攻击性上升（Boss 更像高手），带冷却防无敌化 ----
+            else if (_defendCd <= 0f && State != EnemyState.Stagger)
+            {
+                float chance = (profile.category == EnemyCategory.Boss ? 0.34f : 0.1f)
+                             + 0.18f * profile.aggression;
+                if (Random.value < chance)
+                {
+                    _defendCd = 1.7f;
+                    if (Random.value < 0.5f && AgentReady)
+                    {
+                        if (poser != null) poser.SetPose(PoseState.Dodge);
+                        _agent.Move(transform.right * (Random.value < 0.5f ? 1.7f : -1.7f));
+                        CombatFeedback.DamageNumber(transform.position, "闪避",
+                            new Color(0.55f, 0.8f, 1f), 1.1f);
+                        return;   // 侧闪成功：完全不受伤
+                    }
+                    if (poser != null) poser.SetPose(PoseState.Guard);
+                    CombatFeedback.DamageNumber(transform.position, "格挡",
+                        new Color(0.5f, 0.9f, 0.6f), 1.1f);
+                    GameAudio.Play(GameAudio.Sfx.Block, 0.6f);
+                    dmg.physicalDamage *= 0.25f;
+                    dmg.postureDamage *= 0.55f;
+                }
+            }
+
+            // ---- 对攻：敌人正处于出招前摇时被打 = 双方硬碰硬，都掉血；
+            //      攻击力高的一方受伤更小、给对方造成更大伤害 ----
+            if (_telegraphing && _player != null)
+            {
+                var pc = _player.GetComponent<PlayerCombatController>();
+                if (pc != null)
+                {
+                    bool playerStronger = dmg.physicalDamage >= profile.physicalDamage;
+                    pc.TakeHit(new DamageInfo
+                    {
+                        physicalDamage = profile.physicalDamage * (playerStronger ? 0.35f : 0.75f),
+                        sourcePosition = transform.position
+                    });
+                    Vector3 mid = (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f;
+                    CombatFeedback.DamageNumber(mid, "对攻！", new Color(1f, 0.6f, 0.2f), 1.5f);
+                    CombatFeedback.HitImpact(mid, new Color(1f, 0.7f, 0.3f), true, false);
+                }
+            }
+
+            float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense) * sneakMult;
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法
             if (State == EnemyState.Stagger) final *= 1.6f;
             // 调试模式：敌人耐揍，大幅削减实际伤害（方便测试，不被秒杀）
@@ -430,7 +486,6 @@ namespace AdversityRoad.AI
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
                 State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
                 final >= 35f ? 1.6f : 1f);
-            CombatFeedback.Debris(transform.position, new Color(0.6f, 0.3f, 0.5f), 3);
             if (dmg.knockback > 0.1f)
             {
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
@@ -455,7 +510,7 @@ namespace AdversityRoad.AI
             // 受击反应（去掉"铁桩感"的关键）：
             // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
             // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
-            bool heavyHit = dmg.postureDamage >= 22f || final >= 28f;
+            bool heavyHit = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
             if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
             {
                 _flinchCd = profile.category == EnemyCategory.Boss ? 2.4f : 1.1f;
@@ -464,11 +519,14 @@ namespace AdversityRoad.AI
                 ShowTelegraph(false);
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
                 State = EnemyState.Stagger;
-                _staggerTimer = heavyHit ? 1.0f : 0.42f;
+                _staggerTimer = heavyHit ? 1.5f : 0.42f;
                 StopMoving();
                 if (poser != null)
                     poser.SetPose(heavyHit ? PoseState.Knockdown : PoseState.Hit);
-                if (heavyHit) CombatFeedback.Shake(0.5f);
+                // 重击=被撞飞一段距离重重倒地（受击状态可视化），起身后立刻重新投入战斗
+                if (heavyHit)
+                    StartCoroutine(KnockFly(
+                        DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)));
             }
 
             if (_posture <= 0)
@@ -492,6 +550,22 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>重击击飞：0.35 秒内向后飞退 ~2.5m（快出慢收），配合倒地动画读作"被打飞"。</summary>
+        System.Collections.IEnumerator KnockFly(Vector3 dir)
+        {
+            dir.y = 0;
+            if (dir.sqrMagnitude < 0.01f) yield break;
+            dir = dir.normalized;
+            float t = 0;
+            while (t < 0.35f && State == EnemyState.Stagger)
+            {
+                t += Time.deltaTime;
+                float sp = Mathf.Lerp(12f, 0f, t / 0.35f);
+                if (AgentReady) _agent.Move(dir * sp * Time.deltaTime);
+                yield return null;
+            }
+        }
+
         void Die()
         {
             State = EnemyState.Dead;
@@ -503,8 +577,7 @@ namespace AdversityRoad.AI
             if (poser != null) poser.SetPose(PoseState.Death);
             if (statusBar != null) statusBar.Hide();
             if (dialogue != null) dialogue.Show("不……可能……", 2f);
-            CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 8);
-            CombatFeedback.Shake(0.5f);
+            CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 6);
             GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;

@@ -35,12 +35,14 @@ namespace AdversityRoad.Combat
             (PoseState.SpinKick,    new[]{ "spin flip kick", "spin kick" }),
             (PoseState.JumpKick,    new[]{ "flying kick" }),
             (PoseState.Sweep,       new[]{ "spin flip kick" }),
-            (PoseState.Hit,         new[]{ "hit reaction", "hit" }),
-            (PoseState.Knockdown,   new[]{ "knocked down", "knockdown" }),
-            (PoseState.Death,       new[]{ "dying", "death" }),
+            (PoseState.Hit,         new[]{ "great sword impact", "hit reaction", "hit" }),
+            (PoseState.Knockdown,   new[]{ "knocked down", "sweep fall", "knockdown", "falling back" }),
+            (PoseState.Death,       new[]{ "great sword death", "dying", "death" }),
             (PoseState.Cast,        new[]{ "spell casting", "cast" }),
-            (PoseState.Guard,       new[]{ "blocking", "block" }),
-            (PoseState.Dodge,       new[]{ "dodge", "roll" }),
+            (PoseState.Guard,       new[]{ "great sword blocking", "blocking", "block" }),
+            (PoseState.Dodge,       new[]{ "dodging", "great sword evade", "evade", "dodge", "roll" }),
+            (PoseState.Stagger,     new[]{ "stunned", "dizzy", "stagger", "drunk idle" }),
+            (PoseState.Charge,      new[]{ "great sword casting", "warming up", "standing taunt", "taunt", "charge" }),
         };
 
         readonly Animator _animator;
@@ -92,11 +94,11 @@ namespace AdversityRoad.Combat
                 if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
             }
 
-            var idle = Pick(byName, "idle");
-            var walk = Pick(byName, "walking", "walk");
-            var run = Pick(byName, "running", "run");
+            var idle = Pick(byName, "idle", "breathing idle", "standing idle");
+            var walk = Pick(byName, "walking", "great sword walk", "walk");
+            var run = Pick(byName, "running", "great sword run", "run");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
-            var combatIdle = Pick(byName, "fighting idle", "combat idle") ?? idle;
+            var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
 
             // 解析招式片段（映射得到的才建输入）
             var actionList = new List<KeyValuePair<PoseState, AnimationClip>>();
