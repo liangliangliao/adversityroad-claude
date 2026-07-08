@@ -53,7 +53,7 @@ namespace AdversityRoad.Combat
         int _actionCount;
 
         int _cur = -1;
-        float _actionT, _actionW;
+        float _actionT, _actionW, _fadeFrom;
         float _speed01;
         bool _ready;
 
@@ -159,6 +159,7 @@ namespace AdversityRoad.Combat
             cp.SetDone(false);
             _cur = idx;
             _actionT = 0f;
+            _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
         }
 
         public void Tick(float dt)
@@ -178,7 +179,7 @@ namespace AdversityRoad.Combat
             {
                 _actionT += dt;
                 float len = _actionLen[_cur];
-                float fadeIn = Mathf.Clamp01(_actionT / 0.08f);
+                float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / 0.07f));
                 float fadeOut = Mathf.Clamp01((len - _actionT) / 0.12f);
                 _actionW = Mathf.Min(fadeIn, fadeOut);
                 if (_actionT >= len) { _actionW = 0f; _cur = -1; }
