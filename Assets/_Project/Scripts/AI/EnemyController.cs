@@ -411,12 +411,21 @@ namespace AdversityRoad.AI
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense);
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法
             if (State == EnemyState.Stagger) final *= 1.6f;
+            // 调试模式：敌人耐揍，大幅削减实际伤害（方便测试，不被秒杀）
+            if (Core.GameDebug.TankyEnemies) final *= Core.GameDebug.TankyDamageScale;
             _hp -= final;
             _posture -= dmg.postureDamage;
 
-            // 受击反馈：火花 / 闪红 / 伤害数字（随伤害变大）/ 碎块 / 击退
-            CombatFeedback.HitSpark(transform.position,
-                State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.75f, 0.45f));
+            // 受击反馈：命中点冲击（火花+白闪盘+顿帧+震屏，重击拉近特写）/ 闪红 / 伤害数字 / 碎块 / 击退
+            Color sparkCol = State == EnemyState.Stagger
+                ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.75f, 0.45f);
+            Vector3 toAtk = dmg.sourcePosition - transform.position; toAtk.y = 0;
+            Vector3 dirA = toAtk.sqrMagnitude > 0.01f ? toAtk.normalized : transform.forward;
+            // 命中点：受击者朝攻击者一侧、胸口高度（一眼看清"击中了哪里"）
+            Vector3 contact = transform.position + dirA * 0.55f + Vector3.up * 1.25f;
+            // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定
+            bool fbHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            CombatFeedback.HitImpact(contact, sparkCol, fbHeavy);
             CombatFeedback.HitFlash(gameObject);
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
                 State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),

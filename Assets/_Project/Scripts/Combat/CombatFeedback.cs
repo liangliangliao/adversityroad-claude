@@ -235,6 +235,69 @@ namespace AdversityRoad.Combat
             if (spark != null) Destroy(spark);
         }
 
+        // ---------- 命中冲击（打击清晰化：命中点火花+白闪盘+顿帧+震屏+重击拉近） ----------
+        // 参考格斗游戏：在【实际接触点】爆一簇火花与一枚朝镜头的白色冲击盘，让玩家
+        // 一眼看清「击中了哪里」；重击叠加顿帧、震屏与短促拉近特写，读作"实打实的碰撞"。
+
+        static float _focusCd;
+
+        /// <summary>在世界坐标 contact 处打出命中冲击。heavy=重击（更强反馈+特写）。</summary>
+        public static void HitImpact(Vector3 contact, Color color, bool heavy)
+        {
+            Ensure();
+            SparksAt(contact, Color.Lerp(color, Color.white, 0.55f), heavy ? 11 : 6);
+
+            // 命中点白色冲击盘：始终朝向镜头，清晰标出命中位置
+            var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            StripCol(disc);
+            disc.transform.position = contact;
+            disc.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.9f);
+            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 1.5f : 1.0f));
+
+            HitStop(heavy ? 0.09f : 0.045f);
+            Shake(heavy ? 0.6f : 0.28f);
+
+            // 重击特写：短促拉近取景（带冷却，避免每拳都拉镜头造成眩晕）
+            if (heavy && Time.unscaledTime >= _focusCd)
+            {
+                _focusCd = Time.unscaledTime + 0.6f;
+                var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+                if (cam != null) cam.UltimateShot(0.18f);
+            }
+        }
+
+        /// <summary>在指定世界点爆一簇放射火花（不加内部高度偏移，用于精确命中点）。</summary>
+        static void SparksAt(Vector3 center, Color color, int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                var spark = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                StripCol(spark);
+                spark.transform.position = center;
+                spark.transform.rotation = Random.rotation;
+                spark.transform.localScale = new Vector3(0.05f, 0.05f, Random.Range(0.35f, 0.85f));
+                spark.GetComponent<MeshRenderer>().sharedMaterial = Mat(color);
+                _i.StartCoroutine(_i.SparkFly(spark));
+            }
+        }
+
+        IEnumerator ImpactDisc(GameObject disc, float maxR)
+        {
+            var cam = Camera.main;
+            float t = 0, dur = 0.14f;
+            while (t < dur && disc != null)
+            {
+                t += Time.deltaTime;
+                float k = t / dur;
+                if (cam != null) disc.transform.rotation = cam.transform.rotation;
+                disc.transform.localScale = Vector3.one * Mathf.Lerp(0.15f, maxR, Mathf.Sqrt(k));
+                FadeAlpha(disc, 1f - k * 1.4f);
+                yield return null;
+            }
+            if (disc != null) Destroy(disc);
+        }
+
         // ---------- 能量爆发（组合技/大招）：借鉴动作大作的"光爆"而非大色块 ----------
         // 组合：强闪光球 + 密集放射光条 + 上升火星 + 细亮冲击环 + 顿帧/时缓/震屏。
         // 用加色半透明的暖橙-白光，读作"能量光"而非涂了一片米黄色实体。
