@@ -17,7 +17,7 @@ namespace AdversityRoad.UI
         GameObject _panel;
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
-        Button _softenBtn, _recoveryBtn, _followBtn, _deleteBtn;
+        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         bool _deleteArmed;
 
         static readonly Color Off = new Color(0.25f, 0.25f, 0.3f, 0.95f);
@@ -35,7 +35,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 860),
+            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 940),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
@@ -83,15 +83,20 @@ namespace AdversityRoad.UI
                 if (cam != null) cam.autoFollow = !cam.autoFollow;
                 Refresh();
             });
+            _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -560, () =>
+            {
+                GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
+                Refresh();
+            });
 
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -590), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -660), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -650), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -724), new Vector2(900, 32));
 
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f), new Vector2(0, 56),
                 new Vector2(260, 74), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 28);
@@ -137,6 +142,8 @@ namespace AdversityRoad.UI
             var cam = FindObjectOfType<ThirdPersonCamera>();
             if (_followBtn != null)
                 _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
+            if (_debugBtn != null)
+                _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
         }
 
         public void Toggle()
