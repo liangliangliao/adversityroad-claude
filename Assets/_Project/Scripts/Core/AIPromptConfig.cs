@@ -61,6 +61,7 @@ namespace AdversityRoad.Core
             SetIfEmpty("street", "街上的议论声、咳嗽声、目光都冲着玩家来；劝人缩回家里");
             SetIfEmpty("job", "已读不回的沉默；投出的简历石沉大海；质疑玩家的价值与定位");
             SetIfEmpty("plaza", "终局审判口吻；细数玩家过去的失败；断言他走不到终点");
+            SetIfEmpty("court", "法官口吻不停把别人的责任推给玩家；用内疚与道德绑架逼他默认全责");
         }
 
         void SetIfEmpty(string sceneId, string prompt)
