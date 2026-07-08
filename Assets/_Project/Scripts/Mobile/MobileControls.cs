@@ -137,15 +137,30 @@ namespace AdversityRoad.Mobile
             t.raycastTarget = false;
         }
 
-        /// <summary>用内置 Knob 精灵把方形 Image 变圆形；打包后取不到内置精灵时保持方形。</summary>
-        static void MakeCircle(Image img)
+        static Sprite _circleSprite;
+
+        /// <summary>把方形 Image 变圆形：用运行时生成的抗锯齿圆形贴图（Image.color 决定颜色）。
+        /// 之前用内置 UI/Skin/Knob.psd，Unity 6 取不到会刷屏报错——改为自绘，零报错。</summary>
+        static void MakeCircle(Image img) => img.sprite = CircleSprite();
+
+        static Sprite CircleSprite()
         {
-            try
-            {
-                var knob = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
-                if (knob != null) img.sprite = knob;
-            }
-            catch { /* 内置精灵未包含在构建中：保持方形按钮 */ }
+            if (_circleSprite != null) return _circleSprite;
+            const int size = 128;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            float r = size * 0.5f;
+            var px = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x + 0.5f - r, dy = y + 0.5f - r;
+                    float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy)); // 1px 抗锯齿边
+                    px[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+            tex.SetPixels32(px);
+            tex.Apply();
+            _circleSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            return _circleSprite;
         }
     }
 }
