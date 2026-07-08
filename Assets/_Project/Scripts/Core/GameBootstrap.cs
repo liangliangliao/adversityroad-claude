@@ -156,6 +156,9 @@ namespace AdversityRoad.Core
         void BuildPlayer(Vector3 spawn)
         {
             var root = new GameObject("Player");
+            // 出生即贴地（胶囊底=地面），避免出生后下落/滑行漂移
+            if (Physics.Raycast(spawn + Vector3.up * 5f, Vector3.down, out RaycastHit gh, 40f))
+                spawn = gh.point + Vector3.up * 1.02f;
             root.transform.position = spawn;
 
             // 外观容器：由 PlayerAppearance 按预设组装身体/头部/着装/兵器
@@ -364,6 +367,9 @@ namespace AdversityRoad.Core
             // 底部正好落在导航面，模型脚底再由 MecanimCharacter 对齐到胶囊底部。
             // baseOffset 与胶囊高度都随 Agent 缩放，任意体型都不会腾空/陷地。
             agent.baseOffset = 1f;
+            // 出生即落位：Warp 直接落到导航面上，避免 Agent 出生后向最近导航点"漂移滑行"
+            if (NavMesh.SamplePosition(pos, out NavMeshHit spawnHit, 4f, NavMesh.AllAreas))
+                agent.Warp(spawnHit.position);
 
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;

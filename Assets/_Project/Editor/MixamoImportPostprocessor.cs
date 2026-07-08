@@ -12,6 +12,10 @@ namespace AdversityRoad.EditorTools
     /// </summary>
     public class MixamoImportPostprocessor : AssetPostprocessor
     {
+        // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
+        // 无需手动 Reimport）。改动导入逻辑时 +1。
+        public override uint GetVersion() => 2;
+
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
             assetPath.ToLowerInvariant().EndsWith(".fbx");

@@ -739,8 +739,6 @@ namespace AdversityRoad.Combat
                 if (!blocked)
                     CombatFeedback.HitImpact(transform.position + dirS * 0.5f + Vector3.up * 1.25f,
                         new Color(1f, 0.4f, 0.3f), phys >= knockdownThreshold, false);
-                else
-                    CombatFeedback.Shake(0.3f);
 
                 _charging = false;
                 EndCombo();
