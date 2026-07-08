@@ -123,11 +123,14 @@ namespace AdversityRoad.Combat
         public bool IsGuarding { get; private set; }
         public int Momentum => _momentum;
 
+        StanceSystem _stance;
+
         void Awake()
         {
             _player = GetComponent<PlayerController>();
             _fsm = GetComponent<CombatStateMachine>();
             _cc = GetComponent<CharacterController>();
+            _stance = GetComponent<StanceSystem>();
         }
 
         void Update()
@@ -567,9 +570,10 @@ namespace AdversityRoad.Combat
                 Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
                     heavy ? 1f : 0.8f);
             };
+            float outMult = _stance != null ? _stance.OutgoingPhysicalMult() : 1f;
             weaponHitbox.EnableHitbox(new DamageInfo
             {
-                physicalDamage = dmg,
+                physicalDamage = dmg * outMult,
                 postureDamage = posture,
                 knockback = knockback,
                 attackerId = "player"
@@ -692,6 +696,8 @@ namespace AdversityRoad.Combat
                 float mult = GameManager.Instance != null && GameManager.Instance.safety != null
                     ? GameManager.Instance.safety.MentalDamageMultiplier() : 1f;
                 float mental = dmg.mentalDamage * mult;
+                // 姿态减伤：把姿态切到与来袭弱点轴匹配的一档，可大幅削减这次心理伤害
+                if (_stance != null) mental *= _stance.IncomingMentalMult(dmg.mentalAxis);
 
                 if (_parryTimer > 0)
                 {

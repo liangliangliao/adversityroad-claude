@@ -333,8 +333,14 @@ namespace AdversityRoad.AI
             if (_anim != null) _anim.SetTrigger("MentalAttack");
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("讥讽");
+
+            // 取出这句恶意台词（气泡+字幕都用同一句，便于言语攻防面板复述）
+            string line = DialogueLibrary.GetTaunt(profile.targetWeakness, ZoneBuilder.CurrentZoneId);
             if (dialogue != null)
-                dialogue.Taunt(profile.targetWeakness, ZoneBuilder.CurrentZoneId, true);
+            {
+                dialogue.Show(line, 3.5f);
+                GameEvents.RaiseSubtitle("『" + dialogue.displayName + "』：" + line);
+            }
 
             var pc = _player.GetComponent<PlayerCombatController>();
             if (pc != null)
@@ -345,18 +351,59 @@ namespace AdversityRoad.AI
                     profile.targetWeakness,
                     gm != null ? gm.CurrentProfile : null,
                     gm != null ? gm.safety : null);
-                pc.TakeHit(new DamageInfo
+                var mentalHit = new DamageInfo
                 {
                     mentalDamage = dmg,
                     mentalAxis = profile.targetWeakness,
                     isMentalOnly = true,
                     attackerId = profile.enemyId
-                });
+                };
+
+                // 言语攻防：优先交给玩家三选一回应；接管失败（冷却/恢复模式/已在进行）时照常落伤害。
+                bool challenged = UI.VerbalDefenseController.Instance != null &&
+                    UI.VerbalDefenseController.Instance.Begin(this, profile.targetWeakness,
+                        dialogue != null ? dialogue.displayName : profile.displayName, line, mentalHit);
+                if (!challenged) pc.TakeHit(mentalHit);
             }
             Invoke(nameof(BackToChase), 1.2f);
         }
 
         void BackToChase() { if (State != EnemyState.Dead) State = EnemyState.Chase; }
+
+        /// <summary>被玩家正确回击（言语攻防）：语塞、削韧、短暂破绽——奖励用言语克制言语。</summary>
+        public void OnVerbalCountered()
+        {
+            if (State == EnemyState.Dead) return;
+            CancelInvoke(nameof(OpenAttackHitbox));
+            CancelInvoke(nameof(FireProjectile));
+            ShowTelegraph(false);
+            if (attackHitbox != null) attackHitbox.DisableHitbox();
+
+            _posture -= profile.posture * 0.5f;
+            CombatFeedback.HitSpark(transform.position + Vector3.up * 1.4f,
+                new Color(0.5f, 0.85f, 1f));
+            if (dialogue != null) dialogue.Show(ResponseLibrary.GetBrokenLine(), 2.2f);
+
+            State = EnemyState.Stagger;
+            StopMoving();
+            if (poser != null) poser.SetPose(PoseState.Stagger);
+
+            if (_posture <= 0)
+            {
+                // 语塞击破韧性=大破绽
+                _posture = profile.posture;
+                _staggerTimer = 2.4f;
+                if (statusBar != null) statusBar.SetEmotion("破绽！！猛攻！");
+                if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
+                CombatFeedback.SlowMo(0.5f, 0.15f);
+            }
+            else
+            {
+                _staggerTimer = 1.2f;
+                if (statusBar != null) statusBar.SetEmotion("语塞");
+            }
+            if (statusBar != null) statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
+        }
 
         public void TakeHit(DamageInfo dmg)
         {

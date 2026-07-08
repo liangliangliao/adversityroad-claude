@@ -16,6 +16,7 @@ namespace AdversityRoad.UI
         public StatBar selfWorthBar;
         public StatBar boundaryBar;
         public StatBar resolveBar;
+        public StatBar ruminationBar;   // 反刍值：越满越糟（与其它条相反）
         public Text questText;
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
@@ -132,6 +133,18 @@ namespace AdversityRoad.UI
 
         void OnMental(string stat, float cur, float max)
         {
+            // 反刍值方向相反：数值"上升"才是受损，用紫色暗角脉冲提示
+            if (stat == "rumination")
+            {
+                if (ruminationBar != null)
+                {
+                    if (cur > ruminationBar.LastRatio * max + 0.5f)
+                        Pulse(new Color(0.4f, 0.05f, 0.35f), 0.3f);
+                    ruminationBar.SetValue(cur, max);
+                }
+                return;
+            }
+
             StatBar bar = null;
             switch (stat)
             {

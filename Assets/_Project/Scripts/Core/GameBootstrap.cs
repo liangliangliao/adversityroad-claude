@@ -168,6 +168,7 @@ namespace AdversityRoad.Core
 
             _player = root.AddComponent<PlayerController>();
             var fsm = root.AddComponent<CombatStateMachine>();
+            root.AddComponent<StanceSystem>();     // 五种战斗姿态（Awake 早于 PlayerCombatController.Awake 读取）
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
             var skillExec = root.AddComponent<SkillExecutor>();
@@ -431,6 +432,8 @@ namespace AdversityRoad.Core
             hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊", 3, new Color(0.6f, 0.4f, 0.9f));
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
             hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
+            hud.ruminationBar = CreateBar(canvasGo.transform, "反刍", 6, new Color(0.55f, 0.2f, 0.5f));
+            hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
 
             // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
             hud.momentumPips = new Image[3];
@@ -439,7 +442,7 @@ namespace AdversityRoad.Core
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -252), new Vector2(34, 34));
+                    new Vector2(40 + i * 46, -286), new Vector2(34, 34));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -453,8 +456,11 @@ namespace AdversityRoad.Core
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -252), new Vector2(400, 40));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -286), new Vector2(400, 40));
             hud.comboText = comboText;
+
+            // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
+            StanceBar.Create(canvasGo.transform, _player.GetComponent<StanceSystem>());
 
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
                 TextAnchor.MiddleCenter, Color.white);
@@ -505,6 +511,12 @@ namespace AdversityRoad.Core
             var settingsPanel = SettingsPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "设置", new Vector2(1, 1), new Vector2(-435, -116),
                 new Vector2(150, 64), new Color(0.4f, 0.4f, 0.45f, 0.8f), settingsPanel.Toggle, 26);
+            var reflectionPanel = ReflectionPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
+                new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
+
+            // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
+            canvasGo.AddComponent<VerbalDefenseController>();
 
             // 第五阶段：画像驱动的个性化遭遇战
             var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();

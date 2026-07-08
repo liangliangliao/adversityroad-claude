@@ -18,6 +18,7 @@ namespace AdversityRoad.Core
         public static event Action<string> OnComboSeqChanged;   // 连段序列（"拳·拳·腿"）
         public static event Action<bool> OnLockStateChanged;    // 锁定敌人状态（电影黑边）
         public static event Action<string> OnSkillBanner;       // 招式大字横幅（屏幕中央）
+        public static event Action<int, string, string> OnStanceChanged; // 战斗姿态切换（序号/名称/心法）
 
         public static void RaisePlayerHpChanged(float cur, float max) => OnPlayerHpChanged?.Invoke(cur, max);
         public static void RaiseMentalStatChanged(string stat, float cur, float max) => OnMentalStatChanged?.Invoke(stat, cur, max);
@@ -32,5 +33,6 @@ namespace AdversityRoad.Core
         public static void RaiseComboSeq(string seq) => OnComboSeqChanged?.Invoke(seq);
         public static void RaiseLockState(bool locked) => OnLockStateChanged?.Invoke(locked);
         public static void RaiseSkillBanner(string name) => OnSkillBanner?.Invoke(name);
+        public static void RaiseStanceChanged(int index, string name, string mantra) => OnStanceChanged?.Invoke(index, name, mantra);
     }
 }

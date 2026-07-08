@@ -19,8 +19,13 @@ namespace AdversityRoad.Player
         public float boundary = 100, maxBoundary = 100;   // 边界：抵抗操控、责任转嫁
         public float resolve = 100, maxResolve = 100;     // 决断：抵抗拖延、行动瘫痪
 
+        // 反刍值：与其它属性相反——越高越糟。未被回应/被错误回应的言语攻击会累积反刍，
+        // 满值触发旧事回声；战后复盘（归档）可清零。战斗外缓慢消退，避免软锁。
+        public float rumination = 0, maxRumination = 100;
+
         public float staminaRegenPerSec = 15f;
         public float mentalRegenPerSec = 2f;
+        public float ruminationDecayPerSec = 1.5f;
 
         public bool IsDead => hp <= 0;
 
@@ -33,6 +38,8 @@ namespace AdversityRoad.Player
             selfWorth = Mathf.Min(maxSelfWorth, selfWorth + m);
             boundary = Mathf.Min(maxBoundary, boundary + m);
             resolve = Mathf.Min(maxResolve, resolve + m);
+            if (!inCombat && rumination > 0)
+                AddRumination(-ruminationDecayPerSec * dt);
         }
 
         public void TakePhysicalDamage(float dmg)
@@ -45,6 +52,8 @@ namespace AdversityRoad.Player
         /// <summary>心理伤害按弱点轴落到对应属性。返回是否触发心理硬直。</summary>
         public bool TakeMentalDamage(Personalization.WeaknessAxis axis, float dmg)
         {
+            // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
+            AddRumination(dmg * 0.4f);
             switch (axis)
             {
                 case Personalization.WeaknessAxis.Procrastination:
@@ -96,6 +105,47 @@ namespace AdversityRoad.Player
             focus = Mathf.Min(maxFocus, focus + amount);
             selfWorth = Mathf.Min(maxSelfWorth, selfWorth + amount);
             resolve = Mathf.Min(maxResolve, resolve + amount);
+        }
+
+        /// <summary>反刍值增减（可为负）。触发 UI 更新。</summary>
+        public void AddRumination(float amount)
+        {
+            rumination = Mathf.Clamp(rumination + amount, 0, maxRumination);
+            GameEvents.RaiseMentalStatChanged("rumination", rumination, maxRumination);
+        }
+
+        public void ReduceRumination(float amount) => AddRumination(-amount);
+
+        /// <summary>言语攻防正确回击：把伤害本应削减的那条弱点属性回补一部分。</summary>
+        public void RestoreAxis(Personalization.WeaknessAxis axis, float amount)
+        {
+            switch (axis)
+            {
+                case Personalization.WeaknessAxis.Procrastination:
+                case Personalization.WeaknessAxis.WillpowerCollapse:
+                    resolve = Mathf.Min(maxResolve, resolve + amount);
+                    GameEvents.RaiseMentalStatChanged("resolve", resolve, maxResolve);
+                    break;
+                case Personalization.WeaknessAxis.NoiseSensitivity:
+                    focus = Mathf.Min(maxFocus, focus + amount);
+                    GameEvents.RaiseMentalStatChanged("focus", focus, maxFocus);
+                    break;
+                case Personalization.WeaknessAxis.Shame:
+                case Personalization.WeaknessAxis.LowConfidence:
+                case Personalization.WeaknessAxis.SelfDoubt:
+                    selfWorth = Mathf.Min(maxSelfWorth, selfWorth + amount);
+                    GameEvents.RaiseMentalStatChanged("selfWorth", selfWorth, maxSelfWorth);
+                    break;
+                case Personalization.WeaknessAxis.BoundaryConflict:
+                case Personalization.WeaknessAxis.FairnessSensitivity:
+                    boundary = Mathf.Min(maxBoundary, boundary + amount);
+                    GameEvents.RaiseMentalStatChanged("boundary", boundary, maxBoundary);
+                    break;
+                default:
+                    will = Mathf.Min(maxWill, will + amount);
+                    GameEvents.RaiseMentalStatChanged("will", will, maxWill);
+                    break;
+            }
         }
     }
 }
