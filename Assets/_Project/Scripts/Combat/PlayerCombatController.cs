@@ -476,10 +476,15 @@ namespace AdversityRoad.Combat
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
                 OpenHitboxTimed(0.06f, 0.18f, baseDmg * s.dmg, s.posture, s.knock, false);
+                // 每击落点一道小型地面冲击环（震地感），终结一击放大招级爆发
+                CombatFeedback.ShockRing(transform.position + transform.forward * 1.1f,
+                    s.arc, i == seq.Length - 1 ? 5f : 2.2f);
                 if (i == seq.Length - 1)
                 {
                     CombatFeedback.EnergyBurst(transform.position + transform.forward * 1.3f,
                         new Color(0.55f, 0.8f, 1f), 1.4f);
+                    CombatFeedback.Debris(transform.position + transform.forward * 1.3f,
+                        new Color(0.5f, 0.65f, 0.9f), 8);
                     CombatFeedback.SlowMo(0.35f, 0.3f);
                 }
                 yield return new WaitForSeconds(s.wait);
@@ -728,7 +733,14 @@ namespace AdversityRoad.Combat
                 CombatFeedback.HitFlash(gameObject);
                 CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(phys).ToString(),
                     new Color(1f, 0.35f, 0.3f));
-                CombatFeedback.Shake(phys >= knockdownThreshold ? 1.0f : 0.4f);
+                // 玩家被击中也在接触点打出冲击（红系，不计连击）：看清"我被打中了哪"
+                Vector3 toSrc = dmg.sourcePosition - transform.position; toSrc.y = 0;
+                Vector3 dirS = toSrc.sqrMagnitude > 0.01f ? toSrc.normalized : transform.forward;
+                if (!blocked)
+                    CombatFeedback.HitImpact(transform.position + dirS * 0.5f + Vector3.up * 1.25f,
+                        new Color(1f, 0.4f, 0.3f), phys >= knockdownThreshold, false);
+                else
+                    CombatFeedback.Shake(0.3f);
 
                 _charging = false;
                 EndCombo();

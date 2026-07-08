@@ -324,6 +324,7 @@ namespace AdversityRoad.Core
 
             var poser = root.AddComponent<HumanoidAnimator>();
             poser.visual = visualRoot.transform;
+            poser.isEnemy = true;
 
             // 优先动捕模型；无资源则回退程序化方块骨骼
             HumanoidRig rig = null;

@@ -19,7 +19,7 @@ namespace AdversityRoad.Player
     {
         public Transform target;
         [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）")]
-        public Vector3 offset = new Vector3(0.6f, 2.0f, -4.9f);
+        public Vector3 offset = new Vector3(0.55f, 1.75f, -3.6f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
@@ -37,7 +37,8 @@ namespace AdversityRoad.Player
         [Tooltip("水平位置跟随平滑时间（中速）：临界阻尼软跟随——不太快(否则复制抖动)、" +
                  "不太慢(否则玩家跑出画面)，滤掉逐帧微抖又稳稳跟住位置")]
         public float followSmoothTime = 0.09f;
-        public float fieldOfView = 66f;
+        // 悟空式取景：镜头近、视野窄（长焦感），角色占画面 1/3~1/2 高，人物有分量
+        public float fieldOfView = 54f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -96,9 +97,9 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.55f, 1.75f, -3.7f), pitch = 7f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.6f, 2.0f, -4.9f), pitch = 10f },
-            new CamPreset { name = "战术远景", offset = new Vector3(0.25f, 3.3f, -7.0f), pitch = 21f },
+            new CamPreset { name = "近身动作", offset = new Vector3(0.5f, 1.55f, -2.8f), pitch = 5f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.55f, 1.75f, -3.6f), pitch = 8f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 2.7f, -5.4f), pitch = 17f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
 
@@ -278,7 +279,7 @@ namespace AdversityRoad.Player
             {
                 // 贴近取景：近身缠斗时镜头压近看清拳脚细节，拉开时同框
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
-                wantFactor = Mathf.Clamp(0.6f + enemyDist * 0.06f, 0.72f, 1.3f);
+                wantFactor = Mathf.Clamp(0.52f + enemyDist * 0.05f, 0.62f, 1.12f);
             }
             else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）

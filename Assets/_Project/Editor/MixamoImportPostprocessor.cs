@@ -22,7 +22,32 @@ namespace AdversityRoad.EditorTools
             var mi = assetImporter as ModelImporter;
             if (mi == null) return;
             mi.animationType = ModelImporterAnimationType.Human;             // 人形骨骼（可跨模型重定向）
-            mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;   // 各自从自身骨架生成 Avatar
+
+            // 动作 FBX（Anims/ 下）：复用角色模型的 Avatar，而不是各自从自身骨架生成。
+            // 动作文件不带蒙皮，自建 Avatar 的 T-Pose 常校准失败，重定向后腿部扭曲/
+            // 左右反（"腿反向/鞋穿反"就是这个）。统一 Copy PlayerModel 的 Avatar 即修复。
+            bool isAnim = assetPath.Replace('\\', '/').Contains("/Characters/Anims/");
+            UnityEngine.Avatar src = isAnim ? FindModelAvatar() : null;
+            if (src != null)
+            {
+                mi.avatarSetup = ModelImporterAvatarSetup.CopyFromOther;
+                mi.sourceAvatar = src;
+            }
+            else
+                mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+        }
+
+        static UnityEngine.Avatar FindModelAvatar()
+        {
+            foreach (var name in new[] { "PlayerModel", "EnemyModel" })
+                foreach (var guid in AssetDatabase.FindAssets(name + " t:Model"))
+                {
+                    string p = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!p.Replace('\\', '/').Contains("/Resources/Characters/")) continue;
+                    foreach (var a in AssetDatabase.LoadAllAssetsAtPath(p))
+                        if (a is UnityEngine.Avatar av && av.isHuman) return av;
+                }
+            return null;
         }
 
         void OnPreprocessAnimation()

@@ -23,6 +23,7 @@ namespace AdversityRoad.Combat
         public CombatStateMachine fsm;
         public Transform weaponPivot; // 兵器枢轴（叠加在手部之上做刀刃轨迹）
         public TrailRenderer weaponTrail;
+        public bool isEnemy;          // 招式名浮字颜色区分（玩家金/敌人红）
 
         PoseState _pose = PoseState.Idle;
         CombatState _lastFsmState = CombatState.Idle;
@@ -58,6 +59,33 @@ namespace AdversityRoad.Combat
             _pose = p;
             _t = 0;
             _poseSerial++;   // 每次设招（含同名连招重触发）都递增，供动捕层重放动作
+
+            // 战斗可读性：出招瞬间头顶弹出招式名（格斗游戏惯例），看清双方正在用什么招
+            string mv = MoveNameOf(p);
+            if (mv != null) CombatFeedback.MoveName(transform.position, mv, isEnemy);
+        }
+
+        static string MoveNameOf(PoseState p)
+        {
+            switch (p)
+            {
+                case PoseState.Attack: return "横斩";
+                case PoseState.HeavyAttack: return "裂空重斩";
+                case PoseState.AttackUp: return "撩天斩";
+                case PoseState.SwordThrust: return "破空刺";
+                case PoseState.AttackLeap: return "跃劈";
+                case PoseState.JumpAttack: return "空袭斩";
+                case PoseState.AttackSpin: return "回旋斩";
+                case PoseState.PunchJab: return "疾风拳";
+                case PoseState.PunchCross: return "贯心拳";
+                case PoseState.AttackKick: return "正蹬";
+                case PoseState.SideKick: return "侧踹";
+                case PoseState.SpinKick: return "旋风腿";
+                case PoseState.JumpKick: return "飞踢";
+                case PoseState.Sweep: return "扫堂腿";
+                case PoseState.Cast: return "心念术";
+                default: return null;   // 受击/倒地/翻滚/格挡等不刷屏
+            }
         }
 
         /// <summary>

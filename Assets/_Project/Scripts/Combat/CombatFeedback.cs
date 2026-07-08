@@ -240,12 +240,28 @@ namespace AdversityRoad.Combat
         // 一眼看清「击中了哪里」；重击叠加顿帧、震屏与短促拉近特写，读作"实打实的碰撞"。
 
         static float _focusCd;
+        static int _combo;
+        static float _lastComboT;
 
-        /// <summary>在世界坐标 contact 处打出命中冲击。heavy=重击（更强反馈+特写）。</summary>
-        public static void HitImpact(Vector3 contact, Color color, bool heavy)
+        /// <summary>在世界坐标 contact 处打出命中冲击。heavy=重击（更强反馈+特写）。
+        /// countCombo=玩家打中敌人才计连击（被打不计）。</summary>
+        public static void HitImpact(Vector3 contact, Color color, bool heavy, bool countCombo = true)
         {
             Ensure();
             SparksAt(contact, Color.Lerp(color, Color.white, 0.55f), heavy ? 11 : 6);
+
+            // 格斗游戏式连击计数：2.2 秒内连续命中累计，字随连击数变大变红
+            if (countCombo)
+            {
+                if (Time.unscaledTime - _lastComboT > 2.2f) _combo = 0;
+                _combo++;
+                _lastComboT = Time.unscaledTime;
+                if (_combo >= 2)
+                    DamageNumber(contact + Vector3.up * 0.5f, _combo + " 连击",
+                        Color.Lerp(new Color(1f, 0.85f, 0.3f), new Color(1f, 0.3f, 0.15f),
+                            Mathf.Clamp01((_combo - 2) / 8f)),
+                        1.2f + Mathf.Min(_combo, 10) * 0.08f);
+            }
 
             // 命中点白色冲击盘：始终朝向镜头，清晰标出命中位置
             var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -280,6 +296,40 @@ namespace AdversityRoad.Combat
                 spark.GetComponent<MeshRenderer>().sharedMaterial = Mat(color);
                 _i.StartCoroutine(_i.SparkFly(spark));
             }
+        }
+
+        /// <summary>招式名浮字：出招瞬间在角色头顶弹出招式名（玩家金、敌人红），
+        /// 一眼看清双方"正在用什么招"。</summary>
+        public static void MoveName(Vector3 pos, string name, bool enemy)
+        {
+            DamageNumber(pos + Vector3.up * 0.5f, "「" + name + "」",
+                enemy ? new Color(1f, 0.4f, 0.35f) : new Color(1f, 0.85f, 0.35f), 1.15f);
+        }
+
+        /// <summary>地面冲击环：贴地快速扩散的能量圆环（重击落点/绝招终结，悟空式震地感）。</summary>
+        public static void ShockRing(Vector3 pos, Color color, float maxR = 3f)
+        {
+            Ensure();
+            var ring = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            StripCol(ring);
+            ring.transform.position = pos + Vector3.up * 0.06f;
+            ring.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(color, Color.white, 0.5f), 0.6f);
+            _i.StartCoroutine(_i.RingExpand(ring, maxR));
+        }
+
+        IEnumerator RingExpand(GameObject ring, float maxR)
+        {
+            float t = 0, dur = 0.28f;
+            while (t < dur && ring != null)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Sqrt(t / dur);
+                ring.transform.localScale = new Vector3(maxR * k, 0.05f, maxR * k);
+                FadeAlpha(ring, 0.6f * (1f - k));
+                yield return null;
+            }
+            if (ring != null) Destroy(ring);
         }
 
         IEnumerator ImpactDisc(GameObject disc, float maxR)
