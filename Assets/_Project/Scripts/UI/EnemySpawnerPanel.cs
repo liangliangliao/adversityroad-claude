@@ -34,7 +34,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(900, 620),
+            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(900, 700),
                 new Color(0.08f, 0.08f, 0.12f, 0.96f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "添 加 心 魔 挑 战", 40,
@@ -49,7 +49,8 @@ namespace AdversityRoad.UI
             {
                 EnemyType.TomorrowPhantom, EnemyType.CoughAssassin,
                 EnemyType.SelfDoubtWhisper, EnemyType.ShameMirror,
-                EnemyType.ProcrastinationShadow, EnemyType.NoReplyKing
+                EnemyType.ProcrastinationShadow, EnemyType.NoReplyKing,
+                EnemyType.TotalResponsibilityJudge
             };
             for (int i = 0; i < types.Length; i++)
             {
@@ -62,14 +63,14 @@ namespace AdversityRoad.UI
 
             var tierLabel = UiUtil.MakeText(_panel.transform, "TierLabel", "难度", 28,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-380, -370), new Vector2(120, 40));
+            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-380, -460), new Vector2(120, 40));
 
             EnemyTier[] tiers = { EnemyTier.Novice, EnemyTier.Standard, EnemyTier.Elite, EnemyTier.Chief };
             for (int i = 0; i < tiers.Length; i++)
             {
                 var t = tiers[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TierLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -430),
+                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -520),
                     new Vector2(175, 70), Off, () => SelectTier(t), 26);
                 _tierButtons.Add((btn, t));
             }

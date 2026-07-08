@@ -63,9 +63,17 @@ namespace AdversityRoad.Core
             {
                 zoneIndex = 4, enemyType = EnemyType.ProcrastinationShadow, enemyTier = EnemyTier.Chief,
                 enemyId = "boss_procrastination_shadow",
-                title = "终章 · 城市广场",
+                title = "第五章 · 城市广场",
                 intro = "华灯初上的广场中央，站着一个巨大的影子。\n它有你的轮廓——那是无数个「明天再说」堆成的旧我。\n\n击败【首领·拖延影魔】，把现在夺回来。",
-                victory = "影子碎裂成漫天光点。\n你没有变成另一个人——你只是终于成为了自己。\n\n【主线完结】自由修炼模式已开启：\n可用「敌人+」在任意区域添加不同类型与难度的心魔挑战。"
+                victory = "影子碎裂成漫天光点。\n你没有变成另一个人——你只是终于成为了自己。\n\n可广场东侧的法院还亮着灯——那里，有人正把不属于你的责任，一件件推到你身上。\n最后一站：责任转嫁法院。"
+            },
+            new ChapterInfo
+            {
+                zoneIndex = 5, enemyType = EnemyType.TotalResponsibilityJudge, enemyTier = EnemyTier.Chief,
+                enemyId = "boss_total_responsibility_judge",
+                title = "终章 · 责任转嫁法院",
+                intro = "高大的法院里，责任天平永远倾向你这一侧。\n审判席上的【全责法官】不停宣判：「这也是你的责任。」\n它会把一个个「责任球」抛向你——红色的不属于你，绿色的才是你的本分。\n\n提示：举起边界盾（格挡）把红球挡回去，就是「责任归还」；绿球别推开，接下它。\n击败【首领·全责法官】，学会准确承担属于自己的部分。",
+                victory = "责任天平终于回正。\n真正的负责不是什么都背，而是准确承担属于自己的那部分——多一分是内耗，少一分是逃避。\n\n【主线完结】自由修炼模式已开启：\n可用「敌人+」在任意区域添加不同类型与难度的心魔挑战。"
             }
         };
 

@@ -10,7 +10,8 @@ namespace AdversityRoad.AI
         CoughAssassin,          // 咳声刺客（混合·噪声）
         ShameMirror,            // 羞耻镜像（内心·羞耻）
         ProcrastinationShadow,  // 拖延影魔（Boss 原型）
-        NoReplyKing             // 无回应之王（求职荒原 Boss：拒信飞刃）
+        NoReplyKing,            // 无回应之王（求职荒原 Boss：拒信飞刃）
+        TotalResponsibilityJudge // 全责法官（责任转嫁法院 Boss：抛掷责任球）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -62,6 +63,7 @@ namespace AdversityRoad.AI
                 case EnemyType.CoughAssassin: return "咳声刺客";
                 case EnemyType.ShameMirror: return "羞耻镜像";
                 case EnemyType.NoReplyKing: return "无回应之王";
+                case EnemyType.TotalResponsibilityJudge: return "全责法官";
                 default: return "拖延影魔";
             }
         }
@@ -75,6 +77,7 @@ namespace AdversityRoad.AI
                 case EnemyType.CoughAssassin: return new Color(0.9f, 0.4f, 0.2f);
                 case EnemyType.ShameMirror: return new Color(0.75f, 0.6f, 0.85f);
                 case EnemyType.NoReplyKing: return new Color(0.62f, 0.66f, 0.75f);
+                case EnemyType.TotalResponsibilityJudge: return new Color(0.55f, 0.16f, 0.2f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -89,6 +92,7 @@ namespace AdversityRoad.AI
                 case EnemyType.CoughAssassin: return Combat.WeaponKind.Claw;      // 利爪
                 case EnemyType.ShameMirror: return Combat.WeaponKind.Sword;       // 镜像之剑
                 case EnemyType.NoReplyKing: return Combat.WeaponKind.Sword;       // 拒信之剑
+                case EnemyType.TotalResponsibilityJudge: return Combat.WeaponKind.Staff; // 法槌·长杖
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -107,6 +111,7 @@ namespace AdversityRoad.AI
                 case EnemyType.CoughAssassin: return "enemy_cough_assassin";
                 case EnemyType.ShameMirror: return "enemy_shame_mirror";
                 case EnemyType.NoReplyKing: return "boss_no_reply_king";
+                case EnemyType.TotalResponsibilityJudge: return "boss_total_responsibility_judge";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -155,6 +160,14 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.JobAnxiety, category = EnemyCategory.Hybrid,
                         maxHealth = 120, posture = 45, physicalDamage = 13, mentalDamage = 17,
                         aggression = 0.55f, defense = 10, moveSpeed = 3f, attackRange = 2f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.TotalResponsibilityJudge:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
+                        maxHealth = 125, posture = 46, physicalDamage = 12, mentalDamage = 16,
+                        aggression = 0.5f, defense = 10, moveSpeed = 3f, attackRange = 2.1f, detectRange = 15
                     };
                     break;
                 default:

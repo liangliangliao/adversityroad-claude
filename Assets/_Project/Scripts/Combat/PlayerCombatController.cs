@@ -295,7 +295,7 @@ namespace AdversityRoad.Combat
             }
 
             CombatFeedback.SwingArc(transform, nextDepth >= 2 || recipeHit,
-                recipeHit ? new Color(1f, 0.85f, 0.3f)
+                recipeHit ? new Color(1f, 0.6f, 0.2f)
                 : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
             // 招式分工：腿系主司「击退」（大幅推开、打断敌人突进/连招，拉开身位），
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，见 PunchChain 更短的帧数）。
@@ -456,25 +456,34 @@ namespace AdversityRoad.Combat
         IEnumerator RanWu(float charge01)
         {
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
-            _fsm.RequestState(CombatState.Finisher, 1.5f);
-            _player.SetInvincible(1.6f);
-            CombatFeedback.UltimateShot(1.7f);   // 大招镜头：短暂拉近，结束回稳
-            PoseState[] seq =
+            _fsm.RequestState(CombatState.Finisher, 2.2f);
+            _player.SetInvincible(2.3f);
+            CombatFeedback.UltimateShot(2.2f);   // 镜头拉近看清连段
+            // 大幅剑技串成连段：节奏留给动作本体，每击只配一道收敛的刀光，
+            // 收招才一次中等能量爆发 + 短时缓——特效点到为止，不糊住招式。
+            var seq = new (PoseState pose, float dmg, float posture, float knock, float wait, Color arc)[]
             {
-                PoseState.PunchJab, PoseState.AttackKick, PoseState.PunchCross,
-                PoseState.SideKick, PoseState.AttackSpin, PoseState.AttackLeap
+                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.46f, new Color(0.6f, 0.85f, 1f)),
+                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.52f, new Color(0.7f, 0.9f, 1f)),
+                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.44f, new Color(0.8f, 0.92f, 1f)),
+                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.6f,  new Color(0.55f, 0.8f, 1f)),
             };
-            float per = heavyDamage * (0.45f + 0.15f * charge01);
+            float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
             for (int i = 0; i < seq.Length; i++)
             {
-                PlayPose(seq[i]);
-                FaceAndLunge(0.25f);
-                OpenHitboxTimed(0.04f, 0.12f, per * (i == seq.Length - 1 ? 2f : 1f),
-                    i == seq.Length - 1 ? 40f : 10f, i == seq.Length - 1 ? 6f : 0.5f, false);
-                yield return new WaitForSeconds(i == seq.Length - 1 ? 0.3f : 0.18f);
+                var s = seq[i];
+                PlayPose(s.pose);
+                FaceAndLunge(0.3f);
+                CombatFeedback.SwingArc(transform, true, s.arc);
+                OpenHitboxTimed(0.06f, 0.18f, baseDmg * s.dmg, s.posture, s.knock, false);
+                if (i == seq.Length - 1)
+                {
+                    CombatFeedback.EnergyBurst(transform.position + transform.forward * 1.3f,
+                        new Color(0.55f, 0.8f, 1f), 1.4f);
+                    CombatFeedback.SlowMo(0.35f, 0.3f);
+                }
+                yield return new WaitForSeconds(s.wait);
             }
-            CombatFeedback.SlowMo(0.25f, 0.4f);
-            CombatFeedback.Shake(1f);
         }
 
         // ================= 空中 / 蹲伏攻击 =================

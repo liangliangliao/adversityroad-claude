@@ -68,6 +68,8 @@ namespace AdversityRoad.Core
                 case WeaknessAxis.NoiseSensitivity: return EnemyType.CoughAssassin;
                 case WeaknessAxis.Shame: return EnemyType.ShameMirror;
                 case WeaknessAxis.JobAnxiety: return EnemyType.NoReplyKing;
+                case WeaknessAxis.BoundaryConflict:
+                case WeaknessAxis.FairnessSensitivity: return EnemyType.TotalResponsibilityJudge;
                 case WeaknessAxis.SelfDoubt:
                 case WeaknessAxis.LowConfidence:
                 case WeaknessAxis.FailureFear: return EnemyType.SelfDoubtWhisper;
