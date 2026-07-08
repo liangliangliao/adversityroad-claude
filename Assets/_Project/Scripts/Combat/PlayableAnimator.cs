@@ -22,12 +22,12 @@ namespace AdversityRoad.Combat
         static readonly (PoseState pose, string[] keys)[] ActionMap =
         {
             (PoseState.Attack,      new[]{ "great sword slash" }),
-            (PoseState.HeavyAttack, new[]{ "great sword slash (1)", "great sword high slash" }),
-            (PoseState.AttackUp,    new[]{ "great sword high slash", "great sword slash (1)" }),
+            (PoseState.HeavyAttack, new[]{ "great sword slash (1)", "great sword high spin attack" }),
+            (PoseState.AttackUp,    new[]{ "great sword slash (1)", "great sword high spin attack" }),
             (PoseState.SwordThrust, new[]{ "stabbing", "stab" }),
             (PoseState.AttackLeap,  new[]{ "great sword jump", "jump attack" }),
             (PoseState.JumpAttack,  new[]{ "great sword jump", "jump attack" }),
-            (PoseState.AttackSpin,  new[]{ "great sword slash (1)", "spin flip kick" }),
+            (PoseState.AttackSpin,  new[]{ "great sword high spin attack", "spin attack", "great sword slash (1)" }),
             (PoseState.PunchJab,    new[]{ "lead jab", "jab" }),
             (PoseState.PunchCross,  new[]{ "cross punch" }),
             (PoseState.AttackKick,  new[]{ "kicking" }),
