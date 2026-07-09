@@ -25,7 +25,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 3;
+        public override uint GetVersion() => 4;
 
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
@@ -83,11 +83,17 @@ namespace AdversityRoad.EditorTools
             for (int i = 0; i < clips.Length; i++)
             {
                 string n = clips[i].name.ToLowerInvariant();
-                clips[i].loopTime = n.Contains("idle") || n.Contains("walk") || n.Contains("run");
-                // 根旋转烘焙进姿态、以原始朝向为准：不依赖"身体朝向"估计
-                //（估计出错=整体朝向反/脚朝后的另一根因），转体类招式保留转身。
+                bool loop = n.Contains("idle") || n.Contains("walk") || n.Contains("run");
+                clips[i].loopTime = loop;
+                // 根旋转一律烘焙进姿态（转体类招式保留转身），但"基于"分两类：
+                //  · 循环动画（待机/格斗架势/走/跑）按【身体朝向】回正——这类片段
+                //    原作常是侧身/偏轴站架（格斗架势尤甚），按"原始朝向"烘焙会把
+                //    偏角带进姿态：根朝向敌人而身体/腿保持偏转 ≙ "搏击状态腿部
+                //    朝向不对、走跑蟹行"的根因；身体朝向基准自动对齐正前方。
+                //  · 一次性招式按【原始朝向】——保留原作的出击轴向（侧踢的侧身、
+                //    回旋斩的旋转相位），命中方向与根一致由控制器保证。
                 clips[i].lockRootRotation = true;
-                clips[i].keepOriginalOrientation = true;
+                clips[i].keepOriginalOrientation = !loop;
                 // 纵向位移烘焙进姿态：飞踢/跃劈的腾空可见；以原始高度为准。
                 clips[i].lockRootHeightY = true;
                 clips[i].keepOriginalPositionY = true;
