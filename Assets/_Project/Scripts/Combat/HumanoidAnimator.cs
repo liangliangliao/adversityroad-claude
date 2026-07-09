@@ -91,6 +91,10 @@ namespace AdversityRoad.Combat
             SetPose(PoseState.Idle);
         }
 
+        /// <summary>动作库预览：按片段名直接试播（测试面板逐个动作验证效果）。</summary>
+        public bool PlayClipPreview(string clipName) =>
+            Mecanim && _mecanim.PlayClip(clipName);
+
         public void SetPose(PoseState p)
         {
             _pose = p;
