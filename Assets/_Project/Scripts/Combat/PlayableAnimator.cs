@@ -81,6 +81,8 @@ namespace AdversityRoad.Combat
         const float WalkNaturalSpeed = 2.0f;
         const float RunNaturalSpeed = 4.8f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
+        // 动作库全量索引（片段名→输入口）：未映射到招式的片段也接入，供预览试播
+        readonly Dictionary<string, int> _clipIndex = new Dictionary<string, int>();
         float[] _actionLen;
         float[] _actionSpeed;
         bool[] _actionHold;
@@ -136,13 +138,17 @@ namespace AdversityRoad.Combat
             if (idle == null || walk == null || run == null) { Valid = false; return; }
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
 
-            // 解析招式片段（映射得到的才建输入）
-            var actionList = new List<(PoseState pose, AnimationClip clip, float speed, bool hold)>();
+            // 解析招式片段；目录中未被映射的片段也全部接入（动作库预览可逐个试播）
+            var actionList = new List<(PoseState? pose, AnimationClip clip, float speed, bool hold)>();
+            var connected = new HashSet<AnimationClip>();
             foreach (var m in ActionMap)
             {
                 var clip = Pick(byName, m.keys);
-                if (clip != null) actionList.Add((m.pose, clip, m.speed, m.hold));
+                if (clip != null) { actionList.Add((m.pose, clip, m.speed, m.hold)); connected.Add(clip); }
             }
+            foreach (var kv in byName)
+                if (!connected.Contains(kv.Value))
+                    actionList.Add(((PoseState?)null, kv.Value, 1f, false));
 
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
@@ -163,7 +169,9 @@ namespace AdversityRoad.Combat
                 cp.SetSpeed(speed);
                 _graph.Connect(cp, 0, _actions, i);
                 _actions.SetInputWeight(i, 0f);
-                _actionIndex[pose] = i;
+                if (pose.HasValue) _actionIndex[pose.Value] = i;
+                string ck = Norm(clip.name);
+                if (!_clipIndex.ContainsKey(ck)) _clipIndex[ck] = i;
                 _actionLen[i] = Mathf.Max(0.05f, clip.length / Mathf.Max(0.05f, speed));
                 _actionSpeed[i] = speed;
                 _actionHold[i] = hold;
@@ -207,6 +215,22 @@ namespace AdversityRoad.Combat
         public void PlayAction(PoseState p)
         {
             if (!Valid || !_actionIndex.TryGetValue(p, out int idx)) return;
+            PlayIndex(idx);
+        }
+
+        /// <summary>按片段名试播动作库中任一动作（测试面板的逐个动作预览）。</summary>
+        public bool PlayClip(string clipName)
+        {
+            if (!Valid || !_clipIndex.TryGetValue(Norm(clipName), out int idx)) return false;
+            PlayIndex(idx);
+            return true;
+        }
+
+        /// <summary>动作库中全部片段名（预览面板动态生成按钮用）。</summary>
+        public IEnumerable<string> ClipNames => _clipIndex.Keys;
+
+        void PlayIndex(int idx)
+        {
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
             var cp = (AnimationClipPlayable)_actions.GetInput(idx);
             cp.SetSpeed(_actionSpeed[idx]);   // 起身反播可能改过速度，恢复默认

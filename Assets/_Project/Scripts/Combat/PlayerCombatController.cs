@@ -23,6 +23,8 @@ namespace AdversityRoad.Combat
     {
         [Header("连段")]
         public Hitbox weaponHitbox;
+        [Tooltip("出招时自动转身面向最近敌人。默认关闭：朝向完全由玩家摇杆掌控")]
+        public bool autoFaceTarget = false;
         public float baseDamage = 16f;
         public float staminaPerHit = 8f;
         public float comboResetTime = 1.1f;
@@ -52,22 +54,23 @@ namespace AdversityRoad.Combat
             public float dmg, posture, lunge, windup, open, length, cancelAt;
         }
 
-        // 拳键=剑式套路（持械时耍剑）：横斩→上撩→弓步突刺→腾空跃劈，伤害高
+        // 拳键=剑式套路（持械时耍剑）：横斩→上撩→弓步突刺→腾空跃劈，伤害高。
+        // windup 对齐动捕片段的实际接触帧（挥到一半刃才到位），判定与画面同步
         static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.Attack,      dmg = 1.0f,  posture = 8,  lunge = 0.5f,  windup = 0.09f, open = 0.20f, length = 0.36f, cancelAt = 0.22f },
-            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.1f,  posture = 10, lunge = 0.4f,  windup = 0.09f, open = 0.20f, length = 0.36f, cancelAt = 0.22f },
-            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.08f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.16f, open = 0.30f, length = 0.62f, cancelAt = 0.6f },
+            new ComboStage { pose = PoseState.Attack,      dmg = 1.0f,  posture = 8,  lunge = 0.5f,  windup = 0.2f,  open = 0.20f, length = 0.44f, cancelAt = 0.3f },
+            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.1f,  posture = 10, lunge = 0.4f,  windup = 0.2f,  open = 0.20f, length = 0.44f, cancelAt = 0.3f },
+            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.2f,  open = 0.22f, length = 0.48f, cancelAt = 0.32f },
+            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.3f,  open = 0.30f, length = 0.7f,  cancelAt = 0.66f },
         };
 
         // 腿系（脚技）：削韧强
         static readonly ComboStage[] KickChain =
         {
-            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.12f, open = 0.24f, length = 0.46f, cancelAt = 0.30f },
-            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.12f, open = 0.24f, length = 0.46f, cancelAt = 0.30f },
-            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.12f, open = 0.32f, length = 0.54f, cancelAt = 0.38f },
-            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.14f, open = 0.32f, length = 0.58f, cancelAt = 0.56f },
+            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.2f,  open = 0.24f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.2f,  open = 0.24f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.24f, open = 0.32f, length = 0.6f,  cancelAt = 0.42f },
+            new ComboStage { pose = PoseState.JumpKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.26f, open = 0.32f, length = 0.64f, cancelAt = 0.6f },
         };
 
         enum AttackBtn { None, Punch, Kick }
@@ -79,18 +82,20 @@ namespace AdversityRoad.Combat
             public string name;
             public float mult;
             public int cost;      // 释放绝招所需意势（越复杂越强，需能量积累）
+            public PoseState pose;   // 成招的专属终结动作（从动作库中重新定位）
         }
 
-        // 复杂度越高伤害越强、消耗意势越多——大绝招不可无限使用
+        // 复杂度越高伤害越强、消耗意势越多——大绝招不可无限使用。
+        // 每个绝招绑定一个与其意象匹配的终结动作（基础动作重新组合定位）
         static readonly Recipe[] Recipes =
         {
-            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.6f, cost = 2 },
-            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.5f, cost = 2 },
-            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.5f, cost = 2 },
-            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f, cost = 0 },
-            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f, cost = 0 },
-            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f, cost = 0 },
-            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f, cost = 0 },
+            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.6f,  cost = 2, pose = PoseState.AttackSpin },
+            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.5f,  cost = 2, pose = PoseState.JumpKick },
+            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.5f,  cost = 2, pose = PoseState.HeavyAttack },
+            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f,  cost = 0, pose = PoseState.SwordThrust },
+            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f, cost = 0, pose = PoseState.SpinKick },
+            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f,  cost = 0, pose = PoseState.Sweep },
+            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f,  cost = 0, pose = PoseState.PunchCross },
         };
 
         PlayerController _player;
@@ -295,6 +300,7 @@ namespace AdversityRoad.Combat
                     }
                     dmg *= r.mult;
                     recipeHit = true;
+                    PlayPose(r.pose);   // 成招：改播该绝招的专属终结动作
                     GameEvents.RaiseSkillBanner("绝招「" + r.name + "」");
                     CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
                     if (r.cost > 0) CombatFeedback.SlowMo(0.4f, 0.18f);
@@ -386,7 +392,7 @@ namespace AdversityRoad.Combat
             if (charge01 > 0.7f || finisher)
                 CombatFeedback.RecipeBurst(transform.position,
                     finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
-            OpenHitboxTimed(0.12f, finisher ? 0.4f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
+            OpenHitboxTimed(0.28f, finisher ? 0.4f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
             if (finisher) GameEvents.RaiseSkillBanner("「旋风终结」");
             else if (charge01 > 0.7f) GameEvents.RaiseSkillBanner("「蓄力重劈」");
         }
@@ -403,7 +409,7 @@ namespace AdversityRoad.Combat
             CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f,
                 new Color(0.9f, 0.95f, 0.6f), 5);
             CombatFeedback.Shake(0.4f);
-            OpenHitboxTimed(0.08f, 0.3f, dmg, 16f, 2f, false);
+            OpenHitboxTimed(0.18f, 0.3f, dmg, 16f, 2f, false);
             GameEvents.RaiseSkillBanner("「疾影突」");
         }
 
@@ -415,7 +421,7 @@ namespace AdversityRoad.Combat
             FaceAndLunge(0.4f);
             float dmg = heavyDamage * 0.7f * CritMult();
             CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
-            OpenHitboxTimed(0.1f, 0.3f, dmg, 34f, 9f, false);
+            OpenHitboxTimed(0.22f, 0.3f, dmg, 34f, 9f, false);
             GameEvents.RaiseSkillBanner("「吹飞踢」");
         }
 
@@ -428,7 +434,7 @@ namespace AdversityRoad.Combat
                               + transform.forward * 0.4f;
             GlideMove(lateral, 0.14f);
             var target = AutoAimTarget();
-            if (target != null)
+            if (autoFaceTarget && target != null)
             {
                 Vector3 dir = target.position - transform.position;
                 dir.y = 0;
@@ -437,7 +443,7 @@ namespace AdversityRoad.Combat
             float dmg = heavyDamage * 0.75f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 1f, 0.7f));
             CombatFeedback.Shake(0.4f);
-            OpenHitboxTimed(0.1f, 0.34f, dmg, 20f, 3f, false);
+            OpenHitboxTimed(0.28f, 0.34f, dmg, 20f, 3f, false);
             GameEvents.RaiseSkillBanner(right ? "「右旋斩」" : "「左旋斩」");
         }
 
@@ -450,7 +456,7 @@ namespace AdversityRoad.Combat
             FaceAndLunge(0.5f);
             float dmg = heavyDamage * 0.85f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 0.9f, 1f));
-            OpenHitboxTimed(0.08f, 0.24f, dmg, 20f, 2.5f, false);
+            OpenHitboxTimed(0.16f, 0.24f, dmg, 20f, 2.5f, false);
             GameEvents.RaiseSkillBanner("「切手技」");
         }
 
@@ -483,7 +489,7 @@ namespace AdversityRoad.Combat
                 PlayPose(s.pose);
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
-                OpenHitboxTimed(0.06f, 0.18f, baseDmg * s.dmg, s.posture, s.knock, false);
+                OpenHitboxTimed(0.16f, 0.2f, baseDmg * s.dmg, s.posture, s.knock, false);
                 // 每击落点一道小型地面冲击环（震地感），终结一击放大招级爆发
                 CombatFeedback.ShockRing(transform.position + transform.forward * 1.1f,
                     s.arc, i == seq.Length - 1 ? 5f : 2.2f);
@@ -509,7 +515,7 @@ namespace AdversityRoad.Combat
             _player.ForceFall(-13f);
             float dmg = baseDamage * 1.5f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
-            OpenHitboxTimed(0.14f, 0.42f, dmg, 22f, 2.5f, true);
+            OpenHitboxTimed(0.26f, 0.42f, dmg, 22f, 2.5f, true);
         }
 
         /// <summary>跳+腿：飞踢（KOF 跳踢），带前冲与击退。</summary>
@@ -522,7 +528,7 @@ namespace AdversityRoad.Combat
             _player.ForceFall(-9f);
             float dmg = baseDamage * 1.4f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
-            OpenHitboxTimed(0.1f, 0.38f, dmg, 26f, 4f, true);
+            OpenHitboxTimed(0.22f, 0.38f, dmg, 26f, 4f, true);
         }
 
         void SweepAttack()
@@ -531,7 +537,7 @@ namespace AdversityRoad.Combat
             _fsm.InCombat = true;
             PlayPose(PoseState.Sweep);
             float dmg = baseDamage * 0.9f * CritMult();
-            OpenHitboxTimed(0.16f, 0.32f, dmg, 30f, 1.5f, true);
+            OpenHitboxTimed(0.24f, 0.32f, dmg, 30f, 1.5f, true);
         }
 
         // ================= 公共机制 =================
@@ -552,7 +558,8 @@ namespace AdversityRoad.Combat
         void FaceAndLunge(float lunge)
         {
             var target = AutoAimTarget();
-            if (target != null)
+            // 自动面向默认关闭：朝向由玩家摇杆掌控，不强行掉转（用户要求）
+            if (autoFaceTarget && target != null)
             {
                 Vector3 dir = target.position - transform.position;
                 dir.y = 0;

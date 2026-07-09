@@ -103,7 +103,10 @@ namespace AdversityRoad.Player
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
-            if (attacking) speed *= 0.55f;   // 出招中可移动但步幅收紧（KOF 走 A）
+            // 出招定步：攻击动画占据全身（含腿部），此时若照常位移就是"脚不动
+            // 人在滑"的漂移。出招期间移动近乎锁定（保留极小微调），突进位移
+            // 由招式自身的 GlideMove 负责——动作与位移始终匹配。
+            if (attacking) speed *= 0.1f;
 
             if (_cc.isGrounded)
             {

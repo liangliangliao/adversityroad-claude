@@ -41,6 +41,7 @@ namespace AdversityRoad.AI
         float _measuredSpeed;
         bool _posInit;
         float _lastHurtT = -99f;  // 受击眩晕：刚被打中短时间内没有反击能力
+        float _swingUntil;        // 挥击动作进行中（此间不游走、不被小受击打断画面）
         bool _downed;             // 被击倒趴地中（恢复时要播起身过程）
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
@@ -235,8 +236,9 @@ namespace AdversityRoad.AI
                     // 受击眩晕：刚被打中 0.55s 内头脑发懵，没有能力立即反击——
                     // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）
                     if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f) { DoPhysicalAttack(); break; }
-                    // 出手间隙像人一样左右游走找角度（而非钉在原地干等）
-                    if (_attackCd > 0.45f && !_telegraphing && AgentReady)
+                    // 出手间隙像人一样左右游走找角度（而非钉在原地干等）；
+                    // 挥击动作进行中绝不游走——脚下滑动会毁掉出招画面（漂移感）
+                    if (_attackCd > 0.45f && !_telegraphing && Time.time > _swingUntil && AgentReady)
                     {
                         _strafeFlipT -= dt;
                         if (_strafeFlipT <= 0)
@@ -327,6 +329,25 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>各招式从起手到真正接触目标的时间：判定框在动画"打到"的那一帧
+        /// 才开启——刀/脚碰到身体的瞬间与伤害同步，打击所见即所得。</summary>
+        static float ContactDelay(PoseState p)
+        {
+            switch (p)
+            {
+                case PoseState.HeavyAttack:
+                case PoseState.AttackSpin:  return 0.32f;
+                case PoseState.SpinKick:
+                case PoseState.JumpKick:
+                case PoseState.SideKick:    return 0.24f;
+                case PoseState.AttackKick:  return 0.2f;
+                case PoseState.PunchJab:    return 0.12f;
+                case PoseState.PunchCross:
+                case PoseState.SwordThrust: return 0.18f;
+                default:                    return 0.22f;   // 横斩/撩斩等剑技
+            }
+        }
+
         void DoPhysicalAttack()
         {
             _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
@@ -348,15 +369,25 @@ namespace AdversityRoad.AI
             GameAudio.Play(GameAudio.Sfx.Alert, 0.5f);
             if (poser != null) poser.SetPose(PoseState.Charge);
             Invoke(nameof(OpenAttackHitbox), windup);
-            Invoke(nameof(CloseHitbox), windup + 0.3f);
         }
 
+        /// <summary>起手：播挥击动作。判定框延迟到动画的接触帧才开启（FireHitbox），
+        /// 刀/脚真正碰到对方身体的那一刻伤害与特效同步出现。</summary>
         void OpenAttackHitbox()
         {
             ShowTelegraph(false);
             if (State == EnemyState.Dead || attackHitbox == null) return;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
             if (poser != null) poser.SetPose(_attackPose);
+            float contact = ContactDelay(_attackPose);
+            _swingUntil = Time.time + contact + 0.45f;
+            Invoke(nameof(FireHitbox), contact);
+            Invoke(nameof(CloseHitbox), contact + 0.25f);
+        }
+
+        void FireHitbox()
+        {
+            if (State == EnemyState.Dead || attackHitbox == null) return;
             MoveStats(_attackPose, out float dmgMul, out float knock);
             attackHitbox.EnableHitbox(new DamageInfo
             {
@@ -380,7 +411,6 @@ namespace AdversityRoad.AI
                 _attackPose = pool[Random.Range(0, pool.Length)];
                 FaceTarget();
                 Invoke(nameof(OpenAttackHitbox), 0.32f);
-                Invoke(nameof(CloseHitbox), 0.62f);
             }
             // 攻防步法：一套连招收尾后有概率快速撤步拉开身位（进退有据的剑斗节奏），
             // 位移驱动的步态让退步的脚下动作清晰可见
@@ -438,6 +468,7 @@ namespace AdversityRoad.AI
         {
             State = EnemyState.MentalAttack;
             _mentalCd = Mathf.Lerp(8f, 4f, profile.aggression);
+            StopMoving();   // 施法凝念时停步：施法动画不许边滑边播（漂移感）
             TriggerAnim("MentalAttack");
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("讥讽");
@@ -483,6 +514,7 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
             CancelInvoke(nameof(OpenAttackHitbox));
+                CancelInvoke(nameof(FireHitbox));
             CancelInvoke(nameof(FireProjectile));
             ShowTelegraph(false);
             if (attackHitbox != null) attackHitbox.DisableHitbox();
@@ -639,6 +671,7 @@ namespace AdversityRoad.AI
             {
                 _flinchCd = profile.category == EnemyCategory.Boss ? 2.4f : 1.1f;
                 CancelInvoke(nameof(OpenAttackHitbox));
+                CancelInvoke(nameof(FireHitbox));
                 CancelInvoke(nameof(FireProjectile));
                 ShowTelegraph(false);
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
@@ -655,6 +688,14 @@ namespace AdversityRoad.AI
                         DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)));
                 }
             }
+            // 霸体冷却期间也要【看得出挨了打】：不打断攻防逻辑，但受击动作必播
+            //（此前霸体期间连受击动画都不播，就是"被踢了一脚却站着没反应"的原因）。
+            // 仅在自己不处于挥击相位时播，避免把正在出的招从画面上抹掉。
+            else if (!guardedHit && State != EnemyState.Stagger &&
+                     Time.time > _swingUntil && poser != null)
+            {
+                poser.SetPose(PoseState.Hit);
+            }
 
             if (_posture <= 0)
             {
@@ -664,6 +705,7 @@ namespace AdversityRoad.AI
                 _staggerTimer = 2.4f;
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
+                CancelInvoke(nameof(FireHitbox));
                 ShowTelegraph(false);
                 TriggerAnim("Stagger");
                 if (poser != null) poser.SetPose(PoseState.Stagger);
