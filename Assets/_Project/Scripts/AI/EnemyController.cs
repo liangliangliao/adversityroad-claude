@@ -336,15 +336,15 @@ namespace AdversityRoad.AI
             switch (p)
             {
                 case PoseState.HeavyAttack:
-                case PoseState.AttackSpin:  return 0.32f;
+                case PoseState.AttackSpin:  return 0.26f;
                 case PoseState.SpinKick:
                 case PoseState.JumpKick:
-                case PoseState.SideKick:    return 0.24f;
-                case PoseState.AttackKick:  return 0.2f;
-                case PoseState.PunchJab:    return 0.12f;
+                case PoseState.SideKick:    return 0.2f;
+                case PoseState.AttackKick:  return 0.17f;
+                case PoseState.PunchJab:    return 0.1f;
                 case PoseState.PunchCross:
-                case PoseState.SwordThrust: return 0.18f;
-                default:                    return 0.22f;   // 横斩/撩斩等剑技
+                case PoseState.SwordThrust: return 0.15f;
+                default:                    return 0.18f;   // 横斩/撩斩等剑技
             }
         }
 
@@ -641,10 +641,12 @@ namespace AdversityRoad.AI
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
                 State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
                 final >= 35f ? 1.6f : 1f);
-            if (dmg.knockback > 0.1f)
+            if (dmg.knockback > 0.1f && !fbHeavy)
             {
                 // 击退平滑化：瞬移是"打地鼠式漂移"的最大来源——改为 0.22s 快滑退，
-                // 位移驱动的步态会同步迈脚，读作"被打得连退几步"
+                // 位移驱动的步态会同步迈脚，读作"被打得连退几步"。
+                // 重击不走这里：位移完全交给 KnockFly 与倒地动画同步（否则双重
+                // 位移=先漂移一段再倒下，不真实）
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
                              * dmg.knockback * 0.5f;
                 StartCoroutine(KnockSlide(kb));
@@ -748,17 +750,19 @@ namespace AdversityRoad.AI
             }
         }
 
-        /// <summary>重击击飞：0.35 秒内向后飞退 ~2.5m（快出慢收），配合倒地动画读作"被打飞"。</summary>
+        /// <summary>重击击飞：与倒地动画同步的短促飞退（强减速，落地即停）——
+        /// 位移在身体倒下的过程中完成，不再"漂移一段才倒下"。</summary>
         System.Collections.IEnumerator KnockFly(Vector3 dir)
         {
             dir.y = 0;
             if (dir.sqrMagnitude < 0.01f) yield break;
             dir = dir.normalized;
-            float t = 0;
-            while (t < 0.35f && State == EnemyState.Stagger)
+            float t = 0, dur = 0.28f;
+            while (t < dur && State == EnemyState.Stagger)
             {
                 t += Time.deltaTime;
-                float sp = Mathf.Lerp(12f, 0f, t / 0.35f);
+                float k = 1f - t / dur;
+                float sp = 8f * k * k;   // 二次强减速：出脚快、落地前已停
                 if (AgentReady) _agent.Move(dir * sp * Time.deltaTime);
                 yield return null;
             }

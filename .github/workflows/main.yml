@@ -12,6 +12,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 释放磁盘：ubuntu-latest 默认可用磁盘偏小，而 Unity Android 构建镜像
+      # （含 NDK/LLVM 工具链）解压需 ~15GB，偶发 "no space left on device"。
+      # 移除 Unity 容器用不到的预装工具（宿主 Android SDK/.NET/Haskell/大包/
+      # 交换分区），腾出 20-30GB，构建稳定不再因磁盘失败。
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
       - name: Checkout project
         uses: actions/checkout@v4
         with:
