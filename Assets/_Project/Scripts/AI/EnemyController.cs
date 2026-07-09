@@ -623,17 +623,18 @@ namespace AdversityRoad.AI
             _hp -= final;
             _posture -= dmg.postureDamage;
 
-            // 受击反馈：命中点冲击（火花+白闪盘+顿帧+震屏，重击拉近特写）/ 闪红 / 伤害数字 / 碎块 / 击退
+            // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
-                ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.75f, 0.45f);
+                ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.78f, 0.4f);
             Vector3 toAtk = dmg.sourcePosition - transform.position; toAtk.y = 0;
             Vector3 dirA = toAtk.sqrMagnitude > 0.01f ? toAtk.normalized : transform.forward;
-            // 命中点：受击者朝攻击者一侧、胸口高度（一眼看清"击中了哪里"）
-            Vector3 contact = transform.position + dirA * 0.55f + Vector3.up * 1.25f;
+            // 命中点：优先用判定框算出的【真实接触身体点】，退回估算（朝攻击者一侧胸口）
+            Vector3 contact = dmg.hasContact ? dmg.contactPoint
+                : transform.position + dirA * 0.55f + Vector3.up * 1.25f;
             // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定
             bool fbHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
             CombatFeedback.HitImpact(contact, sparkCol, fbHeavy);
-            // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——顺着打击方向外喷
+            // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——从接触点顺打击方向外喷
             if (!guardedHit && dmg.physicalDamage > 0.5f)
                 CombatFeedback.BloodSpray(contact, -dirA);
             CombatFeedback.HitFlash(gameObject);

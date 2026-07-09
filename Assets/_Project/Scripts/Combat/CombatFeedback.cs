@@ -255,7 +255,15 @@ namespace AdversityRoad.Combat
         public static void HitImpact(Vector3 contact, Color color, bool heavy, bool countCombo = true)
         {
             Ensure();
-            SparksAt(contact, Color.Lerp(color, Color.white, 0.55f), heavy ? 11 : 6);
+            SparksAt(contact, Color.Lerp(color, Color.white, 0.55f), heavy ? 16 : 10);
+            // 命中点亮闪核（一枚朝镜头的高亮小球，瞬现瞬灭）：一眼锁定"打中了这里"
+            var core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            StripCol(core);
+            core.transform.position = contact;
+            core.transform.localScale = Vector3.one * (heavy ? 0.5f : 0.34f);
+            core.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(color, Color.white, 0.85f), 0.9f);
+            _i.StartCoroutine(_i.FlashPop(core, heavy ? 0.7f : 0.45f));
 
             // 格斗游戏式连击计数：2.2 秒内连续命中累计，字随连击数变大变红
             if (countCombo)
