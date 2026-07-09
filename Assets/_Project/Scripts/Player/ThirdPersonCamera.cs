@@ -75,6 +75,8 @@ namespace AdversityRoad.Player
         Vector3 _lastTargetPos;
         float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
         Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
+        Vector2 _focusAnchor;              // 焦点死区锚：小位移不推镜（电影三脚架感）
+        Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
         float _pivotH = 0.42f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
@@ -165,9 +167,12 @@ namespace AdversityRoad.Player
             _pitch = Mathf.Clamp(_pitch - lookY, fpNow ? -72f : minPitch, fpNow ? 80f : maxPitch);
 
             // 只按水平位移判定移动：跳跃/台阶的纵向起伏不应误触发运镜与变焦
-            Vector3 frameDelta = target.position - _lastTargetPos;
+            //（首帧尚未初始化跟踪点时视为静止，避免出生瞬间的伪速度触发运镜）
+            Vector3 frameDelta = _pivotInit ? target.position - _lastTargetPos : Vector3.zero;
             frameDelta.y = 0;
             float moveSpeed = frameDelta.magnitude / dt;
+            // 平滑后的水平速度向量（供移动构图的"引导留白"使用，滤掉逐帧抖动）
+            _planarVel = Vector3.Lerp(_planarVel, frameDelta / dt, 5f * dt);
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
@@ -177,13 +182,20 @@ namespace AdversityRoad.Player
 
             if (combat)
             {
-                // 战斗镜头：优先看敌人——镜头朝「玩家→敌人」方向对齐（中等速度、平滑不乱晃）。
+                // 战斗镜头（过肩对峙位，参考 Souls/悟空）：镜头朝「玩家→敌人」方向对齐。
+                // 电影稳定原则：小角度偏差不纠偏（死区防微振），大偏差按比例加速追——
+                // 敌人绕背才快速转过去，近身缠斗的小幅换位绝不来回摆镜。
                 Vector3 toEnemy = lockTarget.position - target.position;
                 toEnemy.y = 0;
                 if (toEnemy.sqrMagnitude > 0.1f)
                 {
                     float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
-                    _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, autoFollowSpeed * 1.4f * dt);
+                    float err = Mathf.DeltaAngle(_yaw, wantYaw);
+                    if (Mathf.Abs(err) > 4f)
+                    {
+                        float spd = Mathf.Min(autoFollowSpeed * 1.6f, Mathf.Abs(err) * 2.2f);
+                        _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, spd * dt);
+                    }
                 }
                 _yawFollowVel = 0f;
             }
@@ -269,11 +281,29 @@ namespace AdversityRoad.Player
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
                 focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f, lockCenterBias * _lockBlend);
             }
-            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _pivotInit = true; }
+            else if (moveSpeed > 1.5f)
+            {
+                // 移动构图·引导留白（电影 lead room）：奔跑时焦点向移动方向前移，
+                // 角色让出前方画面空间——观众能看见"要去哪"，构图更有方向感。
+                float lead = Mathf.Clamp01(moveSpeed / 5.2f) * 0.45f;
+                Vector2 vdir = new Vector2(_planarVel.x, _planarVel.z);
+                if (vdir.sqrMagnitude > 0.04f) focusXZ += vdir.normalized * lead;
+            }
+            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _focusAnchor = focusXZ; _pivotInit = true; }
+
+            // 电影三脚架感·焦点死区：小于死区的焦点位移完全不推镜——近身互殴时
+            // 拳脚带来的细碎换位（突进/击退/侧闪的残余）不再传导成镜头晃动；
+            // 只有真正的走位才移镜。战斗死区大（稳如三脚架），探索死区小（跟手）。
+            float dead = Mathf.Lerp(0.03f, 0.15f, _lockBlend);
+            Vector2 drift = focusXZ - _focusAnchor;
+            if (drift.magnitude > dead) _focusAnchor = focusXZ - drift.normalized * dead;
+
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
-            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, focusXZ, ref _pivotXZVel,
-                followSmoothTime, Mathf.Infinity, dt);
+            // 战斗中位置阻尼加重（斯坦尼康式慢移），探索保持跟手
+            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend);
+            _pivotXZ = Vector2.SmoothDamp(_pivotXZ, _focusAnchor, ref _pivotXZVel,
+                fst, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
 
             // 电影感构图：锁定时按敌我距离取景（双人同框），疾跑微拉远
@@ -285,18 +315,33 @@ namespace AdversityRoad.Player
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
                 wantFactor = Mathf.Clamp(0.8f + enemyDist * 0.05f, 0.92f, 1.28f);
             }
-            else wantFactor = moveSpeed > 4.2f ? 1.05f : 1f;
+            else wantFactor = 1f;   // 疾跑不再微调焦距：任何"呼吸式"变焦都读作不稳
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
-            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 2.2f * dt);
+            // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
+            // 不再造成镜头前后泵动
+            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.1f * dt);
 
             Vector3 boomDir = (rot * offset).normalized;
             float maxDist = offset.magnitude * _lenFactor;
 
             // ---- 碰撞：回缩快、伸出慢，避免弹跳 ----
+            // 只对【环境】做遮挡回缩：忽略触发器（受击/攻击判定盒）、玩家与敌人的
+            // 身体胶囊、飞散的物理碎屑——此前近身缠斗时敌人身体反复穿过吊杆，
+            // 镜头被迫急缩急伸，这是"互击时镜头严重晃动"的最大来源。
             float wantDist = maxDist;
-            if (Physics.SphereCast(pivot, 0.25f, boomDir, out RaycastHit hit, maxDist))
-                wantDist = Mathf.Max(0.5f, hit.distance - 0.1f);
+            var occluders = Physics.SphereCastAll(pivot, 0.25f, boomDir, maxDist,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            foreach (var hit in occluders)
+            {
+                if (hit.distance <= 0.001f) continue;                       // 起点内嵌，忽略
+                var col = hit.collider;
+                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic)
+                    continue;                                               // 飞散碎屑
+                if (col.GetComponentInParent<PlayerController>() != null) continue;
+                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                wantDist = Mathf.Min(wantDist, Mathf.Max(0.5f, hit.distance - 0.1f));
+            }
             float smooth = wantDist < _boomDist ? 0.03f : 0.3f;
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);

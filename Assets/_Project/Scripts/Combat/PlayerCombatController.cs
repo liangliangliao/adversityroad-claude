@@ -166,6 +166,11 @@ namespace AdversityRoad.Combat
             if (Input.GetKeyDown(KeyCode.LeftControl) || MobileInput.GetDown("Guard")) _parryTimer = parryWindow;
             if (IsGuarding != wasGuarding && !_fsm.IsActionLocked && _anim != null)
                 _anim.SetPose(IsGuarding ? PoseState.Guard : PoseState.Idle);
+            // 兜底：格挡是保持型姿态，若松开瞬间恰逢动作锁而错过收招，空闲时补收，
+            // 避免站立时卡在举械架势上（看起来像"待机动作不对"）
+            if (!IsGuarding && _anim != null && _anim.CurrentPose == PoseState.Guard &&
+                !_fsm.IsActionLocked)
+                _anim.SetPose(PoseState.Idle);
             if (guardShield != null && guardShield.activeSelf != (IsGuarding && !_fsm.IsActionLocked))
                 guardShield.SetActive(IsGuarding && !_fsm.IsActionLocked);
             if (innerAura != null && innerAura.activeSelf != (_momentum >= 3))
@@ -421,7 +426,7 @@ namespace AdversityRoad.Combat
             PlayPose(PoseState.AttackSpin);
             Vector3 lateral = (right ? transform.right : -transform.right) * 1.7f
                               + transform.forward * 0.4f;
-            _cc.Move(lateral);
+            GlideMove(lateral, 0.14f);
             var target = AutoAimTarget();
             if (target != null)
             {
@@ -513,7 +518,7 @@ namespace AdversityRoad.Combat
             _fsm.RequestState(CombatState.LightAttack, 0.5f);
             _fsm.InCombat = true;
             PlayPose(PoseState.JumpKick);
-            _cc.Move(transform.forward * 1.2f);
+            GlideMove(transform.forward * 1.2f, 0.16f);
             _player.ForceFall(-9f);
             float dmg = baseDamage * 1.4f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
@@ -554,7 +559,29 @@ namespace AdversityRoad.Combat
                 if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
             }
             if (target == null || Vector3.Distance(transform.position, target.position) > 1.3f)
-                _cc.Move(transform.forward * lunge);
+                GlideMove(transform.forward * lunge, 0.1f);
+        }
+
+        Coroutine _glideRoutine;
+
+        /// <summary>短促滑步位移：突进不再一帧瞬移（瞬移会被跟随镜头复制成"一记一顿"
+        /// 的画面抖动），改为 0.1 秒左右的高速滑行——镜头软跟随即可保持稳定。</summary>
+        void GlideMove(Vector3 offset, float duration)
+        {
+            if (_glideRoutine != null) StopCoroutine(_glideRoutine);
+            _glideRoutine = StartCoroutine(Glide(offset, duration));
+        }
+
+        IEnumerator Glide(Vector3 offset, float duration)
+        {
+            float t = 0;
+            while (t < duration)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                _cc.Move(offset * Mathf.Min(dt / duration, 1f));
+                yield return null;
+            }
         }
 
         void OpenHitboxTimed(float windup, float open, float dmg, float posture, float knockback, bool buildMomentum)

@@ -142,6 +142,7 @@ namespace AdversityRoad.Combat
             {
                 var (pose, clip, speed, hold) = actionList[i];
                 var cp = AnimationClipPlayable.Create(_graph, clip);
+                cp.SetApplyFootIK(false);
                 cp.SetDuration(clip.length);
                 cp.SetTime(clip.length);
                 cp.SetSpeed(speed);
@@ -169,7 +170,10 @@ namespace AdversityRoad.Combat
         void ConnectLoco(AnimationClip clip, int idx)
         {
             var cp = AnimationClipPlayable.Create(_graph, clip);
-            cp.SetApplyFootIK(true);
+            // 不开 Foot IK：模型被 FitAndGround 缩放后 IK 目标与骨架比例不匹配，
+            // 会把双脚持续向下/向内拽（站立"踮脚尖并腿"、跑步"脚朝向畸形"的根因）。
+            // 纯 FK 原样播放 Mixamo 数据，所见即所得。
+            cp.SetApplyFootIK(false);
             _graph.Connect(cp, 0, _loco, idx);
         }
 
