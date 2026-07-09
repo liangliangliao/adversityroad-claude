@@ -18,18 +18,21 @@ namespace AdversityRoad.Player
     public class ThirdPersonCamera : MonoBehaviour
     {
         public Transform target;
-        [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）")]
-        public Vector3 offset = new Vector3(0.45f, 1.7f, -4.5f);
+        [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）。" +
+                 "高度贴近肩线（不架高）：配合近水平俯仰，地平线/天空始终在画面上部，" +
+                 "画面有纵深不压抑——黑猴战斗镜头的核心是【低机位+平视】而非俯拍")]
+        public Vector3 offset = new Vector3(0.45f, 1.15f, -4.6f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
         [Tooltip("俯仰限制收紧+闲时回中，避免卡在俯视角变成上帝视角")]
         public float minPitch = -18f, maxPitch = 38f;
-        public float defaultPitch = 9f;   // 低平视角：地平线可见，画面有纵深电影感
+        public float defaultPitch = 4f;   // 近水平视角：地平线在画面上三分位，纵深开阔
         public float pitchRecenterDelay = 2.5f;
         [Header("战斗/锁定取景：让玩家与敌人同框居中，人物大而全身可见")]
-        [Tooltip("锁定时俯仰回到该角度：略高于肩线，双方全身与地面都在画面里")]
-        public float combatLockPitch = 12f;
+        [Tooltip("锁定时俯仰回到该角度：近水平（黑猴式）——双方全身、地面与远景同框，" +
+                 "绝不俯拍成'满屏地板'的压抑构图")]
+        public float combatLockPitch = 5f;
         [Tooltip("锁定取景点偏向「玩家↔敌人中点」的比例：0=只看玩家，1=完全取中点")]
         [Range(0f, 0.8f)] public float lockCenterBias = 0.34f;
         [Tooltip("转角平滑时间（秒）：临界阻尼，越小越跟手")]
@@ -100,9 +103,9 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.5f, -3.7f), pitch = 7f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.7f, -4.5f), pitch = 9f },
-            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 2.4f, -5.8f), pitch = 15f },
+            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -3.8f), pitch = 3f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -4.6f), pitch = 4f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -5.9f), pitch = 9f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
 
@@ -356,7 +359,10 @@ namespace AdversityRoad.Player
             }
 
             transform.position = pos;
-            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * 0.25f - pos);
+            // 视线目标略高于取景点（锁定时再抬一点）：角色落于画面下半部，
+            // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
+            float lookUp = 0.38f + 0.12f * _lockBlend;
+            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
         }
 
         void SetHeadVisible(bool visible)

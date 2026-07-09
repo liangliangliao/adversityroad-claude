@@ -80,6 +80,7 @@ namespace AdversityRoad.Combat
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
         bool _ready;
+        float _readyW;   // 普通待机↔格斗架势的平滑过渡权重（瞬切会"弹一下"）
 
         static int _graphSerial;
 
@@ -207,8 +208,9 @@ namespace AdversityRoad.Combat
             float walkW, runW, idleTot;
             if (s < 0.5f) { walkW = s / 0.5f; runW = 0f; idleTot = 1f - walkW; }
             else { runW = (s - 0.5f) / 0.5f; walkW = 1f - runW; idleTot = 0f; }
-            _loco.SetInputWeight(0, idleTot * (_ready ? 0f : 1f));
-            _loco.SetInputWeight(1, idleTot * (_ready ? 1f : 0f));
+            _readyW = Mathf.MoveTowards(_readyW, _ready ? 1f : 0f, dt / 0.25f);
+            _loco.SetInputWeight(0, idleTot * (1f - _readyW));
+            _loco.SetInputWeight(1, idleTot * _readyW);
             _loco.SetInputWeight(2, walkW);
             _loco.SetInputWeight(3, runW);
 
