@@ -511,7 +511,9 @@ namespace AdversityRoad.AI
                     if (Random.value < 0.5f && AgentReady)
                     {
                         if (poser != null) poser.SetPose(PoseState.Dodge);
-                        _agent.Move(transform.right * (Random.value < 0.5f ? 1.7f : -1.7f));
+                        // 平滑侧滑而非一帧瞬移：瞬移会被战斗镜头焦点复制成画面跳动
+                        StartCoroutine(DodgeSlide(
+                            transform.right * (Random.value < 0.5f ? 1.7f : -1.7f)));
                         CombatFeedback.DamageNumber(transform.position, "闪避",
                             new Color(0.55f, 0.8f, 1f), 1.1f);
                         _attackCd = Mathf.Min(_attackCd, 0.55f);   // 闪开即寻机反击
@@ -635,6 +637,19 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>侧闪滑步：0.18 秒滑到位（快出慢收），镜头软跟随不产生跳动。</summary>
+        System.Collections.IEnumerator DodgeSlide(Vector3 offset)
+        {
+            float t = 0, dur = 0.18f;
+            while (t < dur && State != EnemyState.Dead)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                if (AgentReady) _agent.Move(offset * Mathf.Min(dt / dur, 1f));
+                yield return null;
+            }
+        }
+
         /// <summary>重击击飞：0.35 秒内向后飞退 ~2.5m（快出慢收），配合倒地动画读作"被打飞"。</summary>
         System.Collections.IEnumerator KnockFly(Vector3 dir)
         {
@@ -663,6 +678,9 @@ namespace AdversityRoad.AI
             if (statusBar != null) statusBar.Hide();
             if (dialogue != null) dialogue.Show("不……可能……", 2f);
             CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 6);
+            // 击杀落幕（电影语言）：短促时缓 + 镜头缓推特写，看清敌人倒下的瞬间
+            CombatFeedback.SlowMo(0.45f, 0.28f);
+            CombatFeedback.UltimateShot(1.1f);
             GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;

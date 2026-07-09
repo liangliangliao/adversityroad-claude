@@ -29,6 +29,9 @@ namespace AdversityRoad.Combat
         CombatState _lastFsmState = CombatState.Idle;
         float _t;
 
+        /// <summary>当前姿态（外部做保持型姿态的兜底收招判断用）。</summary>
+        public PoseState CurrentPose => _pose;
+
         // 运动参数（每帧由控制器喂入）
         float _speed01;
         bool _crouch;
