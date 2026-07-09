@@ -114,12 +114,34 @@ namespace AdversityRoad.Combat
             // 动捕模式：用 Playables 播 Mixamo 片段，跳过下方程序化骨骼
             if (Mecanim)
             {
+                _t += dt;
                 _mecanim.SetLocomotion(_speed01);
                 _mecanim.SetReady(_ready);
                 if (_poseSerial != _lastMecanimSerial)
                 {
                     _lastMecanimSerial = _poseSerial;
-                    if (_pose != PoseState.Idle) _mecanim.PlayAction(_pose);
+                    // 回到 Idle 也要显式结束保持型动作（倒地爬起/收格挡），否则最后一帧卡住
+                    if (_pose == PoseState.Idle) _mecanim.StopAction();
+                    else _mecanim.PlayAction(_pose);
+                }
+
+                // 动捕库无翻滚片段：闪避在视根上做程序化前滚翻（低身+整体翻转一周）
+                if (visual != null)
+                {
+                    if (_pose == PoseState.Dodge && _t < 0.42f)
+                    {
+                        float k = Mathf.Clamp01(_t / 0.4f);
+                        visual.localRotation = Quaternion.Euler(k * 360f, 0, 0);
+                        visual.localPosition = new Vector3(0, -0.35f * Mathf.Sin(k * Mathf.PI), 0);
+                    }
+                    else if (visual.localPosition != Vector3.zero ||
+                             visual.localRotation != Quaternion.identity)
+                    {
+                        visual.localRotation = Quaternion.Slerp(visual.localRotation,
+                            Quaternion.identity, 16f * dt);
+                        visual.localPosition = Vector3.Lerp(visual.localPosition,
+                            Vector3.zero, 16f * dt);
+                    }
                 }
                 _mecanim.Tick(dt);
                 return;

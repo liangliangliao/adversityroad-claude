@@ -199,14 +199,15 @@ namespace AdversityRoad.Core
             combat.weaponHitbox = hitbox;
             skillExec.weaponHitbox = hitbox;
 
-            // 边界盾可视化
-            var shield = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            // 边界盾可视化：半透明能量薄膜（此前是实心绿方块，正面糊住视野）
+            var shield = GameObject.CreatePrimitive(PrimitiveType.Quad);
             shield.name = "GuardShield";
             Object.DestroyImmediate(shield.GetComponent<Collider>());
             shield.transform.SetParent(root.transform, false);
-            shield.transform.localPosition = new Vector3(0, 0.2f, 0.7f);
-            shield.transform.localScale = new Vector3(1.4f, 1.4f, 0.12f);
-            Paint(shield, new Color(0.35f, 0.85f, 0.55f));
+            shield.transform.localPosition = new Vector3(0, 0.25f, 0.75f);
+            shield.transform.localScale = new Vector3(1.1f, 1.3f, 1f);
+            shield.GetComponent<MeshRenderer>().sharedMaterial =
+                CombatFeedback.EnergyMaterial(new Color(0.35f, 0.85f, 0.55f), 0.28f);
             shield.SetActive(false);
             combat.guardShield = shield;
 
@@ -368,8 +369,11 @@ namespace AdversityRoad.Core
             // baseOffset 与胶囊高度都随 Agent 缩放，任意体型都不会腾空/陷地。
             agent.baseOffset = 1f;
             // 出生即落位：Warp 直接落到导航面上，避免 Agent 出生后向最近导航点"漂移滑行"
-            if (NavMesh.SamplePosition(pos, out NavMeshHit spawnHit, 4f, NavMesh.AllAreas))
+            //（采样半径放宽：出生点偏离导航面较远时也能一步落位，而不是禁用兜底再滑过去）
+            if (NavMesh.SamplePosition(pos, out NavMeshHit spawnHit, 12f, NavMesh.AllAreas))
                 agent.Warp(spawnHit.position);
+            else if (Physics.Raycast(pos + Vector3.up * 5f, Vector3.down, out RaycastHit eg, 40f))
+                root.transform.position = eg.point + Vector3.up * 1.02f;
 
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;

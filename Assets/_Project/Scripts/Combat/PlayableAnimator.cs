@@ -15,34 +15,55 @@ namespace AdversityRoad.Combat
     ///
     /// 结构：top[0]=locomotion(idle/临战idle/走/跑) 混合、top[1]=招式层交叉淡入。
     /// 缺 idle/walk/run 任一则判定无效，上层回退程序化骨骼。
+    ///
+    /// 目录 19 个片段全量启用：
+    ///   Idle/Fighting Idle/Walking/Running → 移动层；
+    ///   Lead Jab/Cross Punch/Kicking/Side Kick/Spin Flip Kick/Flying Kick → 拳腿；
+    ///   Great Sword Slash/(1)/High Spin/Jump Attack/Stabbing → 剑技；
+    ///   Hit Reaction→受击、Knocked Down→击倒(保持倒地帧)、Dying→死亡(保持)、
+    ///   Spell Casting→施法+蓄力前摇、Hit Reaction(慢放)→踉跄、Fighting Idle→格挡架势。
     /// </summary>
     public class PlayableAnimator
     {
         // Mixamo 片段名（小写）→ 招式。前面的候选优先精确匹配，找不到再按包含匹配。
-        static readonly (PoseState pose, string[] keys)[] ActionMap =
+        // speed=播放速度；hold=播完保持最后一帧（倒地/死亡等持续状态，直到切换姿态）。
+        struct ActionDef
         {
-            (PoseState.Attack,      new[]{ "great sword slash" }),
-            (PoseState.HeavyAttack, new[]{ "great sword slash (1)", "great sword high spin attack" }),
-            (PoseState.AttackUp,    new[]{ "great sword slash (1)", "great sword high spin attack" }),
-            (PoseState.SwordThrust, new[]{ "stabbing", "stab" }),
-            (PoseState.AttackLeap,  new[]{ "great sword jump", "jump attack" }),
-            (PoseState.JumpAttack,  new[]{ "great sword jump", "jump attack" }),
-            (PoseState.AttackSpin,  new[]{ "great sword high spin attack", "spin attack", "great sword slash (1)" }),
-            (PoseState.PunchJab,    new[]{ "lead jab", "jab" }),
-            (PoseState.PunchCross,  new[]{ "cross punch" }),
-            (PoseState.AttackKick,  new[]{ "kicking" }),
-            (PoseState.SideKick,    new[]{ "side kick" }),
-            (PoseState.SpinKick,    new[]{ "spin flip kick", "spin kick" }),
-            (PoseState.JumpKick,    new[]{ "flying kick" }),
-            (PoseState.Sweep,       new[]{ "spin flip kick" }),
-            (PoseState.Hit,         new[]{ "great sword impact", "hit reaction", "hit" }),
-            (PoseState.Knockdown,   new[]{ "knocked down", "sweep fall", "knockdown", "falling back" }),
-            (PoseState.Death,       new[]{ "great sword death", "dying", "death" }),
-            (PoseState.Cast,        new[]{ "spell casting", "cast" }),
-            (PoseState.Guard,       new[]{ "great sword blocking", "blocking", "block" }),
-            (PoseState.Dodge,       new[]{ "dodging", "great sword evade", "evade", "dodge", "roll" }),
-            (PoseState.Stagger,     new[]{ "stunned", "dizzy", "stagger", "drunk idle" }),
-            (PoseState.Charge,      new[]{ "great sword casting", "warming up", "standing taunt", "taunt", "charge" }),
+            public PoseState pose;
+            public string[] keys;
+            public float speed;
+            public bool hold;
+        }
+
+        static ActionDef A(PoseState p, float speed, bool hold, params string[] keys) =>
+            new ActionDef { pose = p, keys = keys, speed = speed, hold = hold };
+
+        static readonly ActionDef[] ActionMap =
+        {
+            A(PoseState.Attack,      1.15f, false, "great sword slash"),
+            A(PoseState.HeavyAttack, 1.0f,  false, "great sword slash (1)", "great sword high spin attack"),
+            A(PoseState.AttackUp,    1.15f, false, "great sword slash (1)", "great sword high spin attack"),
+            A(PoseState.SwordThrust, 1.2f,  false, "stabbing", "stab"),
+            A(PoseState.AttackLeap,  1.0f,  false, "great sword jump", "jump attack"),
+            A(PoseState.JumpAttack,  1.1f,  false, "great sword jump", "jump attack"),
+            A(PoseState.AttackSpin,  1.0f,  false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
+            A(PoseState.PunchJab,    1.25f, false, "lead jab", "jab"),
+            A(PoseState.PunchCross,  1.2f,  false, "cross punch"),
+            A(PoseState.AttackKick,  1.15f, false, "kicking"),
+            A(PoseState.SideKick,    1.15f, false, "side kick"),
+            A(PoseState.SpinKick,    1.1f,  false, "spin flip kick", "spin kick"),
+            A(PoseState.JumpKick,    1.1f,  false, "flying kick"),
+            A(PoseState.Sweep,       1.1f,  false, "spin flip kick"),
+            A(PoseState.Hit,         1.1f,  false, "hit reaction", "great sword impact", "hit"),
+            A(PoseState.Knockdown,   1.0f,  true,  "knocked down", "sweep fall", "knockdown", "falling back"),
+            A(PoseState.Death,       1.0f,  true,  "dying", "great sword death", "death"),
+            A(PoseState.Cast,        1.0f,  false, "spell casting", "cast"),
+            // 库里无专门格挡/踉跄/蓄力片段，用最贴切的片段替代：
+            // 格挡=格斗架势收紧（保持到解除）；踉跄=受击慢放（晃神）；蓄力=聚气施法。
+            A(PoseState.Guard,       1.0f,  true,  "great sword blocking", "blocking", "block", "fighting idle"),
+            A(PoseState.Stagger,     0.55f, false, "stunned", "dizzy", "stagger", "hit reaction"),
+            A(PoseState.Charge,      0.85f, false, "great sword casting", "warming up", "taunt", "charge", "spell casting"),
+            // Dodge 无翻滚片段：由 HumanoidAnimator 在视根上做程序化翻滚
         };
 
         readonly Animator _animator;
@@ -52,6 +73,7 @@ namespace AdversityRoad.Combat
         AnimationMixerPlayable _actions;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
         float[] _actionLen;
+        bool[] _actionHold;
         int _actionCount;
 
         int _cur = -1;
@@ -101,11 +123,11 @@ namespace AdversityRoad.Combat
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
 
             // 解析招式片段（映射得到的才建输入）
-            var actionList = new List<KeyValuePair<PoseState, AnimationClip>>();
+            var actionList = new List<(PoseState pose, AnimationClip clip, float speed, bool hold)>();
             foreach (var m in ActionMap)
             {
                 var clip = Pick(byName, m.keys);
-                if (clip != null) actionList.Add(new KeyValuePair<PoseState, AnimationClip>(m.pose, clip));
+                if (clip != null) actionList.Add((m.pose, clip, m.speed, m.hold));
             }
 
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
@@ -115,16 +137,19 @@ namespace AdversityRoad.Combat
             _actionCount = actionList.Count;
             _actions = AnimationMixerPlayable.Create(_graph, Mathf.Max(1, _actionCount));
             _actionLen = new float[Mathf.Max(1, _actionCount)];
+            _actionHold = new bool[Mathf.Max(1, _actionCount)];
             for (int i = 0; i < _actionCount; i++)
             {
-                var clip = actionList[i].Value;
+                var (pose, clip, speed, hold) = actionList[i];
                 var cp = AnimationClipPlayable.Create(_graph, clip);
                 cp.SetDuration(clip.length);
                 cp.SetTime(clip.length);
+                cp.SetSpeed(speed);
                 _graph.Connect(cp, 0, _actions, i);
                 _actions.SetInputWeight(i, 0f);
-                _actionIndex[actionList[i].Key] = i;
-                _actionLen[i] = Mathf.Max(0.05f, clip.length);
+                _actionIndex[pose] = i;
+                _actionLen[i] = Mathf.Max(0.05f, clip.length / Mathf.Max(0.05f, speed));
+                _actionHold[i] = hold;
             }
 
             _loco = AnimationMixerPlayable.Create(_graph, 4);
@@ -164,6 +189,12 @@ namespace AdversityRoad.Combat
             _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
         }
 
+        /// <summary>结束保持型动作（倒地爬起/收架势），淡回移动层。</summary>
+        public void StopAction()
+        {
+            _cur = -1;
+        }
+
         public void Tick(float dt)
         {
             if (!Valid) return;
@@ -182,9 +213,17 @@ namespace AdversityRoad.Combat
                 _actionT += dt;
                 float len = _actionLen[_cur];
                 float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / 0.07f));
-                float fadeOut = Mathf.Clamp01((len - _actionT) / 0.12f);
-                _actionW = Mathf.Min(fadeIn, fadeOut);
-                if (_actionT >= len) { _actionW = 0f; _cur = -1; }
+                if (_actionHold[_cur])
+                {
+                    // 保持型（倒地/死亡/格挡）：播完停在最后一帧，等待外部切换姿态
+                    _actionW = fadeIn;
+                }
+                else
+                {
+                    float fadeOut = Mathf.Clamp01((len - _actionT) / 0.12f);
+                    _actionW = Mathf.Min(fadeIn, fadeOut);
+                    if (_actionT >= len) { _actionW = 0f; _cur = -1; }
+                }
             }
             else
             {
