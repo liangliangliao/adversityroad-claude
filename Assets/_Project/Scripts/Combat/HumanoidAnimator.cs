@@ -44,15 +44,14 @@ namespace AdversityRoad.Combat
         int _poseSerial, _lastMecanimSerial = -1;
         bool Mecanim => _mecanim != null && _mecanim.Valid;
 
-        // ---- 脚踝自动校准（修"踮脚尖"）----
-        // Avatar 自动 T-Pose 若把脚踝定在下垂角度，重定向后【所有】动作的脚都会
-        // 带同一恒定下垂偏转（站/走/跑常显踮脚）。出生后在静止待机帧实测
-        // "脚跟→脚尖"与地面的夹角，超阈值则求恒定校正旋转，此后每帧动画求值后
-        // 套用——数据驱动：脚本来是平的就自动不干预。
-        Transform _footL, _footR;
-        Quaternion _footFixL = Quaternion.identity, _footFixR = Quaternion.identity;
-        bool _feetCalibrated;
-        float _aliveT;
+        // ---- 髋骨 XZ 锚定（Generic 原样播放的原地化）----
+        // 本动作包的走/跑等片段自带水平位移（实测 Walking +1.8m），Generic 播放
+        // 会把模型带离胶囊体。每帧动画求值后把髋骨水平位置钉回绑定位（在模型
+        // 根局部空间做，轴向安全），纵向起伏/腾空原样保留；世界位移由控制器负责。
+        Transform _mocapModel, _hips;
+        Vector3 _hipsBindLP;
+        bool _hipsPin;
+        bool _pendingGetUp;
 
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
@@ -67,50 +66,29 @@ namespace AdversityRoad.Combat
 
         void OnDestroy() { if (_mecanim != null) _mecanim.Destroy(); }
 
+        /// <summary>装配时注入模型根与髋骨（绑定姿态下记录髋骨水平锚点）。</summary>
+        public void SetMocapRoot(Transform model, Transform hips)
+        {
+            _mocapModel = model;
+            _hips = hips;
+            _hipsPin = model != null && hips != null;
+            if (_hipsPin) _hipsBindLP = model.InverseTransformPoint(hips.position);
+        }
+
         void LateUpdate()
         {
-            if (!Mecanim) return;
-            if (!_feetCalibrated)
-            {
-                _aliveT += Time.deltaTime;
-                // 优先在纯静止待机帧校准（姿态最标准）；3 秒后仍没等到就照常校准
-                //（格斗架势的脚同样接近水平，误差可接受）
-                bool calmIdle = _pose == PoseState.Idle && !_ready && _speed01 < 0.03f;
-                if (_aliveT > 0.5f && (calmIdle || _aliveT > 3f))
-                    CalibrateFeet();
-            }
-            if (_footL != null) _footL.localRotation = _footFixL * _footL.localRotation;
-            if (_footR != null) _footR.localRotation = _footFixR * _footR.localRotation;
+            if (!Mecanim || !_hipsPin || _hips == null || _mocapModel == null) return;
+            Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
+            lp.x = _hipsBindLP.x;
+            lp.z = _hipsBindLP.z;
+            _hips.position = _mocapModel.TransformPoint(lp);
         }
 
-        void CalibrateFeet()
+        /// <summary>从倒地爬起：倒地片段倒放呈现"腿脚先动、身体逐渐立起"的起身过程。</summary>
+        public void PlayGetUp()
         {
-            _feetCalibrated = true;
-            var an = _mecanim.Animator;
-            if (an == null || !an.isHuman) return;
-            CalibrateFoot(an, HumanBodyBones.LeftFoot, HumanBodyBones.LeftToes,
-                out _footL, out _footFixL);
-            CalibrateFoot(an, HumanBodyBones.RightFoot, HumanBodyBones.RightToes,
-                out _footR, out _footFixR);
-        }
-
-        static void CalibrateFoot(Animator an, HumanBodyBones footBone, HumanBodyBones toeBone,
-            out Transform foot, out Quaternion fix)
-        {
-            fix = Quaternion.identity;
-            foot = an.GetBoneTransform(footBone);
-            var toe = an.GetBoneTransform(toeBone);
-            if (foot == null || toe == null) { foot = null; return; }
-            Vector3 dir = toe.position - foot.position;
-            Vector3 flat = new Vector3(dir.x, 0, dir.z);
-            if (dir.sqrMagnitude < 1e-6f || flat.sqrMagnitude < 1e-6f) { foot = null; return; }
-            // 脚尖相对脚跟的俯仰角：>8° 视为踮脚/勾脚（≤55° 才校正，防误判异常帧）
-            float droop = Vector3.Angle(dir, flat);
-            if (droop < 8f || droop > 55f) { foot = null; return; }
-            Quaternion world = Quaternion.FromToRotation(dir, flat);
-            // 换算成脚骨局部空间的恒定前乘偏移（父骨此刻的朝向即基准）
-            var parent = foot.parent != null ? foot.parent.rotation : Quaternion.identity;
-            fix = Quaternion.Inverse(parent) * world * parent;
+            _pendingGetUp = true;
+            SetPose(PoseState.Idle);
         }
 
         public void SetPose(PoseState p)
@@ -183,9 +161,17 @@ namespace AdversityRoad.Combat
                 if (_poseSerial != _lastMecanimSerial)
                 {
                     _lastMecanimSerial = _poseSerial;
-                    // 回到 Idle 也要显式结束保持型动作（倒地爬起/收格挡），否则最后一帧卡住
-                    if (_pose == PoseState.Idle) _mecanim.StopAction();
-                    else _mecanim.PlayAction(_pose);
+                    if (_pose == PoseState.Idle)
+                    {
+                        // 回到 Idle：从倒地恢复时先倒放起身，否则直接收招回移动层
+                        if (_pendingGetUp) { _pendingGetUp = false; _mecanim.PlayGetUp(); }
+                        else _mecanim.StopAction();
+                    }
+                    else
+                    {
+                        _pendingGetUp = false;
+                        _mecanim.PlayAction(_pose);
+                    }
                 }
 
                 // 动捕库无翻滚片段：闪避在视根上做程序化前滚翻（低身+整体翻转一周）
@@ -686,7 +672,15 @@ namespace AdversityRoad.Combat
         void MapFromFsm()
         {
             if (fsm.Current == _lastFsmState) return;
+            var prev = _lastFsmState;
             _lastFsmState = fsm.Current;
+            // 倒地→恢复行动：先播起身过程（倒地片段倒放），不许原地瞬间站直
+            if (prev == CombatState.Knockdown &&
+                (fsm.Current == CombatState.Locomotion || fsm.Current == CombatState.Idle))
+            {
+                PlayGetUp();
+                return;
+            }
             switch (fsm.Current)
             {
                 case CombatState.LightAttack: SetPose(PoseState.Attack); break;

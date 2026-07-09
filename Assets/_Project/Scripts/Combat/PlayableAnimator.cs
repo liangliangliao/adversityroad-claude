@@ -82,8 +82,11 @@ namespace AdversityRoad.Combat
         const float RunNaturalSpeed = 4.8f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
         float[] _actionLen;
+        float[] _actionSpeed;
         bool[] _actionHold;
         int _actionCount;
+        float _playLen;    // 本次播放的有效时长/保持标志（起身反播时与默认不同）
+        bool _playHold;
 
         int _cur = -1;
         float _actionT, _actionW, _fadeFrom;
@@ -117,7 +120,7 @@ namespace AdversityRoad.Combat
 
         void Build()
         {
-            if (_animator == null || !_animator.isHuman) { Valid = false; return; }
+            if (_animator == null) { Valid = false; return; }   // Generic：按路径绑定，无需人形 Avatar
 
             var byName = new Dictionary<string, AnimationClip>();
             foreach (var c in Resources.LoadAll<AnimationClip>("Characters/Anims"))
@@ -148,6 +151,7 @@ namespace AdversityRoad.Combat
             _actionCount = actionList.Count;
             _actions = AnimationMixerPlayable.Create(_graph, Mathf.Max(1, _actionCount));
             _actionLen = new float[Mathf.Max(1, _actionCount)];
+            _actionSpeed = new float[Mathf.Max(1, _actionCount)];
             _actionHold = new bool[Mathf.Max(1, _actionCount)];
             for (int i = 0; i < _actionCount; i++)
             {
@@ -161,6 +165,7 @@ namespace AdversityRoad.Combat
                 _actions.SetInputWeight(i, 0f);
                 _actionIndex[pose] = i;
                 _actionLen[i] = Mathf.Max(0.05f, clip.length / Mathf.Max(0.05f, speed));
+                _actionSpeed[i] = speed;
                 _actionHold[i] = hold;
             }
 
@@ -204,11 +209,37 @@ namespace AdversityRoad.Combat
             if (!Valid || !_actionIndex.TryGetValue(p, out int idx)) return;
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
             var cp = (AnimationClipPlayable)_actions.GetInput(idx);
+            cp.SetSpeed(_actionSpeed[idx]);   // 起身反播可能改过速度，恢复默认
             cp.SetTime(0);
             cp.SetDone(false);
             _cur = idx;
             _actionT = 0f;
+            _playLen = _actionLen[idx];
+            _playHold = _actionHold[idx];
             _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
+        }
+
+        /// <summary>起身过程：把倒地片段【倒放】——从躺地姿态连贯地撑起站立
+        /// （腿脚先动、身体逐渐立起），播完自动淡回移动层。</summary>
+        public void PlayGetUp()
+        {
+            if (!Valid || !_actionIndex.TryGetValue(PoseState.Knockdown, out int idx))
+            {
+                StopAction();
+                return;
+            }
+            for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
+            var cp = (AnimationClipPlayable)_actions.GetInput(idx);
+            float clipLen = _actionLen[idx] * _actionSpeed[idx];   // 原始片段时长
+            const float getUpSpeed = 1.4f;                          // 起身比倒下利落
+            cp.SetSpeed(-getUpSpeed);
+            cp.SetTime(clipLen);
+            cp.SetDone(false);
+            _cur = idx;
+            _actionT = 0f;
+            _playLen = clipLen / getUpSpeed;
+            _playHold = false;   // 播完（站起）即淡回移动层
+            _fadeFrom = Mathf.Max(_actionW, 0.9f);   // 从躺地姿态无缝续接，不闪回站立
         }
 
         /// <summary>结束保持型动作（倒地爬起/收架势），淡回移动层。</summary>
@@ -242,9 +273,9 @@ namespace AdversityRoad.Combat
             if (_cur >= 0)
             {
                 _actionT += dt;
-                float len = _actionLen[_cur];
+                float len = _playLen;
                 float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / 0.07f));
-                if (_actionHold[_cur])
+                if (_playHold)
                 {
                     // 保持型（倒地/死亡/格挡）：播完停在最后一帧，等待外部切换姿态
                     _actionW = fadeIn;
