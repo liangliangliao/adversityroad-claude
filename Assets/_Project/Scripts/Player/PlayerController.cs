@@ -155,8 +155,9 @@ namespace AdversityRoad.Player
             float dt = Mathf.Max(Time.deltaTime, 0.0001f);
             Vector3 planar = transform.position - _lastPos;
             planar.y = 0;
-            float speed01 = Mathf.Clamp01(planar.magnitude / dt / Mathf.Max(0.1f, runSpeed));
-            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded);
+            float actual = planar.magnitude / dt;
+            float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
+            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual);
             // 临战架势：附近有可锁定的敌人 / 正在交战时，静立摆出格斗预备架势
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
             bool ready = (_lockOn != null && _lockOn.CurrentTarget != null)

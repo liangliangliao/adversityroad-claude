@@ -70,7 +70,16 @@ namespace AdversityRoad.Combat
         PlayableGraph _graph;
         AnimationMixerPlayable _top;      // 0=loco 1=action
         AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2=walk 3=run
+        AnimationClipPlayable _walkCp, _runCp;   // 步幅同步：播放速率随真实移速缩放
         AnimationMixerPlayable _actions;
+
+        /// <summary>驱动中的 Animator（供脚踝校准等后处理访问骨骼）。</summary>
+        public Animator Animator => _animator;
+
+        // 步幅同步基准：该动作包在 2.3m 体型下走/跑动画的自然位移速度（m/s）。
+        // 播放速率 = 真实速度 / 自然速度 → 步频与实际位移匹配，脚不打滑。
+        const float WalkNaturalSpeed = 2.0f;
+        const float RunNaturalSpeed = 4.8f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
         float[] _actionLen;
         bool[] _actionHold;
@@ -79,6 +88,7 @@ namespace AdversityRoad.Combat
         int _cur = -1;
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
+        float _actualSpeed = -1f;   // 真实移速 m/s（<0 = 未提供，按 speed01 折算）
         bool _ready;
         float _readyW;   // 普通待机↔格斗架势的平滑过渡权重（瞬切会"弹一下"）
 
@@ -155,7 +165,8 @@ namespace AdversityRoad.Combat
             }
 
             _loco = AnimationMixerPlayable.Create(_graph, 4);
-            ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1); ConnectLoco(walk, 2); ConnectLoco(run, 3);
+            ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1);
+            _walkCp = ConnectLoco(walk, 2); _runCp = ConnectLoco(run, 3);
             _loco.SetInputWeight(0, 1f);
 
             _top = AnimationMixerPlayable.Create(_graph, 2);
@@ -168,7 +179,7 @@ namespace AdversityRoad.Combat
             Valid = true;
         }
 
-        void ConnectLoco(AnimationClip clip, int idx)
+        AnimationClipPlayable ConnectLoco(AnimationClip clip, int idx)
         {
             var cp = AnimationClipPlayable.Create(_graph, clip);
             // 不开 Foot IK：模型被 FitAndGround 缩放后 IK 目标与骨架比例不匹配，
@@ -176,9 +187,15 @@ namespace AdversityRoad.Combat
             // 纯 FK 原样播放 Mixamo 数据，所见即所得。
             cp.SetApplyFootIK(false);
             _graph.Connect(cp, 0, _loco, idx);
+            return cp;
         }
 
-        public void SetLocomotion(float speed01) => _speed01 = Mathf.Clamp01(speed01);
+        /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）。</summary>
+        public void SetLocomotion(float speed01, float actualSpeed = -1f)
+        {
+            _speed01 = Mathf.Clamp01(speed01);
+            _actualSpeed = actualSpeed;
+        }
         public void SetReady(bool ready) => _ready = ready;
 
         /// <summary>触发一次招式（有对应片段才生效，否则维持 locomotion）。</summary>
@@ -213,6 +230,14 @@ namespace AdversityRoad.Combat
             _loco.SetInputWeight(1, idleTot * _readyW);
             _loco.SetInputWeight(2, walkW);
             _loco.SetInputWeight(3, runW);
+
+            // 步幅同步：走/跑播放速率 = 真实移速 / 动画自然速度——步频与位移匹配，
+            // 脚落地不打滑（"脚的移动过程一目了然"的关键，参考电影/悟空的贴地感）
+            float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
+            if (walkW > 0.001f && _walkCp.IsValid())
+                _walkCp.SetSpeed(Mathf.Clamp(actual / WalkNaturalSpeed, 0.8f, 1.5f));
+            if (runW > 0.001f && _runCp.IsValid())
+                _runCp.SetSpeed(Mathf.Clamp(actual / RunNaturalSpeed, 0.8f, 1.35f));
 
             if (_cur >= 0)
             {
