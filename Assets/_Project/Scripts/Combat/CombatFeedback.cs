@@ -294,6 +294,62 @@ namespace AdversityRoad.Combat
             }
         }
 
+        /// <summary>兵器相撞（格挡/对攻）：接触点爆出密集金白火花 + 金属声 + 短促卡肉，
+        /// 读作"刀剑撞在一起"。</summary>
+        public static void WeaponClash(Vector3 contact)
+        {
+            Ensure();
+            SparksAt(contact, new Color(1f, 0.92f, 0.6f), 14);
+            SparksAt(contact, Color.white, 6);
+            var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            StripCol(disc);
+            disc.transform.position = contact;
+            disc.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(new Color(1f, 0.95f, 0.75f), 0.55f);
+            _i.StartCoroutine(_i.ImpactDisc(disc, 0.5f));
+            GameAudio.Play(GameAudio.Sfx.Block, 0.9f);
+            HitStop(0.055f);
+        }
+
+        /// <summary>血花：兵器/拳脚击中血肉的飞溅——深红细条从命中点向受击方
+        /// 外侧喷出并受重力回落（数量克制，不遮视野）。</summary>
+        public static void BloodSpray(Vector3 contact, Vector3 outDir)
+        {
+            Ensure();
+            if (outDir.sqrMagnitude < 0.01f) outDir = Vector3.up;
+            outDir = outDir.normalized;
+            for (int i = 0; i < 9; i++)
+            {
+                var d = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                StripCol(d);
+                d.transform.position = contact;
+                d.transform.localScale = new Vector3(0.03f, 0.03f, Random.Range(0.1f, 0.28f));
+                Color c = Color.Lerp(new Color(0.62f, 0.05f, 0.05f), new Color(0.85f, 0.12f, 0.1f),
+                    Random.value);
+                d.GetComponent<MeshRenderer>().sharedMaterial = MatFX(c, 0.9f);
+                Vector3 v = (outDir + Random.insideUnitSphere * 0.55f).normalized
+                            * Random.Range(1.6f, 3.4f) + Vector3.up * Random.Range(0.6f, 1.6f);
+                d.transform.rotation = Quaternion.LookRotation(v);
+                _i.StartCoroutine(_i.BloodFly(d, v));
+            }
+        }
+
+        IEnumerator BloodFly(GameObject d, Vector3 v)
+        {
+            float t = 0, life = Random.Range(0.28f, 0.45f);
+            while (t < life && d != null)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                v.y -= 12f * dt;                                  // 重力回落
+                d.transform.position += v * dt;
+                if (v.sqrMagnitude > 0.01f) d.transform.rotation = Quaternion.LookRotation(v);
+                FadeAlpha(d, 1f - dt / life);
+                yield return null;
+            }
+            if (d != null) Destroy(d);
+        }
+
         /// <summary>招式名浮字：出招瞬间在角色头顶弹出招式名（玩家金、敌人红），
         /// 一眼看清双方"正在用什么招"。</summary>
         public static void MoveName(Vector3 pos, string name, bool enemy)

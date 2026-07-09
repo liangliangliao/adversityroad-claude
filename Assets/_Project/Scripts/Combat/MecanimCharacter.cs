@@ -47,8 +47,10 @@ namespace AdversityRoad.Combat
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
 
+            // Generic 骨骼：动作按路径直接绑定（模型与动作 FBX 同源骨架），
+            // 不再依赖 Avatar/isHuman——人形重定向的变形问题整类消失。
             var animator = model.GetComponentInChildren<Animator>();
-            if (animator == null || animator.avatar == null || !animator.isHuman)
+            if (animator == null)
             {
                 Object.Destroy(model);
                 return false;
@@ -64,9 +66,14 @@ namespace AdversityRoad.Combat
                 return false;
             }
 
+            // 髋骨 XZ 锚定：本包走/跑动作带前进位移（非原地），运行时把髋骨
+            // 水平位置钉回绑定位（纵向起伏保留），世界位移交给控制器
+            var hips = FindBone(model.transform, "hips");
+            poser.SetMocapRoot(model.transform, hips);
+
             // ---- 兵器（修复"手里多一把方块武器"）----
             // 优先用模型自带兵器；否则加载素材兵器预制体；都没有则不挂（不再用程序化方块）。
-            var hand = animator.GetBoneTransform(HumanBodyBones.RightHand);
+            var hand = FindBone(model.transform, "righthand");
             var weaponPivot = FindWeaponInModel(model.transform);
             if (weaponPivot == null && hand != null)
             {
@@ -120,6 +127,17 @@ namespace AdversityRoad.Combat
                 else bounds.Encapsulate(r.bounds);
             }
             return has;
+        }
+
+        /// <summary>按名字（小写包含）在模型层级里找骨骼，如 "righthand"/"hips"。</summary>
+        static Transform FindBone(Transform model, string key)
+        {
+            foreach (var t in model.GetComponentsInChildren<Transform>(true))
+            {
+                string n = t.name.ToLowerInvariant().Replace(":", "").Replace("_", "");
+                if (n.EndsWith(key) || n.Contains(key)) return t;
+            }
+            return null;
         }
 
         static readonly string[] WeaponHints = { "sword", "blade", "katana", "weapon", "axe", "greatsword", "sabre", "saber" };

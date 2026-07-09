@@ -786,12 +786,21 @@ namespace AdversityRoad.Combat
                 CombatFeedback.HitFlash(gameObject);
                 CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(phys).ToString(),
                     new Color(1f, 0.35f, 0.3f));
-                // 玩家被击中也在接触点打出冲击（红系，不计连击）：看清"我被打中了哪"
                 Vector3 toSrc = dmg.sourcePosition - transform.position; toSrc.y = 0;
                 Vector3 dirS = toSrc.sqrMagnitude > 0.01f ? toSrc.normalized : transform.forward;
-                if (!blocked)
-                    CombatFeedback.HitImpact(transform.position + dirS * 0.5f + Vector3.up * 1.25f,
+                Vector3 contact = transform.position + dirS * 0.5f + Vector3.up * 1.25f;
+                if (blocked)
+                {
+                    // 敌人的兵器砍在玩家举起的兵器/护体上：接触点撞击火花
+                    CombatFeedback.WeaponClash(contact);
+                }
+                else
+                {
+                    // 实打实挨了一下：接触点冲击 + 顺着打击方向的血花（红系，不计连击）
+                    CombatFeedback.HitImpact(contact,
                         new Color(1f, 0.4f, 0.3f), phys >= knockdownThreshold, false);
+                    CombatFeedback.BloodSpray(contact, -dirS);
+                }
 
                 _charging = false;
                 EndCombo();

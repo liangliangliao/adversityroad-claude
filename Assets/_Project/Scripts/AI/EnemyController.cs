@@ -40,6 +40,8 @@ namespace AdversityRoad.AI
         Vector3 _lastSelfPos;     // 位移驱动动画：任何来源的移动都要迈脚，不许滑行
         float _measuredSpeed;
         bool _posInit;
+        float _lastHurtT = -99f;  // 受击眩晕：刚被打中短时间内没有反击能力
+        bool _downed;             // 被击倒趴地中（恢复时要播起身过程）
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
@@ -176,7 +178,13 @@ namespace AdversityRoad.AI
                 if (_staggerTimer <= 0)
                 {
                     State = EnemyState.Chase;
-                    if (poser != null) poser.SetPose(PoseState.Idle); // 从倒地/踉跄姿态爬起
+                    if (poser != null)
+                    {
+                        // 被击倒的要先播"起身过程"（倒地片段倒放：腿脚先动、身体渐立），
+                        // 绝不原地瞬间站直；普通踉跄直接回架势
+                        if (_downed) { _downed = false; poser.PlayGetUp(); }
+                        else poser.SetPose(PoseState.Idle);
+                    }
                 }
                 return;
             }
@@ -224,7 +232,9 @@ namespace AdversityRoad.AI
                     StopMoving();
                     FaceTarget();
                     if (dist > profile.attackRange * 1.2f) { State = EnemyState.Chase; break; }
-                    if (_attackCd <= 0) { DoPhysicalAttack(); break; }
+                    // 受击眩晕：刚被打中 0.55s 内头脑发懵，没有能力立即反击——
+                    // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）
+                    if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f) { DoPhysicalAttack(); break; }
                     // 出手间隙像人一样左右游走找角度（而非钉在原地干等）
                     if (_attackCd > 0.45f && !_telegraphing && AgentReady)
                     {
@@ -372,6 +382,12 @@ namespace AdversityRoad.AI
                 Invoke(nameof(OpenAttackHitbox), 0.32f);
                 Invoke(nameof(CloseHitbox), 0.62f);
             }
+            // 攻防步法：一套连招收尾后有概率快速撤步拉开身位（进退有据的剑斗节奏），
+            // 位移驱动的步态让退步的脚下动作清晰可见
+            else if (State == EnemyState.Attack && Random.value < 0.4f && AgentReady)
+            {
+                StartCoroutine(DodgeSlide(-transform.forward * 1.3f));
+            }
         }
 
         /// <summary>Animator 触发器兜底：动捕路径下 Animator 无控制器，SetTrigger 会刷警告。</summary>
@@ -512,7 +528,8 @@ namespace AdversityRoad.AI
             }
             // ---- 防御：交战中的敌人有概率闪避（完全躲开）或格挡（大幅减伤），
             //      概率随敌人级别/攻击性上升（Boss 更像高手），带冷却防无敌化 ----
-            else if (_defendCd <= 0f && State != EnemyState.Stagger)
+            bool guardedHit = false;
+            if (!unaware && _defendCd <= 0f && State != EnemyState.Stagger)
             {
                 float chance = (profile.category == EnemyCategory.Boss ? 0.34f : 0.1f)
                              + 0.18f * profile.aggression;
@@ -533,9 +550,13 @@ namespace AdversityRoad.AI
                     if (poser != null) poser.SetPose(PoseState.Guard);
                     CombatFeedback.DamageNumber(transform.position, "格挡",
                         new Color(0.5f, 0.9f, 0.6f), 1.1f);
-                    GameAudio.Play(GameAudio.Sfx.Block, 0.6f);
+                    // 兵器相撞：玩家的刀砍在敌人举起的兵器上——接触点金白火花四溅
+                    Vector3 toSrcW = dmg.sourcePosition - transform.position; toSrcW.y = 0;
+                    Vector3 guardDir = toSrcW.sqrMagnitude > 0.01f ? toSrcW.normalized : transform.forward;
+                    CombatFeedback.WeaponClash(transform.position + guardDir * 0.7f + Vector3.up * 1.25f);
                     dmg.physicalDamage *= 0.25f;
                     dmg.postureDamage *= 0.55f;
+                    guardedHit = true;   // 砍在兵器上：不出血花
                     // 格挡成功立即反击（挡+还手=像人一样的攻防转换）；架势片刻后收起
                     _attackCd = Mathf.Min(_attackCd, 0.35f);
                     CancelInvoke(nameof(GuardRecover));
@@ -558,7 +579,7 @@ namespace AdversityRoad.AI
                     });
                     Vector3 mid = (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f;
                     CombatFeedback.DamageNumber(mid, "对攻！", new Color(1f, 0.6f, 0.2f), 1.5f);
-                    CombatFeedback.HitImpact(mid, new Color(1f, 0.7f, 0.3f), true, false);
+                    CombatFeedback.WeaponClash(mid);   // 双方兵器硬碰硬：撞击火花
                 }
             }
 
@@ -580,7 +601,11 @@ namespace AdversityRoad.AI
             // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定
             bool fbHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
             CombatFeedback.HitImpact(contact, sparkCol, fbHeavy);
+            // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——顺着打击方向外喷
+            if (!guardedHit && dmg.physicalDamage > 0.5f)
+                CombatFeedback.BloodSpray(contact, -dirA);
             CombatFeedback.HitFlash(gameObject);
+            _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
                 State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
                 final >= 35f ? 1.6f : 1f);
@@ -622,10 +647,13 @@ namespace AdversityRoad.AI
                 StopMoving();
                 if (poser != null)
                     poser.SetPose(heavyHit ? PoseState.Knockdown : PoseState.Hit);
-                // 重击=被撞飞一段距离重重倒地（受击状态可视化），起身后立刻重新投入战斗
+                // 重击=被撞飞一段距离重重倒地（受击状态可视化），恢复时播起身过程
                 if (heavyHit)
+                {
+                    _downed = true;
                     StartCoroutine(KnockFly(
                         DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)));
+                }
             }
 
             if (_posture <= 0)
