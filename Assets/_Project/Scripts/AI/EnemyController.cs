@@ -34,6 +34,9 @@ namespace AdversityRoad.AI
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
+        PoseState _attackPose = PoseState.Attack;   // 本次出手选中的招式（多样化）
+        int _comboLeft;           // 精英/首领的连击追加段数
+        float _strafeDir = 1f, _strafeFlipT;        // 交战游走（像人一样找角度）
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
@@ -210,7 +213,20 @@ namespace AdversityRoad.AI
                     StopMoving();
                     FaceTarget();
                     if (dist > profile.attackRange * 1.2f) { State = EnemyState.Chase; break; }
-                    if (_attackCd <= 0) DoPhysicalAttack();
+                    if (_attackCd <= 0) { DoPhysicalAttack(); break; }
+                    // 出手间隙像人一样左右游走找角度（而非钉在原地干等）
+                    if (_attackCd > 0.45f && !_telegraphing && AgentReady)
+                    {
+                        _strafeFlipT -= dt;
+                        if (_strafeFlipT <= 0)
+                        {
+                            _strafeFlipT = Random.Range(1.2f, 2.6f);
+                            _strafeDir = Random.value < 0.5f ? -1f : 1f;
+                        }
+                        Vector3 toP = _player.position - transform.position; toP.y = 0;
+                        Vector3 side = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;
+                        _agent.Move(side * profile.moveSpeed * 0.32f * dt);
+                    }
                     break;
             }
         }
@@ -265,17 +281,53 @@ namespace AdversityRoad.AI
                     Quaternion.LookRotation(dir), 8f * Time.deltaTime);
         }
 
+        // 出手招式池：普通敌人用基础拳脚剑技，精英/首领追加重斩/旋风/腿法大招
+        static readonly PoseState[] BasicMoves =
+            { PoseState.Attack, PoseState.AttackUp, PoseState.SwordThrust,
+              PoseState.PunchCross, PoseState.AttackKick };
+        static readonly PoseState[] EliteMoves =
+            { PoseState.HeavyAttack, PoseState.AttackSpin, PoseState.SpinKick,
+              PoseState.SideKick, PoseState.JumpKick };
+
+        /// <summary>按招式给出伤害/击退权重：重招伤害高击退大，快招频率高。</summary>
+        static void MoveStats(PoseState p, out float dmgMul, out float knock)
+        {
+            switch (p)
+            {
+                case PoseState.HeavyAttack: dmgMul = 1.5f; knock = 4.5f; break;
+                case PoseState.AttackSpin:  dmgMul = 1.3f; knock = 3.5f; break;
+                case PoseState.SpinKick:    dmgMul = 1.25f; knock = 4f; break;
+                case PoseState.JumpKick:    dmgMul = 1.2f; knock = 4f; break;
+                case PoseState.SideKick:    dmgMul = 1.0f; knock = 3.5f; break;
+                case PoseState.SwordThrust: dmgMul = 1.15f; knock = 1.5f; break;
+                case PoseState.PunchCross:  dmgMul = 0.9f; knock = 1.2f; break;
+                case PoseState.AttackKick:  dmgMul = 0.95f; knock = 2.5f; break;
+                default:                    dmgMul = 1f; knock = 1.5f; break;
+            }
+        }
+
         void DoPhysicalAttack()
         {
             _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
-            if (_anim != null) _anim.SetTrigger("Attack");
-            // 前摇 0.55 秒：头顶「！」跳动 + 脚下红圈脉冲放大 + 警示音 = 明确读招/闪避窗口，
-            // 蓄势姿态先行，判定框随后才开——绝不让玩家"莫名其妙就掉血"。
+            TriggerAnim("Attack");
+
+            // 招式多样化：像人一样换招——精英/首领概率掏出重斩/旋风/腿法，
+            // 且有概率追加 1-2 段连击（高手连招压制）
+            bool elite = profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f;
+            bool useElite = elite && Random.value < (profile.category == EnemyCategory.Boss ? 0.45f : 0.25f);
+            var pool = useElite ? EliteMoves : BasicMoves;
+            _attackPose = pool[Random.Range(0, pool.Length)];
+            _comboLeft = profile.category == EnemyCategory.Boss ? Random.Range(1, 3)
+                       : elite && Random.value < 0.4f ? 1 : 0;
+
+            // 前摇（等级越高越短，越难反应）：头顶「！」跳动 + 脚下红圈脉冲 + 警示音
+            // = 明确读招/闪避窗口，蓄势姿态先行，判定框随后才开。
+            float windup = Mathf.Lerp(0.7f, 0.42f, profile.aggression);
             ShowTelegraph(true);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.5f);
             if (poser != null) poser.SetPose(PoseState.Charge);
-            Invoke(nameof(OpenAttackHitbox), 0.55f);
-            Invoke(nameof(CloseHitbox), 0.85f);
+            Invoke(nameof(OpenAttackHitbox), windup);
+            Invoke(nameof(CloseHitbox), windup + 0.3f);
         }
 
         void OpenAttackHitbox()
@@ -283,18 +335,46 @@ namespace AdversityRoad.AI
             ShowTelegraph(false);
             if (State == EnemyState.Dead || attackHitbox == null) return;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
-            if (poser != null) poser.SetPose(PoseState.Attack);
+            if (poser != null) poser.SetPose(_attackPose);
+            MoveStats(_attackPose, out float dmgMul, out float knock);
             attackHitbox.EnableHitbox(new DamageInfo
             {
-                physicalDamage = profile.physicalDamage,
+                physicalDamage = profile.physicalDamage * dmgMul,
                 mentalDamage = profile.mentalDamage * 0.3f,
                 mentalAxis = profile.targetWeakness,
-                knockback = 1.5f,
+                knockback = knock,
                 attackerId = profile.enemyId
             });
         }
 
-        void CloseHitbox() { if (attackHitbox != null) attackHitbox.DisableHitbox(); }
+        void CloseHitbox()
+        {
+            if (attackHitbox != null) attackHitbox.DisableHitbox();
+            // 连击追加段：紧凑衔接下一招（间隔短，读作一套连招）
+            if (_comboLeft > 0 && State == EnemyState.Attack && _player != null &&
+                Vector3.Distance(transform.position, _player.position) < profile.attackRange * 1.6f)
+            {
+                _comboLeft--;
+                var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
+                _attackPose = pool[Random.Range(0, pool.Length)];
+                FaceTarget();
+                Invoke(nameof(OpenAttackHitbox), 0.32f);
+                Invoke(nameof(CloseHitbox), 0.62f);
+            }
+        }
+
+        /// <summary>Animator 触发器兜底：动捕路径下 Animator 无控制器，SetTrigger 会刷警告。</summary>
+        void TriggerAnim(string name)
+        {
+            if (_anim != null && _anim.runtimeAnimatorController != null) _anim.SetTrigger(name);
+        }
+
+        /// <summary>格挡后收架势（保持型格挡姿态由此解除，回到移动/预备）。</summary>
+        void GuardRecover()
+        {
+            if (State != EnemyState.Dead && State != EnemyState.Stagger && poser != null)
+                poser.SetPose(PoseState.Idle);
+        }
 
         /// <summary>远程攻击：前摇警示后朝玩家胸口发射心念弹。</summary>
         void DoRangedAttack()
@@ -331,7 +411,7 @@ namespace AdversityRoad.AI
         {
             State = EnemyState.MentalAttack;
             _mentalCd = Mathf.Lerp(8f, 4f, profile.aggression);
-            if (_anim != null) _anim.SetTrigger("MentalAttack");
+            TriggerAnim("MentalAttack");
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("讥讽");
 
@@ -431,9 +511,12 @@ namespace AdversityRoad.AI
                     if (Random.value < 0.5f && AgentReady)
                     {
                         if (poser != null) poser.SetPose(PoseState.Dodge);
-                        _agent.Move(transform.right * (Random.value < 0.5f ? 1.7f : -1.7f));
+                        // 平滑侧滑而非一帧瞬移：瞬移会被战斗镜头焦点复制成画面跳动
+                        StartCoroutine(DodgeSlide(
+                            transform.right * (Random.value < 0.5f ? 1.7f : -1.7f)));
                         CombatFeedback.DamageNumber(transform.position, "闪避",
                             new Color(0.55f, 0.8f, 1f), 1.1f);
+                        _attackCd = Mathf.Min(_attackCd, 0.55f);   // 闪开即寻机反击
                         return;   // 侧闪成功：完全不受伤
                     }
                     if (poser != null) poser.SetPose(PoseState.Guard);
@@ -442,6 +525,10 @@ namespace AdversityRoad.AI
                     GameAudio.Play(GameAudio.Sfx.Block, 0.6f);
                     dmg.physicalDamage *= 0.25f;
                     dmg.postureDamage *= 0.55f;
+                    // 格挡成功立即反击（挡+还手=像人一样的攻防转换）；架势片刻后收起
+                    _attackCd = Mathf.Min(_attackCd, 0.35f);
+                    CancelInvoke(nameof(GuardRecover));
+                    Invoke(nameof(GuardRecover), 0.6f);
                 }
             }
 
@@ -500,7 +587,7 @@ namespace AdversityRoad.AI
                 statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
             }
 
-            if (_anim != null) _anim.SetTrigger("Hit");
+            TriggerAnim("Hit");
 
             // 被打醒：立即进入追击
             if (State == EnemyState.Idle || State == EnemyState.Patrol) State = EnemyState.Chase;
@@ -538,7 +625,7 @@ namespace AdversityRoad.AI
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
                 ShowTelegraph(false);
-                if (_anim != null) _anim.SetTrigger("Stagger");
+                TriggerAnim("Stagger");
                 if (poser != null) poser.SetPose(PoseState.Stagger);
                 if (statusBar != null)
                 {
@@ -547,6 +634,19 @@ namespace AdversityRoad.AI
                 }
                 if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
                 CombatFeedback.SlowMo(0.5f, 0.15f);
+            }
+        }
+
+        /// <summary>侧闪滑步：0.18 秒滑到位（快出慢收），镜头软跟随不产生跳动。</summary>
+        System.Collections.IEnumerator DodgeSlide(Vector3 offset)
+        {
+            float t = 0, dur = 0.18f;
+            while (t < dur && State != EnemyState.Dead)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                if (AgentReady) _agent.Move(offset * Mathf.Min(dt / dur, 1f));
+                yield return null;
             }
         }
 
@@ -573,11 +673,14 @@ namespace AdversityRoad.AI
             ShowTelegraph(false);
             StopMoving();
             if (_agent != null) _agent.enabled = false;
-            if (_anim != null) _anim.SetTrigger("Death");
+            TriggerAnim("Death");
             if (poser != null) poser.SetPose(PoseState.Death);
             if (statusBar != null) statusBar.Hide();
             if (dialogue != null) dialogue.Show("不……可能……", 2f);
             CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 6);
+            // 击杀落幕（电影语言）：短促时缓 + 镜头缓推特写，看清敌人倒下的瞬间
+            CombatFeedback.SlowMo(0.45f, 0.28f);
+            CombatFeedback.UltimateShot(1.1f);
             GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
