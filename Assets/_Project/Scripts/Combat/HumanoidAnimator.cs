@@ -44,6 +44,16 @@ namespace AdversityRoad.Combat
         int _poseSerial, _lastMecanimSerial = -1;
         bool Mecanim => _mecanim != null && _mecanim.Valid;
 
+        // ---- 脚踝自动校准（修"踮脚尖"）----
+        // Avatar 自动 T-Pose 若把脚踝定在下垂角度，重定向后【所有】动作的脚都会
+        // 带同一恒定下垂偏转（站/走/跑常显踮脚）。出生后在静止待机帧实测
+        // "脚跟→脚尖"与地面的夹角，超阈值则求恒定校正旋转，此后每帧动画求值后
+        // 套用——数据驱动：脚本来是平的就自动不干预。
+        Transform _footL, _footR;
+        Quaternion _footFixL = Quaternion.identity, _footFixR = Quaternion.identity;
+        bool _feetCalibrated;
+        float _aliveT;
+
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
 
@@ -56,6 +66,52 @@ namespace AdversityRoad.Combat
         }
 
         void OnDestroy() { if (_mecanim != null) _mecanim.Destroy(); }
+
+        void LateUpdate()
+        {
+            if (!Mecanim) return;
+            if (!_feetCalibrated)
+            {
+                _aliveT += Time.deltaTime;
+                // 优先在纯静止待机帧校准（姿态最标准）；3 秒后仍没等到就照常校准
+                //（格斗架势的脚同样接近水平，误差可接受）
+                bool calmIdle = _pose == PoseState.Idle && !_ready && _speed01 < 0.03f;
+                if (_aliveT > 0.5f && (calmIdle || _aliveT > 3f))
+                    CalibrateFeet();
+            }
+            if (_footL != null) _footL.localRotation = _footFixL * _footL.localRotation;
+            if (_footR != null) _footR.localRotation = _footFixR * _footR.localRotation;
+        }
+
+        void CalibrateFeet()
+        {
+            _feetCalibrated = true;
+            var an = _mecanim.Animator;
+            if (an == null || !an.isHuman) return;
+            CalibrateFoot(an, HumanBodyBones.LeftFoot, HumanBodyBones.LeftToes,
+                out _footL, out _footFixL);
+            CalibrateFoot(an, HumanBodyBones.RightFoot, HumanBodyBones.RightToes,
+                out _footR, out _footFixR);
+        }
+
+        static void CalibrateFoot(Animator an, HumanBodyBones footBone, HumanBodyBones toeBone,
+            out Transform foot, out Quaternion fix)
+        {
+            fix = Quaternion.identity;
+            foot = an.GetBoneTransform(footBone);
+            var toe = an.GetBoneTransform(toeBone);
+            if (foot == null || toe == null) { foot = null; return; }
+            Vector3 dir = toe.position - foot.position;
+            Vector3 flat = new Vector3(dir.x, 0, dir.z);
+            if (dir.sqrMagnitude < 1e-6f || flat.sqrMagnitude < 1e-6f) { foot = null; return; }
+            // 脚尖相对脚跟的俯仰角：>8° 视为踮脚/勾脚（≤55° 才校正，防误判异常帧）
+            float droop = Vector3.Angle(dir, flat);
+            if (droop < 8f || droop > 55f) { foot = null; return; }
+            Quaternion world = Quaternion.FromToRotation(dir, flat);
+            // 换算成脚骨局部空间的恒定前乘偏移（父骨此刻的朝向即基准）
+            var parent = foot.parent != null ? foot.parent.rotation : Quaternion.identity;
+            fix = Quaternion.Inverse(parent) * world * parent;
+        }
 
         public void SetPose(PoseState p)
         {
@@ -101,12 +157,16 @@ namespace AdversityRoad.Combat
             SetPose(p);
         }
 
-        /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地。</summary>
-        public void SetLocomotion(float speed01, bool crouch, bool grounded)
+        float _actualSpeed = -1f;
+
+        /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地 /
+        /// 真实移速 m/s（供步幅同步，<0=未提供）。</summary>
+        public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _crouch = crouch;
             _grounded = grounded;
+            _actualSpeed = actualSpeed;
         }
 
         void Update()
@@ -118,7 +178,7 @@ namespace AdversityRoad.Combat
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed);
                 _mecanim.SetReady(_ready);
                 if (_poseSerial != _lastMecanimSerial)
                 {

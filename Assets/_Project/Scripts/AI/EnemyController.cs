@@ -37,6 +37,9 @@ namespace AdversityRoad.AI
         PoseState _attackPose = PoseState.Attack;   // 本次出手选中的招式（多样化）
         int _comboLeft;           // 精英/首领的连击追加段数
         float _strafeDir = 1f, _strafeFlipT;        // 交战游走（像人一样找角度）
+        Vector3 _lastSelfPos;     // 位移驱动动画：任何来源的移动都要迈脚，不许滑行
+        float _measuredSpeed;
+        bool _posInit;
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
@@ -147,12 +150,20 @@ namespace AdversityRoad.AI
                 statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
             }
 
-            // 把移动速度喂给人形动画（步行/奔跑步态）
+            // 把移动速度喂给人形动画（步行/奔跑步态）。
+            // 用【真实每帧位移】而非寻路速度：追击/游走/击退/侧闪，无论位移来自
+            // 哪个系统，脚都会迈动——消灭"人在滑、脚不动"的漂移感。
             if (poser != null)
             {
-                float v = AgentReady ? _agent.velocity.magnitude
-                    : (State == EnemyState.Chase ? profile.moveSpeed : 0f);
-                poser.SetLocomotion(v / Mathf.Max(0.5f, profile.moveSpeed) * 0.85f, false, true);
+                if (!_posInit) { _lastSelfPos = transform.position; _posInit = true; }
+                Vector3 planar = transform.position - _lastSelfPos;
+                planar.y = 0;
+                _lastSelfPos = transform.position;
+                float inst = dt > 0.0001f ? planar.magnitude / dt : 0f;
+                _measuredSpeed = Mathf.Lerp(_measuredSpeed, inst, 12f * dt);
+                float refSpeed = Mathf.Max(2.5f, profile.moveSpeed);
+                poser.SetLocomotion(Mathf.Clamp01(_measuredSpeed / refSpeed) * 0.9f,
+                    false, true, _measuredSpeed);
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
                 poser.SetCombatReady(State == EnemyState.Chase || State == EnemyState.Attack
                     || State == EnemyState.MentalAttack);
@@ -575,10 +586,11 @@ namespace AdversityRoad.AI
                 final >= 35f ? 1.6f : 1f);
             if (dmg.knockback > 0.1f)
             {
+                // 击退平滑化：瞬移是"打地鼠式漂移"的最大来源——改为 0.22s 快滑退，
+                // 位移驱动的步态会同步迈脚，读作"被打得连退几步"
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
                              * dmg.knockback * 0.5f;
-                if (AgentReady) _agent.Move(kb);
-                else transform.position += kb;
+                StartCoroutine(KnockSlide(kb));
             }
 
             if (statusBar != null)
@@ -634,6 +646,22 @@ namespace AdversityRoad.AI
                 }
                 if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
                 CombatFeedback.SlowMo(0.5f, 0.15f);
+            }
+        }
+
+        /// <summary>受击退步：0.22 秒滑完击退量（快出慢收），不瞬移。</summary>
+        System.Collections.IEnumerator KnockSlide(Vector3 offset)
+        {
+            offset.y = 0;
+            float t = 0, dur = 0.22f;
+            while (t < dur && State != EnemyState.Dead)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                Vector3 step = offset * Mathf.Min(dt / dur, 1f);
+                if (AgentReady) _agent.Move(step);
+                else transform.position += step;
+                yield return null;
             }
         }
 
