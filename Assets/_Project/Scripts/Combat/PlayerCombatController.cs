@@ -54,27 +54,28 @@ namespace AdversityRoad.Combat
             public float dmg, posture, lunge, windup, open, length, cancelAt;
         }
 
-        // ============ 基本键 ↔ 动作库绑定（动作库重新设计）============
-        // 拳键：前手刺拳→贯手重拳→突刺→巨剑跳劈（拳起手快，剑技收尾重）
-        // 腿键：正踢→侧踹→旋身空翻踢→飞踢（削韧强）
-        // 重键：按住蓄力=巨剑旋风斩系；方向+轻点=指令技（前=突刺突进/后=吹飞
-        //       侧踹/左右=旋风斩）；跳+拳=巨剑跳劈坠击；跳+腿=飞踢；蹲+攻=扫堂
-        // 帧数收紧（提速后同步）：起手对齐接触帧、取消窗口提前——连点即连招不等待
+        // ============ 基本键 ↔ 动作库绑定（按动作库重新设计招式）============
+        // 「拳/剑」键 = 巨剑连斩套路：横斩→撩斩→突刺→旋风斩（持大剑，剑技为主）
+        // 「腿」键   = 腿技连段：正踢→侧踹→旋身空翻踢→飞踢
+        // 「重」键   = 蓄力巨剑旋风斩/跳劈；方向+轻点=指令技；跳/蹲派生见下
+        // 取消窗口(cancelAt)【放在每击命中之后】：这是"连点什么都看不见"的根治——
+        // 之前 cancelAt(0.2) 早于挥击的命中相位，快速连点时每一击刚起手就被下一击
+        // 打断，永远看不到砍中的那一下。现在每击先把命中相位打完再允许接招。
         static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.PunchJab,    dmg = 0.8f,  posture = 6,  lunge = 0.4f,  windup = 0.1f,  open = 0.16f, length = 0.32f, cancelAt = 0.2f },
-            new ComboStage { pose = PoseState.PunchCross,  dmg = 1.0f,  posture = 10, lunge = 0.4f,  windup = 0.14f, open = 0.18f, length = 0.36f, cancelAt = 0.22f },
-            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.16f, open = 0.20f, length = 0.4f,  cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.26f, open = 0.30f, length = 0.6f,  cancelAt = 0.55f },
+            new ComboStage { pose = PoseState.Attack,      dmg = 1.0f,  posture = 10, lunge = 0.5f, windup = 0.16f, open = 0.16f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.15f, posture = 12, lunge = 0.5f, windup = 0.16f, open = 0.16f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.35f, posture = 14, lunge = 1.0f, windup = 0.15f, open = 0.16f, length = 0.48f, cancelAt = 0.32f },
+            new ComboStage { pose = PoseState.AttackSpin,  dmg = 1.9f,  posture = 28, lunge = 0.5f, windup = 0.22f, open = 0.24f, length = 0.66f, cancelAt = 0.56f },
         };
 
         // 腿系（脚技）：削韧强
         static readonly ComboStage[] KickChain =
         {
-            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.16f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.16f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.2f,  open = 0.28f, length = 0.5f,  cancelAt = 0.34f },
-            new ComboStage { pose = PoseState.JumpKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.22f, open = 0.30f, length = 0.55f, cancelAt = 0.5f },
+            new ComboStage { pose = PoseState.AttackKick, dmg = 0.95f, posture = 18, lunge = 0.7f, windup = 0.16f, open = 0.18f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.SideKick,   dmg = 1.05f, posture = 24, lunge = 0.5f, windup = 0.16f, open = 0.18f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.25f, posture = 30, lunge = 0.4f, windup = 0.2f,  open = 0.22f, length = 0.6f,  cancelAt = 0.46f },
+            new ComboStage { pose = PoseState.JumpKick,   dmg = 1.6f,  posture = 40, lunge = 0.7f, windup = 0.22f, open = 0.24f, length = 0.64f, cancelAt = 0.56f },
         };
 
         enum AttackBtn { None, Punch, Kick }
@@ -90,16 +91,19 @@ namespace AdversityRoad.Combat
         }
 
         // 复杂度越高伤害越强、消耗意势越多——大绝招不可无限使用。
-        // 每个绝招绑定一个与其意象匹配的终结动作（基础动作重新组合定位）
+        // 每个绝招绑定动作库中的一个酷炫终结动作（剑技/腿技重新组合定位）。
+        // P=剑击 K=腿击；越长越强、消耗意势越多。
         static readonly Recipe[] Recipes =
         {
-            new Recipe { seq = "PPKK", name = "双龙出海", mult = 2.6f,  cost = 2, pose = PoseState.AttackSpin },
-            new Recipe { seq = "PKPK", name = "拳腿相济", mult = 2.5f,  cost = 2, pose = PoseState.JumpKick },
-            new Recipe { seq = "KKPP", name = "踏山贯拳", mult = 2.5f,  cost = 2, pose = PoseState.HeavyAttack },
-            new Recipe { seq = "PPP",  name = "三连崩拳", mult = 1.6f,  cost = 0, pose = PoseState.SwordThrust },
-            new Recipe { seq = "KKK",  name = "连环三腿", mult = 1.65f, cost = 0, pose = PoseState.SpinKick },
-            new Recipe { seq = "PPK",  name = "崩拳扫腿", mult = 1.5f,  cost = 0, pose = PoseState.Sweep },
-            new Recipe { seq = "KKP",  name = "连腿贯拳", mult = 1.5f,  cost = 0, pose = PoseState.PunchCross },
+            // 顶级绝招（需 2 势）：终结动作取动作库最有杀伤力/最炫的巨剑旋风斩、飞踢、跳劈
+            new Recipe { seq = "PPKK", name = "剑舞·龙卷千斩", mult = 2.8f,  cost = 2, pose = PoseState.AttackSpin },
+            new Recipe { seq = "KKPP", name = "踏山·裂空巨斩", mult = 2.7f,  cost = 2, pose = PoseState.HeavyAttack },
+            new Recipe { seq = "PKPK", name = "剑腿·惊鸿连环", mult = 2.6f,  cost = 2, pose = PoseState.JumpKick },
+            // 基础连招（无消耗）：三段同系收一个大招
+            new Recipe { seq = "PPP",  name = "三斩·剑龙回旋", mult = 1.7f,  cost = 0, pose = PoseState.AttackSpin },
+            new Recipe { seq = "KKK",  name = "三腿·惊鸿踏空", mult = 1.7f,  cost = 0, pose = PoseState.JumpKick },
+            new Recipe { seq = "PPK",  name = "斩·扫堂连击", mult = 1.5f,  cost = 0, pose = PoseState.Sweep },
+            new Recipe { seq = "KKP",  name = "腿·裂空巨斩", mult = 1.5f,  cost = 0, pose = PoseState.HeavyAttack },
         };
 
         PlayerController _player;
@@ -457,13 +461,7 @@ namespace AdversityRoad.Combat
             Vector3 lateral = (right ? transform.right : -transform.right) * 1.7f
                               + transform.forward * 0.4f;
             GlideMove(lateral, 0.14f);
-            var target = AutoAimTarget();
-            if (autoFaceTarget && target != null)
-            {
-                Vector3 dir = target.position - transform.position;
-                dir.y = 0;
-                if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
-            }
+            ApplyAttackFacing();
             float dmg = heavyDamage * 0.75f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 1f, 0.7f));
             CombatFeedback.Shake(0.4f);
@@ -581,20 +579,47 @@ namespace AdversityRoad.Combat
 
         void FaceAndLunge(float lunge)
         {
+            ApplyAttackFacing();
             var target = AutoAimTarget();
-            // 锥形辅助瞄准：不做硬性自动跟踪（不掉转身），但当敌人就在面前的
-            // 攻击锥内（±55°、5.5m）时出招微校朝向锁住目标——摇杆推着打也不脱靶
-            if (target != null)
-            {
-                Vector3 dir = target.position - transform.position;
-                dir.y = 0;
-                bool inCone = dir.magnitude < 5.5f &&
-                              Vector3.Angle(transform.forward, dir) < 55f;
-                if ((autoFaceTarget || inCone) && dir.sqrMagnitude > 0.01f)
-                    transform.rotation = Quaternion.LookRotation(dir);
-            }
             if (target == null || Vector3.Distance(transform.position, target.position) > 1.3f)
                 GlideMove(transform.forward * lunge, 0.1f);
+        }
+
+        /// <summary>出招朝向决策（用户要求：摇杆掌控优先，重键不再强制锁敌）：
+        /// ① 玩家给了摇杆方向 → 朝摇杆方向出招（意图优先，想打哪打哪）；
+        /// ② 没给方向、敌人又恰在正面攻击锥内 → 才微校朝敌（辅助瞄准不脱靶）；
+        /// ③ 都没有 → 保持当前朝向。</summary>
+        void ApplyAttackFacing()
+        {
+            Vector3 stick = WorldMoveDir();
+            if (stick.sqrMagnitude > 0.02f)
+            {
+                transform.rotation = Quaternion.LookRotation(stick);
+                return;
+            }
+            var target = AutoAimTarget();
+            if (target == null) return;
+            Vector3 dir = target.position - transform.position; dir.y = 0;
+            bool inCone = autoFaceTarget ||
+                (dir.magnitude < 5.5f && Vector3.Angle(transform.forward, dir) < 55f);
+            if (inCone && dir.sqrMagnitude > 0.01f)
+                transform.rotation = Quaternion.LookRotation(dir);
+        }
+
+        /// <summary>摇杆/键盘的世界移动方向（相机相对），无输入返回零向量。</summary>
+        Vector3 WorldMoveDir()
+        {
+            Vector2 mv = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"))
+                         + MobileInput.Move;
+            if (mv.sqrMagnitude < 0.04f) return Vector3.zero;
+            Transform cam = Camera.main != null ? Camera.main.transform : null;
+            if (cam != null)
+            {
+                Vector3 f = cam.forward; f.y = 0; f.Normalize();
+                Vector3 r = cam.right; r.y = 0; r.Normalize();
+                return (f * mv.y + r * mv.x).normalized;
+            }
+            return new Vector3(mv.x, 0, mv.y).normalized;
         }
 
         Coroutine _glideRoutine;
@@ -824,7 +849,9 @@ namespace AdversityRoad.Combat
                     new Color(1f, 0.35f, 0.3f));
                 Vector3 toSrc = dmg.sourcePosition - transform.position; toSrc.y = 0;
                 Vector3 dirS = toSrc.sqrMagnitude > 0.01f ? toSrc.normalized : transform.forward;
-                Vector3 contact = transform.position + dirS * 0.5f + Vector3.up * 1.25f;
+                // 优先用判定框算出的真实接触身体点，退回估算
+                Vector3 contact = dmg.hasContact ? dmg.contactPoint
+                    : transform.position + dirS * 0.5f + Vector3.up * 1.25f;
                 if (blocked)
                 {
                     // 敌人的兵器砍在玩家举起的兵器/护体上：接触点撞击火花
