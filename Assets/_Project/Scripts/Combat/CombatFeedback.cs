@@ -130,20 +130,24 @@ namespace AdversityRoad.Combat
 
         IEnumerator Flash(GameObject target)
         {
-            var renderers = target.GetComponentsInChildren<MeshRenderer>();
+            // 必须用 Renderer 基类：动捕模型是 SkinnedMeshRenderer——此前只找
+            // MeshRenderer，切动捕模型后受击闪红从未生效（"看不出被击中"的根因）
+            var renderers = target.GetComponentsInChildren<Renderer>();
             var originals = new Color[renderers.Length];
             for (int i = 0; i < renderers.Length; i++)
             {
-                if (renderers[i] == null || !renderers[i].enabled) continue;
-                var m = renderers[i].material;
+                var r = renderers[i];
+                if (r == null || !r.enabled || r is TrailRenderer || r is LineRenderer) continue;
+                var m = r.material;
                 originals[i] = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
-                SetColor(m, Color.Lerp(originals[i], new Color(1f, 0.25f, 0.2f), 0.85f));
+                SetColor(m, Color.Lerp(originals[i], new Color(1f, 0.22f, 0.18f), 0.9f));
             }
-            yield return new WaitForSecondsRealtime(0.1f);
+            yield return new WaitForSecondsRealtime(0.12f);
             for (int i = 0; i < renderers.Length; i++)
             {
-                if (renderers[i] == null) continue;
-                SetColor(renderers[i].material, originals[i]);
+                var r = renderers[i];
+                if (r == null || r is TrailRenderer || r is LineRenderer) continue;
+                SetColor(r.material, originals[i]);
             }
         }
 

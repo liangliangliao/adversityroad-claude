@@ -145,7 +145,8 @@ namespace AdversityRoad.Player
                 Quaternion target = Quaternion.LookRotation(moveDir);
                 float ang = Quaternion.Angle(transform.rotation, target);
                 float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
-                if (attacking) rs = 5f;
+                // 出招中朝向基本锁定（配合锥形辅助瞄准）：摇杆推着连招不甩离目标
+                if (attacking) rs = 2.2f;
                 transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
             }
         }

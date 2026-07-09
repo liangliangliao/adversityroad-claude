@@ -38,23 +38,25 @@ namespace AdversityRoad.Combat
         static ActionDef A(PoseState p, float speed, bool hold, params string[] keys) =>
             new ActionDef { pose = p, keys = keys, speed = speed, hold = hold };
 
+        // 播放速率整体上调：真实格斗的出手是"脆快"的，原速 Mixamo 片段偏演示节奏；
+        // 提速后招式起手-接触-收招全程更利落，连招衔接紧凑（配合控制器帧数同步收紧）
         static readonly ActionDef[] ActionMap =
         {
-            A(PoseState.Attack,      1.15f, false, "great sword slash"),
-            A(PoseState.HeavyAttack, 1.0f,  false, "great sword slash (1)", "great sword high spin attack"),
-            A(PoseState.AttackUp,    1.15f, false, "great sword slash (1)", "great sword high spin attack"),
-            A(PoseState.SwordThrust, 1.2f,  false, "stabbing", "stab"),
-            A(PoseState.AttackLeap,  1.0f,  false, "great sword jump", "jump attack"),
-            A(PoseState.JumpAttack,  1.1f,  false, "great sword jump", "jump attack"),
-            A(PoseState.AttackSpin,  1.0f,  false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
-            A(PoseState.PunchJab,    1.25f, false, "lead jab", "jab"),
-            A(PoseState.PunchCross,  1.2f,  false, "cross punch"),
-            A(PoseState.AttackKick,  1.15f, false, "kicking"),
-            A(PoseState.SideKick,    1.15f, false, "side kick"),
-            A(PoseState.SpinKick,    1.1f,  false, "spin flip kick", "spin kick"),
-            A(PoseState.JumpKick,    1.1f,  false, "flying kick"),
-            A(PoseState.Sweep,       1.1f,  false, "spin flip kick"),
-            A(PoseState.Hit,         1.1f,  false, "hit reaction", "great sword impact", "hit"),
+            A(PoseState.Attack,      1.4f,  false, "great sword slash"),
+            A(PoseState.HeavyAttack, 1.2f,  false, "great sword high spin attack", "great sword slash (1)"),
+            A(PoseState.AttackUp,    1.4f,  false, "great sword slash (1)", "great sword high spin attack"),
+            A(PoseState.SwordThrust, 1.45f, false, "stabbing", "stab"),
+            A(PoseState.AttackLeap,  1.2f,  false, "great sword jump", "jump attack"),
+            A(PoseState.JumpAttack,  1.3f,  false, "great sword jump", "jump attack"),
+            A(PoseState.AttackSpin,  1.25f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
+            A(PoseState.PunchJab,    1.55f, false, "lead jab", "jab"),
+            A(PoseState.PunchCross,  1.45f, false, "cross punch"),
+            A(PoseState.AttackKick,  1.4f,  false, "kicking"),
+            A(PoseState.SideKick,    1.4f,  false, "side kick"),
+            A(PoseState.SpinKick,    1.35f, false, "spin flip kick", "spin kick"),
+            A(PoseState.JumpKick,    1.35f, false, "flying kick"),
+            A(PoseState.Sweep,       1.3f,  false, "spin flip kick"),
+            A(PoseState.Hit,         1.25f, false, "hit reaction", "great sword impact", "hit"),
             A(PoseState.Knockdown,   1.0f,  true,  "knocked down", "sweep fall", "knockdown", "falling back"),
             A(PoseState.Death,       1.0f,  true,  "dying", "great sword death", "death"),
             A(PoseState.Cast,        1.0f,  false, "spell casting", "cast"),

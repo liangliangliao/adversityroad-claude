@@ -54,23 +54,27 @@ namespace AdversityRoad.Combat
             public float dmg, posture, lunge, windup, open, length, cancelAt;
         }
 
-        // 拳键=剑式套路（持械时耍剑）：横斩→上撩→弓步突刺→腾空跃劈，伤害高。
-        // windup 对齐动捕片段的实际接触帧（挥到一半刃才到位），判定与画面同步
+        // ============ 基本键 ↔ 动作库绑定（动作库重新设计）============
+        // 拳键：前手刺拳→贯手重拳→突刺→巨剑跳劈（拳起手快，剑技收尾重）
+        // 腿键：正踢→侧踹→旋身空翻踢→飞踢（削韧强）
+        // 重键：按住蓄力=巨剑旋风斩系；方向+轻点=指令技（前=突刺突进/后=吹飞
+        //       侧踹/左右=旋风斩）；跳+拳=巨剑跳劈坠击；跳+腿=飞踢；蹲+攻=扫堂
+        // 帧数收紧（提速后同步）：起手对齐接触帧、取消窗口提前——连点即连招不等待
         static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.Attack,      dmg = 1.0f,  posture = 8,  lunge = 0.5f,  windup = 0.2f,  open = 0.20f, length = 0.44f, cancelAt = 0.3f },
-            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.1f,  posture = 10, lunge = 0.4f,  windup = 0.2f,  open = 0.20f, length = 0.44f, cancelAt = 0.3f },
-            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.2f,  open = 0.22f, length = 0.48f, cancelAt = 0.32f },
-            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.3f,  open = 0.30f, length = 0.7f,  cancelAt = 0.66f },
+            new ComboStage { pose = PoseState.PunchJab,    dmg = 0.8f,  posture = 6,  lunge = 0.4f,  windup = 0.1f,  open = 0.16f, length = 0.32f, cancelAt = 0.2f },
+            new ComboStage { pose = PoseState.PunchCross,  dmg = 1.0f,  posture = 10, lunge = 0.4f,  windup = 0.14f, open = 0.18f, length = 0.36f, cancelAt = 0.22f },
+            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.3f,  posture = 12, lunge = 0.9f,  windup = 0.16f, open = 0.20f, length = 0.4f,  cancelAt = 0.26f },
+            new ComboStage { pose = PoseState.AttackLeap,  dmg = 1.85f, posture = 24, lunge = 0.9f,  windup = 0.26f, open = 0.30f, length = 0.6f,  cancelAt = 0.55f },
         };
 
         // 腿系（脚技）：削韧强
         static readonly ComboStage[] KickChain =
         {
-            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.2f,  open = 0.24f, length = 0.5f,  cancelAt = 0.34f },
-            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.2f,  open = 0.24f, length = 0.5f,  cancelAt = 0.34f },
-            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.24f, open = 0.32f, length = 0.6f,  cancelAt = 0.42f },
-            new ComboStage { pose = PoseState.JumpKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.26f, open = 0.32f, length = 0.64f, cancelAt = 0.6f },
+            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 18, lunge = 0.7f, windup = 0.16f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
+            new ComboStage { pose = PoseState.SideKick,   dmg = 1.0f,  posture = 24, lunge = 0.5f, windup = 0.16f, open = 0.22f, length = 0.4f,  cancelAt = 0.26f },
+            new ComboStage { pose = PoseState.SpinKick,   dmg = 1.2f,  posture = 30, lunge = 0.4f, windup = 0.2f,  open = 0.28f, length = 0.5f,  cancelAt = 0.34f },
+            new ComboStage { pose = PoseState.JumpKick,   dmg = 1.5f,  posture = 40, lunge = 0.6f, windup = 0.22f, open = 0.30f, length = 0.55f, cancelAt = 0.5f },
         };
 
         enum AttackBtn { None, Punch, Kick }
@@ -108,6 +112,7 @@ namespace AdversityRoad.Combat
         ComboStage _cur;
         string _seq = "";             // 本次连段的拳腿序列（组合技识别）
         AttackBtn _buffered = AttackBtn.None;
+        float _bufferedAt;            // 输入缓冲时间戳（过期作废，防陈旧输入迟到触发）
         float _lastAttackEnd;
         Coroutine _hitboxRoutine;
         Coroutine _ranwuRoutine;
@@ -228,19 +233,36 @@ namespace AdversityRoad.Combat
             AttackBtn pressed = punchDown ? AttackBtn.Punch : kickDown ? AttackBtn.Kick : AttackBtn.None;
             if (pressed != AttackBtn.None)
             {
-                if (_depth >= 0) { _buffered = pressed; return; }
-                if (_fsm.IsActionLocked) return;
-                if (!_cc.isGrounded)
-                {
-                    // 跳跃派生：跳+拳=下劈坠击，跳+腿=飞踢
-                    if (pressed == AttackBtn.Kick) JumpKickAttack(); else JumpAttack();
-                    return;
-                }
-                if (_player.IsCrouched) { SweepAttack(); return; }
-                _depth = -1;
-                _seq = "";
-                NextStage(pressed);
+                if (_depth >= 0) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                // 动作锁期间（受击硬直/重击收招等）不再吞掉输入：进缓冲排队，
+                // 锁一解除立即出招——连点第二下绝不丢（"连续性差/有延迟"的根因）
+                if (_fsm.IsActionLocked) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                StartAttack(pressed);
+                return;
             }
+
+            // 缓冲兑现：锁解除后立刻打出排队的那一下（0.45s 内有效，过期作废）
+            if (_depth < 0 && _buffered != AttackBtn.None && !_fsm.IsActionLocked)
+            {
+                if (Time.time - _bufferedAt > 0.45f) { _buffered = AttackBtn.None; return; }
+                var b = _buffered;
+                _buffered = AttackBtn.None;
+                StartAttack(b);
+            }
+        }
+
+        void StartAttack(AttackBtn pressed)
+        {
+            if (!_cc.isGrounded)
+            {
+                // 跳跃派生：跳+拳=下劈坠击，跳+腿=飞踢
+                if (pressed == AttackBtn.Kick) JumpKickAttack(); else JumpAttack();
+                return;
+            }
+            if (_player.IsCrouched) { SweepAttack(); return; }
+            _depth = -1;
+            _seq = "";
+            NextStage(pressed);
         }
 
         /// <summary>移动输入相对角色朝向的前后/左右分量（八向指令技判定）。</summary>
@@ -334,8 +356,10 @@ namespace AdversityRoad.Combat
             if (_depth >= 0) _lastAttackEnd = Time.time;
             _depth = -1;
             _seq = "";
-            _buffered = AttackBtn.None;
             GameEvents.RaiseComboSeq("");
+            // 连段收尾立即解除动作锁：下一次点击零等待（残留锁是"连点延迟"根因）
+            if (_fsm.Current == CombatState.LightAttack)
+                _fsm.RequestState(CombatState.Locomotion);
         }
 
         // ================= 重击 / 蓄力 / 指令技 / 超必杀 =================
@@ -558,12 +582,16 @@ namespace AdversityRoad.Combat
         void FaceAndLunge(float lunge)
         {
             var target = AutoAimTarget();
-            // 自动面向默认关闭：朝向由玩家摇杆掌控，不强行掉转（用户要求）
-            if (autoFaceTarget && target != null)
+            // 锥形辅助瞄准：不做硬性自动跟踪（不掉转身），但当敌人就在面前的
+            // 攻击锥内（±55°、5.5m）时出招微校朝向锁住目标——摇杆推着打也不脱靶
+            if (target != null)
             {
                 Vector3 dir = target.position - transform.position;
                 dir.y = 0;
-                if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir);
+                bool inCone = dir.magnitude < 5.5f &&
+                              Vector3.Angle(transform.forward, dir) < 55f;
+                if ((autoFaceTarget || inCone) && dir.sqrMagnitude > 0.01f)
+                    transform.rotation = Quaternion.LookRotation(dir);
             }
             if (target == null || Vector3.Distance(transform.position, target.position) > 1.3f)
                 GlideMove(transform.forward * lunge, 0.1f);
@@ -718,15 +746,16 @@ namespace AdversityRoad.Combat
 
         // ================= 受击 =================
 
-        /// <summary>重击击飞：0.35 秒内向后飞退（快出慢收），配合倒地动画读作"被打飞"。</summary>
+        /// <summary>重击击飞：与倒地动画同步的短促飞退（二次强减速，落地即停）——
+        /// 位移在身体倒下的过程中完成，不"漂移一段才倒下"。</summary>
         IEnumerator KnockFly(Vector3 dir)
         {
-            float t = 0;
-            while (t < 0.35f && _fsm.Current == CombatState.Knockdown)
+            float t = 0, dur = 0.28f;
+            while (t < dur && _fsm.Current == CombatState.Knockdown)
             {
                 t += Time.deltaTime;
-                float sp = Mathf.Lerp(11f, 0f, t / 0.35f);
-                _cc.Move(dir * sp * Time.deltaTime);
+                float k = 1f - t / dur;
+                _cc.Move(dir * (8f * k * k) * Time.deltaTime);
                 yield return null;
             }
         }
