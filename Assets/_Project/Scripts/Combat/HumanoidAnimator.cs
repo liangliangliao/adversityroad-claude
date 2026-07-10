@@ -95,15 +95,24 @@ namespace AdversityRoad.Combat
         public bool PlayClipPreview(string clipName) =>
             Mecanim && _mecanim.PlayClip(clipName);
 
+        string _lastMoveName;
+        float _lastMoveNameAt;
+
         public void SetPose(PoseState p)
         {
             _pose = p;
             _t = 0;
             _poseSerial++;   // 每次设招（含同名连招重触发）都递增，供动捕层重放动作
 
-            // 战斗可读性：出招瞬间头顶弹出招式名（格斗游戏惯例），看清双方正在用什么招
+            // 战斗可读性：出招瞬间头顶弹出招式名（格斗游戏惯例），看清双方正在用什么招。
+            // 节流：同名招 0.9s 内不重复弹——快速连点时浮字不再叠成一摞刷屏
             string mv = MoveNameOf(p);
-            if (mv != null) CombatFeedback.MoveName(transform.position, mv, isEnemy);
+            if (mv != null && (mv != _lastMoveName || Time.time - _lastMoveNameAt > 0.9f))
+            {
+                _lastMoveName = mv;
+                _lastMoveNameAt = Time.time;
+                CombatFeedback.MoveName(transform.position, mv, isEnemy);
+            }
         }
 
         static string MoveNameOf(PoseState p)

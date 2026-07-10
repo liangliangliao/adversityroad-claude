@@ -89,7 +89,8 @@ namespace AdversityRoad.Player
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
         }
 
-        static void SetTransparent(Material m)
+        /// <summary>把材质切到半透明混合（近镜角色淡出等复用）。</summary>
+        public static void SetTransparent(Material m)
         {
             if (m.HasProperty("_Surface") && m.GetFloat("_Surface") > 0.5f) return; // 已是透明
             if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);              // URP: 0 不透明 / 1 透明
@@ -103,7 +104,8 @@ namespace AdversityRoad.Player
             m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
         }
 
-        static void SetOpaque(Material m)
+        /// <summary>把材质切回不透明（近镜角色淡出等复用）。</summary>
+        public static void SetOpaque(Material m)
         {
             if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 0f);
             if (m.HasProperty("_SrcBlend")) m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);

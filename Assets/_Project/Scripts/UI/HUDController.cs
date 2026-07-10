@@ -24,9 +24,11 @@ namespace AdversityRoad.UI
         public Text comboText;       // 当前连段序列（拳·拳·腿）
         public RectTransform cineTop, cineBottom;   // 锁定战斗时的电影黑边
         public Text skillBanner;                    // 招式大字横幅（中央弹出）
+        public Text comboCountText;                 // 连击计数器（屏幕固定，格斗游戏式）
 
         float _cineHeight;
         float _bannerUntil;
+        float _comboCountUntil;
 
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
@@ -43,6 +45,7 @@ namespace AdversityRoad.UI
             GameEvents.OnComboSeqChanged += OnComboSeq;
             GameEvents.OnLockStateChanged += OnLockState;
             GameEvents.OnSkillBanner += OnBanner;
+            GameEvents.OnComboCount += OnComboCount;
         }
 
         void OnDisable()
@@ -55,6 +58,21 @@ namespace AdversityRoad.UI
             GameEvents.OnComboSeqChanged -= OnComboSeq;
             GameEvents.OnLockStateChanged -= OnLockState;
             GameEvents.OnSkillBanner -= OnBanner;
+            GameEvents.OnComboCount -= OnComboCount;
+        }
+
+        /// <summary>连击计数：固定在屏幕右侧的格斗游戏式计数器——每次命中弹一下缩放，
+        /// 数字越高颜色越烈；断连 1.6s 后淡出（浮字不再满场乱飞）。</summary>
+        void OnComboCount(int n)
+        {
+            if (comboCountText == null) return;
+            comboCountText.text = n + " 连击";
+            var col = Color.Lerp(new Color(1f, 0.85f, 0.3f), new Color(1f, 0.3f, 0.15f),
+                Mathf.Clamp01((n - 2) / 10f));
+            col.a = 1f;
+            comboCountText.color = col;
+            comboCountText.transform.localScale = Vector3.one * 1.45f;
+            _comboCountUntil = Time.unscaledTime + 1.6f;
         }
 
         void OnBanner(string name)
@@ -105,6 +123,19 @@ namespace AdversityRoad.UI
                     var c = skillBanner.color;
                     c.a = Mathf.MoveTowards(c.a, 0, 3f * Time.unscaledDeltaTime);
                     skillBanner.color = c;
+                }
+            }
+
+            // 连击计数器：弹入缩放 + 断连淡出
+            if (comboCountText != null && comboCountText.color.a > 0.01f)
+            {
+                comboCountText.transform.localScale = Vector3.Lerp(
+                    comboCountText.transform.localScale, Vector3.one, 12f * Time.unscaledDeltaTime);
+                if (Time.unscaledTime > _comboCountUntil)
+                {
+                    var c = comboCountText.color;
+                    c.a = Mathf.MoveTowards(c.a, 0, 4f * Time.unscaledDeltaTime);
+                    comboCountText.color = c;
                 }
             }
 

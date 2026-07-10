@@ -16,7 +16,9 @@ namespace AdversityRoad.World
         public readonly List<Renderer> lampHeads = new List<Renderer>();
 
         static readonly Color DayAmbient = new Color(0.56f, 0.56f, 0.6f);
-        static readonly Color NightAmbient = new Color(0.16f, 0.17f, 0.25f); // 夜晚保底亮度，不影响可读性
+        // 夜晚保底亮度上调：录屏实测夜战/暗场景整体过暗，敌我动作看不清——
+        // 战斗可读性优先于氛围，保底照度要能看清双方的拳脚与前摇
+        static readonly Color NightAmbient = new Color(0.3f, 0.31f, 0.42f);
         static readonly Color DaySun = new Color(1f, 0.96f, 0.9f);
         static readonly Color DuskSun = new Color(1f, 0.55f, 0.3f);
 
@@ -30,7 +32,7 @@ namespace AdversityRoad.World
             if (sun != null)
             {
                 sun.transform.rotation = Quaternion.Euler(time01 * 360f, 40f, 0);
-                sun.intensity = Mathf.Lerp(0.03f, 1.15f, dayFactor);
+                sun.intensity = Mathf.Lerp(0.14f, 1.15f, dayFactor);   // 夜晚也留主光轮廓
                 sun.color = Color.Lerp(DuskSun, DaySun, Mathf.Clamp01(dayFactor * 2f));
             }
 
