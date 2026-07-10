@@ -57,6 +57,14 @@ namespace AdversityRoad.UI
             ("受击反应", "Hit Reaction"),
             ("击倒躺地", "Knocked Down"),
             ("倒地死亡", "Dying"),
+            // —— 补充动作（下载放入 Anims/ 后生效；缺失会提示"动作缺失"）——
+            // 实战启用时机：格挡=按住挡键；翻滚=闪键；硬直=破绽/被言语反制；
+            // 蓄力=按住重键；扫堂=蹲+腿
+            ("格挡(挡键)", "Great Sword Blocking"),
+            ("翻滚(闪键)", "Stand To Roll"),
+            ("硬直(破绽)", "Stunned"),
+            ("蓄力(按住重)", "Great Sword Casting"),
+            ("扫堂(蹲+腿)", "Leg Sweep"),
         };
 
         public static DebugMovesPanel Create(Transform canvas)

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace AdversityRoad.Combat
@@ -60,6 +61,12 @@ namespace AdversityRoad.Combat
             if (animator == null) animator = model.AddComponent<Animator>();
             animator.applyRootMotion = false;   // 位移由 CharacterController/NavMesh 负责
 
+            // 异源骨架对齐：非参考模型（如 glb 角色）骨名常无 mixamorig 前缀、层级不同，
+            // 动作片段按路径绑定会全部失配（模型完全瘫痪不动）。把骨骼改名/链路对齐到
+            // 参考骨架后，默认动作库直接可用。
+            if (prefab != Resources.Load<GameObject>("Characters/PlayerModel"))
+                HarmonizeSkeleton(model.transform);
+
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);
 
@@ -92,6 +99,75 @@ namespace AdversityRoad.Combat
             poser.weaponPivot = weaponPivot;   // 可为 null（无兵器则无刀光，正常）
             poser.weaponTrail = null;
             return true;
+        }
+
+        /// <summary>异源骨架对齐（glb/其他来源角色沿用默认动作库的关键）：
+        /// 动作片段按「骨骼路径」绑定（如 Armature/mixamorig:Hips/…）。glb 角色的骨名
+        /// 常无 mixamorig 前缀（Hips/Spine/LeftArm…，ReadyPlayerMe 等均如此）或根链路
+        /// 不同，导致全部动画绑定失败——模型瘫痪、走跑漂移。本方法：
+        /// ① 把模型骨骼改名为参考骨架（PlayerModel）的对应骨名（规范化名匹配）；
+        /// ② 把 hips 挂到与参考一致的链路（缺的中间节点按参考的局部 TRS 补建），
+        ///    使相对模型根的骨骼路径与参考完全一致；蒙皮引用 Transform 对象不受改名/
+        ///    重挂影响，世界位姿保持。匹配骨数过少（非标准人形骨架）则放弃不动。</summary>
+        static void HarmonizeSkeleton(Transform model)
+        {
+            var refPrefab = Resources.Load<GameObject>("Characters/PlayerModel");
+            if (refPrefab == null || model == null) return;
+            var refHips = FindBone(refPrefab.transform, "hips");
+            var hips = FindBone(model, "hips");
+            if (hips == null) hips = FindBone(model, "pelvis");
+            if (refHips == null || hips == null) return;
+
+            // 参考骨架映射：规范名（去 mixamorig 前缀/符号/大小写）→ 参考骨名
+            var map = new Dictionary<string, string>();
+            foreach (var t in refHips.GetComponentsInChildren<Transform>(true))
+            {
+                string k = NormBone(t.name);
+                if (k.Length > 0 && !map.ContainsKey(k)) map[k] = t.name;
+            }
+
+            // 先统计匹配骨数：太少说明不是标准人形骨架，放弃（避免半吊子改名）
+            var bones = hips.GetComponentsInChildren<Transform>(true);
+            int matched = 0;
+            foreach (var t in bones)
+                if (map.ContainsKey(NormBone(t.name))) matched++;
+            if (matched < 12) return;
+
+            // ① 骨骼重命名为参考骨名（Hips → mixamorig:Hips 等）
+            foreach (var t in bones)
+                if (map.TryGetValue(NormBone(t.name), out string refName)) t.name = refName;
+
+            // ② 重建 hips 以上的链路 = 参考链路（逐级找/建，新节点局部 TRS 抄参考，
+            //    保证动作数据里 hips 平移的父空间缩放与参考一致）
+            var refChain = new List<Transform>();
+            for (var t = refHips.parent; t != null && t != refPrefab.transform; t = t.parent)
+                refChain.Insert(0, t);
+            Transform cur = model;
+            foreach (var refNode in refChain)
+            {
+                var child = cur.Find(refNode.name);
+                if (child == null)
+                {
+                    child = new GameObject(refNode.name).transform;
+                    child.SetParent(cur, false);
+                    child.localPosition = refNode.localPosition;
+                    child.localRotation = refNode.localRotation;
+                    child.localScale = refNode.localScale;
+                }
+                cur = child;
+            }
+            if (hips.parent != cur) hips.SetParent(cur, true);
+            Debug.Log("[MecanimCharacter] 异源骨架已对齐参考骨架（匹配 " + matched + " 根骨骼）");
+        }
+
+        /// <summary>骨名规范化：只留字母数字、转小写、去 mixamorig 前缀。</summary>
+        static string NormBone(string s)
+        {
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s)
+                if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            string n = sb.ToString();
+            return n.StartsWith("mixamorig") ? n.Substring(9) : n;
         }
 
         /// <summary>给动捕模型整体染色（敌我识别的关键）：BaseColor 乘色调 + 可选微自发光。
