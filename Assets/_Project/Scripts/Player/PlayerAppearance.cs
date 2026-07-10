@@ -9,14 +9,18 @@ namespace AdversityRoad.Player
     ///
     /// 角色（二选一，资产分离，可持久化）：
     ///   预设 0「角色·壹」= Resources/Characters/PlayerModel + 动作库 Characters/Anims
-    ///   预设 1「角色·贰」= Resources/Characters/PlayerModel2 + 专属动作库 Characters/Anims2
-    ///   （模型缺失自动回退 PlayerModel；Anims2 缺失自动回退默认动作库——
-    ///    Mixamo 标准骨架按路径绑定通用；两者都缺才回退程序化方块骨骼）
+    ///   预设 1「角色·贰」= Resources/Characters/PlayerModel2（支持 .glb/.gltf/.fbx，
+    ///     Resources.Load 按名加载与扩展名无关；glTFast 包负责 glb/gltf 导入），
+    ///     动作库默认【沿用】角色壹的 Characters/Anims（Mixamo 标准骨架按路径绑定通用）；
+    ///     若 Characters/Anims2/ 放了片段则优先用作角色贰专属动作库。
+    ///   （模型缺失自动回退 PlayerModel；两者都缺才回退程序化方块骨骼）
     ///
     /// 武器库（与角色独立选择）：
-    ///   Resources/Characters/Weapons/ 下的每个预制体/FBX 即一件武器（文件名=武器名），
-    ///   玩家默认持剑（模型自带兵器或 Characters/Weapon），从武器库重选即替换手中武器：
-    ///   隐藏模型自带兵器 → 新武器挂右手 → 自动归一尺寸 → 刀光轴随武器切换。
+    ///   Resources/Characters/Weapons/ 下每个模型文件即一件武器（文件名=武器名），
+    ///   支持 .glb/.fbx/.gltf，也可直接丢 .zip（编辑器自动解压出模型并删除压缩包）；
+    ///   武器数量=目录下模型文件数量。玩家默认持剑（模型自带兵器或 Characters/Weapon），
+    ///   从武器库重选即替换手中武器：隐藏模型自带兵器 → 新武器挂右手 →
+    ///   自动归一尺寸 → 刀光轴随武器切换。
     /// </summary>
     public class PlayerAppearance : MonoBehaviour
     {
