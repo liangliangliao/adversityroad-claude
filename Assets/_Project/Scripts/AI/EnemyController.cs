@@ -330,21 +330,22 @@ namespace AdversityRoad.AI
         }
 
         /// <summary>各招式从起手到真正接触目标的时间：判定框在动画"打到"的那一帧
-        /// 才开启——刀/脚碰到身体的瞬间与伤害同步，打击所见即所得。</summary>
+        /// 才开启——刀/脚碰到身体的瞬间与伤害同步，打击所见即所得。
+        /// （动画层加了起手偏移+提速，接触帧整体提前）</summary>
         static float ContactDelay(PoseState p)
         {
             switch (p)
             {
                 case PoseState.HeavyAttack:
-                case PoseState.AttackSpin:  return 0.26f;
+                case PoseState.AttackSpin:  return 0.2f;
                 case PoseState.SpinKick:
                 case PoseState.JumpKick:
-                case PoseState.SideKick:    return 0.2f;
-                case PoseState.AttackKick:  return 0.17f;
-                case PoseState.PunchJab:    return 0.1f;
+                case PoseState.SideKick:    return 0.16f;
+                case PoseState.AttackKick:  return 0.13f;
+                case PoseState.PunchJab:    return 0.08f;
                 case PoseState.PunchCross:
-                case PoseState.SwordThrust: return 0.15f;
-                default:                    return 0.18f;   // 横斩/撩斩等剑技
+                case PoseState.SwordThrust: return 0.12f;
+                default:                    return 0.14f;   // 横斩/撩斩等剑技
             }
         }
 
@@ -410,7 +411,7 @@ namespace AdversityRoad.AI
                 var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
                 _attackPose = pool[Random.Range(0, pool.Length)];
                 FaceTarget();
-                Invoke(nameof(OpenAttackHitbox), 0.32f);
+                Invoke(nameof(OpenAttackHitbox), 0.26f);
             }
             // 攻防步法：一套连招收尾后有概率快速撤步拉开身位（进退有据的剑斗节奏），
             // 位移驱动的步态让退步的脚下动作清晰可见
@@ -637,6 +638,10 @@ namespace AdversityRoad.AI
             // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——从接触点顺打击方向外喷
             if (!guardedHit && dmg.physicalDamage > 0.5f)
                 CombatFeedback.BloodSpray(contact, -dirA);
+            // 部位受击反应：命中头就甩头、命中腿就屈弯，接触点弹部位标签；
+            // 连续两次打中同一部位就有两次可见反应（冲量叠加，打几下动几下）
+            if (!guardedHit)
+                HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy);
             CombatFeedback.HitFlash(gameObject);
             _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
@@ -751,19 +756,20 @@ namespace AdversityRoad.AI
             }
         }
 
-        /// <summary>重击击飞：与倒地动画同步的短促飞退（强减速，落地即停）——
-        /// 位移在身体倒下的过程中完成，不再"漂移一段才倒下"。</summary>
+        /// <summary>重击击飞：极短极快的受击位移（≈0.35m，二次强减速）——
+        /// 只在身体后仰的头几帧内完成，倒下的整个过程零滑动，
+        /// 读作"重重挨了一下当场栽倒"而非"漂移一段才倒下"。</summary>
         System.Collections.IEnumerator KnockFly(Vector3 dir)
         {
             dir.y = 0;
             if (dir.sqrMagnitude < 0.01f) yield break;
             dir = dir.normalized;
-            float t = 0, dur = 0.28f;
+            float t = 0, dur = 0.15f;
             while (t < dur && State == EnemyState.Stagger)
             {
                 t += Time.deltaTime;
                 float k = 1f - t / dur;
-                float sp = 8f * k * k;   // 二次强减速：出脚快、落地前已停
+                float sp = 5f * k * k;   // 二次强减速：出脚快、倒身前已停
                 if (AgentReady) _agent.Move(dir * sp * Time.deltaTime);
                 yield return null;
             }
