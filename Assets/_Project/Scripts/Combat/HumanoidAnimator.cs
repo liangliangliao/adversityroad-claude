@@ -108,20 +108,21 @@ namespace AdversityRoad.Combat
 
         static string MoveNameOf(PoseState p)
         {
+            // 与动作库片段一一对应的招式名（玩家在测试面板/招式表看到的同名动作）
             switch (p)
             {
-                case PoseState.Attack: return "横斩";
-                case PoseState.HeavyAttack: return "裂空重斩";
-                case PoseState.AttackUp: return "撩天斩";
-                case PoseState.SwordThrust: return "破空刺";
-                case PoseState.AttackLeap: return "跃劈";
-                case PoseState.JumpAttack: return "空袭斩";
-                case PoseState.AttackSpin: return "回旋斩";
-                case PoseState.PunchJab: return "疾风拳";
-                case PoseState.PunchCross: return "贯心拳";
-                case PoseState.AttackKick: return "正蹬";
+                case PoseState.Attack: return "巨剑横斩";
+                case PoseState.HeavyAttack: return "巨剑跳劈";
+                case PoseState.AttackUp: return "巨剑撩斩";
+                case PoseState.SwordThrust: return "突刺";
+                case PoseState.AttackLeap: return "裂地跳劈";
+                case PoseState.JumpAttack: return "空袭跳劈";
+                case PoseState.AttackSpin: return "巨剑旋风斩";
+                case PoseState.PunchJab: return "前手直拳";
+                case PoseState.PunchCross: return "交叉重拳";
+                case PoseState.AttackKick: return "正踢";
                 case PoseState.SideKick: return "侧踹";
-                case PoseState.SpinKick: return "旋风腿";
+                case PoseState.SpinKick: return "旋身空翻踢";
                 case PoseState.JumpKick: return "飞踢";
                 case PoseState.Sweep: return "扫堂腿";
                 case PoseState.Cast: return "心念术";

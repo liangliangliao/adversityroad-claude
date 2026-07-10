@@ -64,14 +64,19 @@ Assets/_Project/Resources/Characters/
 | --- | --- |
 | 待机 / 临战待机 | Idle / Fighting Idle |
 | 走 / 跑 | Walking / Running |
-| 轻击（横斩） | Great Sword Slash |
-| 连段重斩 / 上撩 | Great Sword Slash (1) / Great Sword High Slash |
-| 突刺 | Stabbing |
-| 跃劈 / 空中劈 | Great Sword Jump Attack |
-| 直拳 / 摆拳 | Lead Jab / Cross Punch |
-| 正蹬 / 侧踢 / 旋踢 / 飞踢 | Kicking / Side Kick / Spin Flip Kick / Flying Kick |
+| 拳键一段·巨剑横斩 | Great Sword Slash |
+| 拳键二段·巨剑撩斩 | Great Sword Slash (1) |
+| 拳键三段·突刺（含前+重疾影突刺） | Stabbing |
+| 拳键四段·巨剑旋风斩（含左右+重、旋风终结） | Great Sword High Spin Attack |
+| 蓄力重击·巨剑跳劈 / 空袭跳劈（跳+拳、跳+重） | Great Sword Jump Attack |
+| 腿键连段·正踢→侧踹→旋身空翻踢→飞踢 | Kicking / Side Kick / Spin Flip Kick / Flying Kick |
+| 后+重·旋身空翻踢 / 蹲+攻·扫堂腿 | Spin Flip Kick |
+| 直拳 / 交叉重拳（敌人拳系） | Lead Jab / Cross Punch |
 | 受击 / 倒地 / 死亡 | Hit Reaction / Knocked Down / Dying |
-| 施法 | Spell Casting |
+| 施法 / 蓄力聚气 | Spell Casting |
+
+播放层带**起手偏移 + 提速**：从片段的发力相位起播、按招式各自的倍速播放，
+按键当拍出手、命中后立即可取消接招——连点即无缝连段。
 
 绝招「觉醒·乱舞」会自动把上面几招串成连段演出（配酷炫但不遮挡动作的特效）。
 缺哪个动作就自动跳过该招（回到 locomotion），不影响运行。

@@ -104,6 +104,25 @@ namespace AdversityRoad.Combat
             _i.StartCoroutine(_i.FloatUp(go, tm));
         }
 
+        /// <summary>部位命中标签：直接贴在身体接触点旁（不加头顶偏移），
+        /// 一眼看清「打中了哪里」；连击同一部位就连续弹出。</summary>
+        public static void HitPartLabel(Vector3 contact, string text, Color color)
+        {
+            Ensure();
+            var go = new GameObject("HitPart");
+            go.transform.position = contact + Vector3.up * 0.12f + Random.insideUnitSphere * 0.06f;
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 46;
+            tm.characterSize = 0.048f;
+            tm.anchor = TextAnchor.MiddleLeft;
+            tm.color = color;
+            var r = go.GetComponent<MeshRenderer>();
+            if (tm.font != null) r.material = tm.font.material;
+            _i.StartCoroutine(_i.FloatUp(go, tm));
+        }
+
         IEnumerator FloatUp(GameObject go, TextMesh tm)
         {
             float t = 0;
