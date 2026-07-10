@@ -336,16 +336,11 @@ namespace AdversityRoad.Core
             poser.visual = visualRoot.transform;
             poser.isEnemy = true;
 
-            // 优先动捕模型；无资源则回退程序化方块骨骼
+            // 优先动捕模型；无资源则回退程序化方块骨骼。
+            // 不再整体染色：保持模型原本材质/肤色（按用户要求恢复原色），
+            // 敌我识别交给头顶状态条/前摇红圈/恶意台词。
             HumanoidRig rig = null;
-            if (MecanimCharacter.TryBuild(visualRoot.transform, poser, false, baseMaterial, weaponKind))
-            {
-                // 敌我识别染色：心魔按类型主题色整体染色 + 微自发光——
-                // 白模对白模分不清敌我；暗场景（法院/夜晚）敌人也始终可辨
-                MecanimCharacter.Tint(visualRoot.transform,
-                    Color.Lerp(Color.white, tc, 0.62f) * 0.9f, 0.16f);
-            }
-            else
+            if (!MecanimCharacter.TryBuild(visualRoot.transform, poser, false, baseMaterial, weaponKind))
             {
                 rig = HumanoidRig.Build(visualRoot.transform, new HumanoidRig.Config
                 {

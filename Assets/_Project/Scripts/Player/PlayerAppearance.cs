@@ -97,10 +97,7 @@ namespace AdversityRoad.Player
             if (poser != null && MecanimCharacter.TryBuild(visualRoot, poser, true,
                     baseMaterial, WeaponKind.Sword, -1f, modelName, animsFolder))
             {
-                // 敌我识别染色：角色壹冷钢青蓝 / 角色贰暖韧赤铜——与主题色敌人一眼区分
-                MecanimCharacter.Tint(visualRoot, Preset == 0
-                    ? new Color(0.8f, 0.88f, 1f)
-                    : new Color(1f, 0.86f, 0.72f), 0.05f);
+                // 不染色：保持模型原本材质/肤色（按用户要求恢复原色）
                 ApplyWeapon();
                 return;
             }
@@ -156,7 +153,9 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>把当前选择的武器装到右手：卸下上一件外装武器 → 隐藏/恢复模型自带
-        /// 兵器 → 实例化新武器并自动归一尺寸 → 刀光轴跟随。</summary>
+        /// 兵器 → 实例化新武器并做「定尺 + 握持对齐」→ 刀光轴跟随。
+        /// 模型没有自带兵器（glb 角色常见）时，默认佩剑用程序化长剑兜底——
+        /// 「默认佩剑」在任何角色手里都真实可见。</summary>
         void ApplyWeapon()
         {
             if (visualRoot == null || visualRoot.childCount == 0) return;
@@ -170,8 +169,11 @@ namespace AdversityRoad.Player
                         Destroy(hand.GetChild(i).gameObject);
 
             var builtin = MecanimCharacter.FindWeaponInModel(model);
-            GameObject prefab = string.IsNullOrEmpty(CurrentWeapon) ? null
-                : Resources.Load<GameObject>("Characters/Weapons/" + CurrentWeapon);
+            // 按名扫描整个武器库（含 zip 解压出的子目录——Resources.LoadAll 递归）
+            GameObject prefab = null;
+            if (!string.IsNullOrEmpty(CurrentWeapon))
+                foreach (var p in Resources.LoadAll<GameObject>("Characters/Weapons"))
+                    if (p != null && p.name == CurrentWeapon) { prefab = p; break; }
             bool useCustom = prefab != null && hand != null;
 
             // 模型自带兵器：换装时隐藏，恢复默认时显示
@@ -185,27 +187,135 @@ namespace AdversityRoad.Player
                 w.name = EquippedName;
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
-                AutoFitWeapon(w.transform);
+                FitAndGripWeapon(w.transform, hand);
                 if (poser != null) poser.weaponPivot = w.transform;
             }
-            else if (poser != null && builtin != null)
+            else if (builtin != null)
             {
-                poser.weaponPivot = builtin;
+                if (poser != null) poser.weaponPivot = builtin;
+            }
+            else if (hand != null)
+            {
+                // 默认佩剑兜底：程序化长剑（刃沿 +Y、原点在柄端），同样走握持对齐
+                var holder = new GameObject(EquippedName).transform;
+                holder.SetParent(hand, false);
+                var wr = WeaponFactory.Build(WeaponKind.Sword, holder, baseMaterial,
+                    Vector3.zero, Vector3.zero);
+                FitAndGripWeapon(holder, hand);
+                if (poser != null && wr != null)
+                {
+                    poser.weaponPivot = wr.pivot;
+                    poser.weaponTrail = wr.trail;
+                }
             }
         }
 
-        /// <summary>兵器自动定尺：不同来源 FBX 尺度差异极大（0.01~100 倍），
-        /// 把包围盒最长边归一到约 1.4m 世界长度，握持不至于过大/过小。</summary>
-        void AutoFitWeapon(Transform w)
+        /// <summary>武器定尺 + 握持对齐（修复"握在刀刃上"）：
+        /// ① 在武器自身坐标系里求包围盒，最长轴=刃轴；离武器原点近的一端视为柄端
+        ///   （建模惯例 pivot 在柄部；武器预制体内若有名为 Grip/Handle 的子节点则优先以它为柄）；
+        /// ② 按角色体型把刃长归一（≈1.35m）；
+        /// ③ 用手部骨骼几何推握持方向：刃轴=拇指方向去掉手指分量（即拳眼方向），
+        ///   取指向前臂延长线一侧——把刃轴转过去、柄端放进手心：握剑柄，刃朝外。</summary>
+        void FitAndGripWeapon(Transform w, Transform hand)
         {
-            var rends = w.GetComponentsInChildren<Renderer>();
-            if (rends.Length == 0) return;
-            Bounds b = rends[0].bounds;
-            for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
-            float maxDim = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
-            if (maxDim < 0.001f) return;
-            float target = 1.4f * Mathf.Max(0.4f, visualRoot.lossyScale.y);
-            w.localScale *= target / maxDim;
+            if (!LocalBounds(w, out Bounds lb)) return;
+
+            // 最长轴与两端
+            int axis = 0;
+            if (lb.size.y >= lb.size.x && lb.size.y >= lb.size.z) axis = 1;
+            else if (lb.size.z >= lb.size.x && lb.size.z >= lb.size.y) axis = 2;
+            Vector3 axisDir = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
+            float ext = axis == 0 ? lb.extents.x : axis == 1 ? lb.extents.y : lb.extents.z;
+            Vector3 endA = lb.center - axisDir * ext;
+            Vector3 endB = lb.center + axisDir * ext;
+
+            // 柄端判定：Grip/Handle 子节点优先，否则取离武器原点近的一端
+            Vector3 gripL, tipL;
+            var gripNode = FindDeep(w, "grip");
+            if (gripNode == null) gripNode = FindDeep(w, "handle");
+            if (gripNode != null)
+            {
+                Vector3 g = w.InverseTransformPoint(gripNode.position);
+                bool aNear = (g - endA).sqrMagnitude <= (g - endB).sqrMagnitude;
+                gripL = aNear ? endA : endB;
+                tipL = aNear ? endB : endA;
+            }
+            else if (endA.sqrMagnitude <= endB.sqrMagnitude) { gripL = endA; tipL = endB; }
+            else { gripL = endB; tipL = endA; }
+            if ((tipL - gripL).sqrMagnitude < 1e-6f) return;
+
+            // 定尺：刃长归一到角色体型（≈1.35m）
+            float charScale = Mathf.Max(0.4f, visualRoot.lossyScale.y);
+            float worldLen = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).magnitude;
+            if (worldLen > 0.001f) w.localScale *= 1.35f * charScale / worldLen;
+
+            // 朝向：把刃轴转到手部握持方向
+            Vector3 bladeW = HandBladeDir(hand);
+            Vector3 curBladeW = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).normalized;
+            if (curBladeW.sqrMagnitude > 0.5f)
+                w.rotation = Quaternion.FromToRotation(curBladeW, bladeW) * w.rotation;
+
+            // 柄端放进手心（沿刃向前移一点，手握在柄中段）
+            Vector3 gripTargetW = hand.position + bladeW * (0.1f * charScale);
+            w.position += gripTargetW - w.TransformPoint(gripL);
+        }
+
+        /// <summary>由手部骨骼几何推刃轴（拳眼方向）：拇指方向去掉手指分量，
+        /// 取指向前臂延长线的一侧（自然持剑刃朝外、不指向自己）。</summary>
+        static Vector3 HandBladeDir(Transform hand)
+        {
+            Transform finger = FindDeep(hand, "middle");
+            if (finger == null) finger = FindDeep(hand, "index");
+            Transform thumb = FindDeep(hand, "thumb");
+            Vector3 f = finger != null ? finger.position - hand.position : hand.forward;
+            if (f.sqrMagnitude < 1e-8f) f = hand.forward;
+            f.Normalize();
+            Vector3 t = thumb != null ? (thumb.position - hand.position).normalized : hand.up;
+            Vector3 blade = t - f * Vector3.Dot(t, f);
+            if (blade.sqrMagnitude < 1e-6f) blade = Vector3.Cross(f, hand.right);
+            blade.Normalize();
+            Vector3 arm = hand.parent != null
+                ? (hand.position - hand.parent.position).normalized : Vector3.down;
+            if (Vector3.Dot(blade, arm) < 0f) blade = -blade;
+            return blade;
+        }
+
+        static Transform FindDeep(Transform root, string key)
+        {
+            foreach (var tr in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (tr == root) continue;
+                if (tr.name.ToLowerInvariant().Contains(key)) return tr;
+            }
+            return null;
+        }
+
+        /// <summary>武器自身坐标系下的合并包围盒（用网格局部 bounds 变换累计，
+        /// 与当前姿势/世界朝向无关，结果确定可复现）。</summary>
+        static bool LocalBounds(Transform w, out Bounds b)
+        {
+            b = default;
+            bool has = false;
+            foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true))
+                AccumMesh(w, mf.transform, mf.sharedMesh, ref b, ref has);
+            foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                AccumMesh(w, smr.transform, smr.sharedMesh, ref b, ref has);
+            return has;
+        }
+
+        static void AccumMesh(Transform root, Transform t, Mesh mesh, ref Bounds b, ref bool has)
+        {
+            if (mesh == null) return;
+            Bounds mb = mesh.bounds;
+            var m = root.worldToLocalMatrix * t.localToWorldMatrix;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 c = mb.center + Vector3.Scale(mb.extents, new Vector3(
+                    (i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                Vector3 p = m.MultiplyPoint3x4(c);
+                if (!has) { b = new Bounds(p, Vector3.zero); has = true; }
+                else b.Encapsulate(p);
+            }
         }
     }
 }
