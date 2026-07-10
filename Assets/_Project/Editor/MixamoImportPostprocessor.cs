@@ -25,7 +25,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 6;
+        public override uint GetVersion() => 7;
 
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
@@ -55,9 +55,21 @@ namespace AdversityRoad.EditorTools
             if (mi == null) return;
             var clips = mi.clipAnimations != null && mi.clipAnimations.Length > 0
                 ? mi.clipAnimations : mi.defaultClipAnimations;
+
+            // 片段名统一取自【文件名】：有 @ 用 @ 后缀，没有 @ 用整个文件名。
+            // 关键容错：Mixamo 单独下载的动作 FBX 内部 take 名是 "mixamo.com"，
+            // 若不按文件名重命名，运行时会因识别不到片段名而判定"动作缺失"——
+            // 这样无论文件叫 `角色@Great Sword Blocking.fbx` 还是
+            // `Great Sword Blocking.fbx`，都能被正确识别。
+            string file = System.IO.Path.GetFileNameWithoutExtension(assetPath);
+            int at = file.IndexOf('@');
+            string clipName = (at >= 0 && at < file.Length - 1)
+                ? file.Substring(at + 1).Trim() : file.Trim();
+
             for (int i = 0; i < clips.Length; i++)
             {
-                string n = clips[i].name.ToLowerInvariant();
+                clips[i].name = clips.Length > 1 ? clipName + " " + (i + 1) : clipName;
+                string n = clipName.ToLowerInvariant();
                 clips[i].loopTime = n.Contains("idle") || n.Contains("walk") || n.Contains("run");
             }
             mi.clipAnimations = clips;

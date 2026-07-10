@@ -23,8 +23,9 @@ namespace AdversityRoad.Combat
     public static class MecanimCharacter
     {
         /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。
-        /// 参考黑神话悟空的人物画面占比：配合镜头取景（FOV/距离），角色约占屏高一半。</summary>
-        public const float TargetHeight = 2.3f;
+        /// 参考黑神话悟空的人物画面占比：配合镜头取景（FOV/距离），角色约占屏高一半。
+        /// 按实测反馈整体上调（原 2.3 显小）：玩家/角色贰/敌人全体等比放大。</summary>
+        public const float TargetHeight = 2.85f;
 
         /// <summary>该项目是否配置了动捕资源（有任一模型预制体即认为启用）。</summary>
         public static bool Available =>
@@ -63,12 +64,28 @@ namespace AdversityRoad.Combat
 
             // 异源骨架对齐：非参考模型（如 glb 角色）骨名常无 mixamorig 前缀、层级不同，
             // 动作片段按路径绑定会全部失配（模型完全瘫痪不动）。把骨骼改名/链路对齐到
-            // 参考骨架后，默认动作库直接可用。
+            // 参考骨架后，默认动作库直接可用。任何异常不阻断装配（保底可玩）。
             if (prefab != Resources.Load<GameObject>("Characters/PlayerModel"))
-                HarmonizeSkeleton(model.transform);
+            {
+                try { HarmonizeSkeleton(model.transform); }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning("[MecanimCharacter] 骨架对齐失败（跳过）：" + e.Message);
+                }
+            }
 
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);
+
+            // 健康校验：装配后包围盒必须合理，否则销毁并回退上一级
+            //（根治"切到角色贰后完全看不见人"——异常模型绝不上场）
+            if (!TryBounds(model.transform, out Bounds fitted) ||
+                float.IsNaN(fitted.size.y) || fitted.size.y < 0.4f || fitted.size.y > 25f)
+            {
+                Debug.LogWarning("[MecanimCharacter] 模型装配异常（包围盒无效），回退：" + prefab.name);
+                Object.Destroy(model);
+                return false;
+            }
 
             if (!poser.TryEnableMecanim(animator, animsFolder))
             {
