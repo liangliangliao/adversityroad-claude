@@ -54,12 +54,10 @@ namespace AdversityRoad.Combat
 
             // Generic 骨骼：动作按路径直接绑定（模型与动作 FBX 同源骨架），
             // 不再依赖 Avatar/isHuman——人形重定向的变形问题整类消失。
+            // glTFast 导入的 .glb/.gltf 模型不自带 Animator：在模型根上补挂一个
+            //（Playables 输出只需要 Animator 组件，Generic 路径绑定无需控制器/Avatar）。
             var animator = model.GetComponentInChildren<Animator>();
-            if (animator == null)
-            {
-                Object.Destroy(model);
-                return false;
-            }
+            if (animator == null) animator = model.AddComponent<Animator>();
             animator.applyRootMotion = false;   // 位移由 CharacterController/NavMesh 负责
 
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----

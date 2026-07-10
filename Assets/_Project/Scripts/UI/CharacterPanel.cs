@@ -92,8 +92,8 @@ namespace AdversityRoad.UI
 
             // 资产目录提示（把下载的文件放进这些目录即自动出现在本面板）
             var hint = UiUtil.MakeText(_panel.transform, "Hint",
-                "角色贰模型：Resources/Characters/PlayerModel2　动作库：Characters/Anims2/\n" +
-                "武器库：Resources/Characters/Weapons/（每个 FBX/预制体 = 一件武器，文件名即武器名）",
+                "角色贰模型：Resources/Characters/PlayerModel2（.glb/.gltf/.fbx 均可，动作沿用角色壹动作库）\n" +
+                "武器库：Resources/Characters/Weapons/（.glb/.fbx/.gltf 或 .zip 压缩包，文件名即武器名）",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.5f));
             UiUtil.SetRect(hint, new Vector2(0.5f, 0f), new Vector2(0, 150), new Vector2(1040, 60));
 
