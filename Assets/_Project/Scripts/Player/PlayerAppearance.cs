@@ -90,14 +90,22 @@ namespace AdversityRoad.Player
             visualRoot.localPosition = Vector3.zero;
             visualRoot.localScale = Vector3.one;
 
-            // 优先动捕模型（角色资产分离：各自模型 + 各自动作库）；缺失自动回退
+            // 优先动捕模型（角色资产分离：各自模型 + 各自动作库）；缺失自动回退。
+            // 角色贰装配失败（模型缺失/导入异常/骨架异常）→ 回退角色壹模型，
+            // 两个模型都不可用才落到程序化方块骨骼。不染色：保持模型原本材质/肤色。
             Rig = null;
             string modelName = Preset == 1 ? "PlayerModel2" : "PlayerModel";
             string animsFolder = Preset == 1 ? "Characters/Anims2" : null;
-            if (poser != null && MecanimCharacter.TryBuild(visualRoot, poser, true,
-                    baseMaterial, WeaponKind.Sword, -1f, modelName, animsFolder))
+            bool built = poser != null && MecanimCharacter.TryBuild(visualRoot, poser, true,
+                baseMaterial, WeaponKind.Sword, -1f, modelName, animsFolder);
+            if (!built && Preset == 1 && poser != null)
             {
-                // 不染色：保持模型原本材质/肤色（按用户要求恢复原色）
+                built = MecanimCharacter.TryBuild(visualRoot, poser, true,
+                    baseMaterial, WeaponKind.Sword);
+                if (built) Core.GameEvents.RaiseSubtitle("角色·贰模型不可用，已回退角色·壹");
+            }
+            if (built)
+            {
                 ApplyWeapon();
                 return;
             }
@@ -210,24 +218,68 @@ namespace AdversityRoad.Player
             }
         }
 
-        /// <summary>武器定尺 + 握持对齐（修复"握在刀刃上"）：
-        /// ① 在武器自身坐标系里求包围盒，最长轴=刃轴；离武器原点近的一端视为柄端
-        ///   （建模惯例 pivot 在柄部；武器预制体内若有名为 Grip/Handle 的子节点则优先以它为柄）；
-        /// ② 按角色体型把刃长归一（≈1.35m）；
-        /// ③ 用手部骨骼几何推握持方向：刃轴=拇指方向去掉手指分量（即拳眼方向），
-        ///   取指向前臂延长线一侧——把刃轴转过去、柄端放进手心：握剑柄，刃朝外。</summary>
-        void FitAndGripWeapon(Transform w, Transform hand)
+        /// <summary>参考握持姿态（取自角色壹自带巨剑——它在手里的姿态是已经验证正确的）：
+        /// 在【手部骨骼局部空间】记录刃轴方向、柄端位置与刃长。任何武器都复刻这套
+        /// 局部姿态，与角色/体型/姿势无关，从根上消除"漂浮/握在刀刃上"。</summary>
+        struct GripRef
         {
-            if (!LocalBounds(w, out Bounds lb)) return;
+            public bool valid;
+            public Vector3 bladeDirHand;   // 刃轴方向（手部局部空间）
+            public Vector3 gripPosHand;    // 柄端位置（手部局部空间）
+            public float bladeLenHand;     // 刃长（手部局部空间）
+        }
 
-            // 最长轴与两端
+        static GripRef _gripRef;
+        static bool _gripRefTried;
+
+        static GripRef GetGripRef()
+        {
+            if (_gripRefTried) return _gripRef;
+            _gripRefTried = true;
+            var refPrefab = Resources.Load<GameObject>("Characters/PlayerModel");
+            if (refPrefab == null) return _gripRef;
+            var hand = MecanimCharacter.FindBone(refPrefab.transform, "righthand");
+            var weapon = MecanimCharacter.FindWeaponInModel(refPrefab.transform);
+            if (hand == null || weapon == null) return _gripRef;
+            // 参考剑必须挂在手骨之下（相对关系恒定）；蒙皮挂根上的相对关系随姿势变，不可作参考
+            if (!weapon.IsChildOf(hand)) return _gripRef;
+            if (!LocalBounds(weapon, out Bounds lb)) return _gripRef;
+            LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
+            var toHand = hand.worldToLocalMatrix * weapon.localToWorldMatrix;
+            Vector3 aH = toHand.MultiplyPoint3x4(endA);
+            Vector3 bH = toHand.MultiplyPoint3x4(endB);
+            bool aNear = aH.sqrMagnitude <= bH.sqrMagnitude;   // 离手近的一端=柄
+            Vector3 grip = aNear ? aH : bH;
+            Vector3 tip = aNear ? bH : aH;
+            Vector3 blade = tip - grip;
+            if (blade.sqrMagnitude < 1e-6f) return _gripRef;
+            _gripRef.valid = true;
+            _gripRef.gripPosHand = grip;
+            _gripRef.bladeLenHand = blade.magnitude;
+            _gripRef.bladeDirHand = blade / _gripRef.bladeLenHand;
+            return _gripRef;
+        }
+
+        static void LongAxisEnds(Bounds lb, out Vector3 endA, out Vector3 endB)
+        {
             int axis = 0;
             if (lb.size.y >= lb.size.x && lb.size.y >= lb.size.z) axis = 1;
             else if (lb.size.z >= lb.size.x && lb.size.z >= lb.size.y) axis = 2;
             Vector3 axisDir = axis == 0 ? Vector3.right : axis == 1 ? Vector3.up : Vector3.forward;
             float ext = axis == 0 ? lb.extents.x : axis == 1 ? lb.extents.y : lb.extents.z;
-            Vector3 endA = lb.center - axisDir * ext;
-            Vector3 endB = lb.center + axisDir * ext;
+            endA = lb.center - axisDir * ext;
+            endB = lb.center + axisDir * ext;
+        }
+
+        /// <summary>武器定尺 + 握持对齐（修复"漂浮/握在刀刃上"）：
+        /// ① 在武器自身坐标系求包围盒，最长轴=刃轴；离武器原点近的一端视为柄端
+        ///   （建模惯例 pivot 在柄部；预制体内名为 Grip/Handle 的子节点可显式指定柄位）；
+        /// ② 复刻参考巨剑在手部局部空间的姿态：刃轴对齐、柄端就位、刃长等长——
+        ///   全程只算手部局部空间，跟随任何动作绝不脱手。</summary>
+        void FitAndGripWeapon(Transform w, Transform hand)
+        {
+            if (!LocalBounds(w, out Bounds lb)) return;
+            LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
             // 柄端判定：Grip/Handle 子节点优先，否则取离武器原点近的一端
             Vector3 gripL, tipL;
@@ -242,42 +294,36 @@ namespace AdversityRoad.Player
             }
             else if (endA.sqrMagnitude <= endB.sqrMagnitude) { gripL = endA; tipL = endB; }
             else { gripL = endB; tipL = endA; }
-            if ((tipL - gripL).sqrMagnitude < 1e-6f) return;
+            Vector3 bladeL = tipL - gripL;
+            float lenL = bladeL.magnitude;
+            if (lenL < 1e-4f) return;
+            bladeL /= lenL;
 
-            // 定尺：刃长归一到角色体型（≈1.35m）
+            var gr = GetGripRef();
+            if (gr.valid)
+            {
+                // 与参考巨剑等长（手部局部空间长度一致，体型/骨骼缩放自动匹配）
+                float curScale = (Mathf.Abs(w.localScale.x) + Mathf.Abs(w.localScale.y)
+                    + Mathf.Abs(w.localScale.z)) / 3f;
+                float curLenHand = lenL * Mathf.Max(1e-5f, curScale);
+                w.localScale *= gr.bladeLenHand / curLenHand;
+                // 刃轴对齐参考刃轴（手部局部空间）
+                w.localRotation = Quaternion.FromToRotation(bladeL, gr.bladeDirHand);
+                // 柄端放到参考柄位（手部局部空间精确定位）
+                w.localPosition = gr.gripPosHand
+                    - w.localRotation * Vector3.Scale(w.localScale, gripL);
+                return;
+            }
+
+            // 无参考（PlayerModel/自带兵器缺失）时的兜底：按体型归一 + 刃朝上举于手侧
             float charScale = Mathf.Max(0.4f, visualRoot.lossyScale.y);
             float worldLen = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).magnitude;
             if (worldLen > 0.001f) w.localScale *= 1.35f * charScale / worldLen;
-
-            // 朝向：把刃轴转到手部握持方向
-            Vector3 bladeW = HandBladeDir(hand);
+            Vector3 bladeW = hand.up;
             Vector3 curBladeW = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).normalized;
             if (curBladeW.sqrMagnitude > 0.5f)
                 w.rotation = Quaternion.FromToRotation(curBladeW, bladeW) * w.rotation;
-
-            // 柄端放进手心（沿刃向前移一点，手握在柄中段）
-            Vector3 gripTargetW = hand.position + bladeW * (0.1f * charScale);
-            w.position += gripTargetW - w.TransformPoint(gripL);
-        }
-
-        /// <summary>由手部骨骼几何推刃轴（拳眼方向）：拇指方向去掉手指分量，
-        /// 取指向前臂延长线的一侧（自然持剑刃朝外、不指向自己）。</summary>
-        static Vector3 HandBladeDir(Transform hand)
-        {
-            Transform finger = FindDeep(hand, "middle");
-            if (finger == null) finger = FindDeep(hand, "index");
-            Transform thumb = FindDeep(hand, "thumb");
-            Vector3 f = finger != null ? finger.position - hand.position : hand.forward;
-            if (f.sqrMagnitude < 1e-8f) f = hand.forward;
-            f.Normalize();
-            Vector3 t = thumb != null ? (thumb.position - hand.position).normalized : hand.up;
-            Vector3 blade = t - f * Vector3.Dot(t, f);
-            if (blade.sqrMagnitude < 1e-6f) blade = Vector3.Cross(f, hand.right);
-            blade.Normalize();
-            Vector3 arm = hand.parent != null
-                ? (hand.position - hand.parent.position).normalized : Vector3.down;
-            if (Vector3.Dot(blade, arm) < 0f) blade = -blade;
-            return blade;
+            w.position += hand.position - w.TransformPoint(gripL);
         }
 
         static Transform FindDeep(Transform root, string key)

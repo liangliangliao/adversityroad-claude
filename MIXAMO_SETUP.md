@@ -1,5 +1,21 @@
 # 接入 Mixamo 动捕角色 + 动作（真人级战斗动作）
 
+> ## ⚠️ 最重要的一步：资产必须提交进 Git 仓库！
+> 安卓 APK 由 GitHub Actions **从仓库**构建——只放在你本机 Unity 工程里的文件
+> **不会**出现在手机上。放好文件后务必执行：
+> ```
+> git add Assets/_Project/Resources/Characters
+> git commit -m "添加角色/动作/武器资产"
+> git push
+> ```
+> 等 CI 构建出新 APK 再装机测试。（本机 Unity 里当然即放即生效，无需提交。）
+>
+> ## ⚠️ 本机 Unity 报 "An error occurred while resolving packages"
+> 这是**网络问题**：工程引用的 glTFast 包（glb/gltf 导入支持）需要从 Unity 官方
+> 包服务器下载，代理断线/网络不稳会拉取失败——glb 全部无法导入（武器不出现、
+> 角色贰不显示都是它的连锁反应）。恢复网络后：菜单 `Assets → Reimport All`，
+> 或删除工程 `Library/PackageCache` 后重开 Unity 即可。CI 构建不受你本机网络影响。
+
 代码已全部写好。你**只需要把下载好的文件放进指定文件夹**，Unity 会自动把它们配成
 Humanoid、自动给走/跑/待机加循环——**无需在 Inspector 手动设置任何东西**。
 运行时代码会自动加载它们；找不到就回退到原来的方块角色（所以放之前也不影响运行）。
