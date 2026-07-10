@@ -34,12 +34,17 @@ namespace AdversityRoad.Combat
         /// 尝试用动捕模型装配。成功则模型已挂在 visualRoot 下、poser 进入动捕模式并返回 true。
         /// </summary>
         /// <param name="groundLocalY">脚底在 visualRoot 局部空间的目标高度（角色胶囊体底部，通常 = -身高一半）。</param>
+        /// <param name="modelName">指定 Resources/Characters/ 下的模型名（如 PlayerModel2）；null=按 isPlayer 默认。</param>
+        /// <param name="animsFolder">指定该角色专属动作库目录（如 Characters/Anims2）；null/无效=默认动作库。</param>
         public static bool TryBuild(Transform visualRoot, HumanoidAnimator poser, bool isPlayer,
-            Material baseMaterial, WeaponKind weapon, float groundLocalY = -1f)
+            Material baseMaterial, WeaponKind weapon, float groundLocalY = -1f,
+            string modelName = null, string animsFolder = null)
         {
             if (visualRoot == null || poser == null) return false;
 
-            var prefab = Resources.Load<GameObject>("Characters/" + (isPlayer ? "PlayerModel" : "EnemyModel"))
+            var prefab = (string.IsNullOrEmpty(modelName)
+                          ? null : Resources.Load<GameObject>("Characters/" + modelName))
+                      ?? Resources.Load<GameObject>("Characters/" + (isPlayer ? "PlayerModel" : "EnemyModel"))
                       ?? Resources.Load<GameObject>("Characters/PlayerModel");
             if (prefab == null) return false;
 
@@ -60,7 +65,7 @@ namespace AdversityRoad.Combat
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);
 
-            if (!poser.TryEnableMecanim(animator))
+            if (!poser.TryEnableMecanim(animator, animsFolder))
             {
                 Object.Destroy(model);
                 return false;
@@ -157,7 +162,7 @@ namespace AdversityRoad.Combat
         }
 
         /// <summary>按名字（小写包含）在模型层级里找骨骼，如 "righthand"/"hips"。</summary>
-        static Transform FindBone(Transform model, string key)
+        public static Transform FindBone(Transform model, string key)
         {
             foreach (var t in model.GetComponentsInChildren<Transform>(true))
             {
@@ -169,8 +174,8 @@ namespace AdversityRoad.Combat
 
         static readonly string[] WeaponHints = { "sword", "blade", "katana", "weapon", "axe", "greatsword", "sabre", "saber" };
 
-        /// <summary>在模型层级里找自带兵器（按名字关键词），用于绑定刀光轴。找不到返回 null。</summary>
-        static Transform FindWeaponInModel(Transform model)
+        /// <summary>在模型层级里找自带兵器（按名字关键词），用于绑定刀光轴/换武器时隐藏。找不到返回 null。</summary>
+        public static Transform FindWeaponInModel(Transform model)
         {
             foreach (var t in model.GetComponentsInChildren<Transform>(true))
             {

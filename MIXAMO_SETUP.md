@@ -47,6 +47,61 @@ Assets/_Project/Resources/Characters/
 
 ---
 
+## 一·补、动作库覆盖面补充清单（去 Mixamo 搜索下载，放进 `Anims/` 即自动生效）
+
+以下动作当前用替代片段顶替，下载专用片段后代码**自动优先使用专用片段**（不用改任何配置，
+文件名保留 `角色名@动作名.fbx` 的 `@后缀` 即可）：
+
+| 去 Mixamo 搜索的动作名 | 生效位置 | 现在的替代方案 |
+| --- | --- | --- |
+| **Great Sword Blocking**（或 Blocking） | 格挡架势（挡键） | 格斗架势收紧 |
+| **Stand To Roll**（或 Forward Roll / Sprinting Forward Roll / Dive Roll） | 翻滚闪避（闪键） | 程序化前滚翻 |
+| **Stunned**（或 Dizzy） | 破绽/踉跄硬直 | 受击动作慢放 |
+| **Great Sword Casting**（或 Warming Up / Taunt） | 重键蓄力姿态 | 施法聚气 |
+| **Leg Sweep** | 扫堂腿（蹲+腿） | 空翻踢低位 |
+
+可选增强（有则更好，无不影响）：
+
+| 动作名 | 生效位置 |
+| --- | --- |
+| Great Sword Idle | 持剑临战待机（现用 Fighting Idle） |
+| Great Sword Walk / Great Sword Run | 持剑走/跑（现用 Walking/Running） |
+| Great Sword Impact | 持剑受击（现用 Hit Reaction） |
+| Great Sword Death | 持剑死亡（现用 Dying） |
+
+> 下载设置：Format=FBX for Unity，Skin=With Skin 或 Without Skin 均可，帧率 30，不勾 In Place。
+
+---
+
+## 一·续、第二角色 + 武器库（角色与武器资产分离）
+
+游戏内右上「角色」按钮打开**角色·武器库面板**：先选角色，再从武器库选武器拿在手中
+（默认持剑，重选即替换）。目录契约：
+
+```
+Assets/_Project/Resources/Characters/
+├── PlayerModel.fbx        ← 角色·壹（已就位）
+├── PlayerModel2.fbx       ← 角色·贰模型：Mixamo 任选一个角色下载后改名放入
+├── Anims/                  ← 角色·壹动作库（已就位）
+├── Anims2/                 ← 角色·贰专属动作库：用【角色·贰】在 Mixamo 逐个下载
+│   └── <角色名>@<动作名>.fbx   与 Anims/ 相同的动作清单（含上表补充动作），不用改名
+└── Weapons/                ← 武器库：每个 FBX/预制体 = 一件武器，文件名即游戏内武器名
+    ├── 长剑.fbx            （示例——任何来源的武器模型都可以，不限 Mixamo）
+    ├── 巨剑.fbx
+    └── 战斧.fbx
+```
+
+规则与自动处理：
+
+- **角色·贰**：`PlayerModel2` 缺失时自动回退角色·壹模型；`Anims2/` 缺失或不完整时
+  自动回退默认动作库 `Anims/`（Mixamo 标准骨架按路径绑定通用）——先放模型后补动作也能玩。
+- **武器库**：放入即出现在面板中；装备时自动隐藏角色模型自带兵器、把新武器挂到右手、
+  **自动归一尺寸**（包围盒最长边≈1.4m）；选「默认佩剑」恢复模型自带兵器。
+  若武器在手中朝向不对，在 Unity 里把该 FBX 拖成 Prefab 并调整子节点旋转后放回 Weapons/。
+- 选择本地持久化，重启保留。
+
+---
+
 ## 二、然后……没有然后了
 
 - 放进去后 Unity 会自动导入：**FBX 自动设为 Humanoid，走/跑/待机自动加 Loop**

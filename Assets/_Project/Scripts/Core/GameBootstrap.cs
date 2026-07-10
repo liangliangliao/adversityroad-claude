@@ -537,9 +537,10 @@ namespace AdversityRoad.Core
                 new Vector2(150, 64), new Color(0.6f, 0.25f, 0.2f, 0.8f), spawnerPanel.Toggle, 26);
             UiUtil.MakeButton(canvasGo.transform, "AI台词", new Vector2(1, 1), new Vector2(-265, -42),
                 new Vector2(150, 64), new Color(0.25f, 0.35f, 0.6f, 0.8f), promptPanel.Toggle, 26);
+            var characterPanel = CharacterPanel.Create(canvasGo.transform, _appearance);
             UiUtil.MakeButton(canvasGo.transform, "角色", new Vector2(1, 1), new Vector2(-435, -42),
                 new Vector2(150, 64), new Color(0.3f, 0.5f, 0.4f, 0.8f),
-                () => { if (_appearance != null) _appearance.TogglePreset(); }, 26);
+                characterPanel.Toggle, 26);
             var aiLogPanel = AiLogPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "日志", new Vector2(1, 1), new Vector2(-605, -42),
                 new Vector2(150, 64), new Color(0.4f, 0.4f, 0.3f, 0.8f), aiLogPanel.Toggle, 26);

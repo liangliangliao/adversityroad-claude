@@ -116,6 +116,8 @@ namespace AdversityRoad.Combat
                 else if (weaponHitbox != null)
                 {
                     CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.3f));
+                    // 技能级近战判定：范围大于普通连段（技能越高范围越大的总原则）
+                    weaponHitbox.SetShape(new Vector3(2.6f, 1.8f, 2.6f), new Vector3(0, 0.1f, 1.0f));
                     weaponHitbox.EnableHitbox(dmg);
                     Invoke(nameof(CloseHitbox), skill.hitboxOpenTime);
                 }

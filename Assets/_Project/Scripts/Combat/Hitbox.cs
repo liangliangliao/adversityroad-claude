@@ -32,6 +32,20 @@ namespace AdversityRoad.Combat
             _col.enabled = false;
         }
 
+        /// <summary>按招式设置判定框形状：size=(宽X, 高Y, 长Z纵深)，center=相对角色根的偏移。
+        /// 每招独立范围——突刺长而窄、横斩横宽、旋风斩/扫堂环身 360°、蓄力/绝招最大。</summary>
+        public void SetShape(Vector3 size, Vector3 center)
+        {
+            transform.localPosition = center;
+            transform.localScale = Vector3.one;
+            if (_box == null) _box = GetComponent<Collider>() as BoxCollider;
+            if (_box != null)
+            {
+                _box.center = Vector3.zero;
+                _box.size = size;
+            }
+        }
+
         public void EnableHitbox(DamageInfo dmg)
         {
             pendingDamage = dmg;

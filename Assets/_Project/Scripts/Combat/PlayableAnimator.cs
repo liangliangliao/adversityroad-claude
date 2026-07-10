@@ -60,18 +60,23 @@ namespace AdversityRoad.Combat
             A(PoseState.SideKick,    1.55f, false, 0.18f, "side kick"),
             A(PoseState.SpinKick,    1.45f, false, 0.12f, "spin flip kick", "spin kick"),
             A(PoseState.JumpKick,    1.5f,  false, 0.12f, "flying kick"),
-            A(PoseState.Sweep,       1.4f,  false, 0.12f, "spin flip kick"),
+            A(PoseState.Sweep,       1.4f,  false, 0.12f, "leg sweep", "spin flip kick"),
             A(PoseState.Hit,         1.45f, false, 0.1f,  "hit reaction", "great sword impact", "hit"),
             // 击倒提速：受了重击身体应当干脆地倒下去，而不是慢悠悠飘倒
             A(PoseState.Knockdown,   1.3f,  true,  0.04f, "knocked down", "sweep fall", "knockdown", "falling back"),
             A(PoseState.Death,       1.0f,  true,  0f,    "dying", "great sword death", "death"),
             A(PoseState.Cast,        1.0f,  false, 0f,    "spell casting", "cast"),
-            // 库里无专门格挡/踉跄/蓄力片段，用最贴切的片段替代：
-            // 格挡=格斗架势收紧（保持到解除）；踉跄=受击慢放（晃神）；蓄力=聚气施法。
+            // ===== 动作库覆盖面补位（下载对应片段放入 Anims/ 后自动生效）=====
+            // 每项前面的候选是【专用片段】，末尾候选是没有专用片段时的替代：
+            // 格挡=Great Sword Blocking（替代=格斗架势收紧）；
+            // 踉跄=Stunned（替代=受击慢放）；蓄力=Great Sword Casting（替代=聚气施法）；
+            // 翻滚=Stand To Roll / Forward Roll（无片段时由 HumanoidAnimator 程序化翻滚）；
+            // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
             A(PoseState.Guard,       1.0f,  true,  0f,    "great sword blocking", "blocking", "block", "fighting idle"),
             A(PoseState.Stagger,     0.55f, false, 0.1f,  "stunned", "dizzy", "stagger", "hit reaction"),
-            A(PoseState.Charge,      0.85f, false, 0f,    "great sword casting", "warming up", "taunt", "charge", "spell casting"),
-            // Dodge 无翻滚片段：由 HumanoidAnimator 在视根上做程序化翻滚
+            A(PoseState.Charge,      0.85f, true,  0f,    "great sword casting", "warming up", "taunt", "charge", "spell casting"),
+            // 翻滚提速较多：闪避窗口 0.35s，要在窗口内看完翻滚主体
+            A(PoseState.Dodge,       2.2f,  false, 0.08f, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
         };
 
         readonly Animator _animator;
@@ -111,11 +116,18 @@ namespace AdversityRoad.Combat
 
         public bool Valid { get; private set; }
 
-        public PlayableAnimator(Animator animator)
+        readonly string _folder;   // 动作库目录（不同角色可有各自的动作库）
+
+        public PlayableAnimator(Animator animator, string animsFolder = null)
         {
             _animator = animator;
+            _folder = string.IsNullOrEmpty(animsFolder) ? "Characters/Anims" : animsFolder;
             Build();
         }
+
+        /// <summary>该招式是否有对应的动捕片段（如翻滚：有专用片段就播片段，
+        /// 没有则由上层程序化翻滚兜底）。</summary>
+        public bool HasAction(PoseState p) => Valid && _actionIndex.ContainsKey(p);
 
         static string Norm(string s) => (s ?? "").Trim().ToLowerInvariant();
 
@@ -135,7 +147,7 @@ namespace AdversityRoad.Combat
             if (_animator == null) { Valid = false; return; }   // Generic：按路径绑定，无需人形 Avatar
 
             var byName = new Dictionary<string, AnimationClip>();
-            foreach (var c in Resources.LoadAll<AnimationClip>("Characters/Anims"))
+            foreach (var c in Resources.LoadAll<AnimationClip>(_folder))
             {
                 if (c == null) continue;
                 string k = Norm(c.name);
