@@ -91,6 +91,33 @@ namespace AdversityRoad.Combat
             return true;
         }
 
+        /// <summary>给动捕模型整体染色（敌我识别的关键）：BaseColor 乘色调 + 可选微自发光。
+        /// 玩家与敌人的素模同为纯白，交战时完全分不清敌我——玩家染冷钢色、
+        /// 敌人按心魔主题色染色并加微光，暗场景（法院/夜晚）中也一眼可辨。</summary>
+        public static void Tint(Transform root, Color color, float emission = 0f)
+        {
+            if (root == null) return;
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+                if (r.GetComponent<TextMesh>() != null) continue;
+                foreach (var m in r.materials)
+                {
+                    if (m == null) continue;
+                    Color baseC = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
+                    Color c = baseC * color;
+                    c.a = baseC.a;
+                    m.color = c;
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                    if (emission > 0.001f && m.HasProperty("_EmissionColor"))
+                    {
+                        m.EnableKeyword("_EMISSION");
+                        m.SetColor("_EmissionColor", color * emission);
+                    }
+                }
+            }
+        }
+
         /// <summary>量测模型包围盒，缩放到目标身高并把脚底对齐到 groundLocalY。</summary>
         static void FitAndGround(Transform visualRoot, Transform model, float groundLocalY)
         {

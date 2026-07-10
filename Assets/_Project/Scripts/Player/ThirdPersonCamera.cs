@@ -111,6 +111,9 @@ namespace AdversityRoad.Player
 
         public int PresetIndex { get; private set; } = 1;
 
+        /// <summary>当前是否第一人称（近镜角色淡出要跳过玩家本体）。</summary>
+        public bool FirstPerson => Presets[PresetIndex].fp;
+
         /// <summary>循环切换视角预设（「视角」按钮）。</summary>
         public void CyclePreset()
         {
@@ -343,7 +346,9 @@ namespace AdversityRoad.Player
                     continue;                                               // 飞散碎屑
                 if (col.GetComponentInParent<PlayerController>() != null) continue;
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                wantDist = Mathf.Min(wantDist, Mathf.Max(0.5f, hit.distance - 0.1f));
+                // 回缩下限抬高：贴墙也绝不缩进角色身体里（缩得再近由
+                // CharacterCloseFade 把角色淡透，不出现"整屏白模糊脸"）
+                wantDist = Mathf.Min(wantDist, Mathf.Max(1.35f, hit.distance - 0.1f));
             }
             float smooth = wantDist < _boomDist ? 0.03f : 0.3f;
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,

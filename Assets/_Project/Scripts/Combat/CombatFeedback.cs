@@ -284,17 +284,15 @@ namespace AdversityRoad.Combat
                 MatFX(Color.Lerp(color, Color.white, 0.85f), 0.9f);
             _i.StartCoroutine(_i.FlashPop(core, heavy ? 0.7f : 0.45f));
 
-            // 格斗游戏式连击计数：2.2 秒内连续命中累计，字随连击数变大变红
+            // 格斗游戏式连击计数：2.2 秒内连续命中累计。
+            // 计数改为屏幕固定位置的 HUD 计数器（格斗游戏惯例）——之前跟着接触点
+            // 满场乱飞的"N 连击"浮字与伤害数字/部位标签挤成一团，战斗可读性差。
             if (countCombo)
             {
                 if (Time.unscaledTime - _lastComboT > 2.2f) _combo = 0;
                 _combo++;
                 _lastComboT = Time.unscaledTime;
-                if (_combo >= 2)
-                    DamageNumber(contact + Vector3.up * 0.5f, _combo + " 连击",
-                        Color.Lerp(new Color(1f, 0.85f, 0.3f), new Color(1f, 0.3f, 0.15f),
-                            Mathf.Clamp01((_combo - 2) / 8f)),
-                        1.2f + Mathf.Min(_combo, 10) * 0.08f);
+                if (_combo >= 2) GameEvents.RaiseComboCount(_combo);
             }
 
             // 命中点小型冲击盘：只标出命中位置，尺寸克制不遮视野。

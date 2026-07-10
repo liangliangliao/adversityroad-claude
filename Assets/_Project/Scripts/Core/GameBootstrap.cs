@@ -281,6 +281,12 @@ namespace AdversityRoad.Core
             if (occ == null) occ = camGo.AddComponent<CameraOcclusionFade>();
             occ.target = _player.transform;
 
+            // 近镜角色淡出：镜头贴近玩家/敌人身体时把该角色淡为半透明——
+            // 根治近身缠斗时"整屏被白色模型糊脸/镜头穿模"的问题
+            var closeFade = camGo.GetComponent<CharacterCloseFade>();
+            if (closeFade == null) closeFade = camGo.AddComponent<CharacterCloseFade>();
+            closeFade.player = _player.transform;
+
             // 音效需要一个 AudioListener（运行时建的相机不会自带）
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
 
@@ -332,7 +338,14 @@ namespace AdversityRoad.Core
 
             // 优先动捕模型；无资源则回退程序化方块骨骼
             HumanoidRig rig = null;
-            if (!MecanimCharacter.TryBuild(visualRoot.transform, poser, false, baseMaterial, weaponKind))
+            if (MecanimCharacter.TryBuild(visualRoot.transform, poser, false, baseMaterial, weaponKind))
+            {
+                // 敌我识别染色：心魔按类型主题色整体染色 + 微自发光——
+                // 白模对白模分不清敌我；暗场景（法院/夜晚）敌人也始终可辨
+                MecanimCharacter.Tint(visualRoot.transform,
+                    Color.Lerp(Color.white, tc, 0.62f) * 0.9f, 0.16f);
+            }
+            else
             {
                 rig = HumanoidRig.Build(visualRoot.transform, new HumanoidRig.Config
                 {
@@ -507,6 +520,15 @@ namespace AdversityRoad.Core
             banner.fontStyle = FontStyle.Bold;
             var bannerColor = banner.color; bannerColor.a = 0f; banner.color = bannerColor;
             hud.skillBanner = banner;
+
+            // 连击计数器（屏幕右侧固定位置，格斗游戏惯例）：
+            // 命中弹缩、连击越高越红、断连淡出——不再跟着接触点满场乱飞
+            var comboCount = UiUtil.MakeText(canvasGo.transform, "ComboCount", "", 54,
+                TextAnchor.MiddleRight, new Color(1f, 0.85f, 0.3f));
+            UiUtil.SetRect(comboCount, new Vector2(1f, 1f), new Vector2(-220, -250), new Vector2(360, 70));
+            comboCount.fontStyle = FontStyle.Bold;
+            var ccColor = comboCount.color; ccColor.a = 0f; comboCount.color = ccColor;
+            hud.comboCountText = comboCount;
 
             // 右上角功能按钮 + 面板
             var spawnerPanel = EnemySpawnerPanel.Create(canvasGo.transform, SpawnEnemyNearPlayer);

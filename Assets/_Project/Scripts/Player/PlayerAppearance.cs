@@ -83,7 +83,13 @@ namespace AdversityRoad.Player
             Rig = null;
             if (poser != null &&
                 MecanimCharacter.TryBuild(visualRoot, poser, true, baseMaterial, weapon))
+            {
+                // 敌我识别染色：玩家按预设染冷钢青蓝/暖韧赤铜——与主题色的敌人一眼区分
+                MecanimCharacter.Tint(visualRoot, Preset == 0
+                    ? new Color(0.8f, 0.88f, 1f)
+                    : new Color(1f, 0.86f, 0.72f), 0.05f);
                 return;
+            }
 
             Rig = HumanoidRig.Build(visualRoot, cfg, baseMaterial);
             if (poser != null)
