@@ -29,7 +29,8 @@ namespace AdversityRoad.UI
             ("空袭跳劈(跳+拳)", c => c.Debug_JumpAttack()),
             ("飞踢(跳+腿)", c => c.Debug_JumpKick()),
             ("空袭裂地跳劈(跳+重)", c => c.Debug_AirLeap()),
-            ("扫堂腿(蹲+攻)", c => c.Debug_Sweep()),
+            ("扫堂腿(蹲+腿)", c => c.Debug_Sweep()),
+            ("低位突刺(蹲+拳)", c => c.Debug_CrouchThrust()),
             ("意势填满", c => c.Debug_FillMomentum()),
             ("状态回满", c => c.Debug_RestoreAll()),
         };

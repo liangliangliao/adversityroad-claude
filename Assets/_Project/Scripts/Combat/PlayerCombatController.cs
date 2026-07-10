@@ -17,7 +17,8 @@ namespace AdversityRoad.Combat
     ///   磁吸突进差多远冲多远，连点每击都实打实命中；
     /// - 「意势」资源（0-3）：命中/完美闪避/蓄力积攒；重击按住蓄力=巨剑跳劈，
     ///   势=2 旋风终结，势=3 超必杀「觉醒·乱舞」；连段中轻点重=切手撩斩；
-    /// - 完美闪避（时缓+返势+必暴击）、空中下劈/飞踢、蹲伏扫堂腿；
+    /// - 完美闪避（时缓+返势+必暴击）、空中下劈/飞踢；蹲+腿=扫堂腿、蹲+拳=低位突刺；
+    /// - 每招独立攻击判定范围（PoseHitShape）：长宽高与轨迹随招式设计，技能越高范围越大；
     /// - 受身（KOF 受身）：被击倒瞬间按闪避快速翻身起立带无敌帧。
     /// </summary>
     [RequireComponent(typeof(CombatStateMachine))]
@@ -270,7 +271,12 @@ namespace AdversityRoad.Combat
                 if (pressed == AttackBtn.Kick) JumpKickAttack(); else JumpAttack();
                 return;
             }
-            if (_player.IsCrouched) { SweepAttack(); return; }
+            // 蹲伏派生：蹲+腿=扫堂腿（贴地环扫），蹲+拳=低位突刺（下段直线戳击）
+            if (_player.IsCrouched)
+            {
+                if (pressed == AttackBtn.Kick) SweepAttack(); else CrouchThrust();
+                return;
+            }
             _depth = -1;
             _seq = "";
             NextStage(pressed);
@@ -355,7 +361,8 @@ namespace AdversityRoad.Combat
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，见 PunchChain 更短的帧数）。
             float knock = (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f);
             if (btn == AttackBtn.Kick) knock += 3.5f;
-            OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, true);
+            OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, true,
+                playPose, recipeHit ? 1.3f : 1f);
         }
 
         void RaiseSeq()
@@ -434,7 +441,9 @@ namespace AdversityRoad.Combat
             if (charge01 > 0.7f || finisher)
                 CombatFeedback.RecipeBurst(transform.position,
                     finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
-            OpenHitboxTimed(0.18f, finisher ? 0.38f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false);
+            OpenHitboxTimed(0.18f, finisher ? 0.38f : 0.3f, dmg, 24f + 10f * spent, 3.5f, false,
+                finisher ? PoseState.AttackSpin : PoseState.HeavyAttack,
+                finisher ? 1.2f : 1f + 0.35f * charge01);
             if (finisher) GameEvents.RaiseSkillBanner("「旋风终结」");
             else if (charge01 > 0.7f) GameEvents.RaiseSkillBanner("「蓄力·巨剑跳劈」");
         }
@@ -451,7 +460,7 @@ namespace AdversityRoad.Combat
             CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f,
                 new Color(0.9f, 0.95f, 0.6f), 5);
             CombatFeedback.Shake(0.4f);
-            OpenHitboxTimed(0.12f, 0.28f, dmg, 16f, 2f, false);
+            OpenHitboxTimed(0.12f, 0.28f, dmg, 16f, 2f, false, PoseState.SwordThrust, 1.25f);
             GameEvents.RaiseSkillBanner("「疾影突刺」");
         }
 
@@ -463,7 +472,7 @@ namespace AdversityRoad.Combat
             FaceAndLunge(0.4f);
             float dmg = heavyDamage * 0.7f * CritMult();
             CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
-            OpenHitboxTimed(0.14f, 0.28f, dmg, 34f, 9f, false);
+            OpenHitboxTimed(0.14f, 0.28f, dmg, 34f, 9f, false, PoseState.SpinKick, 1.1f);
             GameEvents.RaiseSkillBanner("「旋身空翻踢」");
         }
 
@@ -479,7 +488,7 @@ namespace AdversityRoad.Combat
             float dmg = heavyDamage * 0.75f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 1f, 0.7f));
             CombatFeedback.Shake(0.4f);
-            OpenHitboxTimed(0.16f, 0.3f, dmg, 20f, 3f, false);
+            OpenHitboxTimed(0.16f, 0.3f, dmg, 20f, 3f, false, PoseState.AttackSpin);
             GameEvents.RaiseSkillBanner(right ? "「右旋风斩」" : "「左旋风斩」");
         }
 
@@ -493,7 +502,7 @@ namespace AdversityRoad.Combat
             _player.ForceFall(-14f);
             float dmg = heavyDamage * 1.1f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.72f, 0.3f));
-            OpenHitboxTimed(0.14f, 0.34f, dmg, 30f, 3f, false);
+            OpenHitboxTimed(0.14f, 0.34f, dmg, 30f, 3f, false, PoseState.AttackLeap, 1.1f);
             CombatFeedback.ShockRing(transform.position + transform.forward * 0.9f,
                 new Color(1f, 0.72f, 0.3f), 3f);
             GameEvents.RaiseSkillBanner("「空袭·裂地跳劈」");
@@ -508,7 +517,7 @@ namespace AdversityRoad.Combat
             FaceAndLunge(0.5f);
             float dmg = heavyDamage * 0.85f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 0.9f, 1f));
-            OpenHitboxTimed(0.1f, 0.22f, dmg, 20f, 2.5f, false);
+            OpenHitboxTimed(0.1f, 0.22f, dmg, 20f, 2.5f, false, PoseState.AttackUp);
             GameEvents.RaiseSkillBanner("「切手·撩斩」");
         }
 
@@ -541,7 +550,8 @@ namespace AdversityRoad.Combat
                 PlayPose(s.pose);
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
-                OpenHitboxTimed(0.16f, 0.2f, baseDmg * s.dmg, s.posture, s.knock, false);
+                OpenHitboxTimed(0.16f, 0.2f, baseDmg * s.dmg, s.posture, s.knock, false,
+                    s.pose, i == seq.Length - 1 ? 1.3f : 1.05f);
                 // 每击落点一道小型地面冲击环（震地感），终结一击放大招级爆发
                 CombatFeedback.ShockRing(transform.position + transform.forward * 1.1f,
                     s.arc, i == seq.Length - 1 ? 5f : 2.2f);
@@ -567,7 +577,7 @@ namespace AdversityRoad.Combat
             _player.ForceFall(-13f);
             float dmg = baseDamage * 1.5f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
-            OpenHitboxTimed(0.18f, 0.4f, dmg, 22f, 2.5f, true);
+            OpenHitboxTimed(0.18f, 0.4f, dmg, 22f, 2.5f, true, PoseState.JumpAttack);
         }
 
         /// <summary>跳+腿：飞踢（KOF 跳踢），带前冲与击退。</summary>
@@ -580,16 +590,33 @@ namespace AdversityRoad.Combat
             _player.ForceFall(-9f);
             float dmg = baseDamage * 1.4f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
-            OpenHitboxTimed(0.15f, 0.36f, dmg, 26f, 4f, true);
+            OpenHitboxTimed(0.15f, 0.36f, dmg, 26f, 4f, true, PoseState.JumpKick);
         }
 
+        /// <summary>蹲+腿：扫堂腿（贴地 360° 环扫，高削韧）。</summary>
         void SweepAttack()
         {
             _fsm.RequestState(CombatState.LightAttack, 0.55f);
             _fsm.InCombat = true;
             PlayPose(PoseState.Sweep);
             float dmg = baseDamage * 0.9f * CritMult();
-            OpenHitboxTimed(0.16f, 0.3f, dmg, 30f, 1.5f, true);
+            OpenHitboxTimed(0.16f, 0.3f, dmg, 30f, 1.5f, true, PoseState.Sweep);
+        }
+
+        /// <summary>蹲+拳：低位突刺——蹲姿下段直线戳击（判定框贴近地面）。</summary>
+        void CrouchThrust()
+        {
+            _fsm.RequestState(CombatState.LightAttack, 0.46f);
+            _fsm.InCombat = true;
+            PlayPose(PoseState.SwordThrust);
+            ApplyAttackFacing();
+            float dmg = baseDamage * 1.2f * CritMult();
+            CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
+            // 复用突刺的长窄直线形状，但整体压低到下段（打腿/打倒地目标）
+            if (weaponHitbox == null) return;
+            weaponHitbox.SetShape(new Vector3(0.9f, 0.8f, 2.5f), new Vector3(0, -0.45f, 1.4f));
+            if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
+            _hitboxRoutine = StartCoroutine(HitboxWindow(0.1f, 0.18f, dmg, 16f, 1.5f, true));
         }
 
         // ================= 公共机制 =================
@@ -710,9 +737,47 @@ namespace AdversityRoad.Combat
             }
         }
 
-        void OpenHitboxTimed(float windup, float open, float dmg, float posture, float knockback, bool buildMomentum)
+        /// <summary>每招独立的攻击判定范围：size=(宽X, 高Y, 长Z纵深)、center=相对角色根的偏移。
+        /// 设计原则：招式越强范围越大——蓄力/绝招终结 > 连段末段 > 起手轻击；
+        /// 形状对应轨迹——突刺长而窄（直线）、横斩横宽（横扫弧）、撩斩纵高（下→上弧）、
+        /// 旋风斩/扫堂腿环身 360°、跳劈罩住落点、扫堂贴地。</summary>
+        static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
+        {
+            switch (p)
+            {
+                // ---- 剑系 ----
+                case PoseState.Attack:      size = new Vector3(2.2f, 1.2f, 1.7f); center = new Vector3(0, 0.1f, 1.0f); break;   // 横斩：横向宽弧
+                case PoseState.AttackUp:    size = new Vector3(1.3f, 2.3f, 1.7f); center = new Vector3(0, 0.4f, 1.0f); break;   // 撩斩：纵向高弧
+                case PoseState.SwordThrust: size = new Vector3(0.9f, 0.9f, 2.7f); center = new Vector3(0, 0.15f, 1.5f); break;  // 突刺：长而窄的直线
+                case PoseState.AttackSpin:  size = new Vector3(3.6f, 1.4f, 3.6f); center = new Vector3(0, 0.15f, 0.2f); break;  // 旋风斩：环身 360°
+                case PoseState.HeavyAttack: size = new Vector3(2.5f, 2.5f, 2.7f); center = new Vector3(0, 0.2f, 1.3f); break;   // 蓄力跳劈：大范围
+                case PoseState.AttackLeap:  size = new Vector3(2.8f, 2.6f, 2.8f); center = new Vector3(0, -0.1f, 1.1f); break;  // 裂地跳劈：罩住砸点
+                case PoseState.JumpAttack:  size = new Vector3(2.1f, 2.5f, 2.3f); center = new Vector3(0, -0.3f, 1.1f); break;  // 空袭下劈：偏下罩落点
+                // ---- 拳系 ----
+                case PoseState.PunchJab:    size = new Vector3(0.9f, 1.0f, 1.5f); center = new Vector3(0, 0.25f, 0.9f); break;  // 直拳：短直线
+                case PoseState.PunchCross:  size = new Vector3(1.0f, 1.0f, 1.6f); center = new Vector3(0, 0.25f, 1.0f); break;
+                // ---- 腿系 ----
+                case PoseState.AttackKick:  size = new Vector3(1.0f, 1.3f, 1.8f); center = new Vector3(0, 0.0f, 1.1f); break;   // 正踢：中距直线
+                case PoseState.SideKick:    size = new Vector3(1.1f, 1.1f, 2.0f); center = new Vector3(0, 0.1f, 1.2f); break;   // 侧踹：更长的直线
+                case PoseState.SpinKick:    size = new Vector3(2.8f, 1.7f, 2.4f); center = new Vector3(0, 0.2f, 0.6f); break;   // 旋身空翻踢：大扇面
+                case PoseState.JumpKick:    size = new Vector3(1.3f, 1.7f, 2.4f); center = new Vector3(0, 0.2f, 1.3f); break;   // 飞踢：最远的腿击
+                case PoseState.Sweep:       size = new Vector3(3.3f, 0.8f, 3.3f); center = new Vector3(0, -0.55f, 0.15f); break;// 扫堂腿：贴地环扫
+                default:                    size = new Vector3(1.4f, 1.4f, 1.8f); center = new Vector3(0, 0.1f, 1.1f); break;
+            }
+        }
+
+        void OpenHitboxTimed(float windup, float open, float dmg, float posture, float knockback,
+            bool buildMomentum, PoseState shapePose, float shapeScale = 1f)
         {
             if (weaponHitbox == null) return;
+            // 判定框按招式定形：蓄力越满/技能越高，shapeScale 越大（范围随强度增长）
+            PoseHitShape(shapePose, out Vector3 size, out Vector3 center);
+            if (!Mathf.Approximately(shapeScale, 1f))
+            {
+                size *= shapeScale;
+                center.z *= shapeScale;
+            }
+            weaponHitbox.SetShape(size, center);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(HitboxWindow(windup, open, dmg, posture, knockback, buildMomentum));
         }
@@ -796,6 +861,7 @@ namespace AdversityRoad.Combat
         public void Debug_JumpAttack() { if (!_fsm.IsHardLocked) JumpAttack(); }
         public void Debug_JumpKick() { if (!_fsm.IsHardLocked) JumpKickAttack(); }
         public void Debug_AirLeap() { if (!_fsm.IsHardLocked) AirLeapAttack(); }
+        public void Debug_CrouchThrust() { if (!_fsm.IsHardLocked) CrouchThrust(); }
         public void Debug_Sweep() { if (!_fsm.IsHardLocked) SweepAttack(); }
 
         public void Debug_HeavyCharged()

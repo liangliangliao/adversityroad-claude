@@ -56,11 +56,18 @@ namespace AdversityRoad.Combat
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
 
-        /// <summary>切到动捕模式：成功接管返回 true；失败保持程序化骨骼。</summary>
-        public bool TryEnableMecanim(Animator animator)
+        /// <summary>切到动捕模式：成功接管返回 true；失败保持程序化骨骼。
+        /// animsFolder 可指定角色专属动作库目录（如 Characters/Anims2），
+        /// 该目录无效时自动回退默认动作库（Mixamo 标准骨架通用）。</summary>
+        public bool TryEnableMecanim(Animator animator, string animsFolder = null)
         {
-            _mecanim = new PlayableAnimator(animator);
-            if (!_mecanim.Valid) { _mecanim = null; return false; }
+            _mecanim = new PlayableAnimator(animator, animsFolder);
+            if (!_mecanim.Valid && !string.IsNullOrEmpty(animsFolder))
+            {
+                _mecanim.Destroy();
+                _mecanim = new PlayableAnimator(animator);   // 回退默认动作库
+            }
+            if (!_mecanim.Valid) { _mecanim.Destroy(); _mecanim = null; return false; }
             return true;
         }
 
@@ -188,10 +195,12 @@ namespace AdversityRoad.Combat
                     }
                 }
 
-                // 动捕库无翻滚片段：闪避在视根上做程序化前滚翻（低身+整体翻转一周）
+                // 翻滚：有专用翻滚片段（Stand To Roll 等）就播片段；
+                // 没有则在视根上做程序化前滚翻兜底（低身+整体翻转一周）
+                bool clipRoll = _mecanim.HasAction(PoseState.Dodge);
                 if (visual != null)
                 {
-                    if (_pose == PoseState.Dodge && _t < 0.42f)
+                    if (!clipRoll && _pose == PoseState.Dodge && _t < 0.42f)
                     {
                         float k = Mathf.Clamp01(_t / 0.4f);
                         visual.localRotation = Quaternion.Euler(k * 360f, 0, 0);
