@@ -1,0 +1,622 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 9593,
+      "max": [
+        0.816865086555481,
+        0.04164360836148262,
+        0.047458939254283905
+      ],
+      "min": [
+        -0.13043899834156036,
+        -0.05435866117477417,
+        -0.06167929992079735
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 115116,
+      "componentType": 5126,
+      "count": 9593,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 9593,
+      "max": [
+        0.9999960660934448,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 9593,
+      "max": [
+        0.9926872253417969,
+        0.9946802258491516
+      ],
+      "min": [
+        0.004440664779394865,
+        0.004136085044592619
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 36084,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 230232,
+      "componentType": 5126,
+      "count": 1378,
+      "max": [
+        0.8421406745910645,
+        0.012274379841983318,
+        0.03073793090879917
+      ],
+      "min": [
+        -0.0007792279939167202,
+        -0.012274379841983318,
+        -0.019737720489501953
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 246768,
+      "componentType": 5126,
+      "count": 1378,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 153488,
+      "componentType": 5126,
+      "count": 1378,
+      "max": [
+        1.0,
+        1.0,
+        0.9999937415122986,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -0.9999945163726807,
+        -1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 76744,
+      "componentType": 5126,
+      "count": 1378,
+      "max": [
+        0.9967042207717896,
+        0.9948599934577942
+      ],
+      "min": [
+        0.08482389897108078,
+        0.0038524859119206667
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 144336,
+      "componentType": 5125,
+      "count": 5712,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 263304,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.012590340338647366,
+        0.023354290053248405,
+        0.0018700360087677836
+      ],
+      "min": [
+        -0.012590340338647366,
+        -0.0018264049431309104,
+        -0.0018700360087677836
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 266868,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        1.0,
+        1.0,
+        0.999782919883728
+      ],
+      "min": [
+        -1.0,
+        -0.9951527118682861,
+        -0.9997829794883728
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 175536,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.9997777938842773,
+        0.9997795224189758,
+        0.9279090762138367,
+        1.0
+      ],
+      "min": [
+        -0.9997779130935669,
+        -0.9997795224189758,
+        -1.0,
+        1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 87768,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.2653178870677948,
+        0.9014034271240234
+      ],
+      "min": [
+        0.24905119836330414,
+        0.8158438801765442
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 167184,
+      "componentType": 5125,
+      "count": 1536,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 270432,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.012590340338647366,
+        0.023354290053248405,
+        0.0018700360087677836
+      ],
+      "min": [
+        -0.012590340338647366,
+        -0.0018264049431309104,
+        -0.0018700360087677836
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 273996,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        1.0,
+        1.0,
+        0.9997829794883728
+      ],
+      "min": [
+        -1.0,
+        -0.9951527118682861,
+        -0.9997830986976624
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 180288,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.9997780919075012,
+        0.9997795820236206,
+        0.9279140830039978,
+        1.0
+      ],
+      "min": [
+        -0.9997777938842773,
+        -0.9997795820236206,
+        -1.0,
+        1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 90144,
+      "componentType": 5126,
+      "count": 297,
+      "max": [
+        0.28809571266174316,
+        0.9017077088356018
+      ],
+      "min": [
+        0.27182909846305847,
+        0.8161481022834778
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 173328,
+      "componentType": 5125,
+      "count": 1536,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "Arnold Konrad (https://sketchfab.com/akonrad)",
+      "license": "CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)",
+      "source": "https://sketchfab.com/3d-models/highland-officers-sword-f957820ce0c645f5a36d0e89350964ef",
+      "title": "Highland Officers Sword"
+    },
+    "generator": "Sketchfab-12.70.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 179472,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 92520,
+      "byteOffset": 179472,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 277560,
+      "byteOffset": 271992,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 185040,
+      "byteOffset": 549552,
+      "byteStride": 16,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 734592,
+      "uri": "scene.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/Sword_baseColor.jpeg"
+    },
+    {
+      "uri": "textures/Sword_metallicRoughness.png"
+    },
+    {
+      "uri": "textures/Sword_normal.png"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Sword",
+      "normalTexture": {
+        "index": 2
+      },
+      "occlusionTexture": {
+        "index": 1
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicRoughnessTexture": {
+          "index": 1
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Sword-material",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3
+          },
+          "indices": 4,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Sword-material",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 6,
+            "POSITION": 5,
+            "TANGENT": 7,
+            "TEXCOORD_0": 8
+          },
+          "indices": 9,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Sword-material",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 11,
+            "POSITION": 10,
+            "TANGENT": 12,
+            "TEXCOORD_0": 13
+          },
+          "indices": 14,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Sword-material",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 16,
+            "POSITION": 15,
+            "TANGENT": 17,
+            "TEXCOORD_0": 18
+          },
+          "indices": 19,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2,
+        4
+      ],
+      "name": "Collada visual scene group"
+    },
+    {
+      "children": [
+        3
+      ],
+      "matrix": [
+        0.9986069,
+        -1.80613e-09,
+        -0.05276673,
+        0.0,
+        -0.05177666,
+        0.1928059,
+        -0.9798699,
+        0.0,
+        0.01017374,
+        0.9812369,
+        0.1925373,
+        0.0,
+        0.0,
+        0.0,
+        0.04329183,
+        1.0
+      ],
+      "name": "Sword"
+    },
+    {
+      "mesh": 0,
+      "name": "Sword-material"
+    },
+    {
+      "children": [
+        5,
+        6,
+        8
+      ],
+      "matrix": [
+        0.5763558,
+        -0.8171453,
+        -0.00935055,
+        0.0,
+        -0.09269061,
+        -0.0540004,
+        -0.9942296,
+        0.0,
+        0.8119251,
+        0.5738967,
+        -0.1068652,
+        0.0,
+        0.00455993,
+        0.1182582,
+        0.01346896,
+        1.0
+      ],
+      "name": "Scabbard"
+    },
+    {
+      "mesh": 1,
+      "name": "Sword-material"
+    },
+    {
+      "children": [
+        7
+      ],
+      "matrix": [
+        0.9999999,
+        -2.79397e-09,
+        5.82077e-09,
+        0.0,
+        1.25729e-08,
+        0.3096743,
+        0.9508429,
+        0.0,
+        -2.04891e-08,
+        -0.9508429,
+        0.3096743,
+        0.0,
+        0.06420809,
+        3.72529e-09,
+        0.02506353,
+        1.0
+      ],
+      "name": "Scabbard_Ring_1"
+    },
+    {
+      "mesh": 2,
+      "name": "Sword-material"
+    },
+    {
+      "children": [
+        9
+      ],
+      "matrix": [
+        0.9999999,
+        -2.79397e-09,
+        5.82077e-09,
+        0.0,
+        -4.42378e-08,
+        0.2459405,
+        0.9692851,
+        0.0,
+        -1.58325e-08,
+        -0.9692851,
+        0.2459404,
+        0.0,
+        0.2642081,
+        0.0,
+        0.02506356,
+        1.0
+      ],
+      "name": "Scabbard_Ring_2"
+    },
+    {
+      "mesh": 3,
+      "name": "Sword-material"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ]
+}
