@@ -34,9 +34,14 @@ namespace AdversityRoad.Player
         /// <summary>当前武器名（"" = 默认佩剑：模型自带兵器或 Characters/Weapon）。</summary>
         public string CurrentWeapon { get; private set; } = "";
 
+        /// <summary>当前面具名（"" = 不戴面具）。</summary>
+        public string CurrentMask { get; private set; } = "";
+
         const string PrefKey = "player_preset";
         const string WeaponPref = "player_weapon";
+        const string MaskPref = "player_mask";
         const string EquippedName = "EquippedWeapon";
+        const string EquippedMaskName = "EquippedMask";
 
         public static readonly string[] PresetNames = { "角色·壹（青岚）", "角色·贰" };
 
@@ -44,6 +49,7 @@ namespace AdversityRoad.Player
         {
             Preset = PlayerPrefs.GetInt(PrefKey, 0);
             CurrentWeapon = PlayerPrefs.GetString(WeaponPref, "");
+            CurrentMask = PlayerPrefs.GetString(MaskPref, "");
             Rebuild();
         }
 
@@ -70,6 +76,28 @@ namespace AdversityRoad.Player
 
         /// <summary>兼容旧入口：循环切换角色。</summary>
         public void TogglePreset() => SetPreset((Preset + 1) % PresetNames.Length);
+
+        /// <summary>面具库清单（Resources/Characters/Masks/ 下全部模型名）。</summary>
+        public static string[] ListMasks()
+        {
+            var prefabs = Resources.LoadAll<GameObject>("Characters/Masks");
+            var names = new List<string>();
+            foreach (var p in prefabs)
+                if (p != null && !names.Contains(p.name)) names.Add(p.name);
+            names.Sort();
+            return names.ToArray();
+        }
+
+        /// <summary>戴上/摘下面具（null/"" = 摘下），重选即替换，持久化。</summary>
+        public void EquipMask(string maskName)
+        {
+            CurrentMask = maskName ?? "";
+            PlayerPrefs.SetString(MaskPref, CurrentMask);
+            PlayerPrefs.Save();
+            ApplyMask();
+            Core.GameEvents.RaiseSubtitle(string.IsNullOrEmpty(CurrentMask)
+                ? "已摘下面具" : "已戴上面具：" + CurrentMask);
+        }
 
         /// <summary>从武器库选一件武器拿在手中（null/"" = 恢复默认佩剑），重选即替换。</summary>
         public void EquipWeapon(string weaponName)
@@ -107,6 +135,8 @@ namespace AdversityRoad.Player
             if (built)
             {
                 ApplyWeapon();
+                ApplyMask();
+                DisableSelfShadow();
                 return;
             }
 
@@ -189,13 +219,22 @@ namespace AdversityRoad.Player
                 foreach (var r in builtin.GetComponentsInChildren<Renderer>(true))
                     r.enabled = !useCustom;
 
+            // 手指握拳叠加：外装武器需要手指真实攥住剑柄（模型自带兵器的
+            // WProp 动画已含握姿，无需叠加）——先移除上一次的握拳组件
+            if (hand != null)
+            {
+                var oldGrip = hand.GetComponent<FingerGrip>();
+                if (oldGrip != null) Destroy(oldGrip);
+            }
+
             if (useCustom)
             {
                 var w = Object.Instantiate(prefab, hand, false);
                 w.name = EquippedName;
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
-                FitAndGripWeapon(w.transform, hand);
+                FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
+                hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
                 if (poser != null) poser.weaponPivot = w.transform;
             }
             else if (builtin != null)
@@ -209,13 +248,96 @@ namespace AdversityRoad.Player
                 holder.SetParent(hand, false);
                 var wr = WeaponFactory.Build(WeaponKind.Sword, holder, baseMaterial,
                     Vector3.zero, Vector3.zero);
-                FitAndGripWeapon(holder, hand);
+                FitAndGripWeapon(holder, hand, out Vector3 bladeLocal, out Vector3 gripW);
+                hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
                 if (poser != null && wr != null)
                 {
                     poser.weaponPivot = wr.pivot;
                     poser.weaponTrail = wr.trail;
                 }
             }
+            DisableSelfShadow();
+        }
+
+        /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，
+        /// 挂在头骨下随头部转动。Front 子节点可显式指定面具正面方向。</summary>
+        void ApplyMask()
+        {
+            if (visualRoot == null || visualRoot.childCount == 0) return;
+            var model = visualRoot.GetChild(0);
+            var head = MecanimCharacter.FindBone(model, "head");
+            if (head == null) return;
+
+            for (int i = head.childCount - 1; i >= 0; i--)
+                if (head.GetChild(i).name == EquippedMaskName)
+                    Destroy(head.GetChild(i).gameObject);
+            if (string.IsNullOrEmpty(CurrentMask)) return;
+
+            GameObject prefab = null;
+            foreach (var p in Resources.LoadAll<GameObject>("Characters/Masks"))
+                if (p != null && p.name == CurrentMask) { prefab = p; break; }
+            if (prefab == null) return;
+
+            var mk = Object.Instantiate(prefab, head, false);
+            mk.name = EquippedMaskName;
+            FitMask(mk.transform, head);
+            DisableSelfShadow();
+        }
+
+        /// <summary>面具贴脸定位：最薄轴=面法向（对齐角色前方），最大轴=面具纵向
+        /// （对齐世界上方），宽度归一到头宽（≈身高 10.5%），中心放在脸面位置。</summary>
+        void FitMask(Transform mk, Transform head)
+        {
+            if (!LocalBounds(mk, out Bounds lb)) return;
+            float height = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
+
+            // 三轴按尺寸排序：最薄=法向(厚度)，中间=宽，最大=纵向
+            Vector3 sz = lb.size;
+            int thin = 0, big = 0;
+            for (int i = 1; i < 3; i++)
+            {
+                if (sz[i] < sz[thin]) thin = i;
+                if (sz[i] > sz[big]) big = i;
+            }
+            int mid = 3 - thin - big;
+            if (thin == big) { thin = 0; big = 1; mid = 2; }
+            System.Func<int, Vector3> axisOf = i => i == 0 ? Vector3.right : i == 1 ? Vector3.up : Vector3.forward;
+            Vector3 nLocal = axisOf(thin);
+            Vector3 hLocal = axisOf(big);
+
+            // Front 子节点显式指定正面方向（面具戴反时的逃生舱）
+            var front = FindDeep(mk, "front");
+            if (front != null)
+            {
+                Vector3 f = mk.InverseTransformDirection(
+                    (front.position - mk.TransformPoint(lb.center)).normalized);
+                if (f.sqrMagnitude > 0.01f) nLocal = f.normalized;
+            }
+
+            // 定尺：面具宽（中间轴）≈ 头宽（≈身高 10.5%）
+            float curW = (mk.TransformPoint(lb.center + axisOf(mid) * sz[mid] * 0.5f)
+                - mk.TransformPoint(lb.center - axisOf(mid) * sz[mid] * 0.5f)).magnitude;
+            if (curW > 1e-4f) mk.localScale *= (height * 0.105f) / curW;
+
+            // 朝向：法向→角色前方，纵向→世界上方
+            Vector3 fwd = visualRoot.forward;
+            Vector3 nW = mk.TransformDirection(nLocal).normalized;
+            Vector3 hW = mk.TransformDirection(hLocal).normalized;
+            if (nW.sqrMagnitude > 0.5f && hW.sqrMagnitude > 0.5f)
+                mk.rotation = Quaternion.LookRotation(fwd, Vector3.up)
+                    * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
+
+            // 位置：面具中心贴在脸面（头骨前方一点、略微上移）
+            Vector3 target = head.position + fwd * (height * 0.045f) + Vector3.up * (height * 0.008f);
+            mk.position += target - mk.TransformPoint(lb.center);
+        }
+
+        /// <summary>角色不接收阴影：主光阴影不再盖住脸（清晰度优先于氛围）。</summary>
+        void DisableSelfShadow()
+        {
+            if (visualRoot == null) return;
+            foreach (var r in visualRoot.GetComponentsInChildren<Renderer>(true))
+                r.receiveShadows = false;
         }
 
         /// <summary>参考握持姿态（取自角色壹自带巨剑——它在手里的姿态是已验证正确的）：
@@ -282,8 +404,11 @@ namespace AdversityRoad.Player
         ///    斧/锤类最宽在头部按名称翻转）> 离武器原点近的一端；
         /// ② 全部在【世界空间】复刻参考巨剑姿态（刃长/柄位按身高比例换算）——
         ///    跨骨架单位安全，任何角色手里都不会尺度爆炸或消失。</summary>
-        void FitAndGripWeapon(Transform w, Transform hand)
+        void FitAndGripWeapon(Transform w, Transform hand,
+            out Vector3 bladeDirHandLocal, out Vector3 gripWorld)
         {
+            bladeDirHandLocal = Vector3.up;
+            gripWorld = hand.position;
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
@@ -317,6 +442,11 @@ namespace AdversityRoad.Player
                 : hand.up;
             if (bladeDirW.sqrMagnitude < 0.5f) bladeDirW = hand.up;
 
+            // 掌心锚点：手骨位置在手腕处，柄要放在【掌心】——向中指根方向前移一段
+            Vector3 palm = hand.position;
+            var middle = FindDeep(hand, "middle");
+            if (middle != null) palm = Vector3.Lerp(hand.position, middle.position, 0.45f);
+
             // 定尺（世界空间长度→目标长度，单位安全）
             float curLenW = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).magnitude;
             if (curLenW > 1e-4f) w.localScale *= targetLen / curLenW;
@@ -325,8 +455,12 @@ namespace AdversityRoad.Player
             if (curBladeW.sqrMagnitude > 1e-8f)
                 w.rotation = Quaternion.FromToRotation(curBladeW.normalized, bladeDirW) * w.rotation;
             // 柄端放进掌心（沿刃向复刻参考偏移——手指正好握在剑柄合适位置）
-            Vector3 gripTargetW = hand.position + bladeDirW * gripAlong;
+            Vector3 gripTargetW = palm + bladeDirW * gripAlong;
             w.position += gripTargetW - w.TransformPoint(gripL);
+
+            // 输出给手指握拳叠加：柄轴（手骨局部）与掌心柄点（手指绕它卷曲合拢）
+            bladeDirHandLocal = hand.InverseTransformDirection(bladeDirW).normalized;
+            gripWorld = palm + bladeDirW * (gripAlong + targetLen * 0.06f);
         }
 
         /// <summary>网格截面分析判柄端：沿刃轴切 12 片，统计每片的最大截面半径——
