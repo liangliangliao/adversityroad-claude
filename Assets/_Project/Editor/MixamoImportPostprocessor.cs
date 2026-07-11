@@ -25,7 +25,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 8;
+        public override uint GetVersion() => 9;
 
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
@@ -37,6 +37,10 @@ namespace AdversityRoad.EditorTools
             var mi = assetImporter as ModelImporter;
             if (mi == null) return;
             mi.animationType = ModelImporterAnimationType.Generic;
+            // 材质/贴图：导入模型自带材质并保留内嵌贴图（下载的带皮肤 FBX 若不开这个，
+            // 会因材质没连上贴图而显示为一片白模——"换了带皮肤模型却还是白模"的根因之一）
+            mi.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
+            mi.materialLocation = ModelImporterMaterialLocation.InPrefab;   // 内嵌材质，直接用内嵌贴图
             // 武器网格开启 Read/Write：运行时截面分析判柄端（握持对齐）需要读顶点
             if (assetPath.Replace('\\', '/').Contains("/Characters/Weapons"))
                 mi.isReadable = true;

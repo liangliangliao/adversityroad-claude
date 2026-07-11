@@ -98,24 +98,25 @@ namespace AdversityRoad.Combat
             _feetOffset = _feetTarget = 0f;
         }
 
-        /// <summary>脚掌放平修正（踮脚行走的根因）：异源骨骼脚踝 rest 朝向不同，
-        /// Mixamo 脚踝旋转数据套上去会让脚尖持续下垂（踮脚）。把「脚尖持续下垂角」
-        /// 钳制在约 25° 以内——保留步态中自然的绷脚/抬脚，消除持续踮脚。</summary>
+        /// <summary>脚掌放平修正：异源骨骼脚踝 rest 朝向不同，Mixamo 脚踝旋转数据套
+        /// 上去会让脚尖【持续下垂(踮脚)或持续上翘(鞋尖翘起)】。把脚尖俯仰角钳制到
+        /// 大致贴地的窄带 [-35°下垂, +12°上翘] 内——两端异常都拉回接近水平贴地，
+        /// 正常步态的自然绷脚/抬脚仍在带内不受影响。</summary>
         static void LevelAnkle(Transform ankle, Transform toe)
         {
             if (ankle == null || toe == null || ankle == toe) return;
             Vector3 v = toe.position - ankle.position;
             float len = v.magnitude;
             if (len < 1e-4f) return;
-            float sinPitch = v.y / len;
-            // ≈35° 下垂上限：只钳制严重踮脚（异源骨架脚踝 rest 偏差常达 45~70°），
-            // 正常步态的自然绷脚（≤35°）不受影响，不让参考角色走路变僵。
-            const float maxDropSin = -0.57f;
-            if (sinPitch >= maxDropSin) return;
+            float sinPitch = v.y / len;                     // >0 脚尖上翘，<0 下垂
+            const float maxDropSin = -0.57f;                // 下垂上限 ≈35°
+            const float maxRiseSin = 0.21f;                 // 上翘上限 ≈12°（修鞋尖翘起）
+            float clamped = Mathf.Clamp(sinPitch, maxDropSin, maxRiseSin);
+            if (Mathf.Abs(clamped - sinPitch) < 1e-3f) return;
             Vector3 flat = new Vector3(v.x, 0, v.z);
             if (flat.sqrMagnitude < 1e-8f) return;
-            float cosP = Mathf.Sqrt(1f - maxDropSin * maxDropSin);
-            Vector3 target = (flat.normalized * cosP + Vector3.up * maxDropSin) * len;
+            float cosP = Mathf.Sqrt(Mathf.Max(0f, 1f - clamped * clamped));
+            Vector3 target = (flat.normalized * cosP + Vector3.up * clamped) * len;
             ankle.rotation = Quaternion.FromToRotation(v, target) * ankle.rotation;
         }
 
