@@ -53,7 +53,8 @@ namespace AdversityRoad.Combat
         bool _hipsPin;
         bool _pendingGetUp;
         // 双脚贴地校准：不同体型腿长≠动作数据骨架腿长（踮脚/悬空/陷地的根因）
-        Transform _footL, _footR;
+        Transform _footL, _footR;         // 脚尖（toe）
+        Transform _ankleL, _ankleR;       // 脚踝（foot）——脚掌放平修正用
         float _groundLocalY = -1f;
         float _modelBaseY;
         float _feetOffset, _feetTarget;
@@ -81,7 +82,8 @@ namespace AdversityRoad.Combat
         /// <summary>装配时注入模型根与髋骨（绑定姿态下记录髋骨水平锚点）；
         /// footL/footR 与 groundLocalY 供双脚贴地校准。</summary>
         public void SetMocapRoot(Transform model, Transform hips,
-            Transform footL = null, Transform footR = null, float groundLocalY = -1f)
+            Transform footL = null, Transform footR = null, float groundLocalY = -1f,
+            Transform ankleL = null, Transform ankleR = null)
         {
             _mocapModel = model;
             _hips = hips;
@@ -89,9 +91,32 @@ namespace AdversityRoad.Combat
             if (_hipsPin) _hipsBindLP = model.InverseTransformPoint(hips.position);
             _footL = footL;
             _footR = footR;
+            _ankleL = ankleL;
+            _ankleR = ankleR;
             _groundLocalY = groundLocalY;
             _modelBaseY = model != null ? model.localPosition.y : 0f;
             _feetOffset = _feetTarget = 0f;
+        }
+
+        /// <summary>脚掌放平修正（踮脚行走的根因）：异源骨骼脚踝 rest 朝向不同，
+        /// Mixamo 脚踝旋转数据套上去会让脚尖持续下垂（踮脚）。把「脚尖持续下垂角」
+        /// 钳制在约 25° 以内——保留步态中自然的绷脚/抬脚，消除持续踮脚。</summary>
+        static void LevelAnkle(Transform ankle, Transform toe)
+        {
+            if (ankle == null || toe == null || ankle == toe) return;
+            Vector3 v = toe.position - ankle.position;
+            float len = v.magnitude;
+            if (len < 1e-4f) return;
+            float sinPitch = v.y / len;
+            // ≈35° 下垂上限：只钳制严重踮脚（异源骨架脚踝 rest 偏差常达 45~70°），
+            // 正常步态的自然绷脚（≤35°）不受影响，不让参考角色走路变僵。
+            const float maxDropSin = -0.57f;
+            if (sinPitch >= maxDropSin) return;
+            Vector3 flat = new Vector3(v.x, 0, v.z);
+            if (flat.sqrMagnitude < 1e-8f) return;
+            float cosP = Mathf.Sqrt(1f - maxDropSin * maxDropSin);
+            Vector3 target = (flat.normalized * cosP + Vector3.up * maxDropSin) * len;
+            ankle.rotation = Quaternion.FromToRotation(v, target) * ankle.rotation;
         }
 
         void LateUpdate()
@@ -107,7 +132,15 @@ namespace AdversityRoad.Combat
             // 只在贴地常规姿态下更新目标（翻滚/击倒/腾空沿用上次校准值）。
             if ((_footL != null || _footR != null) && visual != null)
             {
-                if (_grounded && _pose == PoseState.Idle)
+                // 贴地常规姿态（站/走/跑/格挡）：先放平脚掌，再量脚底校准高度
+                bool calibrate = _grounded &&
+                    (_pose == PoseState.Idle || _pose == PoseState.Guard);
+                if (calibrate)
+                {
+                    LevelAnkle(_ankleL, _footL);
+                    LevelAnkle(_ankleR, _footR);
+                }
+                if (calibrate)
                 {
                     float minY = float.MaxValue;
                     if (_footL != null)
