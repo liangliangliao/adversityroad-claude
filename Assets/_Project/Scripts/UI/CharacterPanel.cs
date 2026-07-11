@@ -86,7 +86,7 @@ namespace AdversityRoad.UI
             for (int i = 0; i < weapons.Length + 1; i++)
             {
                 string wName = i == 0 ? "" : weapons[i - 1];
-                string label = i == 0 ? "默认佩剑" : weapons[i - 1];
+                string label = i == 0 ? "默认（自带武器）" : weapons[i - 1];
                 bool current = curW == wName;
                 int col = i % 3, row = i / 3;
                 UiUtil.MakeButton(_panel.transform, (current ? "✓ " : "") + label,

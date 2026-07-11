@@ -456,13 +456,13 @@ namespace AdversityRoad.Combat
             if (charge01 > 0.5f || finisher)
                 CombatFeedback.RecipeBurst(transform.position,
                     finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
-            // 范围随蓄力放大：最大约 1.7 倍（长宽高与打击距离同步增大）
+            // 范围随蓄力放大：满蓄约 2.3 倍（长宽高与打击距离同步大幅增大，攻得更远更广）
             OpenHitboxTimed(0.18f, 0.34f, dmg1, 26f + (finisher ? 12f : 0f), 3.5f, false,
-                PoseState.HeavyAttack, 1.15f + 0.55f * charge01, true);
+                PoseState.HeavyAttack, 1.4f + 0.9f * charge01, true);
             GameEvents.RaiseSkillBanner(finisher ? "「旋风终结·二连」"
                 : charge01 > 0.7f ? "「蓄力·跳劈连斩」" : "「巨剑跳劈」");
-            CombatFeedback.ShockRing(transform.position + transform.forward * 1.4f,
-                new Color(1f, 0.7f, 0.3f), 3.5f + 2f * charge01);
+            CombatFeedback.ShockRing(transform.position + transform.forward * 1.8f,
+                new Color(1f, 0.7f, 0.3f), 4.5f + 3f * charge01);
 
             yield return new WaitForSeconds(0.5f);
             if (_fsm.Current != CombatState.HeavyAttack) yield break;   // 被击倒等打断
@@ -473,7 +473,7 @@ namespace AdversityRoad.Combat
             float dmg2 = dmg1 * (finisher ? 0.9f : 0.7f);
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.85f, 0.4f));
             OpenHitboxTimed(0.12f, 0.32f, dmg2, 20f, 5.5f, false,
-                PoseState.AttackSpin, finisher ? 1.55f : 1.25f + 0.3f * charge01, true);
+                PoseState.AttackSpin, finisher ? 1.9f : 1.5f + 0.5f * charge01, true);
             if (finisher)
             {
                 CombatFeedback.EnergyBurst(transform.position + transform.forward * 1.2f,
@@ -794,7 +794,7 @@ namespace AdversityRoad.Combat
                 case PoseState.AttackUp:    size = new Vector3(1.3f, 2.3f, 1.7f); center = new Vector3(0, 0.4f, 1.0f); break;   // 撩斩：纵向高弧
                 case PoseState.SwordThrust: size = new Vector3(0.9f, 0.9f, 2.7f); center = new Vector3(0, 0.15f, 1.5f); break;  // 突刺：长而窄的直线
                 case PoseState.AttackSpin:  size = new Vector3(3.6f, 1.4f, 3.6f); center = new Vector3(0, 0.15f, 0.2f); break;  // 旋风斩：环身 360°
-                case PoseState.HeavyAttack: size = new Vector3(3.2f, 3.0f, 3.5f); center = new Vector3(0, 0.3f, 1.6f); break;   // 蓄力跳劈：大范围且打得更远
+                case PoseState.HeavyAttack: size = new Vector3(4.2f, 3.6f, 4.8f); center = new Vector3(0, 0.4f, 2.2f); break;   // 蓄力跳劈：超大范围·打得极远
                 case PoseState.AttackLeap:  size = new Vector3(2.8f, 2.6f, 2.8f); center = new Vector3(0, -0.1f, 1.1f); break;  // 裂地跳劈：罩住砸点
                 case PoseState.JumpAttack:  size = new Vector3(2.1f, 2.5f, 2.3f); center = new Vector3(0, -0.3f, 1.1f); break;  // 空袭下劈：偏下罩落点
                 // ---- 拳系 ----

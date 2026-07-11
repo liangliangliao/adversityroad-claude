@@ -686,15 +686,28 @@ namespace AdversityRoad.AI
                 State = EnemyState.Stagger;
                 _staggerTimer = heavyHit ? 1.5f : 0.42f;
                 StopMoving();
-                if (poser != null)
-                    poser.SetPose(heavyHit ? PoseState.Knockdown : PoseState.Hit);
-                // 重击=被撞飞一段距离重重倒地（受击状态可视化），恢复时播起身过程
+                // 重击=被撞飞重重倒地（受击状态可视化），恢复时播起身过程。
+                // 击飞很远（大击退）时播【腾空后翻滚】——飞出去是真实空翻而非僵直漂移
                 if (heavyHit)
                 {
                     _downed = true;
-                    StartCoroutine(KnockFly(
-                        DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)));
+                    bool bigLaunch = dmg.knockback >= 4f || dmg.physicalDamage >= 45f;
+                    Vector3 flyDir = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position);
+                    if (bigLaunch)
+                    {
+                        float flyDur = 0.55f;
+                        _staggerTimer = Mathf.Max(_staggerTimer, flyDur + 0.6f);
+                        if (poser != null) poser.PlayTumble(flyDur);
+                        StartCoroutine(KnockFly(flyDir, 5.5f + dmg.knockback * 0.6f, flyDur));
+                    }
+                    else
+                    {
+                        if (poser != null) poser.SetPose(PoseState.Knockdown);
+                        StartCoroutine(KnockFly(flyDir, 1.4f, 0.15f));
+                    }
                 }
+                else if (poser != null)
+                    poser.SetPose(PoseState.Hit);
             }
             // 霸体冷却期间也要【看得出挨了打】：不打断攻防逻辑，但受击动作必播
             //（此前霸体期间连受击动画都不播，就是"被踢了一脚却站着没反应"的原因）。
@@ -770,21 +783,24 @@ namespace AdversityRoad.AI
             }
         }
 
-        /// <summary>重击击飞：极短极快的受击位移（≈0.35m，二次强减速）——
-        /// 只在身体后仰的头几帧内完成，倒下的整个过程零滑动，
-        /// 读作"重重挨了一下当场栽倒"而非"漂移一段才倒下"。</summary>
-        System.Collections.IEnumerator KnockFly(Vector3 dir)
+        /// <summary>重击击飞：受击位移（二次强减速）。distance=总飞行距离、dur=时长。
+        /// 小击退=极短栽倒（≈1.4m/0.15s，当场倒地）；大击退=飞很远（配合腾空后翻滚，
+        /// 5m+/0.55s），位移与空翻同步，不再是僵直漂移。</summary>
+        System.Collections.IEnumerator KnockFly(Vector3 dir, float distance, float dur)
         {
             dir.y = 0;
             if (dir.sqrMagnitude < 0.01f) yield break;
             dir = dir.normalized;
-            float t = 0, dur = 0.15f;
+            // 二次减速位移积分 ∫3k²=1 → 峰值速度系数使总位移=distance
+            float peak = distance * 3f / dur;
+            float t = 0;
             while (t < dur && State == EnemyState.Stagger)
             {
                 t += Time.deltaTime;
                 float k = 1f - t / dur;
-                float sp = 5f * k * k;   // 二次强减速：出脚快、倒身前已停
+                float sp = peak * k * k;
                 if (AgentReady) _agent.Move(dir * sp * Time.deltaTime);
+                else transform.position += dir * sp * Time.deltaTime;
                 yield return null;
             }
         }
