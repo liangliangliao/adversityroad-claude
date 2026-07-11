@@ -288,21 +288,9 @@ namespace AdversityRoad.Core
             if (closeFade == null) closeFade = camGo.AddComponent<CharacterCloseFade>();
             closeFade.player = _player.transform;
 
-            // 取景补光：挂在镜头上的柔和点光——始终照亮镜头前的角色面部
-            // （挂角色身上的补光在角色面向镜头时打在背面，脸仍在阴影里）
-            if (camGo.transform.Find("CameraFillLight") == null)
-            {
-                var fillGo = new GameObject("CameraFillLight");
-                fillGo.transform.SetParent(camGo.transform, false);
-                fillGo.transform.localPosition = new Vector3(0, 0.6f, 0.4f);
-                var fill = fillGo.AddComponent<Light>();
-                fill.type = LightType.Point;
-                fill.intensity = 1.6f;                       // 加强：压过主光在背光侧的阴影，脸部清晰
-                fill.range = 30f;                            // 覆盖战斗距离(≈5-8m)的角色
-                fill.color = new Color(1f, 0.97f, 0.92f);
-                fill.shadows = LightShadows.None;
-                fill.renderMode = LightRenderMode.ForcePixel;
-            }
+            // 注：不再在镜头上挂强点光补光——强点光在室内会把近处墙面/天花板
+            // 打成一片死白（"进游戏满屏白"的根因）。面部亮度改由 receiveShadows=false
+            // + 环境光保底处理，室内外都安全。
 
             // 音效需要一个 AudioListener（运行时建的相机不会自带）
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();

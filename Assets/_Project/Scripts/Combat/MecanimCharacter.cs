@@ -78,12 +78,13 @@ namespace AdversityRoad.Combat
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);
 
-            // 健康校验：装配后包围盒必须合理，否则销毁并回退上一级
-            //（根治"切到角色贰后完全看不见人"——异常模型绝不上场）
-            if (!TryBounds(model.transform, out Bounds fitted) ||
-                float.IsNaN(fitted.size.y) || fitted.size.y < 0.4f || fitted.size.y > 25f)
+            // 健康校验：装配后【骨架跨度】必须合理，否则销毁并回退上一级
+            //（根治"满屏白/看不见人"——异常模型绝不上场）。用骨架跨度而非
+            // Renderer.bounds 判定：后者对刚实例化的蒙皮网格可能失真。
+            float fittedH = SkeletonSpanY(model.transform);
+            if (fittedH < 0.3f || fittedH > 30f || float.IsNaN(fittedH))
             {
-                Debug.LogWarning("[MecanimCharacter] 模型装配异常（包围盒无效），回退：" + prefab.name);
+                Debug.LogWarning("[MecanimCharacter] 模型装配异常（尺寸 " + fittedH + "），回退：" + prefab.name);
                 Object.Destroy(model);
                 return false;
             }
@@ -227,8 +228,14 @@ namespace AdversityRoad.Combat
         {
             if (!TryBounds(model, out Bounds b)) return;
 
-            // 缩放：使世界身高 = TargetHeight × 根节点体型缩放（visualRoot.lossyScale）
+            // 缩放：使世界身高 = TargetHeight × 根节点体型缩放（visualRoot.lossyScale）。
+            // 渲染包围盒高度若退化/与骨架跨度差异过大（某些蒙皮模型刚实例化时
+            // Renderer.bounds 不可靠→算出荒谬倍率把模型放大到吞掉镜头=满屏白），
+            // 改用【骨架 Y 跨度】换算视觉身高（骨骼位姿始终有效，稳定可靠）。
             float hw = b.size.y;
+            float skelH = SkeletonSpanY(model);
+            if (skelH > 0.01f && (hw < 0.02f || hw > skelH * 4f || hw < skelH * 0.35f))
+                hw = skelH / 0.85f;   // 骨架跨度≈视觉身高 0.85（头顶/脚底在骨点之外）
             if (hw > 0.01f)
             {
                 float s = visualRoot.lossyScale.y;
@@ -245,37 +252,42 @@ namespace AdversityRoad.Combat
             model.localPosition = lp;
         }
 
+        /// <summary>骨架 Y 跨度（所有骨骼/子节点世界 Y 的 max-min）：骨骼位姿
+        /// 实例化即有效，比蒙皮 Renderer.bounds 稳定，用作缩放的可靠兜底量。</summary>
+        static float SkeletonSpanY(Transform model)
+        {
+            float minY = float.MaxValue, maxY = float.MinValue;
+            foreach (var t in model.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == model) continue;
+                float y = t.position.y;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+            return maxY > minY ? maxY - minY : 0f;
+        }
+
         /// <summary>模型整体高度（渲染包围盒，找不到渲染器返回 0）。</summary>
         public static float ModelHeight(Transform model) =>
             TryBounds(model, out Bounds b) ? b.size.y : 0f;
 
-        /// <summary>合并模型世界包围盒（从【网格 sharedMesh.bounds】算，不用 Renderer.bounds）：
-        /// 蒙皮网格刚实例化、Animator 尚未求值时 SkinnedMeshRenderer.bounds 可能塌缩/失真，
-        /// 会算出荒谬的缩放倍率（模型放大到吞掉镜头=满屏白）。改用网格本地包围盒的
-        /// 八角变换到世界，结果确定可复现，与动画状态无关。</summary>
+        /// <summary>合并模型世界包围盒（Renderer.bounds，实测对本项目各模型稳定）。
+        /// 跳过退化/异常的单个渲染器包围盒（NaN/极小/极大），避免个别坏包围盒污染结果。</summary>
         static bool TryBounds(Transform model, out Bounds bounds)
         {
             bounds = default;
             bool has = false;
-            foreach (var mf in model.GetComponentsInChildren<MeshFilter>(true))
-                EncapMesh(mf.transform, mf.sharedMesh, ref bounds, ref has);
-            foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-                EncapMesh(smr.transform, smr.sharedMesh, ref bounds, ref has);
-            return has;
-        }
-
-        static void EncapMesh(Transform t, Mesh mesh, ref Bounds b, ref bool has)
-        {
-            if (mesh == null) return;
-            Bounds mb = mesh.bounds;
-            for (int i = 0; i < 8; i++)
+            foreach (var r in model.GetComponentsInChildren<Renderer>())
             {
-                Vector3 c = mb.center + Vector3.Scale(mb.extents, new Vector3(
-                    (i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
-                Vector3 p = t.TransformPoint(c);   // 网格局部 → 世界
-                if (!has) { b = new Bounds(p, Vector3.zero); has = true; }
-                else b.Encapsulate(p);
+                if (r == null || r is TrailRenderer || r is LineRenderer ||
+                    r is ParticleSystemRenderer) continue;
+                Bounds rb = r.bounds;
+                float m = Mathf.Max(rb.size.x, Mathf.Max(rb.size.y, rb.size.z));
+                if (float.IsNaN(m) || m < 1e-4f || m > 1e5f) continue;   // 坏包围盒跳过
+                if (!has) { bounds = rb; has = true; }
+                else bounds.Encapsulate(rb);
             }
+            return has;
         }
 
         /// <summary>按名字（小写包含）在模型层级里找骨骼，如 "righthand"/"hips"。</summary>
