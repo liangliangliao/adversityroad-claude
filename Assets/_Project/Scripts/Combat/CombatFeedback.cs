@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Player;
 using AdversityRoad.Core;
@@ -140,6 +141,12 @@ namespace AdversityRoad.Combat
         }
 
         // ---------- 受击闪红 ----------
+        // 原始色缓存（每个材质首次闪红前记录真实底色）+ 闪红版本号（每目标）。
+        // 根治"连续快速被击中后肤色卡在红色"：重叠的闪红协程若各自"记录当前色再
+        // 恢复"，第二次会把【已经变红的色】当成原色记下来恢复→永久红。改为：
+        // 原色只在首次记录（恒为真实底色），且只有最新一次闪红负责恢复。
+        static readonly Dictionary<Material, Color> _origColor = new Dictionary<Material, Color>();
+        static readonly Dictionary<GameObject, int> _flashVer = new Dictionary<GameObject, int>();
 
         public static void HitFlash(GameObject target)
         {
@@ -149,25 +156,31 @@ namespace AdversityRoad.Combat
 
         IEnumerator Flash(GameObject target)
         {
-            // 必须用 Renderer 基类：动捕模型是 SkinnedMeshRenderer——此前只找
-            // MeshRenderer，切动捕模型后受击闪红从未生效（"看不出被击中"的根因）
+            if (target == null) yield break;
+            int ver = (_flashVer.TryGetValue(target, out int v) ? v : 0) + 1;
+            _flashVer[target] = ver;
+
+            // 必须用 Renderer 基类：动捕模型是 SkinnedMeshRenderer
             var renderers = target.GetComponentsInChildren<Renderer>();
-            var originals = new Color[renderers.Length];
-            for (int i = 0; i < renderers.Length; i++)
+            var mats = new List<Material>();
+            foreach (var r in renderers)
             {
-                var r = renderers[i];
                 if (r == null || !r.enabled || r is TrailRenderer || r is LineRenderer) continue;
+                if (r.GetComponent<TextMesh>() != null) continue;
                 var m = r.material;
-                originals[i] = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
-                SetColor(m, Color.Lerp(originals[i], new Color(1f, 0.22f, 0.18f), 0.9f));
+                // 原色只在首次记录（此时一定是真实底色，绝不会是红闪色）
+                if (!_origColor.ContainsKey(m))
+                    _origColor[m] = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
+                mats.Add(m);
+                SetColor(m, Color.Lerp(_origColor[m], new Color(1f, 0.22f, 0.18f), 0.85f));
             }
+
             yield return new WaitForSecondsRealtime(0.12f);
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                var r = renderers[i];
-                if (r == null || r is TrailRenderer || r is LineRenderer) continue;
-                SetColor(r.material, originals[i]);
-            }
+
+            // 仅最新一次闪红负责恢复（更早的重叠闪红不再覆盖，避免恢复成红色）
+            if (_flashVer.TryGetValue(target, out int cur) && cur != ver) yield break;
+            foreach (var m in mats)
+                if (m != null && _origColor.TryGetValue(m, out Color oc)) SetColor(m, oc);
         }
 
         static void SetColor(Material m, Color c)

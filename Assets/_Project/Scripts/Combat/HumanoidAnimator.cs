@@ -161,6 +161,17 @@ namespace AdversityRoad.Combat
         public float ActionClipLength(PoseState p) =>
             Mecanim ? _mecanim.ActionLength(p) : 0f;
 
+        float _tumbleT = -1f, _tumbleDur = 0.55f;
+
+        /// <summary>击飞后翻滚：被打飞很远时播放腾空后翻（配合控制器的飞行位移），
+        /// 落地后进入倒地。dur 与飞行时长匹配。</summary>
+        public void PlayTumble(float dur)
+        {
+            _tumbleDur = Mathf.Max(0.3f, dur);
+            _tumbleT = 0f;
+            SetPose(PoseState.Knockdown);
+        }
+
         /// <summary>从倒地爬起：倒地片段倒放呈现"腿脚先动、身体逐渐立起"的起身过程。</summary>
         public void PlayGetUp()
         {
@@ -265,10 +276,26 @@ namespace AdversityRoad.Combat
                     }
                 }
 
+                // 击飞翻滚：被打飞很远时在视根上做后翻滚（腾空后仰翻转 + 落地），
+                // 让"飞出去"是一段真实的空翻而非僵直漂移
+                bool clipRoll = _mecanim.HasAction(PoseState.Dodge);
+                if (_tumbleT >= 0f && visual != null)
+                {
+                    _tumbleT += dt;
+                    float k = Mathf.Clamp01(_tumbleT / _tumbleDur);
+                    // 后翻两周（绕视根本地 X 负向=向后翻），腾空弧线上抛下落
+                    visual.localRotation = Quaternion.Euler(-720f * k, 0, 0);
+                    visual.localPosition = new Vector3(0, Mathf.Sin(k * Mathf.PI) * 0.5f, 0);
+                    if (k >= 1f)
+                    {
+                        _tumbleT = -1f;
+                        visual.localRotation = Quaternion.identity;
+                        visual.localPosition = Vector3.zero;
+                    }
+                }
                 // 翻滚：有专用翻滚片段（Stand To Roll 等）就播片段；
                 // 没有则在视根上做程序化前滚翻兜底（低身+整体翻转一周）
-                bool clipRoll = _mecanim.HasAction(PoseState.Dodge);
-                if (visual != null)
+                else if (visual != null)
                 {
                     if (!clipRoll && _pose == PoseState.Dodge && _t < 0.42f)
                     {

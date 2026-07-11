@@ -191,9 +191,9 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>把当前选择的武器装到右手：卸下上一件外装武器 → 隐藏/恢复模型自带
-        /// 兵器 → 实例化新武器并做「定尺 + 握持对齐」→ 刀光轴跟随。
-        /// 模型没有自带兵器（glb 角色常见）时，默认佩剑用程序化长剑兜底——
-        /// 「默认佩剑」在任何角色手里都真实可见。</summary>
+        /// 兵器 → 实例化新武器并做「定尺 + 握持对齐 + 手指握拳」→ 刀光轴跟随。
+        /// CurrentWeapon 为空 = 「默认（自带武器）」：显示模型自带兵器（不隐藏），
+        /// 不再生成程序化长剑；模型无自带兵器则空手（由武器库另选）。</summary>
         void ApplyWeapon()
         {
             if (visualRoot == null || visualRoot.childCount == 0) return;
@@ -239,22 +239,8 @@ namespace AdversityRoad.Player
             }
             else if (builtin != null)
             {
+                // 默认（自带武器）：显示模型原生兵器，不隐藏、不叠加程序化剑
                 if (poser != null) poser.weaponPivot = builtin;
-            }
-            else if (hand != null)
-            {
-                // 默认佩剑兜底：程序化长剑（刃沿 +Y、原点在柄端），同样走握持对齐
-                var holder = new GameObject(EquippedName).transform;
-                holder.SetParent(hand, false);
-                var wr = WeaponFactory.Build(WeaponKind.Sword, holder, baseMaterial,
-                    Vector3.zero, Vector3.zero);
-                FitAndGripWeapon(holder, hand, out Vector3 bladeLocal, out Vector3 gripW);
-                hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
-                if (poser != null && wr != null)
-                {
-                    poser.weaponPivot = wr.pivot;
-                    poser.weaponTrail = wr.trail;
-                }
             }
             DisableSelfShadow();
         }
@@ -285,13 +271,16 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>面具贴脸定位：最薄轴=面法向（对齐角色前方），最大轴=面具纵向
-        /// （对齐世界上方），宽度归一到头宽（≈身高 10.5%），中心放在脸面位置。</summary>
+        /// （对齐世界上方），宽度归一到头宽，中心放在【眼睛高度】的脸面上。
+        /// 轴的【符号】按面具挂到头骨（identity 局部姿态）时各轴与"前方/上方"的
+        /// 贴合度自动选取——修复"戴反/上下颠倒"；位置抬到眼高——修复"太低盖到嘴"。</summary>
         void FitMask(Transform mk, Transform head)
         {
             if (!LocalBounds(mk, out Bounds lb)) return;
             float height = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
+            Vector3 fwd = visualRoot.forward;
 
-            // 三轴按尺寸排序：最薄=法向(厚度)，中间=宽，最大=纵向
+            // 三轴按尺寸分：最薄=法向(厚度)、最大=纵向、中间=宽
             Vector3 sz = lb.size;
             int thin = 0, big = 0;
             for (int i = 1; i < 3; i++)
@@ -302,33 +291,43 @@ namespace AdversityRoad.Player
             int mid = 3 - thin - big;
             if (thin == big) { thin = 0; big = 1; mid = 2; }
             System.Func<int, Vector3> axisOf = i => i == 0 ? Vector3.right : i == 1 ? Vector3.up : Vector3.forward;
-            Vector3 nLocal = axisOf(thin);
-            Vector3 hLocal = axisOf(big);
 
-            // Front 子节点显式指定正面方向（面具戴反时的逃生舱）
+            // 符号自动判定：面具此刻以 identity 局部姿态挂在头骨上（继承头骨的
+            // 世界朝向≈面向前方、头顶朝上），取与"前方/上方"贴合的一侧为正面/正上
+            Vector3 nLocal = axisOf(thin);
+            if (Vector3.Dot(mk.TransformDirection(nLocal), fwd) < 0f) nLocal = -nLocal;
+            Vector3 hLocal = axisOf(big);
+            if (Vector3.Dot(mk.TransformDirection(hLocal), Vector3.up) < 0f) hLocal = -hLocal;
+
+            // Front / Top 子节点可显式覆盖（面具仍戴反时的逃生舱）
             var front = FindDeep(mk, "front");
             if (front != null)
             {
-                Vector3 f = mk.InverseTransformDirection(
-                    (front.position - mk.TransformPoint(lb.center)).normalized);
+                Vector3 f = mk.InverseTransformDirection((front.position - mk.TransformPoint(lb.center)).normalized);
                 if (f.sqrMagnitude > 0.01f) nLocal = f.normalized;
             }
+            var top = FindDeep(mk, "top");
+            if (top != null)
+            {
+                Vector3 u = mk.InverseTransformDirection((top.position - mk.TransformPoint(lb.center)).normalized);
+                if (u.sqrMagnitude > 0.01f) hLocal = u.normalized;
+            }
 
-            // 定尺：面具宽（中间轴）≈ 头宽（≈身高 10.5%）
+            // 定尺：面具宽（中间轴）≈ 头宽（≈身高 11%）
             float curW = (mk.TransformPoint(lb.center + axisOf(mid) * sz[mid] * 0.5f)
                 - mk.TransformPoint(lb.center - axisOf(mid) * sz[mid] * 0.5f)).magnitude;
-            if (curW > 1e-4f) mk.localScale *= (height * 0.105f) / curW;
+            if (curW > 1e-4f) mk.localScale *= (height * 0.11f) / curW;
 
             // 朝向：法向→角色前方，纵向→世界上方
-            Vector3 fwd = visualRoot.forward;
             Vector3 nW = mk.TransformDirection(nLocal).normalized;
             Vector3 hW = mk.TransformDirection(hLocal).normalized;
             if (nW.sqrMagnitude > 0.5f && hW.sqrMagnitude > 0.5f)
                 mk.rotation = Quaternion.LookRotation(fwd, Vector3.up)
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
-            // 位置：面具中心贴在脸面（头骨前方一点、略微上移）
-            Vector3 target = head.position + fwd * (height * 0.045f) + Vector3.up * (height * 0.008f);
+            // 位置：面具中心贴在【眼睛高度】的脸面——头骨原点在颈根/颅底，
+            // 眼睛约在其上方 height*0.07、脸表面约前方 height*0.05
+            Vector3 target = head.position + fwd * (height * 0.05f) + Vector3.up * (height * 0.072f);
             mk.position += target - mk.TransformPoint(lb.center);
         }
 
@@ -338,53 +337,6 @@ namespace AdversityRoad.Player
             if (visualRoot == null) return;
             foreach (var r in visualRoot.GetComponentsInChildren<Renderer>(true))
                 r.receiveShadows = false;
-        }
-
-        /// <summary>参考握持姿态（取自角色壹自带巨剑——它在手里的姿态是已验证正确的）：
-        /// 记录三个【跨骨架单位安全】的量——刃轴在手骨局部的单位方向（方向不受
-        /// 缩放影响）、刃长相对参考身高的比例、柄端沿刃向相对手心的偏移比例。
-        /// 任何武器在任何角色手里都按世界空间复刻，不再出现"局部单位不同导致
-        /// 尺度爆炸→武器消失/漂浮"的问题。</summary>
-        struct GripRef
-        {
-            public bool valid;
-            public Vector3 bladeDirHandLocal;   // 刃轴单位方向（手骨局部，缩放无关）
-            public float lenRel;                // 刃长 / 参考身高
-            public float gripAlongRel;          // 柄端沿刃向偏移 / 参考身高
-        }
-
-        static GripRef _gripRef;
-        static bool _gripRefTried;
-
-        static GripRef GetGripRef()
-        {
-            if (_gripRefTried) return _gripRef;
-            _gripRefTried = true;
-            var refPrefab = Resources.Load<GameObject>("Characters/PlayerModel");
-            if (refPrefab == null) return _gripRef;
-            var hand = MecanimCharacter.FindBone(refPrefab.transform, "righthand");
-            var weapon = MecanimCharacter.FindWeaponInModel(refPrefab.transform);
-            if (hand == null || weapon == null) return _gripRef;
-            // 参考剑必须挂在手骨之下（相对关系恒定）；蒙皮挂根上的相对关系随姿势变，不可作参考
-            if (!weapon.IsChildOf(hand)) return _gripRef;
-            if (!LocalBounds(weapon, out Bounds lb)) return _gripRef;
-            LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
-            // 世界空间（prefab 姿态）计算，再归一到身高比例——单位安全
-            Vector3 aW = weapon.TransformPoint(endA);
-            Vector3 bW = weapon.TransformPoint(endB);
-            bool aNear = (aW - hand.position).sqrMagnitude <= (bW - hand.position).sqrMagnitude;
-            Vector3 gripW = aNear ? aW : bW;
-            Vector3 tipW = aNear ? bW : aW;
-            Vector3 bladeW = tipW - gripW;
-            if (bladeW.sqrMagnitude < 1e-8f) return _gripRef;
-            float refHeight = MecanimCharacter.ModelHeight(refPrefab.transform);
-            if (refHeight < 0.01f) return _gripRef;
-            Vector3 bladeDirW = bladeW.normalized;
-            _gripRef.valid = true;
-            _gripRef.bladeDirHandLocal = hand.InverseTransformDirection(bladeDirW).normalized;
-            _gripRef.lenRel = bladeW.magnitude / refHeight;
-            _gripRef.gripAlongRel = Vector3.Dot(gripW - hand.position, bladeDirW) / refHeight;
-            return _gripRef;
         }
 
         static void LongAxisEnds(Bounds lb, out Vector3 endA, out Vector3 endB)
@@ -398,12 +350,14 @@ namespace AdversityRoad.Player
             endB = lb.center + axisDir * ext;
         }
 
-        /// <summary>武器定尺 + 握持对齐（修复"漂浮/握在刀刃上/柄不在掌心"）：
-        /// ① 在武器自身坐标系求包围盒，最长轴=刃轴；柄端判定三级——
-        ///    Grip/Handle 子节点 > 网格截面分析（剑的护手是最宽截面、靠近柄端；
-        ///    斧/锤类最宽在头部按名称翻转）> 离武器原点近的一端；
-        /// ② 全部在【世界空间】复刻参考巨剑姿态（刃长/柄位按身高比例换算）——
-        ///    跨骨架单位安全，任何角色手里都不会尺度爆炸或消失。</summary>
+        /// <summary>武器定尺 + 握持对齐（几何法·根治"漂浮/握在刀刃上/柄不在掌心"）：
+        /// 不再依赖"参考巨剑必须被检测到"（那是之前武器悬空的根因——Maria 自带巨剑
+        /// 网格名不含 sword 关键词，检测失败就退化成 hand.up 方向导致长剑戳在身前）。
+        /// 改为完全从【手部手指骨骼几何】推握持坐标系（与骨骼 rest 朝向无关，跨骨架通用）：
+        ///   · 柄轴 = 掌横向（食指根→小指根方向）——握拳时刀柄正是横穿蜷曲的四指；
+        ///   · 掌心 = 手腕骨到中指根之间的点；
+        ///   · 刀刃从掌心沿柄轴伸出（偏向拇指/食指侧=向上出拳眼）。
+        /// 武器最长轴对齐柄轴、握持段（柄端往刃向一小截=四指环握处）落在掌心。</summary>
         void FitAndGripWeapon(Transform w, Transform hand,
             out Vector3 bladeDirHandLocal, out Vector3 gripWorld)
         {
@@ -412,7 +366,7 @@ namespace AdversityRoad.Player
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
-            // 柄端判定：① Grip/Handle 子节点 ② 网格截面分析 ③ pivot 就近
+            // 柄端判定：① Grip/Handle 子节点 ② 网格截面分析（护手最宽=柄端） ③ pivot 就近
             Vector3 gripL, tipL;
             var gripNode = FindDeep(w, "grip");
             if (gripNode == null) gripNode = FindDeep(w, "handle");
@@ -430,37 +384,84 @@ namespace AdversityRoad.Player
             }
             else if (endA.sqrMagnitude <= endB.sqrMagnitude) { gripL = endA; tipL = endB; }
             else { gripL = endB; tipL = endA; }
-            Vector3 bladeL = tipL - gripL;
-            if (bladeL.sqrMagnitude < 1e-8f) return;
+            if ((tipL - gripL).sqrMagnitude < 1e-8f) return;
+
+            // ---- 从手指骨骼几何推握持坐标系（rest 朝向无关，任何角色都对）----
+            HandGripFrame(hand, out Vector3 palm, out Vector3 bladeDirW, out float handWidth);
 
             float height = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
-            var gr = GetGripRef();
-            float targetLen = (gr.valid ? gr.lenRel : 0.5f) * height;
-            float gripAlong = (gr.valid ? gr.gripAlongRel : 0.02f) * height;
-            Vector3 bladeDirW = gr.valid
-                ? hand.TransformDirection(gr.bladeDirHandLocal).normalized
-                : hand.up;
-            if (bladeDirW.sqrMagnitude < 0.5f) bladeDirW = hand.up;
-
-            // 掌心锚点：手骨位置在手腕处，柄要放在【掌心】——向中指根方向前移一段
-            Vector3 palm = hand.position;
-            var middle = FindDeep(hand, "middle");
-            if (middle != null) palm = Vector3.Lerp(hand.position, middle.position, 0.45f);
+            float targetLen = 0.62f * height;                 // 刀刃总长≈角色身高 0.62
+            // 握持段：柄端沿刃向进入拳心约一个拳宽（四指环握的位置）
+            float gripInset = Mathf.Max(handWidth * 0.5f, targetLen * 0.06f);
 
             // 定尺（世界空间长度→目标长度，单位安全）
             float curLenW = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).magnitude;
             if (curLenW > 1e-4f) w.localScale *= targetLen / curLenW;
-            // 朝向（世界空间旋转到参考刃轴方向）
-            Vector3 curBladeW = (w.TransformPoint(tipL) - w.TransformPoint(gripL));
+            // 朝向：武器长轴（柄→尖）对齐柄轴（世界空间）
+            Vector3 curBladeW = w.TransformPoint(tipL) - w.TransformPoint(gripL);
             if (curBladeW.sqrMagnitude > 1e-8f)
                 w.rotation = Quaternion.FromToRotation(curBladeW.normalized, bladeDirW) * w.rotation;
-            // 柄端放进掌心（沿刃向复刻参考偏移——手指正好握在剑柄合适位置）
-            Vector3 gripTargetW = palm + bladeDirW * gripAlong;
-            w.position += gripTargetW - w.TransformPoint(gripL);
+            // 平移：握持段（柄端沿刃向 gripInset 处）落在掌心
+            Vector3 gripHoldW = w.TransformPoint(gripL) + bladeDirW * gripInset;
+            w.position += palm - gripHoldW;
 
-            // 输出给手指握拳叠加：柄轴（手骨局部）与掌心柄点（手指绕它卷曲合拢）
+            // 输出给手指握拳叠加：柄轴（手骨局部）与掌心（四指绕它卷曲合拢）
             bladeDirHandLocal = hand.InverseTransformDirection(bladeDirW).normalized;
-            gripWorld = palm + bladeDirW * (gripAlong + targetLen * 0.06f);
+            gripWorld = palm;
+        }
+
+        /// <summary>从手部手指骨骼几何推握持坐标系（与骨骼 rest 朝向无关）：
+        /// palm=掌心世界点、bladeDir=刀柄/刀刃世界轴（横穿四指、偏拇指侧向上）、
+        /// handWidth=拳宽。找不到手指时退回手骨轴的合理估计。</summary>
+        static void HandGripFrame(Transform hand, out Vector3 palm, out Vector3 bladeDir, out float handWidth)
+        {
+            Transform idx = FingerBase(hand, "index");
+            Transform pky = FingerBase(hand, "pinky");
+            Transform mid = FingerBase(hand, "middle");
+            Transform thb = FingerBase(hand, "thumb");
+
+            Vector3 wrist = hand.position;
+            Vector3 midP = mid != null ? mid.position : wrist + hand.forward * 0.1f;
+            palm = Vector3.Lerp(wrist, midP, 0.55f);          // 掌心（略偏向指根）
+
+            // 柄轴 = 横穿手掌（小指根→食指根）——握拳时刀柄正穿过蜷曲四指
+            if (idx != null && pky != null)
+            {
+                bladeDir = (idx.position - pky.position).normalized;
+                handWidth = (idx.position - pky.position).magnitude;
+            }
+            else
+            {
+                bladeDir = hand.right;   // 退化估计
+                handWidth = 0.1f;
+            }
+            if (handWidth < 1e-3f) handWidth = 0.1f;
+
+            // 刀刃应向上出拳眼（拇指侧）：让柄轴指向拇指一侧、并带正的世界 Y 分量
+            Vector3 fingersDir = (midP - wrist).normalized;
+            if (thb != null)
+            {
+                Vector3 toThumb = (thb.position - palm);
+                if (Vector3.Dot(bladeDir, toThumb) < 0f) bladeDir = -bladeDir;
+            }
+            // 去掉沿手指方向的分量（刀柄与手指垂直），再保证略微朝上
+            bladeDir = (bladeDir - fingersDir * Vector3.Dot(bladeDir, fingersDir)).normalized;
+            if (bladeDir.sqrMagnitude < 0.25f) bladeDir = Vector3.up;
+            if (Vector3.Dot(bladeDir, Vector3.up) < 0f && thb == null) bladeDir = -bladeDir;
+        }
+
+        /// <summary>手指近节骨（RightHandIndex1 等）：按关键词取层级最浅的匹配。</summary>
+        static Transform FingerBase(Transform hand, string key)
+        {
+            Transform best = null; int bestDepth = int.MaxValue;
+            foreach (var t in hand.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == hand) continue;
+                if (!t.name.ToLowerInvariant().Contains(key)) continue;
+                int d = 0; var p = t; while (p != null && p != hand) { d++; p = p.parent; }
+                if (d < bestDepth) { bestDepth = d; best = t; }
+            }
+            return best;
         }
 
         /// <summary>网格截面分析判柄端：沿刃轴切 12 片，统计每片的最大截面半径——
