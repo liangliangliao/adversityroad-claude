@@ -52,11 +52,12 @@ namespace AdversityRoad.Mobile
             joy.handle = hrt;
             joy.radius = 110f;
 
-            // ---- 右下角战斗按钮（KOF 拳腿分立布局）----
-            // 拳/腿=双系连段可混接 | 重=按住蓄力/轻点+方向=指令技 | 闪=翻滚（完美闪避/受身）
-            // 挡=格挡/定心格挡 | 跳（跳+拳=下劈，跳+腿=飞踢，蹲+攻=扫堂腿）| 气/定=技能
+            // ---- 右下角战斗按钮（大作标准：轻连段拳脚 / 重连段巨剑）----
+            // 拳=轻连段（快攻削韧）| 剑=重连段（高伤击退）| 重=按住蓄力气场/轻点+方向=指令技
+            // 闪=翻滚（完美闪避/受身）| 挡=格挡/定心格挡
+            // 跳+拳=飞踢 跳+剑=空袭跳劈 蹲+拳=扫堂腿 蹲+剑=低位突刺 | 气/定/还=技能
             AddButton("Light", "拳", new Vector2(-180, 210), 165, new Color(0.9f, 0.35f, 0.3f, 0.78f));
-            AddButton("Kick", "腿", new Vector2(-395, 145), 150, new Color(0.95f, 0.6f, 0.25f, 0.78f));
+            AddButton("Kick", "剑", new Vector2(-395, 145), 150, new Color(0.95f, 0.6f, 0.25f, 0.78f));
             AddButton("Dodge", "闪", new Vector2(-185, 445), 130, new Color(0.3f, 0.7f, 0.95f, 0.78f));
             AddButton("Heavy", "重", new Vector2(-425, 330), 125, new Color(0.8f, 0.45f, 0.15f, 0.8f));
             AddButton("Guard", "挡", new Vector2(-625, 235), 108, new Color(0.4f, 0.8f, 0.5f, 0.75f));

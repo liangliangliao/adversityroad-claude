@@ -191,9 +191,21 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 2f;
-            hurtCol.radius = 0.45f;
+            hurtCol.height = 3.2f;                       // 随视觉体型放大（受击判定罩全身）
+            hurtCol.center = new Vector3(0, 0.6f, 0);
+            hurtCol.radius = 0.5f;
             hurt.AddComponent<Hurtbox>();
+
+            // 角色补光：柔和暖白点光挂在面前上方——脸部特征清晰可见（不投影，省性能）
+            var fillGo = new GameObject("CharacterFillLight");
+            fillGo.transform.SetParent(root.transform, false);
+            fillGo.transform.localPosition = new Vector3(0, 2.4f, 1.6f);
+            var fill = fillGo.AddComponent<Light>();
+            fill.type = LightType.Point;
+            fill.intensity = 0.9f;
+            fill.range = 5.5f;
+            fill.color = new Color(1f, 0.96f, 0.9f);
+            fill.shadows = LightShadows.None;
 
             var hitbox = CreateAttackHitbox(root.transform, 1.1f);
             combat.weaponHitbox = hitbox;
@@ -387,7 +399,7 @@ namespace AdversityRoad.Core
             ec.profile = profile;
             ec.poser = poser;
 
-            ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 2.5f);
+            ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 3.1f);
 
             var dialogue = root.AddComponent<EnemyDialogue>();
             dialogue.displayName = profile.displayName;
@@ -400,8 +412,9 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 2f;
-            hurtCol.radius = 0.55f;
+            hurtCol.height = 3.2f;                       // 随视觉体型放大
+            hurtCol.center = new Vector3(0, 0.6f, 0);
+            hurtCol.radius = 0.6f;
             hurt.AddComponent<Hurtbox>();
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);

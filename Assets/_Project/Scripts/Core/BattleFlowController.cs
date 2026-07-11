@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -36,6 +37,14 @@ namespace AdversityRoad.Core
         {
             if (_deathShown) return;
             _deathShown = true;
+            // 延迟弹面板：先让倒地动作完整播完（之前立即 timeScale=0，
+            // 倒地第一帧就被冻结——"死亡动作没有完整呈现"的根因）
+            StartCoroutine(ShowDeathDelayed());
+        }
+
+        IEnumerator ShowDeathDelayed()
+        {
+            yield return new WaitForSecondsRealtime(2.4f);
             Show("你倒下了",
                 "失败不是终点，而是复盘的起点。\n这一战是被心理攻击拖垮，还是体力管理失误？\n调整策略，重新站起——章节进度不会丢失。",
                 "复盘并再战", ConfirmAction.Reload);

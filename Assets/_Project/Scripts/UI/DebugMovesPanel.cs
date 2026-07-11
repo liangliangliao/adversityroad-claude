@@ -26,11 +26,11 @@ namespace AdversityRoad.UI
             ("蓄力·巨剑跳劈", c => c.Debug_HeavyCharged()),
             ("旋风终结(2势)", c => c.Debug_Finisher()),
             ("觉醒乱舞(3势)", c => c.Debug_RanWu()),
-            ("空袭跳劈(跳+拳)", c => c.Debug_JumpAttack()),
-            ("飞踢(跳+腿)", c => c.Debug_JumpKick()),
+            ("空袭跳劈(跳+剑)", c => c.Debug_JumpAttack()),
+            ("飞踢(跳+拳)", c => c.Debug_JumpKick()),
             ("空袭裂地跳劈(跳+重)", c => c.Debug_AirLeap()),
-            ("扫堂腿(蹲+腿)", c => c.Debug_Sweep()),
-            ("低位突刺(蹲+拳)", c => c.Debug_CrouchThrust()),
+            ("扫堂腿(蹲+拳)", c => c.Debug_Sweep()),
+            ("低位突刺(蹲+剑)", c => c.Debug_CrouchThrust()),
             ("意势填满", c => c.Debug_FillMomentum()),
             ("状态回满", c => c.Debug_RestoreAll()),
         };
@@ -64,7 +64,7 @@ namespace AdversityRoad.UI
             ("翻滚(闪键)", "Stand To Roll"),
             ("硬直(破绽)", "Stunned"),
             ("蓄力(按住重)", "Great Sword Casting"),
-            ("扫堂(蹲+腿)", "Leg Sweep"),
+            ("扫堂(蹲+拳)", "Leg Sweep"),
         };
 
         public static DebugMovesPanel Create(Transform canvas)
