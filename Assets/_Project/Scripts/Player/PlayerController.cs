@@ -176,10 +176,12 @@ namespace AdversityRoad.Player
             float actual = planar.magnitude / dt;
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual);
-            // 临战架势：附近有可锁定的敌人 / 正在交战时，静立摆出格斗预备架势
+            // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
+            // 敌人在远处/无敌人时用普通待机（不再一有敌人在场就一直端着架势）
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
-            bool ready = (_lockOn != null && _lockOn.CurrentTarget != null)
-                || (_combat != null && _combat.InCombat);
+            bool enemyClose = _lockOn != null && _lockOn.CurrentTarget != null &&
+                Vector3.Distance(transform.position, _lockOn.CurrentTarget.position) < 6f;
+            bool ready = enemyClose || (_combat != null && _combat.InCombat);
             _anim.SetCombatReady(ready);
             _lastPos = transform.position;
         }

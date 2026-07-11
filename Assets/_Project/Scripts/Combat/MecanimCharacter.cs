@@ -249,19 +249,33 @@ namespace AdversityRoad.Combat
         public static float ModelHeight(Transform model) =>
             TryBounds(model, out Bounds b) ? b.size.y : 0f;
 
-        /// <summary>合并所有渲染器的世界包围盒。</summary>
+        /// <summary>合并模型世界包围盒（从【网格 sharedMesh.bounds】算，不用 Renderer.bounds）：
+        /// 蒙皮网格刚实例化、Animator 尚未求值时 SkinnedMeshRenderer.bounds 可能塌缩/失真，
+        /// 会算出荒谬的缩放倍率（模型放大到吞掉镜头=满屏白）。改用网格本地包围盒的
+        /// 八角变换到世界，结果确定可复现，与动画状态无关。</summary>
         static bool TryBounds(Transform model, out Bounds bounds)
         {
             bounds = default;
-            var rends = model.GetComponentsInChildren<Renderer>();
             bool has = false;
-            foreach (var r in rends)
-            {
-                if (r == null || r is TrailRenderer || r is LineRenderer) continue;
-                if (!has) { bounds = r.bounds; has = true; }
-                else bounds.Encapsulate(r.bounds);
-            }
+            foreach (var mf in model.GetComponentsInChildren<MeshFilter>(true))
+                EncapMesh(mf.transform, mf.sharedMesh, ref bounds, ref has);
+            foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                EncapMesh(smr.transform, smr.sharedMesh, ref bounds, ref has);
             return has;
+        }
+
+        static void EncapMesh(Transform t, Mesh mesh, ref Bounds b, ref bool has)
+        {
+            if (mesh == null) return;
+            Bounds mb = mesh.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 c = mb.center + Vector3.Scale(mb.extents, new Vector3(
+                    (i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                Vector3 p = t.TransformPoint(c);   // 网格局部 → 世界
+                if (!has) { b = new Bounds(p, Vector3.zero); has = true; }
+                else b.Encapsulate(p);
+            }
         }
 
         /// <summary>按名字（小写包含）在模型层级里找骨骼，如 "righthand"/"hips"。</summary>

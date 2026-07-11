@@ -297,10 +297,11 @@ namespace AdversityRoad.Core
                 fillGo.transform.localPosition = new Vector3(0, 0.6f, 0.4f);
                 var fill = fillGo.AddComponent<Light>();
                 fill.type = LightType.Point;
-                fill.intensity = 0.75f;
-                fill.range = 11f;
-                fill.color = new Color(1f, 0.96f, 0.9f);
+                fill.intensity = 1.6f;                       // 加强：压过主光在背光侧的阴影，脸部清晰
+                fill.range = 30f;                            // 覆盖战斗距离(≈5-8m)的角色
+                fill.color = new Color(1f, 0.97f, 0.92f);
                 fill.shadows = LightShadows.None;
+                fill.renderMode = LightRenderMode.ForcePixel;
             }
 
             // 音效需要一个 AudioListener（运行时建的相机不会自带）

@@ -239,8 +239,24 @@ namespace AdversityRoad.Player
             }
             else if (builtin != null)
             {
-                // 默认（自带武器）：显示模型原生兵器，不隐藏、不叠加程序化剑
+                // 默认（自带武器）：模型原生兵器，不隐藏、不叠加程序化剑
                 if (poser != null) poser.weaponPivot = builtin;
+            }
+            else if (hand != null)
+            {
+                // 默认，但模型【没有自带兵器】（如替换后的角色模型）：给一把程序化长剑
+                // 兜底——保证"默认"手里始终有剑（修"角色1选默认剑却消失"）
+                var holder = new GameObject(EquippedName).transform;
+                holder.SetParent(hand, false);
+                var wr = WeaponFactory.Build(WeaponKind.Sword, holder, baseMaterial,
+                    Vector3.zero, Vector3.zero);
+                FitAndGripWeapon(holder, hand, out Vector3 bladeLocal, out Vector3 gripW);
+                hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
+                if (poser != null && wr != null)
+                {
+                    poser.weaponPivot = wr.pivot;
+                    poser.weaponTrail = wr.trail;
+                }
             }
             DisableSelfShadow();
         }
@@ -271,17 +287,22 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>面具贴脸定位：最薄轴=面法向（对齐角色前方），最大轴=面具纵向
-        /// （对齐世界上方），宽度归一到头宽，中心放在【眼睛高度】的脸面上。
-        /// 轴的【符号】按面具挂到头骨（identity 局部姿态）时各轴与"前方/上方"的
-        /// 贴合度自动选取——修复"戴反/上下颠倒"；位置抬到眼高——修复"太低盖到嘴"。</summary>
+        /// （对齐世界上方），宽度归一到头宽；脸面锚点【优先用眼骨】（跨模型稳定，
+        /// 不随头骨原点高低漂移），无眼骨才按头骨+自适应偏移估计。定尺带上下限钳制，
+        /// 避免异常模型（面具建模单位过小）被放大到吞掉镜头=满屏白。</summary>
         void FitMask(Transform mk, Transform head)
         {
             if (!LocalBounds(mk, out Bounds lb)) return;
+            Vector3 sz = lb.size;
+            if (sz.x <= 1e-6f || sz.y <= 1e-6f || sz.z <= 1e-6f ||
+                float.IsNaN(sz.x) || float.IsNaN(sz.y) || float.IsNaN(sz.z))
+            { Destroy(mk.gameObject); return; }
+
             float height = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
             Vector3 fwd = visualRoot.forward;
+            float headW = height * 0.11f;                       // 目标面具宽≈头宽
 
             // 三轴按尺寸分：最薄=法向(厚度)、最大=纵向、中间=宽
-            Vector3 sz = lb.size;
             int thin = 0, big = 0;
             for (int i = 1; i < 3; i++)
             {
@@ -292,8 +313,8 @@ namespace AdversityRoad.Player
             if (thin == big) { thin = 0; big = 1; mid = 2; }
             System.Func<int, Vector3> axisOf = i => i == 0 ? Vector3.right : i == 1 ? Vector3.up : Vector3.forward;
 
-            // 符号自动判定：面具此刻以 identity 局部姿态挂在头骨上（继承头骨的
-            // 世界朝向≈面向前方、头顶朝上），取与"前方/上方"贴合的一侧为正面/正上
+            // 符号自动判定：面具此刻以 identity 局部姿态挂在头骨上（继承头骨世界朝向
+            // ≈面向前方、头顶朝上），取与"前方/上方"贴合的一侧为正面/正上
             Vector3 nLocal = axisOf(thin);
             if (Vector3.Dot(mk.TransformDirection(nLocal), fwd) < 0f) nLocal = -nLocal;
             Vector3 hLocal = axisOf(big);
@@ -313,10 +334,11 @@ namespace AdversityRoad.Player
                 if (u.sqrMagnitude > 0.01f) hLocal = u.normalized;
             }
 
-            // 定尺：面具宽（中间轴）≈ 头宽（≈身高 11%）
+            // 定尺：面具宽（中间轴）≈ 头宽，倍率钳制到 [0.05, 40]（防异常单位放大爆屏）
             float curW = (mk.TransformPoint(lb.center + axisOf(mid) * sz[mid] * 0.5f)
                 - mk.TransformPoint(lb.center - axisOf(mid) * sz[mid] * 0.5f)).magnitude;
-            if (curW > 1e-4f) mk.localScale *= (height * 0.11f) / curW;
+            if (curW > 1e-5f)
+                mk.localScale *= Mathf.Clamp(headW / curW, 0.05f, 40f);
 
             // 朝向：法向→角色前方，纵向→世界上方
             Vector3 nW = mk.TransformDirection(nLocal).normalized;
@@ -325,10 +347,30 @@ namespace AdversityRoad.Player
                 mk.rotation = Quaternion.LookRotation(fwd, Vector3.up)
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
-            // 位置：面具中心贴在【眼睛高度】的脸面——头骨原点在颈根/颅底，
-            // 眼睛约在其上方 height*0.07、脸表面约前方 height*0.05
-            Vector3 target = head.position + fwd * (height * 0.05f) + Vector3.up * (height * 0.072f);
+            // 脸面锚点：优先眼骨中点（各模型一致地落在眼睛上，不随头骨原点高低漂移）
+            var eyeL = FindEye(head, "lefteye", "eyel", "eye_l");
+            var eyeR = FindEye(head, "righteye", "eyer", "eye_r");
+            Vector3 target;
+            if (eyeL != null && eyeR != null)
+                target = (eyeL.position + eyeR.position) * 0.5f + fwd * (headW * 0.22f);
+            else if (eyeL != null || eyeR != null)
+                target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f);
+            else
+                // 无眼骨：头骨原点上方约半个头宽（眼高）、前方约 0.4 头宽（贴脸不悬空）
+                target = head.position + fwd * (headW * 0.4f) + Vector3.up * (headW * 0.5f);
             mk.position += target - mk.TransformPoint(lb.center);
+        }
+
+        /// <summary>在头骨下找眼睛骨（多种命名）。规范化去符号后包含匹配。</summary>
+        static Transform FindEye(Transform head, params string[] keys)
+        {
+            foreach (var t in head.GetComponentsInChildren<Transform>(true))
+            {
+                string n = t.name.ToLowerInvariant().Replace(":", "").Replace("_", "").Replace(" ", "");
+                foreach (var k in keys)
+                    if (n.Contains(k.Replace("_", ""))) return t;
+            }
+            return null;
         }
 
         /// <summary>角色不接收阴影：主光阴影不再盖住脸（清晰度优先于氛围）。</summary>
@@ -391,8 +433,9 @@ namespace AdversityRoad.Player
 
             float height = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
             float targetLen = 0.62f * height;                 // 刀刃总长≈角色身高 0.62
-            // 握持段：柄端沿刃向进入拳心约一个拳宽（四指环握的位置）
-            float gripInset = Mathf.Max(handWidth * 0.5f, targetLen * 0.06f);
+            // 握持段：柄端沿刃向进入拳心——手往刀刃方向靠（不再贴在剑柄末端/护手根）：
+            // 从柄端起 ≈1.6 个拳宽处握持，手落在剑柄中上段
+            float gripInset = Mathf.Max(handWidth * 1.6f, targetLen * 0.14f);
 
             // 定尺（世界空间长度→目标长度，单位安全）
             float curLenW = (w.TransformPoint(tipL) - w.TransformPoint(gripL)).magnitude;
