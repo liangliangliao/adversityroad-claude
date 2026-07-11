@@ -84,8 +84,8 @@ namespace AdversityRoad.Player
                 float want = 1f;
                 if (!(fp && e.isPlayer))
                 {
-                    // 镜头到躯干竖线段（脚→头）的最近距离（随标准体型 4.1m）
-                    float h = 3.9f * Mathf.Max(0.4f, e.root.lossyScale.y);
+                    // 镜头到躯干竖线段（脚→头）的最近距离（随标准体型 2.5m）
+                    float h = 2.4f * Mathf.Max(0.4f, e.root.lossyScale.y);
                     Vector3 feet = e.root.position - Vector3.up * (h * 0.5f);
                     float t = Mathf.Clamp(cam.y - feet.y, 0f, h);
                     Vector3 closest = feet + Vector3.up * t;

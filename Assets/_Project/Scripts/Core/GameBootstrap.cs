@@ -191,8 +191,8 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大（受击判定罩全身）
-            hurtCol.center = new Vector3(0, 0.9f, 0);
+            hurtCol.height = 2.6f;                       // 罩全身（脚≈-1 → 头≈1.6，随 2.5m 体型）
+            hurtCol.center = new Vector3(0, 0.3f, 0);
             hurtCol.radius = 0.55f;
             hurt.AddComponent<Hurtbox>();
 
@@ -392,7 +392,7 @@ namespace AdversityRoad.Core
             ec.profile = profile;
             ec.poser = poser;
 
-            ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 3.8f);
+            ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 2.4f);
 
             var dialogue = root.AddComponent<EnemyDialogue>();
             dialogue.displayName = profile.displayName;
@@ -405,8 +405,8 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大
-            hurtCol.center = new Vector3(0, 0.9f, 0);
+            hurtCol.height = 2.6f;                       // 罩全身（随 2.5m 体型）
+            hurtCol.center = new Vector3(0, 0.3f, 0);
             hurtCol.radius = 0.65f;
             hurt.AddComponent<Hurtbox>();
 

@@ -103,8 +103,9 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -3.8f), pitch = 3f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -4.6f), pitch = 4f },
+            // 距离略收（角色 2.5m，配合近距取景让人物更大、脸更清），但仍 >淡出阈值(2.1m)不糊镜
+            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 0.95f, -3.2f), pitch = 3f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.1f, -4.0f), pitch = 4f },
             new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -5.9f), pitch = 9f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };

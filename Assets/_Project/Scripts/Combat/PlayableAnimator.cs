@@ -89,11 +89,11 @@ namespace AdversityRoad.Combat
         /// <summary>驱动中的 Animator（供脚踝校准等后处理访问骨骼）。</summary>
         public Animator Animator => _animator;
 
-        // 步幅同步基准：该动作包在标准体型（4.1m，随 TargetHeight 同步）下
+        // 步幅同步基准：该动作包在标准体型（2.5m，随 TargetHeight 同步）下
         // 走/跑动画的自然位移速度（m/s）。播放速率 = 真实速度 / 自然速度 →
-        // 步频与实际位移匹配，脚不打滑。体型放大后按比例上调。
-        const float WalkNaturalSpeed = 3.6f;
-        const float RunNaturalSpeed = 8.6f;
+        // 步频与实际位移匹配，脚不打滑。自然速度∝腿长∝身高，随 TargetHeight 等比缩放。
+        const float WalkNaturalSpeed = 2.2f;
+        const float RunNaturalSpeed = 5.2f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
         // 动作库全量索引（片段名→输入口）：未映射到招式的片段也接入，供预览试播
         readonly Dictionary<string, int> _clipIndex = new Dictionary<string, int>();
