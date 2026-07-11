@@ -52,6 +52,11 @@ namespace AdversityRoad.Combat
         Vector3 _hipsBindLP;
         bool _hipsPin;
         bool _pendingGetUp;
+        // 双脚贴地校准：不同体型腿长≠动作数据骨架腿长（踮脚/悬空/陷地的根因）
+        Transform _footL, _footR;
+        float _groundLocalY = -1f;
+        float _modelBaseY;
+        float _feetOffset, _feetTarget;
 
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
@@ -73,13 +78,20 @@ namespace AdversityRoad.Combat
 
         void OnDestroy() { if (_mecanim != null) _mecanim.Destroy(); }
 
-        /// <summary>装配时注入模型根与髋骨（绑定姿态下记录髋骨水平锚点）。</summary>
-        public void SetMocapRoot(Transform model, Transform hips)
+        /// <summary>装配时注入模型根与髋骨（绑定姿态下记录髋骨水平锚点）；
+        /// footL/footR 与 groundLocalY 供双脚贴地校准。</summary>
+        public void SetMocapRoot(Transform model, Transform hips,
+            Transform footL = null, Transform footR = null, float groundLocalY = -1f)
         {
             _mocapModel = model;
             _hips = hips;
             _hipsPin = model != null && hips != null;
             if (_hipsPin) _hipsBindLP = model.InverseTransformPoint(hips.position);
+            _footL = footL;
+            _footR = footR;
+            _groundLocalY = groundLocalY;
+            _modelBaseY = model != null ? model.localPosition.y : 0f;
+            _feetOffset = _feetTarget = 0f;
         }
 
         void LateUpdate()
@@ -89,7 +101,32 @@ namespace AdversityRoad.Combat
             lp.x = _hipsBindLP.x;
             lp.z = _hipsBindLP.z;
             _hips.position = _mocapModel.TransformPoint(lp);
+
+            // 双脚贴地校准：动作数据把髋骨抬到【动作骨架】的高度，体型腿长不同的
+            // 角色会踮脚悬空/陷地。持续量测最低脚的局部高度，平滑修正模型整体 Y。
+            // 只在贴地常规姿态下更新目标（翻滚/击倒/腾空沿用上次校准值）。
+            if ((_footL != null || _footR != null) && visual != null)
+            {
+                if (_grounded && _pose == PoseState.Idle)
+                {
+                    float minY = float.MaxValue;
+                    if (_footL != null)
+                        minY = Mathf.Min(minY, visual.InverseTransformPoint(_footL.position).y);
+                    if (_footR != null)
+                        minY = Mathf.Min(minY, visual.InverseTransformPoint(_footR.position).y);
+                    if (minY < float.MaxValue * 0.5f)
+                        _feetTarget = Mathf.Clamp(_feetOffset + (_groundLocalY - minY), -0.9f, 0.9f);
+                }
+                _feetOffset = Mathf.Lerp(_feetOffset, _feetTarget, 5f * Time.deltaTime);
+                var mp = _mocapModel.localPosition;
+                mp.y = _modelBaseY + _feetOffset;
+                _mocapModel.localPosition = mp;
+            }
         }
+
+        /// <summary>某招式对应动捕片段的有效时长（无片段返回 0；翻滚时长匹配用）。</summary>
+        public float ActionClipLength(PoseState p) =>
+            Mecanim ? _mecanim.ActionLength(p) : 0f;
 
         /// <summary>从倒地爬起：倒地片段倒放呈现"腿脚先动、身体逐渐立起"的起身过程。</summary>
         public void PlayGetUp()

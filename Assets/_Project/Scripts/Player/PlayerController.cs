@@ -40,6 +40,7 @@ namespace AdversityRoad.Player
         LockOnSystem _lockOn;
         float _vy;
         float _dodgeTimer, _iframeTimer;
+        float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
         Vector3 _dodgeDir;
         Vector3 _lastPos;
         Vector3 _hVel;   // 平滑后的水平速度
@@ -80,7 +81,7 @@ namespace AdversityRoad.Player
             if (_dodgeTimer > 0)
             {
                 _dodgeTimer -= dt;
-                _cc.Move(_dodgeDir * dodgeSpeed * dt + Vector3.up * _vy * dt);
+                _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
                 return;
             }
@@ -127,7 +128,20 @@ namespace AdversityRoad.Player
                 // 翻滚方向即刻转身
                 transform.rotation = Quaternion.LookRotation(_dodgeDir);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
-                _dodgeTimer = dodgeDuration;
+                // 有专用翻滚片段时：闪避时长匹配片段（完整呈现整个滚翻动作），
+                // 总位移保持恒定（速度反比时长），无片段沿用默认参数
+                float dur = dodgeDuration;
+                _dodgeSpd = dodgeSpeed;
+                if (_anim != null)
+                {
+                    float clipLen = _anim.ActionClipLength(PoseState.Dodge);
+                    if (clipLen > 0.1f)
+                    {
+                        dur = Mathf.Clamp(clipLen * 0.85f, 0.42f, 0.7f);
+                        _dodgeSpd = dodgeSpeed * dodgeDuration / dur;   // 位移总量不变
+                    }
+                }
+                _dodgeTimer = dur;
                 _iframeTimer = dodgeIFrames;
                 if (_combat != null) _combat.RequestState(CombatState.Dodge);
                 return;

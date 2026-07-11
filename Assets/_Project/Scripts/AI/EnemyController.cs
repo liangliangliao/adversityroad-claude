@@ -562,7 +562,7 @@ namespace AdversityRoad.AI
             // ---- 防御：交战中的敌人有概率闪避（完全躲开）或格挡（大幅减伤），
             //      概率随敌人级别/攻击性上升（Boss 更像高手），带冷却防无敌化 ----
             bool guardedHit = false;
-            if (!unaware && _defendCd <= 0f && State != EnemyState.Stagger)
+            if (!unaware && _defendCd <= 0f && State != EnemyState.Stagger && !dmg.unblockable)
             {
                 float chance = (profile.category == EnemyCategory.Boss ? 0.34f : 0.1f)
                              + 0.18f * profile.aggression;
@@ -598,8 +598,8 @@ namespace AdversityRoad.AI
             }
 
             // ---- 对攻：敌人正处于出招前摇时被打 = 双方硬碰硬，都掉血；
-            //      攻击力高的一方受伤更小、给对方造成更大伤害 ----
-            if (_telegraphing && _player != null)
+            //      攻击力高的一方受伤更小、给对方造成更大伤害（必中技不触发对攻反伤）----
+            if (_telegraphing && _player != null && !dmg.unblockable)
             {
                 var pc = _player.GetComponent<PlayerCombatController>();
                 if (pc != null)
@@ -725,6 +725,20 @@ namespace AdversityRoad.AI
                 if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
                 CombatFeedback.SlowMo(0.5f, 0.15f);
             }
+        }
+
+        /// <summary>蓄力气场外推：玩家蓄力风场把靠近的敌人持续推出半径外（无法近身攻击）。
+        /// 越靠近中心推力越强；同时打断正在进行的出手前摇。</summary>
+        public void Repel(Vector3 center, float radius, float strength, float dt)
+        {
+            if (State == EnemyState.Dead) return;
+            Vector3 away = transform.position - center; away.y = 0;
+            float d = away.magnitude;
+            if (d > radius || d < 0.01f) return;
+            float k = 1f - d / radius;
+            Vector3 step = away.normalized * (strength * (0.35f + k)) * dt;
+            if (AgentReady) _agent.Move(step);
+            else transform.position += step;
         }
 
         /// <summary>受击退步：0.22 秒滑完击退量（快出慢收），不瞬移。</summary>

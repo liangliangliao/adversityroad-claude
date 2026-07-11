@@ -504,6 +504,49 @@ namespace AdversityRoad.Combat
             if (e != null) Destroy(e);
         }
 
+        // ---------- 蓄力气场（狂风环流） ----------
+
+        /// <summary>蓄力气场：环身狂风——细长风弧绕角色高速环绕上升 + 地面气浪环，
+        /// charge01 越大风势越强。读作"强大气流护体，敌人无法近身"。</summary>
+        public static void ChargeGale(Vector3 pos, float charge01)
+        {
+            Ensure();
+            int n = 2 + Mathf.RoundToInt(charge01 * 3f);
+            for (int i = 0; i < n; i++) _i.StartCoroutine(_i.GaleArc(pos, charge01));
+            ShockRing(pos, new Color(0.72f, 0.9f, 1f), 2.4f + charge01 * 1.6f);
+        }
+
+        IEnumerator GaleArc(Vector3 center, float charge01)
+        {
+            var arc = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            StripCol(arc);
+            arc.transform.localScale = new Vector3(0.05f, 0.07f, Random.Range(1.0f, 1.8f));
+            arc.GetComponent<MeshRenderer>().sharedMaterial =
+                MatFX(Color.Lerp(new Color(0.75f, 0.92f, 1f), Color.white, 0.4f), 0.65f);
+            float ang = Random.Range(0f, 360f);
+            float h = Random.Range(0.1f, 0.7f);
+            float spd = Random.Range(460f, 640f) * (0.8f + 0.5f * charge01);   // 高速环绕=强气流
+            float t = 0, dur = 0.5f;
+            while (t < dur && arc != null)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                ang += spd * dt;
+                h += 1.7f * dt;                                    // 螺旋上升
+                float r = 1.4f + t * 0.9f;                          // 逐渐外扩
+                float rad = ang * Mathf.Deg2Rad;
+                Vector3 p = center + new Vector3(Mathf.Cos(rad), 0, Mathf.Sin(rad)) * r
+                            + Vector3.up * h;
+                // 朝切线方向（风沿环流方向拉长）
+                Vector3 tangent = new Vector3(-Mathf.Sin(rad), 0.12f, Mathf.Cos(rad));
+                arc.transform.position = p;
+                arc.transform.rotation = Quaternion.LookRotation(tangent);
+                FadeAlpha(arc, 1f - dt / dur * 1.2f);
+                yield return null;
+            }
+            if (arc != null) Destroy(arc);
+        }
+
         // ---------- 时缓（完美闪避） ----------
 
         public static void SlowMo(float scale = 0.3f, float realDuration = 0.35f)

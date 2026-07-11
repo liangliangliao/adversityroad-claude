@@ -24,8 +24,9 @@ namespace AdversityRoad.Combat
     {
         /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。
         /// 参考黑神话悟空的人物画面占比：配合镜头取景（FOV/距离），角色约占屏高一半。
-        /// 按实测反馈整体上调（原 2.3 显小）：玩家/角色贰/敌人全体等比放大。</summary>
-        public const float TargetHeight = 2.85f;
+        /// 按实测反馈两轮上调（2.3→2.85→3.4，确保脸部特征清晰可见）：
+        /// 玩家/角色贰/敌人全体等比放大。</summary>
+        public const float TargetHeight = 3.4f;
 
         /// <summary>该项目是否配置了动捕资源（有任一模型预制体即认为启用）。</summary>
         public static bool Available =>
@@ -94,9 +95,14 @@ namespace AdversityRoad.Combat
             }
 
             // 髋骨 XZ 锚定：本包走/跑动作带前进位移（非原地），运行时把髋骨
-            // 水平位置钉回绑定位（纵向起伏保留），世界位移交给控制器
+            // 水平位置钉回绑定位（纵向起伏保留），世界位移交给控制器；
+            // 脚骨供双脚贴地校准（体型腿长与动作骨架不同时不踮脚/不悬空）
             var hips = FindBone(model.transform, "hips");
-            poser.SetMocapRoot(model.transform, hips);
+            var footL = FindBone(model.transform, "lefttoe");
+            if (footL == null) footL = FindBone(model.transform, "leftfoot");
+            var footR = FindBone(model.transform, "righttoe");
+            if (footR == null) footR = FindBone(model.transform, "rightfoot");
+            poser.SetMocapRoot(model.transform, hips, footL, footR, groundLocalY);
 
             // ---- 兵器（修复"手里多一把方块武器"）----
             // 优先用模型自带兵器；否则加载素材兵器预制体；都没有则不挂（不再用程序化方块）。
@@ -236,6 +242,10 @@ namespace AdversityRoad.Combat
             lp.y += groundLocalY - feetLocal;
             model.localPosition = lp;
         }
+
+        /// <summary>模型整体高度（渲染包围盒，找不到渲染器返回 0）。</summary>
+        public static float ModelHeight(Transform model) =>
+            TryBounds(model, out Bounds b) ? b.size.y : 0f;
 
         /// <summary>合并所有渲染器的世界包围盒。</summary>
         static bool TryBounds(Transform model, out Bounds bounds)

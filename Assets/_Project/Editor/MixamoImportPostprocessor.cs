@@ -25,7 +25,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 7;
+        public override uint GetVersion() => 8;
 
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
@@ -37,6 +37,9 @@ namespace AdversityRoad.EditorTools
             var mi = assetImporter as ModelImporter;
             if (mi == null) return;
             mi.animationType = ModelImporterAnimationType.Generic;
+            // 武器网格开启 Read/Write：运行时截面分析判柄端（握持对齐）需要读顶点
+            if (assetPath.Replace('\\', '/').Contains("/Characters/Weapons"))
+                mi.isReadable = true;
             // 匹配 Anims/ 与角色专属动作库 Anims2/（及未来的 AnimsN/）
             bool isAnim = assetPath.Replace('\\', '/').Contains("/Characters/Anims");
             if (isAnim)

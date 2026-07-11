@@ -15,5 +15,6 @@ namespace AdversityRoad.Combat
         public bool hasContact;                     // contactPoint 是否有效（否则退回估算位置）
         public string attackerId;
         public bool isMentalOnly;         // 纯心理攻击（凝视、低语）不触发受击动画
+        public bool unblockable;          // 必中：无法被格挡/闪避/对攻化解（蓄力技）
     }
 }
