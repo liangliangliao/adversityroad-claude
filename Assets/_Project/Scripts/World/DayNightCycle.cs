@@ -10,7 +10,7 @@ namespace AdversityRoad.World
     {
         public Light sun;
         public Light cameraFill;                       // 镜头补光（headlight）：白天照亮迎镜脸部
-        public float cameraFillDay = 0.7f;             // 白天补光强度
+        public float cameraFillDay = 1.05f;            // 白天补光强度（迎镜脸部足量去黑）
         public float dayLength = 240f;                 // 一个完整昼夜的秒数
         [Range(0f, 1f)] public float time01 = 0.22f;   // 0=日出 0.25=正午 0.75=午夜
 

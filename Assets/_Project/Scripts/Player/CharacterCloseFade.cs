@@ -13,9 +13,12 @@ namespace AdversityRoad.Player
     public class CharacterCloseFade : MonoBehaviour
     {
         public Transform player;
-        [Tooltip("开始淡出的镜头距离")] public float startDist = 2.1f;
-        [Tooltip("最透时的镜头距离")] public float minDist = 0.75f;
-        [Range(0f, 1f)] public float minAlpha = 0.12f;
+        // 收紧触发距离：镜头碰撞回缩下限≈1.35m，之前 2.1m 起淡→靠近建筑镜头一回缩
+        // 角色就被淡成半透明("整个人变虚不清晰")。收到 1.1m 才起淡、且保留更高保底
+        // 不透明度：贴墙近观角色依然清晰，只有镜头真要钻进身体时才淡开留出视野。
+        [Tooltip("开始淡出的镜头距离")] public float startDist = 1.1f;
+        [Tooltip("最透时的镜头距离")] public float minDist = 0.45f;
+        [Range(0f, 1f)] public float minAlpha = 0.32f;
         public float fadeSpeed = 7f;
 
         class Entry
