@@ -62,6 +62,27 @@ namespace AdversityRoad.EditorTools
                 mi.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
         }
 
+        /// <summary>角色贴图导入设置：抽出的皮肤贴图(maria_/Paladin_*)—— *_normal 按
+        /// 法线贴图导入(否则接到 BumpMap 会报"不是法线贴图"且着色发蓝)，diffuse/specular
+        /// 保持普通 sRGB 颜色贴图。仅作用于 Resources/Characters/ 下的 png。</summary>
+        void OnPreprocessTexture()
+        {
+            string p = assetPath.Replace('\\', '/');
+            if (!p.Contains("/Resources/Characters/")) return;
+            var ti = assetImporter as TextureImporter;
+            if (ti == null) return;
+            string n = System.IO.Path.GetFileNameWithoutExtension(p).ToLowerInvariant();
+            if (n.EndsWith("_normal") || n.Contains("normal") || n.Contains("_nrm"))
+            {
+                ti.textureType = TextureImporterType.NormalMap;
+            }
+            else
+            {
+                ti.textureType = TextureImporterType.Default;
+                ti.sRGBTexture = true;   // 颜色贴图按 sRGB
+            }
+        }
+
         void OnPreprocessAnimation()
         {
             if (!InScope) return;
