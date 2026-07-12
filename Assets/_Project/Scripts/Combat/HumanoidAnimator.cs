@@ -100,8 +100,9 @@ namespace AdversityRoad.Combat
 
         /// <summary>脚掌放平修正：异源骨骼脚踝 rest 朝向不同，Mixamo 脚踝旋转数据套
         /// 上去会让脚尖【持续下垂(踮脚)或持续上翘(鞋尖翘起)】。把脚尖俯仰角钳制到
-        /// 大致贴地的窄带 [-35°下垂, +12°上翘] 内——两端异常都拉回接近水平贴地，
-        /// 正常步态的自然绷脚/抬脚仍在带内不受影响。</summary>
+        /// 大致贴地的窄带 [-35°下垂, +3°上翘] 内——两端异常都拉回接近水平贴地。
+        /// 上翘上限收到近乎水平(角色贰的鞋在原模型里本就平贴地面)，
+        /// 正常步态的自然绷脚仍在下垂带内不受影响。</summary>
         static void LevelAnkle(Transform ankle, Transform toe)
         {
             if (ankle == null || toe == null || ankle == toe) return;
@@ -110,7 +111,7 @@ namespace AdversityRoad.Combat
             if (len < 1e-4f) return;
             float sinPitch = v.y / len;                     // >0 脚尖上翘，<0 下垂
             const float maxDropSin = -0.57f;                // 下垂上限 ≈35°
-            const float maxRiseSin = 0.21f;                 // 上翘上限 ≈12°（修鞋尖翘起）
+            const float maxRiseSin = 0.05f;                 // 上翘上限 ≈3°（贴地，修鞋尖翘起）
             float clamped = Mathf.Clamp(sinPitch, maxDropSin, maxRiseSin);
             if (Mathf.Abs(clamped - sinPitch) < 1e-3f) return;
             Vector3 flat = new Vector3(v.x, 0, v.z);

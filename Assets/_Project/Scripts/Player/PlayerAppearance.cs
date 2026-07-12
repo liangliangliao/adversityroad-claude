@@ -358,7 +358,15 @@ namespace AdversityRoad.Player
             else
                 // 无眼骨：头骨原点上方约半个头宽（眼高）、前方约 0.4 头宽（贴脸不悬空）
                 target = head.position + fwd * (headW * 0.4f) + Vector3.up * (headW * 0.5f);
-            mk.position += target - mk.TransformPoint(lb.center);
+
+            // 按面具【背面】贴脸就座，而不是把中心对到脸点——否则半个厚度陷进头里，
+            // 头部几何(鼻/颊)戳穿面具只露出残片，看起来"残缺不完整"。把整块面具沿
+            // 法向前推到脸表面之外(半厚 + 微量间隙)，正面完整呈现、不与头穿插。
+            // 对齐后面具正面法向已转到角色前方(fwd)，沿 fwd 前推即"往脸外"。
+            float halfDepthW = (mk.TransformPoint(lb.center + axisOf(thin) * sz[thin] * 0.5f)
+                - mk.TransformPoint(lb.center)).magnitude;
+            Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f);
+            mk.position += seat - mk.TransformPoint(lb.center);
         }
 
         /// <summary>在头骨下找眼睛骨（多种命名）。规范化去符号后包含匹配。</summary>

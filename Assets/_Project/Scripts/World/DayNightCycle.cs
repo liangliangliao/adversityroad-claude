@@ -9,6 +9,8 @@ namespace AdversityRoad.World
     public class DayNightCycle : MonoBehaviour
     {
         public Light sun;
+        public Light cameraFill;                       // 镜头补光（headlight）：白天照亮迎镜脸部
+        public float cameraFillDay = 0.7f;             // 白天补光强度
         public float dayLength = 240f;                 // 一个完整昼夜的秒数
         [Range(0f, 1f)] public float time01 = 0.22f;   // 0=日出 0.25=正午 0.75=午夜
 
@@ -37,6 +39,11 @@ namespace AdversityRoad.World
             }
 
             RenderSettings.ambientLight = Color.Lerp(NightAmbient, DayAmbient, dayFactor);
+
+            // 镜头补光随昼夜收放：白天足量补光去除迎镜脸部阴影；夜晚收到很低，
+            // 保留夜的暗调氛围（不把整片场景照成平光白昼）。
+            if (cameraFill != null)
+                cameraFill.intensity = Mathf.Lerp(0.12f, cameraFillDay, dayFactor);
 
             // 距离雾：极淡，只作远景层次，不遮挡视野（可看清整片区域与远方建筑）
             RenderSettings.fog = true;

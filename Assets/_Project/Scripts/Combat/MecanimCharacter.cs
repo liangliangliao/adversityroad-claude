@@ -24,9 +24,11 @@ namespace AdversityRoad.Combat
     {
         /// <summary>标准站立身高（米）。根节点体型缩放会在此基础上叠加（大体型敌人更高）。
         /// 参考黑神话悟空的人物画面占比：配合镜头取景（FOV/距离），角色约占屏高一半。
-        /// 按实测反馈三轮上调（2.3→2.85→3.4→4.1，确保脸部特征清晰可见）：
-        /// 玩家/角色贰/敌人全体等比放大。</summary>
-        public const float TargetHeight = 4.1f;
+        /// 之前误上调到 4.1m——远超镜头取景设计基准(≈2.3m)与物理胶囊(2m 高)，角色
+        /// 在画面里过大、与场景道具(路灯/箱子/门)完全不成比例。回落到 2m：脚底(-1)到
+        /// 头顶(+1)正好等于胶囊高度，人物与场景比例真实。步幅同步(见 PlayableAnimator
+        /// 的自然速度)随本值等比缩放，缩小后走跑不打滑。</summary>
+        public const float TargetHeight = 2.0f;
 
         /// <summary>该项目是否配置了动捕资源（有任一模型预制体即认为启用）。</summary>
         public static bool Available =>
@@ -297,6 +299,10 @@ namespace AdversityRoad.Combat
             foreach (var t in model.GetComponentsInChildren<Transform>(true))
             {
                 string n = t.name.ToLowerInvariant();
+                // 排除外装武器/面具挂点（名字含 "equipped"）——否则上一次装备的
+                // "EquippedWeapon" 因含 "weapon" 会被误判成模型自带兵器，导致换回
+                // 默认武器时既不复原自带兵器也不补程序化剑，默认武器凭空消失。
+                if (n.Contains("equipped")) continue;
                 foreach (var h in WeaponHints)
                     if (n.Contains(h) && !n.Contains("hand") && !n.Contains("mixamorig")) return t;
             }

@@ -288,20 +288,26 @@ namespace AdversityRoad.Core
             if (closeFade == null) closeFade = camGo.AddComponent<CharacterCloseFade>();
             closeFade.player = _player.transform;
 
-            // 取景补光：挂在镜头上的柔和点光——始终照亮镜头前的角色面部
-            // （挂角色身上的补光在角色面向镜头时打在背面，脸仍在阴影里）
+            // 取景补光·镜头平行光(headlight)：方向 = 镜头前方，随镜头转动，
+            // 无距离衰减——任何朝向镜头的表面(=玩家/敌人的脸)恒被照亮。之前用点光，
+            // 点光在战斗距离(≈5m)已被距离衰减削弱，白天主光偏后时脸仍落在阴影里
+            // （截图反馈的"脸上阴影"）。平行光按法向照亮迎镜面，彻底解决背光脸黑，
+            // 强度控制在补光比例(0.7 < 主光 1.15)，不喧宾夺主、不过曝。
             if (camGo.transform.Find("CameraFillLight") == null)
             {
                 var fillGo = new GameObject("CameraFillLight");
                 fillGo.transform.SetParent(camGo.transform, false);
-                fillGo.transform.localPosition = new Vector3(0, 0.6f, 0.4f);
+                fillGo.transform.localPosition = new Vector3(0, 0.4f, 0f);
+                fillGo.transform.localRotation = Quaternion.identity;   // 沿镜头前方照射
                 var fill = fillGo.AddComponent<Light>();
-                fill.type = LightType.Point;
-                fill.intensity = 1.6f;                       // 加强：压过主光在背光侧的阴影，脸部清晰
-                fill.range = 30f;                            // 覆盖战斗距离(≈5-8m)的角色
+                fill.type = LightType.Directional;
+                fill.intensity = 0.7f;                       // 补光比例：迎镜脸部去黑，不过曝
                 fill.color = new Color(1f, 0.97f, 0.92f);
-                fill.shadows = LightShadows.None;
+                fill.shadows = LightShadows.None;            // 补光不投影，避免二次脸部阴影
                 fill.renderMode = LightRenderMode.ForcePixel;
+                // 交给昼夜循环按白天/夜晚收放强度（夜晚收低保留暗调，不平光化场景）
+                if (_world != null && _world.dayNight != null)
+                    _world.dayNight.cameraFill = fill;
             }
 
             // 音效需要一个 AudioListener（运行时建的相机不会自带）

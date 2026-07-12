@@ -9,7 +9,18 @@ namespace AdversityRoad.Combat
     public class CombatStateMachine : MonoBehaviour
     {
         public CombatState Current { get; private set; } = CombatState.Idle;
-        public bool InCombat { get; set; }
+
+        /// <summary>临战标志：出招时置真并刷新计时，最后一次战斗动作 4 秒后自动回落为假。
+        /// 之前各出招处只置真、从不复位，一旦出过手就永久临战——无敌人时也一直端着
+        /// 格斗架势、不回待机。改为带超时的自动衰减：脱战一段时间即松架，配合
+        /// PlayerController 的「敌人逼近才临战」判定，无战斗时角色自然回到待机。</summary>
+        public bool InCombat
+        {
+            get => Time.time - _lastCombatTime < CombatHoldTime;
+            set => _lastCombatTime = value ? Time.time : -999f;
+        }
+        const float CombatHoldTime = 4f;
+        float _lastCombatTime = -999f;
 
         Animator _anim;
         float _stateTimer;
