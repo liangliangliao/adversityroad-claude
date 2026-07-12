@@ -342,8 +342,8 @@ namespace AdversityRoad.Player
 
             var bp = Object.Instantiate(prefab, back, false);
             bp.name = EquippedBackpackName;
-            FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 背包白模修复
-            TintIfUntextured(bp, new Color(0.28f, 0.26f, 0.22f));   // 裸模背包给中性帆布色，不刺眼纯白
+            FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 有贴图才接线
+            // 不做任何染色：保持模型本色（本背包原型即白色，按用户要求恢复本色）
             FitBackpack(bp.transform, back);
             DisableSelfShadow();
         }
@@ -364,8 +364,10 @@ namespace AdversityRoad.Player
             Vector3 up = Vector3.up;
             Vector3 right = visualRoot.right;
 
-            // 与角色同朝向（背面贴脊背、正面朝前）
-            bp.rotation = visualRoot.rotation;
+            // 朝向：背包【背板/肩带面】要贴向角色脊背（朝角色前方），主体鼓向身后。
+            // 实测本背包肩带在模型 -Z 面、Y 为高——LookRotation(-fwd) 让模型 +Z(鼓面)朝身后、
+            // -Z(背板+肩带)贴向身体，肩带自上背绕向双肩，而不是朝后翘成两根天线。
+            bp.rotation = Quaternion.LookRotation(-fwd, up);
 
             // 定尺：最大边 ≈ 0.30 身高（约 0.6m，正常背包尺度）。三轴世界跨度取最大，
             // 与模型自身朝向无关，绝不会因测到薄轴而把整包放大到吞屏。
@@ -374,10 +376,10 @@ namespace AdversityRoad.Player
                 Mathf.Max(WorldExtentAlong(bp, lb, up), WorldExtentAlong(bp, lb, fwd)));
             if (maxDim > 1e-4f) bp.localScale *= Mathf.Clamp(target / maxDim, 0.001f, 200f);
 
-            // 座位：上背中央，沿后方外移半个厚度 + 微间隙，略上移到肩胛线；包围盒中心
-            // 对到座点（与模型 pivot 无关，不会因 pivot 偏移而飞到身侧）
+            // 座位：挂在上背，沿后方外移半个厚度 + 微间隙，并【下移】约 0.1 身高——让包体骑在
+            // 中/上背、顶部到肩线，而不是整包顶到后脑。包围盒中心对到座点(与 pivot 无关)。
             float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
-            Vector3 seat = back.position - fwd * (halfDepth + bodyH * 0.02f) + up * (bodyH * 0.02f);
+            Vector3 seat = back.position - fwd * (halfDepth + bodyH * 0.03f) - up * (bodyH * 0.10f);
             bp.position += seat - bp.TransformPoint(lb.center);
         }
 
@@ -458,12 +460,11 @@ namespace AdversityRoad.Player
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
             // 脸面锚点：优先眼骨中点（各模型一致地落在眼睛上，不随头骨原点高低漂移）
-            // 面具眼孔对准眼睛：面具的两个眼孔通常在其几何中心【偏上】，若把中心对到
-            // 眼睛，眼孔会落到眼睛上方(眉线)——挡住眼睛。故把面具中心【略下移】，让偏上的
-            // 眼孔恰好降到眼睛高度。rise 为负=下移；量取面具纵向尺寸的一小段(自适应各面具)。
+            // 面具眼孔对准眼睛：猫耳/顶饰把面具几何中心【抬高】，眼孔落在中心【偏下】；
+            // 若把中心对到眼睛，眼孔会降到眼睛下方（遮住眼睛）。把中心【上移】一小段，让
+            // 偏下的眼孔升到眼睛高度对准双眼。rise 为正=上移。
             Vector3 up = Vector3.up;
-            float maskV = WorldExtentAlong(mk, lb, up);          // 面具纵向世界跨度(定尺后)
-            float rise = -maskV * 0.18f;                          // 眼孔≈中心上方 0.18 纵高，下移等量对齐
+            float rise = headW * 0.18f;                           // 上移量(实测 0.34 偏高、0 偏低，取中)
             var eyeL = FindEye(head, "lefteye", "eyel", "eye_l");
             var eyeR = FindEye(head, "righteye", "eyer", "eye_r");
             Vector3 target;
@@ -564,24 +565,6 @@ namespace AdversityRoad.Player
             }
         }
 
-        /// <summary>给【无贴图】的裸模型上一个中性底色（避免默认纯白刺眼）。已带贴图的不动。</summary>
-        void TintIfUntextured(GameObject go, Color tint)
-        {
-            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
-            {
-                if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
-                var mats = r.materials;
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    var m = mats[i];
-                    if (m == null || HasBaseTex(m)) continue;
-                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", tint);
-                    if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
-                }
-                r.materials = mats;
-            }
-        }
-
         /// <summary>材质是否已有【真实】底色贴图（跨 URP 与 glTFast 命名）。排除 1×1/极小
         /// 占位贴图——glTFast 找不到外部贴图时可能挂一张纯白占位图，误判成"已有贴图"就还是
         /// 白模；≤4px 视为占位，仍走目录贴图接线。</summary>
@@ -667,11 +650,20 @@ namespace AdversityRoad.Player
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
-            // 柄端判定：① 柄/握把子节点(grip/handle/hilt/tsuka/柄) ② 网格截面分析
-            // (尖端最细=柄端在另一端) ③ pivot 就近兜底
+            // 柄端判定（多信号，优先级从高到低）：
+            //   ① 柄/握把子节点(grip/handle/hilt/tsuka/柄)——最可靠
+            //   ② 模型 pivot 明确落在某一端：绝大多数武器建模把原点放在握柄处，
+            //      故 pivot 近的那端即柄端。实测 snake-katana(pivot 在高端)、snake-sword
+            //      (pivot 在低端)都靠这条判对——蛇形波刃截面法失效时它兜住
+            //   ③ 网格截面分析：最宽片(护手)所在半段=柄端（Sword 18 这类 pivot 居中的靠它）
+            //   ④ pivot 就近兜底
             Vector3 gripL, tipL;
             var gripNode = FindDeep(w, "grip") ?? FindDeep(w, "handle")
                 ?? FindDeep(w, "hilt") ?? FindDeep(w, "tsuka") ?? FindDeep(w, "柄");
+            Vector3 axisVec = endB - endA;
+            float axisLen2 = axisVec.magnitude;
+            float originFrac = axisLen2 > 1e-5f
+                ? Vector3.Dot(-endA, axisVec / axisLen2) / axisLen2 : 0.5f;   // 0=endA 端,1=endB 端
             if (gripNode != null)
             {
                 Vector3 g = w.InverseTransformPoint(gripNode.position);
@@ -679,6 +671,8 @@ namespace AdversityRoad.Player
                 gripL = aNear ? endA : endB;
                 tipL = aNear ? endB : endA;
             }
+            else if (originFrac < 0.28f) { gripL = endA; tipL = endB; }   // pivot 贴近低端=柄
+            else if (originFrac > 0.72f) { gripL = endB; tipL = endA; }   // pivot 贴近高端=柄
             else if (GripEndByProfile(w, lb, out bool gripAtA, endA, endB))
             {
                 gripL = gripAtA ? endA : endB;
