@@ -213,6 +213,10 @@ namespace AdversityRoad.Player
 
         void ApplyGravityOnly(float dt)
         {
+            // 硬锁状态(重击蓄力/聚气、施法、倒地等)：只落重力、水平零位移，且清空残余
+            // 水平速度——聚气时玩家原地扎稳，不带着惯性前滑（"漂移"），锁定解除也不会
+            // 突然窜出一段。
+            _hVel = Vector3.zero;
             _vy = _cc.isGrounded ? -1f : _vy + gravity * dt;
             _cc.Move(Vector3.up * _vy * dt);
         }
