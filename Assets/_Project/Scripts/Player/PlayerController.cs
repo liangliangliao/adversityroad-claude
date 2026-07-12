@@ -38,6 +38,7 @@ namespace AdversityRoad.Player
         CombatStateMachine _combat;
         HumanoidAnimator _anim;
         LockOnSystem _lockOn;
+        PlayerAppearance _appearance;
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
@@ -92,6 +93,13 @@ namespace AdversityRoad.Player
 
             // 蹲伏切换（潜行/低姿态）
             if (Input.GetKeyDown(KeyCode.C) || MobileInput.GetDown("Crouch")) ToggleCrouch();
+
+            // 拔刀/收刀（带剑鞘武器，手动按钮触发）
+            if (Input.GetKeyDown(KeyCode.T) || MobileInput.GetDown("Sheathe"))
+            {
+                if (_appearance == null) _appearance = GetComponent<PlayerAppearance>();
+                if (_appearance != null) _appearance.ToggleWeaponDrawn();
+            }
 
             Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
             input += MobileInput.Move;                       // 合并虚拟摇杆

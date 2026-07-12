@@ -61,7 +61,6 @@ namespace AdversityRoad.Player
         const string WeaponPref = "player_weapon";
         const string MaskPref = "player_mask";
         const string BackpackPref = "player_backpack";
-        const string GripFlipPref = "wgrip_";   // + 武器名 → 该武器是否翻转握向(1=翻转)
         const string EquippedName = "EquippedWeapon";
         const string EquippedMaskName = "EquippedMask";
         const string EquippedBackpackName = "EquippedBackpack";
@@ -143,18 +142,6 @@ namespace AdversityRoad.Player
             ApplyBackpack();
             Core.GameEvents.RaiseSubtitle(string.IsNullOrEmpty(CurrentBackpack)
                 ? "已卸下背包" : "已背上：" + CurrentBackpack);
-        }
-
-        /// <summary>翻转当前武器的握向（自动判柄不准时手动纠正：柄↔尖对调），按武器名
-        /// 持久化，立即重新装配生效。默认武器（无名）不处理。</summary>
-        public void FlipCurrentWeaponGrip()
-        {
-            if (string.IsNullOrEmpty(CurrentWeapon)) return;
-            string key = GripFlipPref + CurrentWeapon;
-            PlayerPrefs.SetInt(key, PlayerPrefs.GetInt(key, 0) == 1 ? 0 : 1);
-            PlayerPrefs.Save();
-            ApplyWeapon();
-            Core.GameEvents.RaiseSubtitle("已翻转握向：" + CurrentWeapon);
         }
 
         /// <summary>从武器库选一件武器拿在手中（null/"" = 恢复默认佩剑），重选即替换。</summary>
@@ -349,16 +336,20 @@ namespace AdversityRoad.Player
                 if (v > bestV) { bestV = v; bestMesh = t; }
             }
             if (bestMesh == null) return null;
-            // 回溯到 w 下、且不在鞘子树内的最高层祖先
+            // 回溯剑身子树根：向上走，但【一旦某父节点的子树里也含剑鞘就停下】——否则会一路
+            // 走到含剑+鞘的公共祖先(gltf 层级 Sketchfab_model>Collada>Sword/Scabbard)，把整套
+            // 当成"剑身"，导致拔刀时把剑鞘也一起拽走、默认态剑鞘错乱。(scab.IsChildOf(parent)
+            // = 剑鞘在 parent 子树内)
             Transform r = bestMesh;
             while (r.parent != null && r.parent != w &&
-                   !(scab != null && r.parent.IsChildOf(scab)))
+                   !(scab != null && scab.IsChildOf(r.parent)))
                 r = r.parent;
             return r;
         }
 
-        /// <summary>装配成套带鞘武器：整套（剑+鞘）挂左手作收刀态，剑身先【插鞘对齐】并记录
-        /// 收刀本地姿态；再挂 WeaponSheath 控制器，临战时把剑身抽到右手（与其它剑一致握位）。</summary>
+        /// <summary>装配成套带鞘武器：剑身在模型里【本就已插在剑鞘中】(实测该模型剑柄露出鞘口、
+        /// 剑身没入鞘内)，故【不再重新对齐】(之前的对齐反而把它拆散了)——整套(剑+鞘)按原样挂
+        /// 左手、左手横握剑鞘中部，记录剑身收刀本地姿态；挂 WeaponSheath，拔刀时把剑身抽到右手。</summary>
         void SetupSheathedWeapon(Transform set, Transform blade, Transform scab, Transform lhand, Transform rhand)
         {
             set.SetParent(lhand, false);
@@ -366,8 +357,7 @@ namespace AdversityRoad.Player
             set.localRotation = Quaternion.identity;
             set.localScale = Vector3.one;
 
-            // 1) 先把剑身插进剑鞘（长轴对齐 + 中心套入）
-            AlignBladeIntoScabbard(blade, scab);
+            // 剑身与鞘保持模型原样(剑已在鞘中)，不做任何相对对齐
 
             // 2) 定尺：整套按【剑鞘长度≈0.62 身高】等比缩放
             float targetLen = 0.62f * MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
@@ -414,21 +404,6 @@ namespace AdversityRoad.Player
                     if (g != null) Destroy(g);
                 });
             if (poser != null) poser.weaponPivot = blade;
-        }
-
-        /// <summary>把剑身插进剑鞘：剑身长轴对齐剑鞘长轴（同向），并把剑身包围盒中心套到
-        /// 剑鞘包围盒中心（剑大致没入鞘中）。世界空间对齐；调用后剑身相对其父的本地姿态即收刀姿态。</summary>
-        void AlignBladeIntoScabbard(Transform blade, Transform scab)
-        {
-            if (!LocalBounds(blade, out Bounds bb) || !LocalBounds(scab, out Bounds sb)) return;
-            LongAxisEnds(bb, out Vector3 ba0, out Vector3 ba1);
-            LongAxisEnds(sb, out Vector3 sa0, out Vector3 sa1);
-            Vector3 bAxisW = blade.TransformPoint(ba1) - blade.TransformPoint(ba0);
-            Vector3 sAxisW = scab.TransformPoint(sa1) - scab.TransformPoint(sa0);
-            if (bAxisW.sqrMagnitude < 1e-8f || sAxisW.sqrMagnitude < 1e-8f) return;
-            blade.rotation = Quaternion.FromToRotation(bAxisW.normalized, sAxisW.normalized) * blade.rotation;
-            Vector3 delta = scab.TransformPoint(sb.center) - blade.TransformPoint(bb.center);
-            blade.position += delta;
         }
 
         /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，
@@ -516,10 +491,12 @@ namespace AdversityRoad.Player
                 Mathf.Max(WorldExtentAlong(bp, lb, up), WorldExtentAlong(bp, lb, fwd)));
             if (maxDim > 1e-4f) bp.localScale *= Mathf.Clamp(target / maxDim, 0.001f, 200f);
 
-            // 座位：紧贴上背——沿后方仅外移半个厚度(无额外间隙，背板贴住脊背)，略下移到肩胛
-            // 线。包围盒中心对到座点(与 pivot 无关，不会因 pivot 偏移飞到身侧)。
+            // 座位：紧贴上背——沿后方仅外移半个厚度(背板贴住脊背)；并把【包顶抬到肩线】
+            // (spine2 上方约 0.12 身高)，让顶部两条肩带正好落在双肩上、包体下垂到中背，
+            // 而不是整包缩在肩胛下方。包围盒中心对到座点(与 pivot 无关，不会飞到身侧)。
             float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
-            Vector3 seat = back.position - fwd * halfDepth - up * (bodyH * 0.05f);
+            float packH = WorldExtentAlong(bp, lb, up);
+            Vector3 seat = back.position - fwd * halfDepth + up * (bodyH * 0.12f - packH * 0.5f);
             bp.position += seat - bp.TransformPoint(lb.center);
         }
 
@@ -774,6 +751,30 @@ namespace AdversityRoad.Player
             endB = lb.center + axisDir * ext;
         }
 
+        /// <summary>建模原点(主网格 transform 的局部原点=艺术家放置的模型原点，几乎总在握柄
+        /// 处)投影到长轴的归一化位置(0=endA 端..1=endB 端，可超出[0,1])。用【主网格自身
+        /// transform】的原点，不受实例化根/导入包装节点位移影响——这是修 snake-katana 握反的关键
+        /// (之前用实例化根原点被包装节点带偏了)。无网格时返回 0.5(居中，交给截面法)。</summary>
+        static float ModelOriginFrac(Transform w, Vector3 endA, Vector3 axisVec, float axisLen)
+        {
+            if (axisLen < 1e-5f) return 0.5f;
+            Transform main = null; int bestV = 0;
+            foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true))
+            {
+                int v = mf.sharedMesh != null ? mf.sharedMesh.vertexCount : 0;
+                if (v > bestV) { bestV = v; main = mf.transform; }
+            }
+            foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                int v = smr.sharedMesh != null ? smr.sharedMesh.vertexCount : 0;
+                if (v > bestV) { bestV = v; main = smr.transform; }
+            }
+            if (main == null) return 0.5f;
+            // 该网格局部原点(0,0,0)的世界位置 = main.position；换到 w 局部再投影长轴
+            Vector3 originWLocal = w.InverseTransformPoint(main.position);
+            return Vector3.Dot(originWLocal - endA, axisVec / axisLen) / axisLen;
+        }
+
         /// <summary>武器定尺 + 握持对齐（几何法·根治"漂浮/握在刀刃上/柄不在掌心"）：
         /// 不再依赖"参考巨剑必须被检测到"（那是之前武器悬空的根因——Maria 自带巨剑
         /// 网格名不含 sword 关键词，检测失败就退化成 hand.up 方向导致长剑戳在身前）。
@@ -790,11 +791,20 @@ namespace AdversityRoad.Player
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
-            // 柄端判定：① 柄/握把子节点(grip/handle/hilt/tsuka/柄) ② 网格截面(最宽片=护手所在
-            // 半段为柄端) ③ pivot 就近兜底。自动判不准的个别武器由玩家用「翻转握向」手动纠正。
+            // 柄端判定（多信号，优先级从高到低）：
+            //   ① 柄/握把子节点(grip/handle/hilt/tsuka/柄)——最可靠
+            //   ② 【建模原点(主网格局部原点)所在的一端 = 柄端】：艺术家几乎总把模型原点
+            //      建在握柄处。用【主网格自己的 transform 原点】(而非实例化根)投影到长轴，
+            //      不受导入层级/包装节点影响。实测 snake-katana(原点在高端)→柄在高端(修反转)、
+            //      snake-sword(原点在低端)→柄在低端，都判对
+            //   ③ 网格截面(最宽片=护手所在半段为柄端)——原点居中的直剑(如 Sword 18)靠它
+            //   ④ pivot 就近兜底
             Vector3 gripL, tipL;
             var gripNode = FindDeep(w, "grip") ?? FindDeep(w, "handle")
                 ?? FindDeep(w, "hilt") ?? FindDeep(w, "tsuka") ?? FindDeep(w, "柄");
+            Vector3 axisVec = endB - endA;
+            float axisLen2 = axisVec.magnitude;
+            float originFrac = ModelOriginFrac(w, endA, axisVec, axisLen2);   // 0=endA 端..1=endB 端(可超界)
             if (gripNode != null)
             {
                 Vector3 g = w.InverseTransformPoint(gripNode.position);
@@ -802,6 +812,8 @@ namespace AdversityRoad.Player
                 gripL = aNear ? endA : endB;
                 tipL = aNear ? endB : endA;
             }
+            else if (originFrac < 0.35f) { gripL = endA; tipL = endB; }   // 建模原点贴近低端=柄
+            else if (originFrac > 0.65f) { gripL = endB; tipL = endA; }   // 建模原点贴近高端=柄
             else if (GripEndByProfile(w, lb, out bool gripAtA, endA, endB))
             {
                 gripL = gripAtA ? endA : endB;
@@ -809,13 +821,6 @@ namespace AdversityRoad.Player
             }
             else if (endA.sqrMagnitude <= endB.sqrMagnitude) { gripL = endA; tipL = endB; }
             else { gripL = endB; tipL = endA; }
-
-            // 玩家手动翻转握向（自动判不准时的确定性纠正，按武器名持久化）
-            if (!string.IsNullOrEmpty(CurrentWeapon) &&
-                PlayerPrefs.GetInt(GripFlipPref + CurrentWeapon, 0) == 1)
-            {
-                var tmp = gripL; gripL = tipL; tipL = tmp;
-            }
             if ((tipL - gripL).sqrMagnitude < 1e-8f) return;
 
             // ---- 从手指骨骼几何推握持坐标系（rest 朝向无关，任何角色都对）----

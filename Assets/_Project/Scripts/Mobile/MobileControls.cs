@@ -66,6 +66,8 @@ namespace AdversityRoad.Mobile
             AddButton("Skill1", "定", new Vector2(-435, 520), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
             AddButton("Skill3", "还", new Vector2(-620, 560), 100, new Color(0.35f, 0.75f, 0.55f, 0.78f));
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
+            // 拔刀/收刀（带剑鞘武器）：右侧战斗按钮区左上，易点；无鞘武器时点了无效
+            AddButton("Sheathe", "拔刀", new Vector2(-815, 470), 96, new Color(0.55f, 0.55f, 0.62f, 0.78f));
         }
 
         void AddButtonLeft(string btnName, string label, Vector2 pos, float size, Color color)

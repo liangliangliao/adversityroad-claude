@@ -103,7 +103,7 @@ namespace AdversityRoad.UI
             int bRows = (backpacks.Length + 1 + 2) / 3;
             int wRows = (weapons.Length + 1 + 2) / 3;
             int mRows = (masks.Length + 1 + 2) / 3;
-            float height = 240 + bRows * 88 + wRows * 88 + mRows * 88 + 84 + 240;
+            float height = 240 + bRows * 88 + wRows * 88 + mRows * 88 + 240;
             _panel = UiUtil.MakePanel(_canvas, "CharacterPanel", new Vector2(1120, height),
                 new Color(0.07f, 0.07f, 0.11f, 0.97f));
 
@@ -122,20 +122,7 @@ namespace AdversityRoad.UI
             string curW = _appearance != null ? _appearance.CurrentWeapon : "";
             Grid(weapons, "默认（自带武器）", curW, y, new Color(0.4f, 0.32f, 0.26f, 0.95f),
                 name => { if (_appearance != null) _appearance.EquipWeapon(name); Rebuild(); });
-            y -= wRows * 88 + 14;
-
-            // 武器操作：翻转握向（自动判柄不准时手动纠正）＋ 拔刀/收刀（带鞘武器）
-            bool hasWeapon = !string.IsNullOrEmpty(curW);
-            UiUtil.MakeButton(_panel.transform, "翻转握向（当前武器）",
-                new Vector2(0.5f, 1f), new Vector2(-170, y), new Vector2(320, 66),
-                hasWeapon ? new Color(0.36f, 0.3f, 0.24f, 0.95f) : new Color(0.24f, 0.24f, 0.26f, 0.7f),
-                () => { if (_appearance != null && hasWeapon) { _appearance.FlipCurrentWeaponGrip(); Rebuild(); } }, 22);
-            bool hasSheath = _appearance != null && _appearance.HasSheathWeapon;
-            UiUtil.MakeButton(_panel.transform, "拔刀 / 收刀",
-                new Vector2(0.5f, 1f), new Vector2(170, y), new Vector2(320, 66),
-                hasSheath ? new Color(0.3f, 0.36f, 0.42f, 0.95f) : new Color(0.24f, 0.24f, 0.26f, 0.7f),
-                () => { if (_appearance != null && hasSheath) _appearance.ToggleWeaponDrawn(); }, 22);
-            y -= 84;
+            y -= wRows * 88 + 22;
 
             // 面具
             Section("—— 面具库（戴在脸上·重选即替换） ——", new Color(0.85f, 0.7f, 1f), ref y, 54);
