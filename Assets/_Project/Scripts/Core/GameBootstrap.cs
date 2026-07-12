@@ -301,8 +301,8 @@ namespace AdversityRoad.Core
                 fillGo.transform.localRotation = Quaternion.identity;   // 沿镜头前方照射
                 var fill = fillGo.AddComponent<Light>();
                 fill.type = LightType.Directional;
-                fill.intensity = 0.7f;                       // 补光比例：迎镜脸部去黑，不过曝
-                fill.color = new Color(1f, 0.97f, 0.92f);
+                fill.intensity = 0.5f;                       // 补光比例：迎镜脸部去黑，不过曝/不冲淡本色
+                fill.color = new Color(1f, 1f, 1f);          // 中性白：不给模型染暖色，保持本色
                 fill.shadows = LightShadows.None;            // 补光不投影，避免二次脸部阴影
                 fill.renderMode = LightRenderMode.ForcePixel;
                 // 交给昼夜循环按白天/夜晚收放强度（夜晚收低保留暗调，不平光化场景）
