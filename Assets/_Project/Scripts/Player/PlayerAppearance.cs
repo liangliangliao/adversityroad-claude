@@ -347,8 +347,9 @@ namespace AdversityRoad.Player
             DisableSelfShadow();
         }
 
-        /// <summary>背包定位：与角色同朝向，定尺到躯干上段高度，贴在上背中央并沿角色
-        /// 后方外移半个厚度（背在背后不穿身）。定尺倍率钳制防异常单位放大爆屏。</summary>
+        /// <summary>背包定位：与角色同朝向，按【最大边】归一到背包尺度（不按某一轴测量，
+        /// 避免模型朝向不定时按错轴把尺寸放大到超大＝之前"背包巨大浮空"的根因），并把
+        /// 包围盒中心贴到上背中央、沿后方外移半个厚度（背在背后不穿身、不悬空）。</summary>
         void FitBackpack(Transform bp, Transform back)
         {
             if (!LocalBounds(bp, out Bounds lb)) { Destroy(bp.gameObject); return; }
@@ -360,18 +361,22 @@ namespace AdversityRoad.Player
             float bodyH = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
             Vector3 fwd = visualRoot.forward;
             Vector3 up = Vector3.up;
+            Vector3 right = visualRoot.right;
 
-            // 与角色同朝向（背包正面朝前、背面贴脊背）
-            bp.rotation = Quaternion.LookRotation(fwd, up);
+            // 与角色同朝向（背面贴脊背、正面朝前）
+            bp.rotation = visualRoot.rotation;
 
-            // 定尺：背包高度 ≈ 0.42 身高（躯干上段）
-            float targetH = bodyH * 0.42f;
-            float curH = WorldExtentAlong(bp, lb, up);
-            if (curH > 1e-4f) bp.localScale *= Mathf.Clamp(targetH / curH, 0.02f, 40f);
+            // 定尺：最大边 ≈ 0.30 身高（约 0.6m，正常背包尺度）。三轴世界跨度取最大，
+            // 与模型自身朝向无关，绝不会因测到薄轴而把整包放大到吞屏。
+            float target = bodyH * 0.30f;
+            float maxDim = Mathf.Max(WorldExtentAlong(bp, lb, right),
+                Mathf.Max(WorldExtentAlong(bp, lb, up), WorldExtentAlong(bp, lb, fwd)));
+            if (maxDim > 1e-4f) bp.localScale *= Mathf.Clamp(target / maxDim, 0.001f, 200f);
 
-            // 座位：上背中央，沿后方外移半个厚度 + 微间隙，略上移到肩胛线
+            // 座位：上背中央，沿后方外移半个厚度 + 微间隙，略上移到肩胛线；包围盒中心
+            // 对到座点（与模型 pivot 无关，不会因 pivot 偏移而飞到身侧）
             float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
-            Vector3 seat = back.position - fwd * (halfDepth + bodyH * 0.02f) + up * (bodyH * 0.03f);
+            Vector3 seat = back.position - fwd * (halfDepth + bodyH * 0.02f) + up * (bodyH * 0.02f);
             bp.position += seat - bp.TransformPoint(lb.center);
         }
 
@@ -452,9 +457,12 @@ namespace AdversityRoad.Player
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
             // 脸面锚点：优先眼骨中点（各模型一致地落在眼睛上，不随头骨原点高低漂移）
-            // 面具整体上移：坐在眉/额一线而非压住眼睛，让玩家【完整的眼睛】露出来。
+            // 面具眼孔对准眼睛：面具的两个眼孔通常在其几何中心【偏上】，若把中心对到
+            // 眼睛，眼孔会落到眼睛上方(眉线)——挡住眼睛。故把面具中心【略下移】，让偏上的
+            // 眼孔恰好降到眼睛高度。rise 为负=下移；量取面具纵向尺寸的一小段(自适应各面具)。
             Vector3 up = Vector3.up;
-            float rise = headW * 0.34f;                          // 上移量≈1/3 头宽(约到眉线)
+            float maskV = WorldExtentAlong(mk, lb, up);          // 面具纵向世界跨度(定尺后)
+            float rise = -maskV * 0.18f;                          // 眼孔≈中心上方 0.18 纵高，下移等量对齐
             var eyeL = FindEye(head, "lefteye", "eyel", "eye_l");
             var eyeR = FindEye(head, "righteye", "eyer", "eye_r");
             Vector3 target;
@@ -463,7 +471,7 @@ namespace AdversityRoad.Player
             else if (eyeL != null || eyeR != null)
                 target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f) + up * rise;
             else
-                // 无眼骨：头骨原点上方约一个头宽(额/眉高)、前方约 0.4 头宽（贴脸不悬空）
+                // 无眼骨：头骨原点上方约半个头宽(眼高)、前方约 0.4 头宽（贴脸不悬空）
                 target = head.position + fwd * (headW * 0.4f) + up * (headW * 0.5f + rise);
 
             // 按面具【背面】贴脸就座，而不是把中心对到脸点——否则半个厚度陷进头里，
@@ -545,12 +553,18 @@ namespace AdversityRoad.Player
             }
         }
 
-        /// <summary>材质是否已有底色贴图（跨 URP 与 glTFast 命名）。</summary>
+        /// <summary>材质是否已有【真实】底色贴图（跨 URP 与 glTFast 命名）。排除 1×1/极小
+        /// 占位贴图——glTFast 找不到外部贴图时可能挂一张纯白占位图，误判成"已有贴图"就还是
+        /// 白模；≤4px 视为占位，仍走目录贴图接线。</summary>
         static bool HasBaseTex(Material m)
         {
             string[] props = { "_BaseMap", "_MainTex", "baseColorTexture", "_baseColorTexture" };
             foreach (var p in props)
-                if (m.HasProperty(p) && m.GetTexture(p) != null) return true;
+            {
+                if (!m.HasProperty(p)) continue;
+                var tex = m.GetTexture(p);
+                if (tex != null && tex.width > 4 && tex.height > 4) return true;
+            }
             return false;
         }
 
@@ -748,12 +762,14 @@ namespace AdversityRoad.Player
                     total += AccumProfile(w, smr.transform, smr.sharedMesh, endA, axis, axisLen, radial);
                 if (total < 24) return false;
 
-                // 两端边缘截面（各取最外两片的较大值，抗噪）：尖端细、柄端粗
-                float aEdge = Mathf.Max(radial[0], radial[1]);
-                float bEdge = Mathf.Max(radial[slices - 1], radial[slices - 2]);
-                if (aEdge <= 1e-6f && bEdge <= 1e-6f) return false;
-                // 边缘截面大的一端 = 柄端（尖端收窄成点）
-                gripAtA = aEdge >= bEdge;
+                // 判尖端：只有【最外那一片】能区分——刀尖收窄成点，最外片截面≈0；柄端是
+                // 柄头/护手，最外片仍有明显截面。用"最外片"而非"外两片的最大值"：否则刀身
+                // 在近尖处仍很宽会被误当成粗端(这正是之前 Sword 18 拿反的原因)。
+                float aTip = radial[0];
+                float bTip = radial[slices - 1];
+                if (aTip <= 1e-6f && bTip <= 1e-6f) return false;
+                // 最外片截面大的一端 = 柄端（另一端收窄成尖）
+                gripAtA = aTip >= bTip;
                 // 斧/锤/镰：重头(粗端)是打击头=尖端，柄在细端，翻转
                 string n = w.name.ToLowerInvariant();
                 foreach (var t in w.GetComponentsInChildren<Transform>(true))
