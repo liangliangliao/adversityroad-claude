@@ -342,7 +342,8 @@ namespace AdversityRoad.Player
 
             var bp = Object.Instantiate(prefab, back, false);
             bp.name = EquippedBackpackName;
-            FixModelMaterials(bp, "Characters/Backpacks");   // 背包白模修复
+            FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 背包白模修复
+            TintIfUntextured(bp, new Color(0.28f, 0.26f, 0.22f));   // 裸模背包给中性帆布色，不刺眼纯白
             FitBackpack(bp.transform, back);
             DisableSelfShadow();
         }
@@ -504,15 +505,25 @@ namespace AdversityRoad.Player
             return t;
         }
 
-        void FixWeaponMaterials(GameObject weapon) => FixModelMaterials(weapon, "Characters/Weapons");
+        void FixWeaponMaterials(GameObject weapon) =>
+            FixModelMaterials(weapon, ScopedTextures("Characters/Weapons", CurrentWeapon));
+
+        /// <summary>取某件装备可用的贴图集：优先用它【自己的子目录】（zip 解压出的
+        /// snake-katana/、backpack/ 等——只含它自己的贴图，多件装备互不串味），子目录没有
+        /// 贴图再退回装备库根目录（散图直接丢在根目录的情况）。</summary>
+        Texture2D[] ScopedTextures(string root, string itemName)
+        {
+            Texture2D[] sub = string.IsNullOrEmpty(itemName) ? null
+                : FolderTextures(root + "/" + itemName);
+            return (sub != null && sub.Length > 0) ? sub : FolderTextures(root);
+        }
 
         /// <summary>换装白模修复：下载的武器/背包 FBX/glTF 常常材质与贴图没接上（贴图相对
         /// 路径不符 / Maya lambert 默认材质未连贴图），呈现一片白。运行时按【贴图文件名
-        /// 与材质名、网格名的词元重合度】把该目录里的 basecolor/normal/metallic 贴图接到
+        /// 与材质名、网格名的词元重合度】把 texes 里的 basecolor/normal/metallic 贴图接到
         /// URP/Lit，恢复原本纹理。已带底图的材质不动。对任何丢进对应目录的模型通用。</summary>
-        void FixModelMaterials(GameObject go, string texFolder)
+        void FixModelMaterials(GameObject go, Texture2D[] texes)
         {
-            var texes = FolderTextures(texFolder);
             if (texes == null || texes.Length == 0) return;
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
             {
@@ -548,6 +559,24 @@ namespace AdversityRoad.Player
                         m.SetTexture("_MetallicGlossMap", mr);
                         m.EnableKeyword("_METALLICSPECGLOSSMAP");
                     }
+                }
+                r.materials = mats;
+            }
+        }
+
+        /// <summary>给【无贴图】的裸模型上一个中性底色（避免默认纯白刺眼）。已带贴图的不动。</summary>
+        void TintIfUntextured(GameObject go, Color tint)
+        {
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+                var mats = r.materials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || HasBaseTex(m)) continue;
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", tint);
+                    if (m.HasProperty("_Color")) m.SetColor("_Color", tint);
                 }
                 r.materials = mats;
             }
@@ -738,11 +767,10 @@ namespace AdversityRoad.Player
             return best;
         }
 
-        /// <summary>网格截面分析判柄端（根治"剑拿反、握住刀刃"）：沿刃轴切 16 片，统计
-        /// 每片最大截面半径。判据从"最宽片位置"改为【两端边缘截面对比】——刀/剑的
-        /// 【尖端是收窄到近乎一点】的(边缘截面最小)，柄端有护手/柄/柄头(边缘截面明显更粗)，
-        /// 故【边缘截面大的一端 = 柄端】，这对刀/剑/枪都稳（不再被"最宽片恰在中段"骗到）。
-        /// 斧/锤/镰重头在粗端=尖端，按名称翻转。网格不可读时返回 false 走 pivot 兜底。</summary>
+        /// <summary>网格截面分析判柄端（防"剑拿反、握住刀刃"）：沿长轴切 16 片，统计每片
+        /// 最大截面半径，取【最宽片(护手/护拳最粗)所在半段】为柄端半段。真机网格实测通过
+        /// (Sword 18 / Snake Sword)。斧/锤/镰最宽处是打击头=尖端，按名称翻转。
+        /// 需网格可读(Weapons 目录 FBX 已由导入器开 Read/Write)；不可读返回 false 走 pivot 兜底。</summary>
         static bool GripEndByProfile(Transform w, Bounds lb, out bool gripAtA,
             Vector3 endA, Vector3 endB)
         {
@@ -762,15 +790,15 @@ namespace AdversityRoad.Player
                     total += AccumProfile(w, smr.transform, smr.sharedMesh, endA, axis, axisLen, radial);
                 if (total < 24) return false;
 
-                // 判尖端：只有【最外那一片】能区分——刀尖收窄成点，最外片截面≈0；柄端是
-                // 柄头/护手，最外片仍有明显截面。用"最外片"而非"外两片的最大值"：否则刀身
-                // 在近尖处仍很宽会被误当成粗端(这正是之前 Sword 18 拿反的原因)。
-                float aTip = radial[0];
-                float bTip = radial[slices - 1];
-                if (aTip <= 1e-6f && bTip <= 1e-6f) return false;
-                // 最外片截面大的一端 = 柄端（另一端收窄成尖）
-                gripAtA = aTip >= bTip;
-                // 斧/锤/镰：重头(粗端)是打击头=尖端，柄在细端，翻转
+                // 柄端判据：【最宽截面片(护手/护拳)所在的半段】就是柄端半段——真机网格
+                // 实测验证(Sword 18：护手在长轴 75% 处即高半段，柄在其外侧→柄端=高端；
+                // Snake Sword：护手在低半段→柄端=低端)。此法比"最外片对比"稳：刀身在近尖
+                // 处仍可能很宽，用最外片会把尖端误判成柄端(那正是把 Sword 18 拿反的原因)。
+                int widest = 0;
+                for (int i = 1; i < slices; i++)
+                    if (radial[i] > radial[widest]) widest = i;
+                gripAtA = widest < slices / 2;   // 最宽片在前半段→柄在 endA 端，反之在 endB
+                // 斧/锤/镰：最宽处是打击头=尖端，柄在细端，翻转
                 string n = w.name.ToLowerInvariant();
                 foreach (var t in w.GetComponentsInChildren<Transform>(true))
                     n += " " + t.name.ToLowerInvariant();
