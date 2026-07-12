@@ -308,16 +308,7 @@ namespace AdversityRoad.Combat
                 if (_combo >= 2) GameEvents.RaiseComboCount(_combo);
             }
 
-            // 命中点小型冲击盘：只标出命中位置，尺寸克制不遮视野。
-            // 按用户要求：普通拳脚命中【不震屏、不切/拉镜头、不闪屏】——
-            // 打击感交给受击方的倒地/击飞/踉跄反应与短促卡肉。
-            var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            StripCol(disc);
-            disc.transform.position = contact;
-            disc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.75f), 0.5f);
-            _i.StartCoroutine(_i.ImpactDisc(disc, heavy ? 0.55f : 0.38f));
-
+            // 命中点圆盘已按用户要求停用（不再渲染圆圈）——命中位置由火花/闪核标出。
             HitStop(heavy ? 0.07f : 0.035f);   // 短促卡肉（非晃屏）
         }
 
@@ -343,12 +334,7 @@ namespace AdversityRoad.Combat
             Ensure();
             SparksAt(contact, new Color(1f, 0.92f, 0.6f), 14);
             SparksAt(contact, Color.white, 6);
-            var disc = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            StripCol(disc);
-            disc.transform.position = contact;
-            disc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(new Color(1f, 0.95f, 0.75f), 0.55f);
-            _i.StartCoroutine(_i.ImpactDisc(disc, 0.5f));
+            // 冲击圆盘已停用（不再渲染圆圈）——相撞感由火花+金属声+卡肉表达
             GameAudio.Play(GameAudio.Sfx.Block, 0.9f);
             HitStop(0.055f);
         }
@@ -400,16 +386,11 @@ namespace AdversityRoad.Combat
                 enemy ? new Color(1f, 0.4f, 0.35f) : new Color(1f, 0.85f, 0.35f), 1.15f);
         }
 
-        /// <summary>地面冲击环：贴地快速扩散的能量圆环（重击落点/绝招终结，悟空式震地感）。</summary>
+        /// <summary>地面冲击环（已按用户要求停用）：招式/绝招不再渲染贴地扩散的圆环。
+        /// 打击感交给受击反应/卡肉/火花，不再有满地圆圈。</summary>
         public static void ShockRing(Vector3 pos, Color color, float maxR = 3f)
         {
-            Ensure();
-            var ring = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            StripCol(ring);
-            ring.transform.position = pos + Vector3.up * 0.06f;
-            ring.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.5f), 0.6f);
-            _i.StartCoroutine(_i.RingExpand(ring, maxR));
+            // no-op：不再生成地面圆环
         }
 
         IEnumerator RingExpand(GameObject ring, float maxR)
