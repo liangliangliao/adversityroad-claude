@@ -38,6 +38,7 @@ namespace AdversityRoad.Player
         CombatStateMachine _combat;
         HumanoidAnimator _anim;
         LockOnSystem _lockOn;
+        PlayerAppearance _appearance;
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
@@ -183,6 +184,9 @@ namespace AdversityRoad.Player
                 Vector3.Distance(transform.position, _lockOn.CurrentTarget.position) < 6f;
             bool ready = enemyClose || (_combat != null && _combat.InCombat);
             _anim.SetCombatReady(ready);
+            // 带剑鞘的成套武器：临战拔刀到右手、脱战收刀回左手鞘中（普通武器无影响）
+            if (_appearance == null) _appearance = GetComponent<PlayerAppearance>();
+            if (_appearance != null) _appearance.SetWeaponDrawn(ready);
             _lastPos = transform.position;
         }
 

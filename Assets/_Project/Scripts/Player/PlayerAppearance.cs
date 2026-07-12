@@ -31,6 +31,15 @@ namespace AdversityRoad.Player
         public int Preset { get; private set; }
         public HumanoidRig Rig { get; private set; }
 
+        WeaponSheath _sheath;   // 带鞘武器的拔刀/收刀控制器（普通武器为 null）
+
+        /// <summary>临战拔刀 / 脱战收刀（仅对带剑鞘的成套武器生效；普通武器无影响）。
+        /// 由 PlayerController 每帧按「临战」信号驱动。</summary>
+        public void SetWeaponDrawn(bool drawn)
+        {
+            if (_sheath != null) _sheath.SetDrawn(drawn);
+        }
+
         /// <summary>当前武器名（"" = 默认佩剑：模型自带兵器或 Characters/Weapon）。</summary>
         public string CurrentWeapon { get; private set; } = "";
 
@@ -228,12 +237,19 @@ namespace AdversityRoad.Player
             if (visualRoot == null || visualRoot.childCount == 0) return;
             var model = visualRoot.GetChild(0);
             var hand = MecanimCharacter.FindBone(model, "righthand");
+            var lhand = MecanimCharacter.FindBone(model, "lefthand");
 
-            // 卸下上一件外装武器
-            if (hand != null)
-                for (int i = hand.childCount - 1; i >= 0; i--)
-                    if (hand.GetChild(i).name == EquippedName)
-                        Destroy(hand.GetChild(i).gameObject);
+            // 卸下上一件外装武器（含收刀时挂在左手的成套剑鞘）与拔刀控制器
+            if (_sheath != null) { Destroy(_sheath); _sheath = null; }
+            foreach (var h in new[] { hand, lhand })
+            {
+                if (h == null) continue;
+                for (int i = h.childCount - 1; i >= 0; i--)
+                    if (h.GetChild(i).name == EquippedName)
+                        Destroy(h.GetChild(i).gameObject);
+                var og = h.GetComponent<FingerGrip>();
+                if (og != null) Destroy(og);
+            }
 
             var builtin = MecanimCharacter.FindWeaponInModel(model);
             // 按名扫描整个武器库（含 zip 解压出的子目录——Resources.LoadAll 递归）
@@ -248,14 +264,6 @@ namespace AdversityRoad.Player
                 foreach (var r in builtin.GetComponentsInChildren<Renderer>(true))
                     r.enabled = !useCustom;
 
-            // 手指握拳叠加：外装武器需要手指真实攥住剑柄（模型自带兵器的
-            // WProp 动画已含握姿，无需叠加）——先移除上一次的握拳组件
-            if (hand != null)
-            {
-                var oldGrip = hand.GetComponent<FingerGrip>();
-                if (oldGrip != null) Destroy(oldGrip);
-            }
-
             if (useCustom)
             {
                 var w = Object.Instantiate(prefab, hand, false);
@@ -263,9 +271,22 @@ namespace AdversityRoad.Player
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
                 FixWeaponMaterials(w);   // 接回武器贴图（修白模）
-                FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
-                hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
-                if (poser != null) poser.weaponPivot = w.transform;
+
+                // 带剑鞘的成套武器（如 scene 剑）：默认收刀挂左手、临战拔刀到右手。
+                // 只有【识别到剑鞘且能分出剑身且有左手骨】才走这条；否则普通武器照旧。
+                var scab = FindDeep(w.transform, "scabbard") ?? FindDeep(w.transform, "sheath")
+                    ?? FindDeep(w.transform, "鞘");
+                var blade = scab != null ? FindBladePart(w.transform, scab) : null;
+                if (scab != null && blade != null && lhand != null)
+                {
+                    SetupSheathedWeapon(w.transform, blade, scab, lhand, hand);
+                }
+                else
+                {
+                    FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
+                    hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
+                    if (poser != null) poser.weaponPivot = w.transform;
+                }
             }
             else if (builtin != null)
             {
@@ -289,6 +310,82 @@ namespace AdversityRoad.Player
                 }
             }
             DisableSelfShadow();
+        }
+
+        /// <summary>找剑身子树：取 w 下【不属于剑鞘、顶点最多】的网格，回溯到它在 w 下的
+        /// 子树根（即可整体抽出的剑身）。排除鞘/环等部件。找不到返回 null（走普通武器）。</summary>
+        static Transform FindBladePart(Transform w, Transform scab)
+        {
+            Transform bestMesh = null; int bestV = 0;
+            foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var t = mf.transform;
+                if (scab != null && (t == scab || t.IsChildOf(scab))) continue;
+                string n = t.name.ToLowerInvariant();
+                if (n.Contains("scabbard") || n.Contains("sheath") || n.Contains("鞘") ||
+                    n.Contains("ring") || n.Contains("环")) continue;
+                int v = mf.sharedMesh != null ? mf.sharedMesh.vertexCount : 0;
+                if (v > bestV) { bestV = v; bestMesh = t; }
+            }
+            if (bestMesh == null) return null;
+            // 回溯到 w 下、且不在鞘子树内的最高层祖先
+            Transform r = bestMesh;
+            while (r.parent != null && r.parent != w &&
+                   !(scab != null && r.parent.IsChildOf(scab)))
+                r = r.parent;
+            return r;
+        }
+
+        /// <summary>装配成套带鞘武器：整套（剑+鞘）挂左手作收刀态，剑身先【插鞘对齐】并记录
+        /// 收刀本地姿态；再挂 WeaponSheath 控制器，临战时把剑身抽到右手（与其它剑一致握位）。</summary>
+        void SetupSheathedWeapon(Transform set, Transform blade, Transform scab, Transform lhand, Transform rhand)
+        {
+            // 整套挂左手并定尺握持（左手握住剑鞘）
+            set.SetParent(lhand, false);
+            set.localPosition = Vector3.zero;
+            set.localRotation = Quaternion.identity;
+            FitAndGripWeapon(set, lhand, out Vector3 sbl, out Vector3 sgw);
+            lhand.gameObject.AddComponent<FingerGrip>().Setup(lhand, sbl, sgw);
+
+            // 剑身插入剑鞘（长轴对齐 + 中心套入），记录该收刀本地姿态
+            AlignBladeIntoScabbard(blade, scab);
+            Transform sheathParent = blade.parent;
+            Vector3 lp = blade.localPosition; Quaternion lr = blade.localRotation; Vector3 ls = blade.localScale;
+
+            if (_sheath != null) Destroy(_sheath);
+            _sheath = visualRoot.gameObject.AddComponent<WeaponSheath>();
+            _sheath.Setup(blade, sheathParent, lp, lr, ls, rhand,
+                // 拔刀：剑身按握位对齐右手 + 手指握拳（与其它剑一致）
+                (b, rh) =>
+                {
+                    FitAndGripWeapon(b, rh, out Vector3 bl, out Vector3 gw);
+                    var g = rh.GetComponent<FingerGrip>();
+                    if (g == null) g = rh.gameObject.AddComponent<FingerGrip>();
+                    g.Setup(rh, bl, gw);
+                    if (poser != null) poser.weaponPivot = b;
+                },
+                // 收刀：撤右手握拳
+                rh =>
+                {
+                    var g = rh.GetComponent<FingerGrip>();
+                    if (g != null) Destroy(g);
+                });
+            if (poser != null) poser.weaponPivot = blade;
+        }
+
+        /// <summary>把剑身插进剑鞘：剑身长轴对齐剑鞘长轴（同向），并把剑身包围盒中心套到
+        /// 剑鞘包围盒中心（剑大致没入鞘中）。世界空间对齐；调用后剑身相对其父的本地姿态即收刀姿态。</summary>
+        void AlignBladeIntoScabbard(Transform blade, Transform scab)
+        {
+            if (!LocalBounds(blade, out Bounds bb) || !LocalBounds(scab, out Bounds sb)) return;
+            LongAxisEnds(bb, out Vector3 ba0, out Vector3 ba1);
+            LongAxisEnds(sb, out Vector3 sa0, out Vector3 sa1);
+            Vector3 bAxisW = blade.TransformPoint(ba1) - blade.TransformPoint(ba0);
+            Vector3 sAxisW = scab.TransformPoint(sa1) - scab.TransformPoint(sa0);
+            if (bAxisW.sqrMagnitude < 1e-8f || sAxisW.sqrMagnitude < 1e-8f) return;
+            blade.rotation = Quaternion.FromToRotation(bAxisW.normalized, sAxisW.normalized) * blade.rotation;
+            Vector3 delta = scab.TransformPoint(sb.center) - blade.TransformPoint(bb.center);
+            blade.position += delta;
         }
 
         /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，
