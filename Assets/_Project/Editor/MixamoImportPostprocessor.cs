@@ -1,5 +1,8 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
+using UnityEngine;
 using UnityEditor;
+using UnityEditor.AssetImporters;
 
 namespace AdversityRoad.EditorTools
 {
@@ -25,7 +28,11 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 9;
+        public override uint GetVersion() => 10;
+
+        // 材质描述后处理放到最后执行（高于 URP 内置的 FBX 材质后处理），
+        // 保证内嵌贴图的接线以本脚本为准，不被后续后处理清掉。
+        public override int GetPostprocessOrder() => 1000;
 
         bool InScope =>
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
@@ -80,6 +87,53 @@ namespace AdversityRoad.EditorTools
                 clips[i].loopTime = n.Contains("idle") || n.Contains("walk") || n.Contains("run");
             }
             mi.clipAnimations = clips;
+        }
+
+        /// <summary>URP 材质描述重映射（根治"带皮肤模型却是一片白模"）：
+        /// 下载的 Mixamo 角色贴图(maria_diffuse/normal/specular、Paladin_*)是【内嵌】在
+        /// FBX 里的，materialImportMode=ImportViaMaterialDescription 会把它们抽出成子资产，
+        /// 但 URP 内置的 FBX 材质后处理常识别不到 Mixamo 的材质属性名 → 材质建出来却没连
+        /// 上贴图 → 模型/敌人渲染成纯白。这里按【贴图文件名】确定性归类接线到 URP/Lit：
+        /// *_diffuse→BaseMap（决定"有没有皮肤"）、*_normal→BumpMap。白模问题根治。
+        /// 只处理 Resources/Characters/ 下的角色/敌人/武器 FBX（动作 FBX 无材质）。</summary>
+        void OnPreprocessMaterialDescription(MaterialDescription desc, Material material,
+            AnimationClip[] materialAnimation)
+        {
+            if (!InScope) return;
+
+            var lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit != null) material.shader = lit;
+            // 底色置白：贴图按原色呈现，不被残留的材质描述颜色压暗
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", Color.white);
+
+            var names = new List<string>();
+            desc.GetTexturePropertyNames(names);
+            foreach (var pn in names)
+            {
+                if (!desc.TryGetProperty(pn, out TexturePropertyDescription t) || t.texture == null)
+                    continue;
+                // 属性名 + 贴图名一起判类（贴图名 maria_diffuse/_normal 最可靠）
+                string tag = (pn + " " + t.texture.name).ToLowerInvariant();
+                if (tag.Contains("diffuse") || tag.Contains("albedo") ||
+                    tag.Contains("basecolor") || tag.Contains("base_color") || tag.Contains("_col"))
+                {
+                    if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", t.texture);
+                    if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", t.texture);
+                }
+                else if (tag.Contains("normal") || tag.Contains("bump") || tag.Contains("_nrm"))
+                {
+                    if (material.HasProperty("_BumpMap"))
+                    {
+                        material.SetTexture("_BumpMap", t.texture);
+                        material.EnableKeyword("_NORMALMAP");
+                    }
+                }
+            }
+
+            // 皮肤/布料表面参数：非金属工作流、适中光滑度（不反光刺眼）
+            if (material.HasProperty("_WorkflowMode")) material.SetFloat("_WorkflowMode", 1f);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.25f);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
         }
     }
 }

@@ -100,8 +100,9 @@ namespace AdversityRoad.Combat
 
         /// <summary>脚掌放平修正：异源骨骼脚踝 rest 朝向不同，Mixamo 脚踝旋转数据套
         /// 上去会让脚尖【持续下垂(踮脚)或持续上翘(鞋尖翘起)】。把脚尖俯仰角钳制到
-        /// 大致贴地的窄带 [-35°下垂, +12°上翘] 内——两端异常都拉回接近水平贴地，
-        /// 正常步态的自然绷脚/抬脚仍在带内不受影响。</summary>
+        /// 大致贴地的窄带 [-35°下垂, +3°上翘] 内——两端异常都拉回接近水平贴地。
+        /// 上翘上限收到近乎水平(角色贰的鞋在原模型里本就平贴地面)，
+        /// 正常步态的自然绷脚仍在下垂带内不受影响。</summary>
         static void LevelAnkle(Transform ankle, Transform toe)
         {
             if (ankle == null || toe == null || ankle == toe) return;
@@ -110,7 +111,7 @@ namespace AdversityRoad.Combat
             if (len < 1e-4f) return;
             float sinPitch = v.y / len;                     // >0 脚尖上翘，<0 下垂
             const float maxDropSin = -0.57f;                // 下垂上限 ≈35°
-            const float maxRiseSin = 0.21f;                 // 上翘上限 ≈12°（修鞋尖翘起）
+            const float maxRiseSin = 0f;                    // 上翘上限 0°（不许高过水平，彻底修鞋尖翘起）
             float clamped = Mathf.Clamp(sinPitch, maxDropSin, maxRiseSin);
             if (Mathf.Abs(clamped - sinPitch) < 1e-3f) return;
             Vector3 flat = new Vector3(v.x, 0, v.z);
@@ -133,14 +134,17 @@ namespace AdversityRoad.Combat
             // 只在贴地常规姿态下更新目标（翻滚/击倒/腾空沿用上次校准值）。
             if ((_footL != null || _footR != null) && visual != null)
             {
-                // 贴地常规姿态（站/走/跑/格挡）：先放平脚掌，再量脚底校准高度
-                bool calibrate = _grounded &&
-                    (_pose == PoseState.Idle || _pose == PoseState.Guard);
-                if (calibrate)
+                // 脚掌放平：站/走/跑/格挡等直立姿态都放平——不依赖 CharacterController
+                // 的 isGrounded(静止时常误报 false 导致放平时断时续、鞋尖又翘起)，
+                // 只要不是翻滚/击倒/腾空的动作姿态就恒定放平，脚不再翘尖。
+                bool upright = _pose == PoseState.Idle || _pose == PoseState.Guard;
+                if (upright)
                 {
                     LevelAnkle(_ankleL, _footL);
                     LevelAnkle(_ankleR, _footR);
                 }
+                // 脚底高度校准仍需真正贴地时才更新目标（腾空/翻滚沿用上次值）
+                bool calibrate = _grounded && upright;
                 if (calibrate)
                 {
                     float minY = float.MaxValue;
