@@ -293,7 +293,12 @@ namespace AdversityRoad.AI
 
         void StopMoving()
         {
-            if (AgentReady) _agent.isStopped = true;
+            if (!AgentReady) return;
+            _agent.isStopped = true;
+            // 清残余速度并作废当前路径：施法/聚气/出招前摇时，NavMeshAgent 的惯性会
+            // 让敌人继续前滑一小段（"漂移"）。硬停(速度归零+作废路径)后基本原地不动。
+            _agent.velocity = Vector3.zero;
+            if (_agent.hasPath) _agent.ResetPath();
         }
 
         void FaceTarget()
@@ -352,6 +357,7 @@ namespace AdversityRoad.AI
         void DoPhysicalAttack()
         {
             _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
+            StopMoving();   // 蓄势前摇(Charge/聚气)即刻硬停：前摇期间原地不动，不前滑漂移
             TriggerAnim("Attack");
 
             // 招式多样化：像人一样换招——精英/首领概率掏出重斩/旋风/腿法，

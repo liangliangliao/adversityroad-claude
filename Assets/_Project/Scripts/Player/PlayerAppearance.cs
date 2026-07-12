@@ -37,11 +37,16 @@ namespace AdversityRoad.Player
         /// <summary>当前面具名（"" = 不戴面具）。</summary>
         public string CurrentMask { get; private set; } = "";
 
+        /// <summary>当前背包名（"" = 不背背包）。</summary>
+        public string CurrentBackpack { get; private set; } = "";
+
         const string PrefKey = "player_preset";
         const string WeaponPref = "player_weapon";
         const string MaskPref = "player_mask";
+        const string BackpackPref = "player_backpack";
         const string EquippedName = "EquippedWeapon";
         const string EquippedMaskName = "EquippedMask";
+        const string EquippedBackpackName = "EquippedBackpack";
 
         public static readonly string[] PresetNames = { "角色·壹（青岚）", "角色·贰" };
 
@@ -50,6 +55,7 @@ namespace AdversityRoad.Player
             Preset = PlayerPrefs.GetInt(PrefKey, 0);
             CurrentWeapon = PlayerPrefs.GetString(WeaponPref, "");
             CurrentMask = PlayerPrefs.GetString(MaskPref, "");
+            CurrentBackpack = PlayerPrefs.GetString(BackpackPref, "");
             Rebuild();
         }
 
@@ -99,6 +105,28 @@ namespace AdversityRoad.Player
                 ? "已摘下面具" : "已戴上面具：" + CurrentMask);
         }
 
+        /// <summary>背包库清单（Resources/Characters/Backpacks/ 下全部模型名）。</summary>
+        public static string[] ListBackpacks()
+        {
+            var prefabs = Resources.LoadAll<GameObject>("Characters/Backpacks");
+            var names = new List<string>();
+            foreach (var p in prefabs)
+                if (p != null && !names.Contains(p.name)) names.Add(p.name);
+            names.Sort();
+            return names.ToArray();
+        }
+
+        /// <summary>背上/卸下背包（null/"" = 卸下），重选即替换，持久化。</summary>
+        public void EquipBackpack(string backpackName)
+        {
+            CurrentBackpack = backpackName ?? "";
+            PlayerPrefs.SetString(BackpackPref, CurrentBackpack);
+            PlayerPrefs.Save();
+            ApplyBackpack();
+            Core.GameEvents.RaiseSubtitle(string.IsNullOrEmpty(CurrentBackpack)
+                ? "已卸下背包" : "已背上：" + CurrentBackpack);
+        }
+
         /// <summary>从武器库选一件武器拿在手中（null/"" = 恢复默认佩剑），重选即替换。</summary>
         public void EquipWeapon(string weaponName)
         {
@@ -136,6 +164,7 @@ namespace AdversityRoad.Player
             {
                 ApplyWeapon();
                 ApplyMask();
+                ApplyBackpack();
                 DisableSelfShadow();
                 return;
             }
@@ -233,6 +262,7 @@ namespace AdversityRoad.Player
                 w.name = EquippedName;
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
+                FixWeaponMaterials(w);   // 接回武器贴图（修白模）
                 FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
                 hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
                 if (poser != null) poser.weaponPivot = w.transform;
@@ -284,6 +314,80 @@ namespace AdversityRoad.Player
             mk.name = EquippedMaskName;
             FitMask(mk.transform, head);
             DisableSelfShadow();
+        }
+
+        /// <summary>背上背包：挂在上背脊骨（spine2/上胸，缺失逐级回退），自动定尺（高度
+        /// ≈躯干上段）、贴合脊背并略微后移，随躯干转动。重选即替换，"" = 卸下。
+        /// 支持 .glb/.gltf/.fbx（放进 Resources/Characters/Backpacks/ 即出现在背包菜单）。</summary>
+        void ApplyBackpack()
+        {
+            if (visualRoot == null || visualRoot.childCount == 0) return;
+            var model = visualRoot.GetChild(0);
+            var back = MecanimCharacter.FindBone(model, "spine2")
+                    ?? MecanimCharacter.FindBone(model, "upperchest")
+                    ?? MecanimCharacter.FindBone(model, "spine1")
+                    ?? MecanimCharacter.FindBone(model, "chest")
+                    ?? MecanimCharacter.FindBone(model, "spine");
+            if (back == null) return;
+
+            for (int i = back.childCount - 1; i >= 0; i--)
+                if (back.GetChild(i).name == EquippedBackpackName)
+                    Destroy(back.GetChild(i).gameObject);
+            if (string.IsNullOrEmpty(CurrentBackpack)) return;
+
+            GameObject prefab = null;
+            foreach (var p in Resources.LoadAll<GameObject>("Characters/Backpacks"))
+                if (p != null && p.name == CurrentBackpack) { prefab = p; break; }
+            if (prefab == null) return;
+
+            var bp = Object.Instantiate(prefab, back, false);
+            bp.name = EquippedBackpackName;
+            FixModelMaterials(bp, "Characters/Backpacks");   // 背包白模修复
+            FitBackpack(bp.transform, back);
+            DisableSelfShadow();
+        }
+
+        /// <summary>背包定位：与角色同朝向，定尺到躯干上段高度，贴在上背中央并沿角色
+        /// 后方外移半个厚度（背在背后不穿身）。定尺倍率钳制防异常单位放大爆屏。</summary>
+        void FitBackpack(Transform bp, Transform back)
+        {
+            if (!LocalBounds(bp, out Bounds lb)) { Destroy(bp.gameObject); return; }
+            Vector3 sz = lb.size;
+            if (sz.x <= 1e-6f || sz.y <= 1e-6f || sz.z <= 1e-6f ||
+                float.IsNaN(sz.x) || float.IsNaN(sz.y) || float.IsNaN(sz.z))
+            { Destroy(bp.gameObject); return; }
+
+            float bodyH = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
+            Vector3 fwd = visualRoot.forward;
+            Vector3 up = Vector3.up;
+
+            // 与角色同朝向（背包正面朝前、背面贴脊背）
+            bp.rotation = Quaternion.LookRotation(fwd, up);
+
+            // 定尺：背包高度 ≈ 0.42 身高（躯干上段）
+            float targetH = bodyH * 0.42f;
+            float curH = WorldExtentAlong(bp, lb, up);
+            if (curH > 1e-4f) bp.localScale *= Mathf.Clamp(targetH / curH, 0.02f, 40f);
+
+            // 座位：上背中央，沿后方外移半个厚度 + 微间隙，略上移到肩胛线
+            float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
+            Vector3 seat = back.position - fwd * (halfDepth + bodyH * 0.02f) + up * (bodyH * 0.03f);
+            bp.position += seat - bp.TransformPoint(lb.center);
+        }
+
+        /// <summary>包围盒八角在给定世界方向上的投影跨度（用于测缩放后的高度/厚度）。</summary>
+        static float WorldExtentAlong(Transform t, Bounds lb, Vector3 worldDir)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 c = lb.center + Vector3.Scale(lb.extents, new Vector3(
+                    (i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                float d = Vector3.Dot(t.TransformPoint(c), worldDir);
+                if (d < min) min = d;
+                if (d > max) max = d;
+            }
+            return max - min;
         }
 
         /// <summary>面具贴脸定位：最薄轴=面法向（对齐角色前方），最大轴=面具纵向
@@ -348,16 +452,19 @@ namespace AdversityRoad.Player
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
             // 脸面锚点：优先眼骨中点（各模型一致地落在眼睛上，不随头骨原点高低漂移）
+            // 面具整体上移：坐在眉/额一线而非压住眼睛，让玩家【完整的眼睛】露出来。
+            Vector3 up = Vector3.up;
+            float rise = headW * 0.34f;                          // 上移量≈1/3 头宽(约到眉线)
             var eyeL = FindEye(head, "lefteye", "eyel", "eye_l");
             var eyeR = FindEye(head, "righteye", "eyer", "eye_r");
             Vector3 target;
             if (eyeL != null && eyeR != null)
-                target = (eyeL.position + eyeR.position) * 0.5f + fwd * (headW * 0.22f);
+                target = (eyeL.position + eyeR.position) * 0.5f + fwd * (headW * 0.22f) + up * rise;
             else if (eyeL != null || eyeR != null)
-                target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f);
+                target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f) + up * rise;
             else
-                // 无眼骨：头骨原点上方约半个头宽（眼高）、前方约 0.4 头宽（贴脸不悬空）
-                target = head.position + fwd * (headW * 0.4f) + Vector3.up * (headW * 0.5f);
+                // 无眼骨：头骨原点上方约一个头宽(额/眉高)、前方约 0.4 头宽（贴脸不悬空）
+                target = head.position + fwd * (headW * 0.4f) + up * (headW * 0.5f + rise);
 
             // 按面具【背面】贴脸就座，而不是把中心对到脸点——否则半个厚度陷进头里，
             // 头部几何(鼻/颊)戳穿面具只露出残片，看起来"残缺不完整"。把整块面具沿
@@ -379,6 +486,107 @@ namespace AdversityRoad.Player
                     if (n.Contains(k.Replace("_", ""))) return t;
             }
             return null;
+        }
+
+        static readonly Dictionary<string, Texture2D[]> _texCache = new Dictionary<string, Texture2D[]>();
+        static Texture2D[] FolderTextures(string folder)
+        {
+            if (!_texCache.TryGetValue(folder, out var t))
+            { t = Resources.LoadAll<Texture2D>(folder); _texCache[folder] = t; }
+            return t;
+        }
+
+        void FixWeaponMaterials(GameObject weapon) => FixModelMaterials(weapon, "Characters/Weapons");
+
+        /// <summary>换装白模修复：下载的武器/背包 FBX/glTF 常常材质与贴图没接上（贴图相对
+        /// 路径不符 / Maya lambert 默认材质未连贴图），呈现一片白。运行时按【贴图文件名
+        /// 与材质名、网格名的词元重合度】把该目录里的 basecolor/normal/metallic 贴图接到
+        /// URP/Lit，恢复原本纹理。已带底图的材质不动。对任何丢进对应目录的模型通用。</summary>
+        void FixModelMaterials(GameObject go, string texFolder)
+        {
+            var texes = FolderTextures(texFolder);
+            if (texes == null || texes.Length == 0) return;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+                var mats = r.materials;   // 实例材质，安全修改
+                string meshKey = r.name.ToLowerInvariant();
+                foreach (var m in mats)
+                {
+                    if (m == null) continue;
+                    string matKey = m.name.ToLowerInvariant();
+                    // 已带底图(兼容 URP _BaseMap/_MainTex 与 glTFast 的 baseColorTexture)则不动
+                    if (HasBaseTex(m)) continue;
+                    var bm = PickWeaponTex(texes, matKey, meshKey,
+                        "basecolor", "base_color", "diffuse", "albedo", "_col", "color");
+                    if (bm == null) continue;      // 找不到对应贴图就保持原样
+                    // 强制切到 URP/Lit：确保有 _BaseMap/_BumpMap 可接（glTFast 自有着色器
+                    // 属性名不同，接不上就还是白）；只有"确实白且找到贴图"的材质才切。
+                    var lit = Shader.Find("Universal Render Pipeline/Lit");
+                    if (lit != null) m.shader = lit;
+                    m.SetTexture("_BaseMap", bm);
+                    if (m.HasProperty("_MainTex")) m.SetTexture("_MainTex", bm);
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", Color.white);
+                    var nm = PickWeaponTex(texes, matKey, meshKey, "normal", "_nrm");
+                    if (nm != null)
+                    {
+                        m.SetTexture("_BumpMap", nm);
+                        m.EnableKeyword("_NORMALMAP");
+                    }
+                    if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.5f);
+                    var mr = PickWeaponTex(texes, matKey, meshKey, "metallic", "roughness", "metalness");
+                    if (mr != null && m.HasProperty("_MetallicGlossMap"))
+                    {
+                        m.SetTexture("_MetallicGlossMap", mr);
+                        m.EnableKeyword("_METALLICSPECGLOSSMAP");
+                    }
+                }
+                r.materials = mats;
+            }
+        }
+
+        /// <summary>材质是否已有底色贴图（跨 URP 与 glTFast 命名）。</summary>
+        static bool HasBaseTex(Material m)
+        {
+            string[] props = { "_BaseMap", "_MainTex", "baseColorTexture", "_baseColorTexture" };
+            foreach (var p in props)
+                if (m.HasProperty(p) && m.GetTexture(p) != null) return true;
+            return false;
+        }
+
+        /// <summary>在武器目录贴图里择优：先按类型关键词过滤（basecolor/normal…），
+        /// 再按与【材质名(权重更高)、网格名】的词元重合度打分，多武器共存时选名字最贴合的。
+        /// 无任何名字重合时退回首个类型匹配（单武器目录即唯一那张）。</summary>
+        static Texture2D PickWeaponTex(Texture2D[] texes, string matKey, string meshKey,
+            params string[] typeKeys)
+        {
+            Texture2D best = null; int bestScore = -1;
+            foreach (var t in texes)
+            {
+                if (t == null) continue;
+                string tn = t.name.ToLowerInvariant();
+                bool typeMatch = false;
+                foreach (var tk in typeKeys) if (tn.Contains(tk)) { typeMatch = true; break; }
+                if (!typeMatch) continue;
+                int score = 2 * TokenOverlap(tn, matKey) + TokenOverlap(tn, meshKey);
+                if (score > bestScore) { bestScore = score; best = t; }
+            }
+            return best;
+        }
+
+        static int TokenOverlap(string texName, string key)
+        {
+            if (string.IsNullOrEmpty(key)) return 0;
+            int score = 0;
+            foreach (var tok in texName.Split('_', '-', '.', ' '))
+            {
+                if (tok.Length < 3) continue;
+                // 跳过通用类型词，避免"base/color/normal"这类通用词误配
+                if (tok == "base" || tok == "color" || tok == "basecolor" ||
+                    tok == "normal" || tok == "diffuse" || tok == "albedo") continue;
+                if (key.Contains(tok)) score++;
+            }
+            return score;
         }
 
         /// <summary>角色不接收阴影：主光阴影不再盖住脸（清晰度优先于氛围）。</summary>
@@ -416,10 +624,11 @@ namespace AdversityRoad.Player
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
-            // 柄端判定：① Grip/Handle 子节点 ② 网格截面分析（护手最宽=柄端） ③ pivot 就近
+            // 柄端判定：① 柄/握把子节点(grip/handle/hilt/tsuka/柄) ② 网格截面分析
+            // (尖端最细=柄端在另一端) ③ pivot 就近兜底
             Vector3 gripL, tipL;
-            var gripNode = FindDeep(w, "grip");
-            if (gripNode == null) gripNode = FindDeep(w, "handle");
+            var gripNode = FindDeep(w, "grip") ?? FindDeep(w, "handle")
+                ?? FindDeep(w, "hilt") ?? FindDeep(w, "tsuka") ?? FindDeep(w, "柄");
             if (gripNode != null)
             {
                 Vector3 g = w.InverseTransformPoint(gripNode.position);
@@ -515,10 +724,11 @@ namespace AdversityRoad.Player
             return best;
         }
 
-        /// <summary>网格截面分析判柄端：沿刃轴切 12 片，统计每片的最大截面半径——
-        /// 剑的护手(crossguard)是最宽截面且靠近柄端；斧/锤/镰类最宽在头部（尖端），
-        /// 按名称翻转。需要网格可读（Weapons 目录的 FBX 已由导入器开启 Read/Write；
-        /// 不可读时返回 false 走 pivot 就近规则）。</summary>
+        /// <summary>网格截面分析判柄端（根治"剑拿反、握住刀刃"）：沿刃轴切 16 片，统计
+        /// 每片最大截面半径。判据从"最宽片位置"改为【两端边缘截面对比】——刀/剑的
+        /// 【尖端是收窄到近乎一点】的(边缘截面最小)，柄端有护手/柄/柄头(边缘截面明显更粗)，
+        /// 故【边缘截面大的一端 = 柄端】，这对刀/剑/枪都稳（不再被"最宽片恰在中段"骗到）。
+        /// 斧/锤/镰重头在粗端=尖端，按名称翻转。网格不可读时返回 false 走 pivot 兜底。</summary>
         static bool GripEndByProfile(Transform w, Bounds lb, out bool gripAtA,
             Vector3 endA, Vector3 endB)
         {
@@ -529,7 +739,7 @@ namespace AdversityRoad.Player
                 float axisLen = axis.magnitude;
                 if (axisLen < 1e-4f) return false;
                 axis /= axisLen;
-                const int slices = 12;
+                const int slices = 16;
                 var radial = new float[slices];
                 int total = 0;
                 foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true))
@@ -537,12 +747,14 @@ namespace AdversityRoad.Player
                 foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                     total += AccumProfile(w, smr.transform, smr.sharedMesh, endA, axis, axisLen, radial);
                 if (total < 24) return false;
-                int widest = 0;
-                for (int i = 1; i < slices; i++)
-                    if (radial[i] > radial[widest]) widest = i;
-                // 最宽截面（护手）靠近哪端，哪端就是柄端
-                gripAtA = widest < slices / 2;
-                // 斧/锤/镰：最宽处是头部=尖端，翻转
+
+                // 两端边缘截面（各取最外两片的较大值，抗噪）：尖端细、柄端粗
+                float aEdge = Mathf.Max(radial[0], radial[1]);
+                float bEdge = Mathf.Max(radial[slices - 1], radial[slices - 2]);
+                if (aEdge <= 1e-6f && bEdge <= 1e-6f) return false;
+                // 边缘截面大的一端 = 柄端（尖端收窄成点）
+                gripAtA = aEdge >= bEdge;
+                // 斧/锤/镰：重头(粗端)是打击头=尖端，柄在细端，翻转
                 string n = w.name.ToLowerInvariant();
                 foreach (var t in w.GetComponentsInChildren<Transform>(true))
                     n += " " + t.name.ToLowerInvariant();
