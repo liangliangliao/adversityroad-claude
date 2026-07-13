@@ -43,9 +43,12 @@ namespace AdversityRoad.Player
         {
             if (_sheath == null) return;
             bool willDraw = !_sheath.IsDrawn;
-            _sheath.SetDrawn(willDraw);
-            if (poser != null)
-                poser.PlayClipContaining(willDraw ? "draw" : "sheath");   // 拔刀/收刀动画
+            string key = willDraw ? "draw" : "sheath";
+            // 过渡时长与拔刀/收刀动画同步：取动作库对应片段时长，无片段则兜底
+            float dur = poser != null ? poser.ClipLengthContaining(key) : 0f;
+            if (dur <= 0.05f) dur = 0.7f;
+            if (poser != null) poser.PlayClipContaining(key);   // 拔刀/收刀动画
+            _sheath.Toggle(dur);
         }
 
         /// <summary>当前武器名（"" = 默认佩剑：模型自带兵器或 Characters/Weapon）。</summary>
@@ -383,23 +386,31 @@ namespace AdversityRoad.Player
             lhand.gameObject.AddComponent<FingerGrip>()
                 .Setup(lhand, lhand.InverseTransformDirection(axisW).normalized, palm);
 
-            // 记录该收刀本地姿态，挂拔刀控制器
+            // 记录【收刀】本地姿态（剑在鞘中）
             Transform sheathParent = blade.parent;
-            Vector3 lp = blade.localPosition; Quaternion lr = blade.localRotation; Vector3 ls = blade.localScale;
+            Vector3 sLP = blade.localPosition; Quaternion sLR = blade.localRotation; Vector3 sLS = blade.localScale;
+
+            // 预算【拔刀】本地姿态（把剑身按握位对齐到右手一次，记录，再放回鞘中）——
+            // 供过渡动画在"鞘中↔右手握持"两姿态间平滑滑动
+            blade.SetParent(rhand, false);
+            FitAndGripWeapon(blade, rhand, out _, out _);
+            Vector3 dLP = blade.localPosition; Quaternion dLR = blade.localRotation; Vector3 dLS = blade.localScale;
+            blade.SetParent(sheathParent, false);
+            blade.localPosition = sLP; blade.localRotation = sLR; blade.localScale = sLS;
 
             if (_sheath != null) Destroy(_sheath);
             _sheath = visualRoot.gameObject.AddComponent<WeaponSheath>();
-            _sheath.Setup(blade, sheathParent, lp, lr, ls, rhand,
-                // 拔刀：剑身按握位对齐右手 + 手指握拳（与其它剑一致）
-                (b, rh) =>
+            _sheath.Setup(blade, visualRoot, sheathParent, sLP, sLR, sLS, rhand, dLP, dLR, dLS,
+                // 拔刀到位：右手握拳（与其它剑一致）+ 刀光轴跟随剑身
+                rh =>
                 {
-                    FitAndGripWeapon(b, rh, out Vector3 bl, out Vector3 gw);
+                    FitAndGripWeapon(blade, rh, out Vector3 bl, out Vector3 gw);
                     var g = rh.GetComponent<FingerGrip>();
                     if (g == null) g = rh.gameObject.AddComponent<FingerGrip>();
                     g.Setup(rh, bl, gw);
-                    if (poser != null) poser.weaponPivot = b;
+                    if (poser != null) poser.weaponPivot = blade;
                 },
-                // 收刀：撤右手握拳
+                // 收刀/过渡开始：撤右手握拳
                 rh =>
                 {
                     var g = rh.GetComponent<FingerGrip>();
@@ -511,10 +522,10 @@ namespace AdversityRoad.Player
             // 座位：紧贴上背——沿后方仅外移半个厚度(背板贴住脊背)；并把【包顶抬到肩线】
             // (spine2 上方约 0.12 身高)，让顶部两条肩带正好落在双肩上、包体下垂到中背，
             // 而不是整包缩在肩胛下方。包围盒中心对到座点(与 pivot 无关，不会飞到身侧)。
-            // 往身体里收一点(0.6 倍半厚)让背包【紧贴后背】而不是浮在身后一段距离
+            // 往身体里收(0.4 倍半厚)让背包【紧贴后背】竖立不浮空；顶部到肩线让肩带落双肩
             float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
             float packH = WorldExtentAlong(bp, lb, up);
-            Vector3 seat = back.position - fwd * (halfDepth * 0.6f) + up * (bodyH * 0.12f - packH * 0.5f);
+            Vector3 seat = back.position - fwd * (halfDepth * 0.4f) + up * (bodyH * 0.12f - packH * 0.5f);
             bp.position += seat - bp.TransformPoint(lb.center);
         }
 

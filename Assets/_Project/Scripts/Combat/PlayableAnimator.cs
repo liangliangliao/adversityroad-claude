@@ -272,6 +272,16 @@ namespace AdversityRoad.Combat
             return false;
         }
 
+        /// <summary>按关键词返回第一个匹配片段的有效时长（考虑起手偏移/倍速）；无匹配返回 0。</summary>
+        public float ClipLengthContaining(string key)
+        {
+            if (!Valid || string.IsNullOrEmpty(key)) return 0f;
+            key = Norm(key);
+            foreach (var kv in _clipIndex)
+                if (kv.Key.Contains(key)) return _actionLen[kv.Value];
+            return 0f;
+        }
+
         void PlayIndex(int idx)
         {
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
