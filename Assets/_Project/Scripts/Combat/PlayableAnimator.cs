@@ -262,6 +262,26 @@ namespace AdversityRoad.Combat
         /// <summary>动作库中全部片段名（预览面板动态生成按钮用）。</summary>
         public IEnumerable<string> ClipNames => _clipIndex.Keys;
 
+        /// <summary>按关键词试播动作库中第一个匹配片段（如 "draw"/"sheath" 拔刀/收刀）。</summary>
+        public bool PlayClipContaining(string key)
+        {
+            if (!Valid || string.IsNullOrEmpty(key)) return false;
+            key = Norm(key);
+            foreach (var kv in _clipIndex)
+                if (kv.Key.Contains(key)) { PlayIndex(kv.Value); return true; }
+            return false;
+        }
+
+        /// <summary>按关键词返回第一个匹配片段的有效时长（考虑起手偏移/倍速）；无匹配返回 0。</summary>
+        public float ClipLengthContaining(string key)
+        {
+            if (!Valid || string.IsNullOrEmpty(key)) return 0f;
+            key = Norm(key);
+            foreach (var kv in _clipIndex)
+                if (kv.Key.Contains(key)) return _actionLen[kv.Value];
+            return 0f;
+        }
+
         void PlayIndex(int idx)
         {
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);

@@ -94,6 +94,13 @@ namespace AdversityRoad.Player
             // 蹲伏切换（潜行/低姿态）
             if (Input.GetKeyDown(KeyCode.C) || MobileInput.GetDown("Crouch")) ToggleCrouch();
 
+            // 拔刀/收刀（带剑鞘武器，手动按钮触发）
+            if (Input.GetKeyDown(KeyCode.T) || MobileInput.GetDown("Sheathe"))
+            {
+                if (_appearance == null) _appearance = GetComponent<PlayerAppearance>();
+                if (_appearance != null) _appearance.ToggleWeaponDrawn();
+            }
+
             Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
             input += MobileInput.Move;                       // 合并虚拟摇杆
             input = Vector2.ClampMagnitude(input, 1f);
@@ -184,9 +191,7 @@ namespace AdversityRoad.Player
                 Vector3.Distance(transform.position, _lockOn.CurrentTarget.position) < 6f;
             bool ready = enemyClose || (_combat != null && _combat.InCombat);
             _anim.SetCombatReady(ready);
-            // 带剑鞘的成套武器：临战拔刀到右手、脱战收刀回左手鞘中（普通武器无影响）
-            if (_appearance == null) _appearance = GetComponent<PlayerAppearance>();
-            if (_appearance != null) _appearance.SetWeaponDrawn(ready);
+            // 拔刀/收刀改为手动按钮触发（见 PlayerAppearance.ToggleWeaponDrawn），此处不再自动驱动
             _lastPos = transform.position;
         }
 

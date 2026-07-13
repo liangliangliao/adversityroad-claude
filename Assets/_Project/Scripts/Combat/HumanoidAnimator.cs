@@ -188,6 +188,14 @@ namespace AdversityRoad.Combat
         public bool PlayClipPreview(string clipName) =>
             Mecanim && _mecanim.PlayClip(clipName);
 
+        /// <summary>按关键词试播动作库片段（拔刀/收刀等按 "draw"/"sheath" 触发）。</summary>
+        public bool PlayClipContaining(string key) =>
+            Mecanim && _mecanim.PlayClipContaining(key);
+
+        /// <summary>按关键词返回匹配片段时长（拔刀/收刀过渡与动画同步用）；无则 0。</summary>
+        public float ClipLengthContaining(string key) =>
+            Mecanim ? _mecanim.ClipLengthContaining(key) : 0f;
+
         string _lastMoveName;
         float _lastMoveNameAt;
 
