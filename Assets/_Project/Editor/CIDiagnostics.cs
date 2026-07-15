@@ -128,27 +128,30 @@ namespace AdversityRoad.EditorTools
             foreach (var prefab in all)
             {
                 if (prefab == null) continue;
-                var bp = Object.Instantiate(prefab);
+                // 与运行时同构：包装父节点（模型根可能自带轴向旋转+非均匀缩放，
+                // 必须经由子节点 TRS 测量真实视觉几何）
+                var holder = new GameObject("BackpackHolder").transform;
+                var bp = Object.Instantiate(prefab, holder, false);
                 try
                 {
                     sb.Append("[CIDIAG][背包] ").Append(prefab.name).Append(" 层级：\n");
-                    Dump(sb, bp.transform, 0);
-                    if (PlayerAppearance.LocalBounds(bp.transform, out Bounds lb))
-                        sb.Append("[CIDIAG][背包] 本地包围盒 size=").Append(lb.size.ToString("F2"))
-                          .Append(" center=").Append(lb.center.ToString("F2")).Append('\n');
-                    foreach (var mf in bp.GetComponentsInChildren<MeshFilter>(true))
+                    Dump(sb, holder, 0);
+                    if (PlayerAppearance.LocalBounds(holder, out Bounds lb))
+                        sb.Append("[CIDIAG][背包] 包装节点空间包围盒 size=").Append(lb.size.ToString("F3"))
+                          .Append(" center=").Append(lb.center.ToString("F3")).Append('\n');
+                    foreach (var mf in holder.GetComponentsInChildren<MeshFilter>(true))
                         if (mf.sharedMesh != null)
-                            sb.Append("    网格 ").Append(Path(mf.transform, bp.transform))
+                            sb.Append("    网格 ").Append(Path(mf.transform, holder))
                               .Append(" 顶点=").Append(mf.sharedMesh.vertexCount)
                               .Append(" 可读=").Append(mf.sharedMesh.isReadable).Append('\n');
-                    bool ok = PlayerAppearance.TryMeasureBackpack(bp.transform,
+                    bool ok = PlayerAppearance.TryMeasureBackpack(holder,
                         out int thin, out int big, out int strapSign);
-                    sb.Append("[CIDIAG][背包] 实测：成功=").Append(ok)
+                    sb.Append("[CIDIAG][背包] 实测（包装节点空间=视觉几何）：成功=").Append(ok)
                       .Append(" 高轴=").Append("XYZ"[big])
                       .Append(" 厚轴=").Append("XYZ"[thin])
                       .Append(" 肩带朝=").Append(strapSign > 0 ? "+" : "-").Append("XYZ"[thin]).Append('\n');
                 }
-                finally { Object.DestroyImmediate(bp); }
+                finally { Object.DestroyImmediate(holder.gameObject); }
             }
         }
 

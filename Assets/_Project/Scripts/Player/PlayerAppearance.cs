@@ -613,11 +613,18 @@ namespace AdversityRoad.Player
                 if (p != null && p.name == CurrentBackpack) { prefab = p; break; }
             if (prefab == null) return;
 
-            var bp = Object.Instantiate(prefab, back, false);
-            bp.name = EquippedBackpackName;
+            // 【包装父节点】CI 实测：FBX 导入会把"网格节点"直接作为预制体根，根上带着
+            // 轴向修正旋转(如 270°X)和非均匀缩放(如 11.56/5.32/16.34)。若直接在模型根上
+            // 测量+摆位，测到的是【原始网格坐标】(缩放旋转未参与)，高/厚轴全被错认——
+            // 这就是"背包永远横躺、肩带朝上"的最终根因。包一层空节点：模型保留自己的
+            // 烘焙变换，测量(经由子节点 TRS=真实视觉几何)与摆位全部作用在包装节点上。
+            var holder = new GameObject(EquippedBackpackName).transform;
+            holder.SetParent(back, false);
+            var bp = Object.Instantiate(prefab, holder, false);
+            bp.name = "Model";
             FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 有贴图才接线
             // 不做任何染色：保持模型本色（本背包原型即白色，按用户要求恢复本色）
-            FitBackpack(bp.transform, back, model);
+            FitBackpack(holder, back, model);
             DisableSelfShadow();
         }
 
