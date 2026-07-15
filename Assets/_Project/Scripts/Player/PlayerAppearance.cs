@@ -721,31 +721,33 @@ namespace AdversityRoad.Player
                 foreach (var p in pts) { mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
                 Vector3 span = mx - mn;
                 if (span.x < 1e-6f || span.y < 1e-6f || span.z < 1e-6f) return false;
-                thin = 0; big = 0;
+                // 局部函数不能捕获 out 参数(CS1628)：先算到本地变量，最后再回填
+                int tAx = 0, bAx = 0;
                 for (int i = 1; i < 3; i++)
                 {
-                    if (span[i] < span[thin]) thin = i;
-                    if (span[i] > span[big]) big = i;
+                    if (span[i] < span[tAx]) tAx = i;
+                    if (span[i] > span[bAx]) bAx = i;
                 }
-                if (thin == big) return false;
+                if (tAx == bAx) return false;
                 int u = -1, v = -1;
-                for (int i = 0; i < 3; i++) if (i != thin) { if (u < 0) u = i; else v = i; }
+                for (int i = 0; i < 3; i++) if (i != tAx) { if (u < 0) u = i; else v = i; }
 
                 const int G = 12;
                 int Occupancy(int side)
                 {
                     var cells = new HashSet<int>();
-                    float lo = mn[thin] + span[thin] * 0.15f;
-                    float hi = mx[thin] - span[thin] * 0.15f;
+                    float lo = mn[tAx] + span[tAx] * 0.15f;
+                    float hi = mx[tAx] - span[tAx] * 0.15f;
                     foreach (var p in pts)
                     {
-                        if (side > 0 ? p[thin] < hi : p[thin] > lo) continue;
+                        if (side > 0 ? p[tAx] < hi : p[tAx] > lo) continue;
                         int cu = Mathf.Min((int)((p[u] - mn[u]) / span[u] * G), G - 1);
                         int cv = Mathf.Min((int)((p[v] - mn[v]) / span[v] * G), G - 1);
                         cells.Add(cu * G + cv);
                     }
                     return cells.Count;
                 }
+                thin = tAx; big = bAx;
                 strapSign = Occupancy(-1) < Occupancy(+1) ? -1 : 1;
                 return true;
             }
