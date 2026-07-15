@@ -46,8 +46,9 @@ namespace AdversityRoad.Player
             if (_sheath == null)
             {
                 // 无剑鞘时按键 = 查看装配诊断（开机装配时字幕系统可能尚未就绪，
-                // 这里保证诊断随时可以调出来）
-                Core.GameEvents.RaiseSubtitle(_sheathDiag);
+                // 这里保证诊断随时可以调出来）。前缀是装配系统版本号——
+                // 截图里看不到这个前缀 = 跑的还是旧包（多轮"没变化"的最大嫌疑）
+                Core.GameEvents.RaiseSubtitle("[装配v3] " + _sheathDiag);
                 return;
             }
             bool willDraw = !_sheath.IsDrawn;
