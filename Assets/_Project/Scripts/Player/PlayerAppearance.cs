@@ -353,7 +353,7 @@ namespace AdversityRoad.Player
         /// 某项包含的子孙，保持最少的顶层集合）。之前按层级"回溯子树根"来猜剑身节点，
         /// 一旦导入器组织的层级与源文件不同，移动那个猜出来的节点就不会带动真正渲染的
         /// 网格（"剑永远插不进鞘"的根因之一）——现在直接抓【网格所在节点本身】。</summary>
-        static List<Transform> BladeParts(Transform w, Transform scab)
+        public static List<Transform> BladeParts(Transform w, Transform scab)
         {
             var parts = new List<Transform>();
             void Consider(Transform t)
@@ -377,7 +377,7 @@ namespace AdversityRoad.Player
         /// 若长度相近（0.55~1.05）且【非共线/相互分离】（带鞘武器在源文件里是摆拍分离
         /// 姿态；而同一把剑拆成刃+柄是共线相接的，不会误判），则其中【顶点更少】的是
         /// 剑鞘（素圆管），另一个是剑（护手/雕花网格更密）。识别不出返回 null。</summary>
-        static Transform DetectScabbardByGeometry(Transform w)
+        public static Transform DetectScabbardByGeometry(Transform w)
         {
             var list = new List<(Transform t, Vector3 a, Vector3 b, float len, float aspect, int v)>();
             void Add(Transform t, Mesh m)
@@ -414,7 +414,7 @@ namespace AdversityRoad.Player
         /// <summary>把中心落在剑鞘包围盒（略放大）内、且长度不足鞘长 35% 的小网格
         /// （挂环等配件）挂到鞘节点下——节点名丢失时它们无法按名排除，若混进剑身组
         /// 会撑歪剑身包围盒、并在拔刀时跟着剑飞走。</summary>
-        static void AdoptScabbardAccessories(Transform w, Transform scab)
+        public static void AdoptScabbardAccessories(Transform w, Transform scab)
         {
             if (!LocalBounds(scab, out Bounds sb)) return;
             LongAxisEnds(sb, out Vector3 s0, out Vector3 s1);
@@ -557,6 +557,10 @@ namespace AdversityRoad.Player
                     }
                     if (poser != null) poser.weaponPivot = null;
                 });
+            // 自然携持：每帧把鞘摆竖直(柄朝上微前倾)、鞘中点贴左手掌心——
+            // 不再依赖装备瞬间的手掌姿势（T-pose 烘焙是"整套横穿身前"的根因）
+            _sheath.SetCarry(set, lhand, visualRoot, mouthL, botL, sb.center,
+                lhand.InverseTransformPoint(palm));
             if (poser != null) poser.weaponPivot = null;   // 收刀状态：耍花/刀光不驱动剑身
         }
 
@@ -698,7 +702,7 @@ namespace AdversityRoad.Player
         /// root 本地——最大跨度轴=高、最小=厚；厚轴两端各取 15% 外层薄片，按另两轴
         /// 12×12 栅格数占用格，占格少的一侧（细窄条带=肩带）为肩带侧。
         /// 网格不可读/顶点太少返回 false。</summary>
-        static bool TryMeasureBackpack(Transform root, out int thin, out int big, out int strapSign)
+        public static bool TryMeasureBackpack(Transform root, out int thin, out int big, out int strapSign)
         {
             thin = 2; big = 1; strapSign = 1;
             try
@@ -1006,7 +1010,7 @@ namespace AdversityRoad.Player
                 r.receiveShadows = false;
         }
 
-        static void LongAxisEnds(Bounds lb, out Vector3 endA, out Vector3 endB)
+        public static void LongAxisEnds(Bounds lb, out Vector3 endA, out Vector3 endB)
         {
             int axis = 0;
             if (lb.size.y >= lb.size.x && lb.size.y >= lb.size.z) axis = 1;
@@ -1030,7 +1034,7 @@ namespace AdversityRoad.Player
         /// 长轴哪一端，再把该"柄端点"经真实 transform 映射到 w 局部，取最近的 endA/endB。
         /// 只在原点明显偏向一端(pivot 未被居中/烘焙)时判定，否则返回 -1 交给截面法。
         /// 返回 0=endA 为柄、1=endB 为柄、-1=判不了。</summary>
-        static int GripEndByModelOrigin(Transform w, Vector3 endA, Vector3 endB)
+        public static int GripEndByModelOrigin(Transform w, Vector3 endA, Vector3 endB)
         {
             Transform main = null; Mesh mesh = null; int bestV = 0;
             foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true))
@@ -1263,7 +1267,7 @@ namespace AdversityRoad.Player
             return verts.Length;
         }
 
-        static Transform FindDeep(Transform root, string key)
+        public static Transform FindDeep(Transform root, string key)
         {
             foreach (var tr in root.GetComponentsInChildren<Transform>(true))
             {
@@ -1275,7 +1279,7 @@ namespace AdversityRoad.Player
 
         /// <summary>武器自身坐标系下的合并包围盒（用网格局部 bounds 变换累计，
         /// 与当前姿势/世界朝向无关，结果确定可复现）。</summary>
-        static bool LocalBounds(Transform w, out Bounds b)
+        public static bool LocalBounds(Transform w, out Bounds b)
         {
             b = default;
             bool has = false;

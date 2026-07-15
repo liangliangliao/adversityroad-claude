@@ -8,6 +8,35 @@ on:
       - 'claude/**'
 
 jobs:
+  # 资产运行时诊断：在 CI 里加载武器/背包资源并把导入后的真实层级/轴向/装配核对
+  # 打进日志（搜 [CIDIAG]）。远程排查“导入结果与源文件不一致”类问题用，
+  # 跑编辑器方法不出包，比 Android 构建快得多。
+  diagnoseAssets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Diag-${{ hashFiles('Packages/manifest.json', 'ProjectSettings/ProjectVersion.txt') }}
+          restore-keys: |
+            Library-Diag-
+
+      - name: Run asset diagnostics
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: StandaloneLinux64
+          buildMethod: AdversityRoad.EditorTools.CIDiagnostics.Run
+
   buildAndroid:
     runs-on: ubuntu-latest
 

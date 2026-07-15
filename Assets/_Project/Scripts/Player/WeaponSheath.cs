@@ -23,6 +23,13 @@ namespace AdversityRoad.Player
         System.Action<Transform> _addGrip, _removeGrip;   // 右手握拳/枢轴 挂/撤
         bool _drawn;
 
+        // 自然携持（每帧强制）：左手提鞘、鞘身竖直微前倾、刀柄朝上，鞘中点贴掌心。
+        // 装备瞬间按当时手掌姿势摆一次是"跑动时整套横穿身前/朝向乱飞"的根因——
+        // 绑定姿势(T-pose)的手掌坐标系与游玩姿势差异极大，烘进本地变换就再也不对了。
+        Transform _set, _lhand, _visual;
+        Vector3 _mouthPt, _botPt, _midPt;          // 鞘口/鞘底/鞘中点（鞘本地）
+        Vector3 _palmL;                            // 掌心（左手本地）
+
         // 过渡
         bool _anim; float _t, _dur; bool _toDrawn;
         Vector3 _startP, _startS; Quaternion _startR;   // 收刀起点（世界，Toggle 时快照）
@@ -43,6 +50,15 @@ namespace AdversityRoad.Player
             _drawn = false; _anim = false;
         }
 
+        /// <summary>配置自然携持：整套(set)挂在左手，每帧把鞘轴摆竖直（刀柄朝上微前倾）、
+        /// 鞘中点贴掌心——与绑定姿势/手骨朝向无关，任何动作下都是"手提剑鞘"的自然姿态。</summary>
+        public void SetCarry(Transform set, Transform lhand, Transform visual,
+            Vector3 mouthPt, Vector3 botPt, Vector3 midPt, Vector3 palmLocal)
+        {
+            _set = set; _lhand = lhand; _visual = visual;
+            _mouthPt = mouthPt; _botPt = botPt; _midPt = midPt; _palmL = palmLocal;
+        }
+
         /// <summary>在拔刀/收刀之间切换，用 dur 秒两段式过渡（与动画时长同步）。</summary>
         public void Toggle(float dur)
         {
@@ -60,6 +76,8 @@ namespace AdversityRoad.Player
         void LateUpdate()
         {
             if (_blade == null || _scab == null) return;
+
+            CarryScabbard();   // 先摆好鞘（左手自然携持），剑身逻辑再基于最新鞘位
 
             if (!_anim)
             {
@@ -128,6 +146,21 @@ namespace AdversityRoad.Player
                     _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
                 }
             }
+        }
+
+        /// <summary>每帧自然携持：鞘轴(鞘底→鞘口)对齐"竖直微前倾"、鞘中点贴左手掌心。
+        /// 只做最小旋转修正，绕竖轴的朝向仍随手转动（转身时剑鞘自然跟随）。</summary>
+        void CarryScabbard()
+        {
+            if (_set == null || _lhand == null) return;
+            Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);
+            if (axisW.sqrMagnitude < 1e-10f) return;
+            Vector3 fwd = _visual != null
+                ? Vector3.ProjectOnPlane(_visual.forward, Vector3.up) : Vector3.forward;
+            if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward;
+            Vector3 want = (Vector3.up * 0.92f + fwd.normalized * 0.39f).normalized;
+            _set.rotation = Quaternion.FromToRotation(axisW.normalized, want) * _set.rotation;
+            _set.position += _lhand.TransformPoint(_palmL) - _scab.TransformPoint(_midPt);
         }
 
         static void WorldPose(Transform parent, Vector3 lp, Quaternion lr, Vector3 ls,
