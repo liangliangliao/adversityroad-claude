@@ -32,6 +32,7 @@ namespace AdversityRoad.Player
         public HumanoidRig Rig { get; private set; }
 
         WeaponSheath _sheath;   // 带鞘武器的拔刀/收刀控制器（普通武器为 null）
+        Transform _drawnPivot;  // 拔刀后右手掌心枢轴（收刀/换武器时销毁）
 
         /// <summary>当前是否装备了带剑鞘的成套武器（UI 决定是否显示「拔刀/收刀」按钮）。</summary>
         public bool HasSheathWeapon => _sheath != null;
@@ -250,13 +251,14 @@ namespace AdversityRoad.Player
             var hand = MecanimCharacter.FindBone(model, "righthand");
             var lhand = MecanimCharacter.FindBone(model, "lefthand");
 
-            // 卸下上一件外装武器（含收刀时挂在左手的成套剑鞘）与拔刀控制器
+            // 卸下上一件外装武器（含收刀时挂在左手的成套剑鞘、掌心枢轴）与拔刀控制器
             if (_sheath != null) { Destroy(_sheath); _sheath = null; }
+            _drawnPivot = null;
             foreach (var h in new[] { hand, lhand })
             {
                 if (h == null) continue;
                 for (int i = h.childCount - 1; i >= 0; i--)
-                    if (h.GetChild(i).name == EquippedName)
+                    if (h.GetChild(i).name.StartsWith(EquippedName))
                         Destroy(h.GetChild(i).gameObject);
                 var og = h.GetComponent<FingerGrip>();
                 if (og != null) Destroy(og);
@@ -295,8 +297,9 @@ namespace AdversityRoad.Player
                 else
                 {
                     FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
+                    var pv = WrapWeaponPivot(w.transform, hand, bladeLocal, gripW);
                     hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
-                    if (poser != null) poser.weaponPivot = w.transform;
+                    if (poser != null) poser.weaponPivot = pv;
                 }
             }
             else if (builtin != null)
@@ -350,9 +353,11 @@ namespace AdversityRoad.Player
             return r;
         }
 
-        /// <summary>装配成套带鞘武器：剑身在模型里【本就已插在剑鞘中】(实测该模型剑柄露出鞘口、
-        /// 剑身没入鞘内)，故【不再重新对齐】(之前的对齐反而把它拆散了)——整套(剑+鞘)按原样挂
-        /// 左手、左手横握剑鞘中部，记录剑身收刀本地姿态；挂 WeaponSheath，拔刀时把剑身抽到右手。</summary>
+        /// <summary>装配成套带鞘武器（剑+鞘，该模型两部件在源文件里就是【摆拍分离】姿态，
+        /// 必须运行时装配）：剑身改挂到剑鞘节点下，在【剑鞘本地空间】解析求出"插入鞘中"
+        /// 的本地姿态——剑轴(柄→尖)对齐鞘轴(鞘口→鞘底)、剑尖抵鞘底、剑柄自鞘口露出。
+        /// 纯本地 TRS 与骨骼缩放/世界姿态无关，数学上精确；此后每帧由 WeaponSheath 复位，
+        /// 剑与鞘不可能再分离。整套挂左手横握鞘中部（鞘口朝拳眼侧=拔刀手可及）。</summary>
         void SetupSheathedWeapon(Transform set, Transform blade, Transform scab, Transform lhand, Transform rhand)
         {
             set.SetParent(lhand, false);
@@ -360,78 +365,90 @@ namespace AdversityRoad.Player
             set.localRotation = Quaternion.identity;
             set.localScale = Vector3.one;
 
-            // 1) 把剑身插进剑鞘：模型里剑虽本应在鞘中，但导入后(glTFast)两部件被拆开了，
-            //    这里用【正确切出的剑身节点】强制对齐(长轴对齐 + 剑身没入鞘中)，确保默认插好。
-            AlignBladeIntoScabbard(blade, scab);
+            // 1) 剑身入鞘（剑鞘本地空间解析装配）
+            if (!LocalBounds(blade, out Bounds bb) || !LocalBounds(scab, out Bounds sb))
+            {
+                // 几何不可测：退化为普通武器整套右手握持
+                set.SetParent(rhand, false);
+                FitAndGripWeapon(set, rhand, out Vector3 bl0, out Vector3 gw0);
+                rhand.gameObject.AddComponent<FingerGrip>().Setup(rhand, bl0, gw0);
+                return;
+            }
+            LongAxisEnds(bb, out Vector3 ba0, out Vector3 ba1);
+            LongAxisEnds(sb, out Vector3 sa0, out Vector3 sa1);
+            bool gripAtA = DecideGripEnd(blade, bb, ba0, ba1);
+            Vector3 gripL = gripAtA ? ba0 : ba1, tipL = gripAtA ? ba1 : ba0;
+            Vector3 mouthL = sa1, botL = sa0;              // 约定：鞘口=长轴高端（下方持握时鞘口朝拳眼侧）
+            Vector3 bDir = tipL - gripL;
+            Vector3 sDir = botL - mouthL;                  // 鞘口→鞘底 = 插入方向
+            float bladeLen = bDir.magnitude, scabLen = sDir.magnitude;
+            if (bladeLen < 1e-4f || scabLen < 1e-4f) return;
+            bDir /= bladeLen; sDir /= scabLen;
+
+            Quaternion q = Quaternion.FromToRotation(bDir, sDir);
+            // 同一模型拆出的剑与鞘原比例即正确（柄长=剑长-鞘长自然露出）；仅当比例
+            // 明显异常（异源模型）才归一到"刃身入鞘、柄露鞘口"
+            float s = 1f;
+            float fit = scabLen * 1.12f / bladeLen;
+            if (fit < 0.7f || fit > 1.45f) s = fit;
+            Vector3 sLP = (botL - sDir * (scabLen * 0.02f)) - (q * tipL) * s;   // 剑尖抵鞘底(留 2% 余量)
+            Quaternion sLR = q; Vector3 sLS = Vector3.one * s;
+            blade.SetParent(scab, false);
+            blade.localPosition = sLP; blade.localRotation = sLR; blade.localScale = sLS;
 
             // 2) 定尺：整套按【剑鞘长度≈0.62 身高】等比缩放
             float targetLen = 0.62f * MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
-            if (LocalBounds(scab, out Bounds sb0))
-            {
-                LongAxisEnds(sb0, out Vector3 s0, out Vector3 s1);
-                float curLen = (scab.TransformPoint(s1) - scab.TransformPoint(s0)).magnitude;
-                if (curLen > 1e-4f) set.localScale *= Mathf.Clamp(targetLen / curLen, 0.01f, 100f);
-            }
+            float curLen = (scab.TransformPoint(sa1) - scab.TransformPoint(sa0)).magnitude;
+            if (curLen > 1e-4f) set.localScale *= Mathf.Clamp(targetLen / curLen, 0.01f, 100f);
 
-            // 3) 左手【横握剑鞘中部】：鞘长轴对齐掌握持轴、鞘中点落在掌心，手指绕鞘握拢
+            // 3) 左手【横握剑鞘中部】：鞘轴对齐掌握持轴且鞘口朝拇指/拳眼侧（拔刀手可及），
+            //    鞘中点落在掌心，手指绕鞘握拢
             HandGripFrame(lhand, out Vector3 palm, out Vector3 axisW, out float hw);
-            if (LocalBounds(scab, out Bounds sb1))
-            {
-                LongAxisEnds(sb1, out Vector3 s0, out Vector3 s1);
-                Vector3 scabAxisW = scab.TransformPoint(s1) - scab.TransformPoint(s0);
-                if (scabAxisW.sqrMagnitude > 1e-8f)
-                    set.rotation = Quaternion.FromToRotation(scabAxisW.normalized, axisW) * set.rotation;
-                set.position += palm - scab.TransformPoint(sb1.center);   // 鞘中点→掌心
-            }
+            Vector3 outW = scab.TransformPoint(mouthL) - scab.TransformPoint(botL);   // 鞘底→鞘口（世界）
+            if (outW.sqrMagnitude > 1e-8f)
+                set.rotation = Quaternion.FromToRotation(outW.normalized, axisW) * set.rotation;
+            set.position += palm - scab.TransformPoint(sb.center);   // 鞘中点→掌心
             lhand.gameObject.AddComponent<FingerGrip>()
                 .Setup(lhand, lhand.InverseTransformDirection(axisW).normalized, palm);
 
-            // 记录【收刀】本地姿态（剑在鞘中）
-            Transform sheathParent = blade.parent;
-            Vector3 sLP = blade.localPosition; Quaternion sLR = blade.localRotation; Vector3 sLS = blade.localScale;
-
-            // 预算【拔刀】本地姿态（把剑身按握位对齐到右手一次，记录，再放回鞘中）——
-            // 供过渡动画在"鞘中↔右手握持"两姿态间平滑滑动
+            // 4) 预算【拔刀】本地姿态（把剑身按握位对齐到右手一次，记录，再放回鞘中）
             blade.SetParent(rhand, false);
             FitAndGripWeapon(blade, rhand, out _, out _);
             Vector3 dLP = blade.localPosition; Quaternion dLR = blade.localRotation; Vector3 dLS = blade.localScale;
-            blade.SetParent(sheathParent, false);
+            blade.SetParent(scab, false);
             blade.localPosition = sLP; blade.localRotation = sLR; blade.localScale = sLS;
+
+            // 5) 鞘口滑动参数：过渡时先对准鞘口、再沿鞘轴滑入/抽出（鞘本地空间）
+            Vector3 mouthDir = -sDir;                 // 指向鞘口外 = 抽出方向
+            float slide = bladeLen * s * 0.92f;       // 抽出距离≈剑长（柄在鞘口略留余量）
 
             if (_sheath != null) Destroy(_sheath);
             _sheath = visualRoot.gameObject.AddComponent<WeaponSheath>();
-            _sheath.Setup(blade, visualRoot, sheathParent, sLP, sLR, sLS, rhand, dLP, dLR, dLS,
-                // 拔刀到位：右手握拳（与其它剑一致）+ 刀光轴跟随剑身
+            _sheath.Setup(blade, scab, sLP, sLR, sLS, mouthDir, slide, rhand, dLP, dLR, dLS,
+                // 拔刀到位：右手握拳 + 包掌心枢轴（耍花绕掌心挥、刀光轴跟随）
                 rh =>
                 {
                     FitAndGripWeapon(blade, rh, out Vector3 bl, out Vector3 gw);
+                    _drawnPivot = WrapWeaponPivot(blade, rh, bl, gw);
                     var g = rh.GetComponent<FingerGrip>();
                     if (g == null) g = rh.gameObject.AddComponent<FingerGrip>();
                     g.Setup(rh, bl, gw);
-                    if (poser != null) poser.weaponPivot = blade;
+                    if (poser != null) poser.weaponPivot = _drawnPivot;
                 },
-                // 收刀/过渡开始：撤右手握拳
+                // 收刀/过渡开始：撤右手握拳与掌心枢轴（先把剑身救出再销毁枢轴）
                 rh =>
                 {
                     var g = rh.GetComponent<FingerGrip>();
                     if (g != null) Destroy(g);
+                    if (_drawnPivot != null)
+                    {
+                        blade.SetParent(_drawnPivot.parent, true);
+                        Destroy(_drawnPivot.gameObject);
+                        _drawnPivot = null;
+                    }
+                    if (poser != null) poser.weaponPivot = null;
                 });
-            if (poser != null) poser.weaponPivot = blade;
-        }
-
-        /// <summary>把剑身插进剑鞘：剑身长轴对齐剑鞘长轴(同向)，并把剑身包围盒中心套到剑鞘
-        /// 包围盒中心(剑没入鞘中、剑柄自一端露出)。世界空间对齐；调用后剑身相对其父的本地姿态
-        /// 即"收刀"姿态。用于导入后剑与鞘被拆开时强制复位插好。</summary>
-        void AlignBladeIntoScabbard(Transform blade, Transform scab)
-        {
-            if (!LocalBounds(blade, out Bounds bb) || !LocalBounds(scab, out Bounds sb)) return;
-            LongAxisEnds(bb, out Vector3 ba0, out Vector3 ba1);
-            LongAxisEnds(sb, out Vector3 sa0, out Vector3 sa1);
-            Vector3 bAxisW = blade.TransformPoint(ba1) - blade.TransformPoint(ba0);
-            Vector3 sAxisW = scab.TransformPoint(sa1) - scab.TransformPoint(sa0);
-            if (bAxisW.sqrMagnitude < 1e-8f || sAxisW.sqrMagnitude < 1e-8f) return;
-            blade.rotation = Quaternion.FromToRotation(bAxisW.normalized, sAxisW.normalized) * blade.rotation;
-            blade.position += scab.TransformPoint(sb.center) - blade.TransformPoint(bb.center);
+            if (poser != null) poser.weaponPivot = null;   // 收刀状态：耍花/刀光不驱动剑身
         }
 
         /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，
@@ -487,14 +504,18 @@ namespace AdversityRoad.Player
             bp.name = EquippedBackpackName;
             FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 有贴图才接线
             // 不做任何染色：保持模型本色（本背包原型即白色，按用户要求恢复本色）
-            FitBackpack(bp.transform, back);
+            FitBackpack(bp.transform, back, model);
             DisableSelfShadow();
         }
 
-        /// <summary>背包定位：与角色同朝向，按【最大边】归一到背包尺度（不按某一轴测量，
-        /// 避免模型朝向不定时按错轴把尺寸放大到超大＝之前"背包巨大浮空"的根因），并把
-        /// 包围盒中心贴到上背中央、沿后方外移半个厚度（背在背后不穿身、不悬空）。</summary>
-        void FitBackpack(Transform bp, Transform back)
+        /// <summary>背包定尺 + 挂载跟随绑定（BackpackRig）。
+        /// 只在装备瞬间摆一次姿态是"背包横倒 90°/沉进躯干"的根因——装备时刻的骨骼姿势
+        /// (尤其 glb 角色的绑定姿势)会被烘进本地变换，播放姿势一变就歪。这里改为：
+        ///   · 轴分类与作者朝向无关：最薄轴=厚度(贴背方向)、最大轴=高度；
+        ///   · 定尺按最大边≈0.30 身高；
+        ///   · 之后交给 BackpackRig 每帧从活动骨骼摆位（躯干竖直+面向），并程序化生成
+        ///     两条肩带：跨双肩、沿胸前拉下、绕肋侧扣到包底前角——贴背竖立、肩带套肩。</summary>
+        void FitBackpack(Transform bp, Transform back, Transform model)
         {
             if (!LocalBounds(bp, out Bounds lb)) { Destroy(bp.gameObject); return; }
             Vector3 sz = lb.size;
@@ -505,28 +526,47 @@ namespace AdversityRoad.Player
             float bodyH = MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
             Vector3 fwd = visualRoot.forward;
             Vector3 up = Vector3.up;
-            Vector3 right = visualRoot.right;
 
-            // 朝向：背包【背板/肩带面】要贴向角色脊背（朝角色前方），主体鼓向身后。
-            // 实测本背包肩带在模型 -Z 面、Y 为高——LookRotation(-fwd) 让模型 +Z(鼓面)朝身后、
-            // -Z(背板+肩带)贴向身体，肩带自上背绕向双肩，而不是朝后翘成两根天线。
-            bp.rotation = Quaternion.LookRotation(-fwd, up);
+            // 轴分类（与模型作者朝向无关）：最薄轴=厚度、最大轴=高度、剩余=宽度。
+            // 修正四元数把（厚→+Z 鼓面、高→+Y）映射到跟随坐标系；本背包(Y 高 Z 厚、
+            // 肩带在 -Z 面)恰好退化为恒等，其它朝向的模型也能自动立正。
+            int thin = 0, big = 0;
+            for (int i = 1; i < 3; i++)
+            {
+                if (sz[i] < sz[thin]) thin = i;
+                if (sz[i] > sz[big]) big = i;
+            }
+            if (thin == big) { thin = 2; big = 1; }
+            Vector3 thinAxis = thin == 0 ? Vector3.right : thin == 1 ? Vector3.up : Vector3.forward;
+            Vector3 bigAxis = big == 0 ? Vector3.right : big == 1 ? Vector3.up : Vector3.forward;
+            Quaternion qFix = Quaternion.Inverse(Quaternion.LookRotation(thinAxis, bigAxis));
+            bp.rotation = Quaternion.LookRotation(-fwd, up) * qFix;
 
             // 定尺：最大边 ≈ 0.30 身高（约 0.6m，正常背包尺度）。三轴世界跨度取最大，
             // 与模型自身朝向无关，绝不会因测到薄轴而把整包放大到吞屏。
             float target = bodyH * 0.30f;
-            float maxDim = Mathf.Max(WorldExtentAlong(bp, lb, right),
+            float maxDim = Mathf.Max(WorldExtentAlong(bp, lb, visualRoot.right),
                 Mathf.Max(WorldExtentAlong(bp, lb, up), WorldExtentAlong(bp, lb, fwd)));
             if (maxDim > 1e-4f) bp.localScale *= Mathf.Clamp(target / maxDim, 0.001f, 200f);
 
-            // 座位：紧贴上背——沿后方仅外移半个厚度(背板贴住脊背)；并把【包顶抬到肩线】
-            // (spine2 上方约 0.12 身高)，让顶部两条肩带正好落在双肩上、包体下垂到中背，
-            // 而不是整包缩在肩胛下方。包围盒中心对到座点(与 pivot 无关，不会飞到身侧)。
-            // 往身体里收(0.4 倍半厚)让背包【紧贴后背】竖立不浮空；顶部到肩线让肩带落双肩
-            float halfDepth = WorldExtentAlong(bp, lb, fwd) * 0.5f;
+            float packW = WorldExtentAlong(bp, lb, visualRoot.right);
             float packH = WorldExtentAlong(bp, lb, up);
-            Vector3 seat = back.position - fwd * (halfDepth * 0.4f) + up * (bodyH * 0.12f - packH * 0.5f);
-            bp.position += seat - bp.TransformPoint(lb.center);
+            float packD = WorldExtentAlong(bp, lb, fwd);
+
+            // 座位偏移：胸骨中心在躯干内部，必须外移【躯干半厚+接近半包厚】背板才落在
+            // 背表面上（之前只移 0.4 倍半包厚，包体大半沉在胸腔里=“横穿身体”）；
+            // 抬升让包顶到肩线。实际摆位交给 BackpackRig 每帧执行。
+            float torsoHalf = bodyH * 0.07f;
+            float backOff = torsoHalf + packD * 0.45f;
+            float liftOff = bodyH * 0.12f - packH * 0.5f;
+
+            bp.gameObject.AddComponent<BackpackRig>().Setup(visualRoot,
+                MecanimCharacter.FindBone(model, "hips"),
+                MecanimCharacter.FindBone(model, "neck") ?? MecanimCharacter.FindBone(model, "head"),
+                back,
+                MecanimCharacter.FindBone(model, "leftshoulder") ?? MecanimCharacter.FindBone(model, "leftarm"),
+                MecanimCharacter.FindBone(model, "rightshoulder") ?? MecanimCharacter.FindBone(model, "rightarm"),
+                qFix, lb.center, backOff, liftOff, packW, packH, packD, torsoHalf, bodyH, baseMaterial);
         }
 
         /// <summary>包围盒八角在给定世界方向上的投影跨度（用于测缩放后的高度/厚度）。</summary>
@@ -819,6 +859,49 @@ namespace AdversityRoad.Player
             return (handleWL - endA).sqrMagnitude <= (handleWL - endB).sqrMagnitude ? 0 : 1;
         }
 
+        /// <summary>柄端判定（多信号，优先级从高到低），返回 true=endA 为柄端：
+        ///   ① 柄/握把子节点(grip/handle/hilt/tsuka/柄)——最可靠
+        ///   ② 建模原点(主网格局部原点)所在的一端=柄端（艺术家几乎总把原点建在握柄处）
+        ///   ③ 网格截面(最宽片=护手所在半段为柄端)——原点居中的直剑(如 Sword 18)靠它
+        ///   ④ pivot 就近兜底
+        /// 最后叠加 flipgrip 标记文件（产品级手动纠正，随资源分发，见 Weapons/README）。</summary>
+        bool DecideGripEnd(Transform w, Bounds lb, Vector3 endA, Vector3 endB)
+        {
+            bool gripAtA;
+            var gripNode = FindDeep(w, "grip") ?? FindDeep(w, "handle")
+                ?? FindDeep(w, "hilt") ?? FindDeep(w, "tsuka") ?? FindDeep(w, "柄");
+            int originGrip = GripEndByModelOrigin(w, endA, endB);   // 0=endA 柄,1=endB 柄,-1=判不了
+            if (gripNode != null)
+            {
+                Vector3 g = w.InverseTransformPoint(gripNode.position);
+                gripAtA = (g - endA).sqrMagnitude <= (g - endB).sqrMagnitude;
+            }
+            else if (originGrip == 0) gripAtA = true;    // 建模原点贴近低端=柄
+            else if (originGrip == 1) gripAtA = false;   // 建模原点贴近高端=柄
+            else if (GripEndByProfile(w, lb, out bool profA, endA, endB)) gripAtA = profA;
+            else gripAtA = endA.sqrMagnitude <= endB.sqrMagnitude;
+            // 对称武器(导入把 pivot 居中、几何无从判柄)的确定性兜底：flipgrip 标记翻转
+            if (WeaponGripFlipMarked()) gripAtA = !gripAtA;
+            return gripAtA;
+        }
+
+        /// <summary>把已按握位对齐的武器包进【掌心枢轴】节点：枢轴原点=掌心、+Y=刃向，
+        /// 与程序化武器(WeaponFactory)同一约定。耍花(ApplyWeaponFlourish)只旋转枢轴——
+        /// 武器绕掌心挥舞、柄端永远在手里。此前直接把导入模型根交给耍花，每帧被改写
+        /// localRotation、绕模型自身原点(常在武器几何中心)整体乱转——握向修正全被覆盖，
+        /// 这正是"katana 怎么修都像握反"的真正根因。</summary>
+        Transform WrapWeaponPivot(Transform w, Transform hand, Vector3 bladeDirHandLocal, Vector3 gripWorld)
+        {
+            var pv = new GameObject(EquippedName + "Pivot").transform;
+            pv.SetParent(hand, false);
+            pv.position = gripWorld;
+            Vector3 bladeDirW = hand.TransformDirection(bladeDirHandLocal);
+            if (bladeDirW.sqrMagnitude > 1e-8f)
+                pv.rotation = Quaternion.FromToRotation(Vector3.up, bladeDirW.normalized);
+            w.SetParent(pv, true);
+            return pv;
+        }
+
         /// <summary>武器定尺 + 握持对齐（几何法·根治"漂浮/握在刀刃上/柄不在掌心"）：
         /// 不再依赖"参考巨剑必须被检测到"（那是之前武器悬空的根因——Maria 自带巨剑
         /// 网格名不含 sword 关键词，检测失败就退化成 hand.up 方向导致长剑戳在身前）。
@@ -835,42 +918,8 @@ namespace AdversityRoad.Player
             if (!LocalBounds(w, out Bounds lb)) return;
             LongAxisEnds(lb, out Vector3 endA, out Vector3 endB);
 
-            // 柄端判定（多信号，优先级从高到低）：
-            //   ① 柄/握把子节点(grip/handle/hilt/tsuka/柄)——最可靠
-            //   ② 【建模原点(主网格局部原点)所在的一端 = 柄端】：艺术家几乎总把模型原点
-            //      建在握柄处。用【主网格自己的 transform 原点】(而非实例化根)投影到长轴，
-            //      不受导入层级/包装节点影响。实测 snake-katana(原点在高端)→柄在高端(修反转)、
-            //      snake-sword(原点在低端)→柄在低端，都判对
-            //   ③ 网格截面(最宽片=护手所在半段为柄端)——原点居中的直剑(如 Sword 18)靠它
-            //   ④ pivot 就近兜底
-            Vector3 gripL, tipL;
-            var gripNode = FindDeep(w, "grip") ?? FindDeep(w, "handle")
-                ?? FindDeep(w, "hilt") ?? FindDeep(w, "tsuka") ?? FindDeep(w, "柄");
-            int originGrip = GripEndByModelOrigin(w, endA, endB);   // 0=endA 柄,1=endB 柄,-1=判不了
-            if (gripNode != null)
-            {
-                Vector3 g = w.InverseTransformPoint(gripNode.position);
-                bool aNear = (g - endA).sqrMagnitude <= (g - endB).sqrMagnitude;
-                gripL = aNear ? endA : endB;
-                tipL = aNear ? endB : endA;
-            }
-            else if (originGrip == 0) { gripL = endA; tipL = endB; }   // 建模原点贴近低端=柄
-            else if (originGrip == 1) { gripL = endB; tipL = endA; }   // 建模原点贴近高端=柄
-            else if (GripEndByProfile(w, lb, out bool gripAtA, endA, endB))
-            {
-                gripL = gripAtA ? endA : endB;
-                tipL = gripAtA ? endB : endA;
-            }
-            else if (endA.sqrMagnitude <= endB.sqrMagnitude) { gripL = endA; tipL = endB; }
-            else { gripL = endB; tipL = endA; }
-
-            // 产品级手动纠正(非按钮，随资源分发)：若武器子目录放了 flipgrip 标记文件(如
-            // Weapons/snake-katana/flipgrip.txt)，翻转握向——对称武器(导入把 pivot 居中、
-            // 几何无从判柄)的确定性兜底，开发时放一个空文件即可，一次配置永久生效。
-            if (WeaponGripFlipMarked())
-            {
-                var tmp = gripL; gripL = tipL; tipL = tmp;
-            }
+            bool atA = DecideGripEnd(w, lb, endA, endB);
+            Vector3 gripL = atA ? endA : endB, tipL = atA ? endB : endA;
             if ((tipL - gripL).sqrMagnitude < 1e-8f) return;
 
             // ---- 从手指骨骼几何推握持坐标系（rest 朝向无关，任何角色都对）----

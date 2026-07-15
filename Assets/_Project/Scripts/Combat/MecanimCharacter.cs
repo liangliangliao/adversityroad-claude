@@ -299,10 +299,13 @@ namespace AdversityRoad.Combat
             foreach (var t in model.GetComponentsInChildren<Transform>(true))
             {
                 string n = t.name.ToLowerInvariant();
-                // 排除外装武器/面具挂点（名字含 "equipped"）——否则上一次装备的
-                // "EquippedWeapon" 因含 "weapon" 会被误判成模型自带兵器，导致换回
-                // 默认武器时既不复原自带兵器也不补程序化剑，默认武器凭空消失。
-                if (n.Contains("equipped")) continue;
+                // 排除外装武器/面具挂点（自身或任一祖先名含 "equipped"）——否则上一次装备
+                // 武器的【子节点】（如带鞘剑里的 "Sword" 节点）会被误判成模型自带兵器，
+                // 导致换武器时隐藏/复原逻辑作用在外装武器上、默认武器凭空消失。
+                bool underEquipped = false;
+                for (var p = t; p != null && p != model.parent; p = p.parent)
+                    if (p.name.ToLowerInvariant().Contains("equipped")) { underEquipped = true; break; }
+                if (underEquipped) continue;
                 foreach (var h in WeaponHints)
                     if (n.Contains(h) && !n.Contains("hand") && !n.Contains("mixamorig")) return t;
             }
