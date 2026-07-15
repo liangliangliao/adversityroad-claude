@@ -33,6 +33,7 @@ namespace AdversityRoad.Player
 
         WeaponSheath _sheath;   // 带鞘武器的拔刀/收刀控制器（普通武器为 null）
         Transform _drawnPivot;  // 拔刀后右手掌心枢轴（收刀/换武器时销毁）
+        string _sheathDiag = "当前武器不带剑鞘";   // 剑鞘装配诊断（按拔刀键随时可查看）
 
         /// <summary>当前是否装备了带剑鞘的成套武器（UI 决定是否显示「拔刀/收刀」按钮）。</summary>
         public bool HasSheathWeapon => _sheath != null;
@@ -42,7 +43,13 @@ namespace AdversityRoad.Player
         /// 仅对带剑鞘的成套武器生效。</summary>
         public void ToggleWeaponDrawn()
         {
-            if (_sheath == null) return;
+            if (_sheath == null)
+            {
+                // 无剑鞘时按键 = 查看装配诊断（开机装配时字幕系统可能尚未就绪，
+                // 这里保证诊断随时可以调出来）
+                Core.GameEvents.RaiseSubtitle(_sheathDiag);
+                return;
+            }
             bool willDraw = !_sheath.IsDrawn;
             string key = willDraw ? "draw" : "sheath";
             // 过渡时长与拔刀/收刀动画同步：取动作库对应片段时长，无片段则兜底
@@ -254,6 +261,7 @@ namespace AdversityRoad.Player
             // 卸下上一件外装武器（含收刀时挂在左手的成套剑鞘、掌心枢轴）与拔刀控制器
             if (_sheath != null) { Destroy(_sheath); _sheath = null; }
             _drawnPivot = null;
+            _sheathDiag = "当前武器不带剑鞘";
             foreach (var h in new[] { hand, lhand })
             {
                 if (h == null) continue;
@@ -286,9 +294,12 @@ namespace AdversityRoad.Player
                 FixWeaponMaterials(w);   // 接回武器贴图（修白模）
 
                 // 带剑鞘的成套武器（如 scene 剑）：默认收刀挂左手、按拔刀键出鞘到右手。
-                // 只有【识别到剑鞘且能收集到剑身网格且有左手骨】才走这条；否则普通武器照旧。
+                // 剑鞘识别：先按名(scabbard/sheath/鞘)——但导入器可能不保留节点名
+                // （实测该 gltf 的 4 个网格节点全叫 "Sword-material"，按名一律落空、
+                // 装配从未运行=剑鞘始终分离的总根因）——再按【几何】识别兜底。
                 var scab = FindDeep(w.transform, "scabbard") ?? FindDeep(w.transform, "sheath")
-                    ?? FindDeep(w.transform, "鞘");
+                    ?? FindDeep(w.transform, "鞘") ?? DetectScabbardByGeometry(w.transform);
+                if (scab != null) AdoptScabbardAccessories(w.transform, scab);   // 挂环等小件归鞘
                 var parts = scab != null ? BladeParts(w.transform, scab) : null;
                 if (scab != null && parts != null && parts.Count > 0 && lhand != null)
                 {
@@ -296,16 +307,17 @@ namespace AdversityRoad.Player
                 }
                 else
                 {
+                    int meshN = w.GetComponentsInChildren<MeshFilter>(true).Length;
                     if (scab != null)
-                    {
-                        // 剑鞘武器却没走装配：把原因直接打到屏幕上（下一张截图即可定位）
-                        Core.GameEvents.RaiseSubtitle("剑鞘装配未启用：剑身网格 "
+                        _sheathDiag = "剑鞘装配未启用：剑身网格 "
                             + (parts != null ? parts.Count.ToString() : "0")
-                            + " 个 / 左手骨 " + (lhand != null ? "有" : "无"));
-                        Debug.LogWarning("[Sheath] 未装配 scab=" + scab.name
-                            + " parts=" + (parts != null ? parts.Count : 0)
-                            + " lhand=" + (lhand != null ? lhand.name : "null"));
-                    }
+                            + " 个 / 左手骨 " + (lhand != null ? "有" : "无");
+                    else if (meshN >= 3)
+                        _sheathDiag = "未识别到剑鞘：按名与按几何都未匹配（网格 " + meshN + " 件）";
+                    else
+                        _sheathDiag = "当前武器不带剑鞘（网格 " + meshN + " 件）";
+                    Core.GameEvents.RaiseSubtitle(_sheathDiag);
+                    Debug.LogWarning("[Sheath] " + _sheathDiag);
                     FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
                     var pv = WrapWeaponPivot(w.transform, hand, bladeLocal, gripW);
                     hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
@@ -360,6 +372,70 @@ namespace AdversityRoad.Player
             return parts;
         }
 
+        /// <summary>按几何识别剑鞘（节点名靠不住时的兜底）：取两个最长的【细长】网格，
+        /// 若长度相近（0.55~1.05）且【非共线/相互分离】（带鞘武器在源文件里是摆拍分离
+        /// 姿态；而同一把剑拆成刃+柄是共线相接的，不会误判），则其中【顶点更少】的是
+        /// 剑鞘（素圆管），另一个是剑（护手/雕花网格更密）。识别不出返回 null。</summary>
+        static Transform DetectScabbardByGeometry(Transform w)
+        {
+            var list = new List<(Transform t, Vector3 a, Vector3 b, float len, float aspect, int v)>();
+            void Add(Transform t, Mesh m)
+            {
+                if (m == null) return;
+                Bounds mb = m.bounds;
+                int ax = mb.size.x >= mb.size.y && mb.size.x >= mb.size.z ? 0
+                       : mb.size.y >= mb.size.z ? 1 : 2;
+                float second = 0f;
+                for (int i = 0; i < 3; i++)
+                    if (i != ax) second = Mathf.Max(second, mb.size[i]);
+                Vector3 eA = mb.center, eB = mb.center;
+                eA[ax] = mb.min[ax]; eB[ax] = mb.max[ax];
+                Vector3 wa = t.TransformPoint(eA), wb = t.TransformPoint(eB);
+                float len = (wb - wa).magnitude;
+                float aspect = second > 1e-6f ? mb.size[ax] / second : 999f;
+                list.Add((t, wa, wb, len, aspect, m.vertexCount));
+            }
+            foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true)) Add(mf.transform, mf.sharedMesh);
+            foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Add(smr.transform, smr.sharedMesh);
+            if (list.Count < 2) return null;
+            list.Sort((x, y) => y.len.CompareTo(x.len));
+            var A = list[0]; var B = list[1];
+            if (A.aspect < 4f || B.aspect < 4f) return null;             // 两件都得细长
+            if (B.len < A.len * 0.55f || B.len > A.len * 1.05f) return null;   // 长度相近
+            Vector3 dA = (A.b - A.a).normalized, dB = (B.b - B.a).normalized;
+            float ang = Vector3.Angle(dA, dB); if (ang > 90f) ang = 180f - ang;
+            Vector3 cA = (A.a + A.b) * 0.5f, cB = (B.a + B.b) * 0.5f;
+            bool separated = ang > 12f || (cB - cA).magnitude > A.len * 0.55f;
+            if (!separated) return null;                                  // 共线相接=同一把剑的部件
+            return A.v <= B.v ? A.t : B.t;                                // 素圆管顶点少=鞘
+        }
+
+        /// <summary>把中心落在剑鞘包围盒（略放大）内、且长度不足鞘长 35% 的小网格
+        /// （挂环等配件）挂到鞘节点下——节点名丢失时它们无法按名排除，若混进剑身组
+        /// 会撑歪剑身包围盒、并在拔刀时跟着剑飞走。</summary>
+        static void AdoptScabbardAccessories(Transform w, Transform scab)
+        {
+            if (!LocalBounds(scab, out Bounds sb)) return;
+            LongAxisEnds(sb, out Vector3 s0, out Vector3 s1);
+            float scabLenW = (scab.TransformPoint(s1) - scab.TransformPoint(s0)).magnitude;
+            if (scabLenW < 1e-4f) return;
+            Bounds grow = sb;
+            grow.Expand(Mathf.Max(sb.size.x, Mathf.Max(sb.size.y, sb.size.z)) * 0.3f);
+            var adopt = new List<Transform>();
+            void Consider(Transform t, Mesh m)
+            {
+                if (m == null || t == scab || t.IsChildOf(scab)) return;
+                Bounds mb = m.bounds;
+                float lenW = (t.TransformPoint(mb.max) - t.TransformPoint(mb.min)).magnitude;
+                if (lenW > scabLenW * 0.35f) return;                      // 只收编小件
+                Vector3 cL = scab.InverseTransformPoint(t.TransformPoint(mb.center));
+                if (grow.Contains(cL)) adopt.Add(t);
+            }
+            foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true)) Consider(mf.transform, mf.sharedMesh);
+            foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Consider(smr.transform, smr.sharedMesh);
+            foreach (var t in adopt) t.SetParent(scab, true);
+        }
+
         /// <summary>装配成套带鞘武器（剑+鞘，该模型两部件在源文件里就是【摆拍分离】姿态，
         /// 必须运行时装配）：把剑身的【实际带网格节点】整体编组为 BladeGroup 挂到剑鞘
         /// 节点下（被移动的就是被渲染的网格本身，无论导入器怎么组织层级都不可能"没生效"），
@@ -389,7 +465,8 @@ namespace AdversityRoad.Player
             if (!LocalBounds(blade, out Bounds bb) || !sbOk)
             {
                 // 几何不可测：退化为普通武器整套右手握持
-                Core.GameEvents.RaiseSubtitle("剑鞘装配失败：几何不可测，按普通武器持握");
+                _sheathDiag = "剑鞘装配失败：几何不可测，按普通武器持握";
+                Core.GameEvents.RaiseSubtitle(_sheathDiag);
                 set.SetParent(rhand, false);
                 FitAndGripWeapon(set, rhand, out Vector3 bl0, out Vector3 gw0);
                 rhand.gameObject.AddComponent<FingerGrip>().Setup(rhand, bl0, gw0);
@@ -448,9 +525,10 @@ namespace AdversityRoad.Player
             Vector3 scabCtrW = scab.TransformPoint(sb.center);
             float scabLenW = (scab.TransformPoint(sa1) - scab.TransformPoint(sa0)).magnitude;
             bool seated = scabLenW > 1e-4f && (bladeCtrW - scabCtrW).magnitude < scabLenW * 0.35f;
-            Core.GameEvents.RaiseSubtitle(seated
+            _sheathDiag = seated
                 ? "剑已入鞘（左手持鞘，按「拔刀」出鞘）"
-                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长");
+                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长";
+            Core.GameEvents.RaiseSubtitle(_sheathDiag);
 
             if (_sheath != null) Destroy(_sheath);
             _sheath = visualRoot.gameObject.AddComponent<WeaponSheath>();
@@ -559,21 +637,38 @@ namespace AdversityRoad.Player
             Vector3 fwd = visualRoot.forward;
             Vector3 up = Vector3.up;
 
-            // 轴分类（与模型作者朝向无关）：最薄轴=厚度、最大轴=高度、剩余=宽度
-            int thin = 0, big = 0;
-            for (int i = 1; i < 3; i++)
+            // 【运行时实测】三轴与肩带面——不再对导入坐标系做任何假设（源文件坐标与
+            // Unity 导入坐标手性/朝向可能不一致，靠推断已多次翻车）：
+            //   把全部网格顶点变换到背包本地：最大跨度轴=高、最小=厚；
+            //   肩带侧 = 厚轴两端各取 15% 外层薄片、按另两轴 12×12 栅格数占用格——
+            //   肩带是细窄条带(占格少)，包体正面是整面(占格多)，占格少的一侧=肩带侧。
+            //   （已用本背包真实网格离线验证：42 格 vs 84 格，判定正确。）
+            // 顶点不可读时退回包围盒分类（此时肩带侧取正侧，可用 flippack 标记纠正）。
+            bool measured = TryMeasureBackpack(bp, out int thin, out int big, out int strapSign);
+            if (!measured)
             {
-                if (sz[i] < sz[thin]) thin = i;
-                if (sz[i] > sz[big]) big = i;
+                thin = 0; big = 0;
+                for (int i = 1; i < 3; i++)
+                {
+                    if (sz[i] < sz[thin]) thin = i;
+                    if (sz[i] > sz[big]) big = i;
+                }
+                if (thin == big) { thin = 2; big = 1; }
+                strapSign = 1;
             }
-            if (thin == big) { thin = 2; big = 1; }
-            Vector3 strapDir = thin == 0 ? Vector3.right : thin == 1 ? Vector3.up : Vector3.forward;
+            Vector3 axisOfThin = thin == 0 ? Vector3.right : thin == 1 ? Vector3.up : Vector3.forward;
             Vector3 bigAxis = big == 0 ? Vector3.right : big == 1 ? Vector3.up : Vector3.forward;
+            Vector3 strapDir = axisOfThin * strapSign;
             if (BackpackFlipMarked()) strapDir = -strapDir;
-            // 修正四元数：肩带面(厚轴正侧)→跟随系 +Z、高轴→+Y；
+            // 修正四元数：肩带面→跟随系 +Z、高轴→+Y；
             // 跟随系每帧取 LookRotation(角色前方, 竖直)，即肩带面朝身体、鼓面朝身后
             Quaternion qFix = Quaternion.Inverse(Quaternion.LookRotation(strapDir, bigAxis));
             bp.rotation = Quaternion.LookRotation(fwd, up) * qFix;
+            // 装配诊断打屏（下一张截图即可核对轴向判定是否正确）
+            string axn = "XYZ";
+            Core.GameEvents.RaiseSubtitle("背包装配：高轴" + axn[big] + " 厚轴" + axn[thin]
+                + " 肩带朝" + (strapSign > 0 ? "+" : "-") + axn[thin]
+                + (measured ? "（实测）" : "（包围盒估计）"));
 
             // 定尺：最大边 ≈ 0.26 身高（约 0.52m，正常背包尺度）。三轴世界跨度取最大，
             // 与模型自身朝向无关，绝不会因测到薄轴而把整包放大到吞屏。
@@ -596,6 +691,68 @@ namespace AdversityRoad.Player
                 MecanimCharacter.FindBone(model, "hips"),
                 MecanimCharacter.FindBone(model, "neck") ?? MecanimCharacter.FindBone(model, "head"),
                 back, qFix, lb.center, backOff, liftOff);
+        }
+
+        /// <summary>实测背包三轴与肩带面（装备时一次性计算）：抽样子树全部网格顶点到
+        /// root 本地——最大跨度轴=高、最小=厚；厚轴两端各取 15% 外层薄片，按另两轴
+        /// 12×12 栅格数占用格，占格少的一侧（细窄条带=肩带）为肩带侧。
+        /// 网格不可读/顶点太少返回 false。</summary>
+        static bool TryMeasureBackpack(Transform root, out int thin, out int big, out int strapSign)
+        {
+            thin = 2; big = 1; strapSign = 1;
+            try
+            {
+                var pts = new List<Vector3>(8192);
+                void Sample(Transform t, Mesh m)
+                {
+                    if (m == null || !m.isReadable) return;
+                    var vs = m.vertices;
+                    if (vs == null || vs.Length == 0) return;
+                    var mat = root.worldToLocalMatrix * t.localToWorldMatrix;
+                    int stride = Mathf.Max(1, vs.Length / 6000);
+                    for (int i = 0; i < vs.Length; i += stride)
+                        pts.Add(mat.MultiplyPoint3x4(vs[i]));
+                }
+                foreach (var mf in root.GetComponentsInChildren<MeshFilter>(true)) Sample(mf.transform, mf.sharedMesh);
+                foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Sample(smr.transform, smr.sharedMesh);
+                if (pts.Count < 100) return false;
+
+                Vector3 mn = pts[0], mx = pts[0];
+                foreach (var p in pts) { mn = Vector3.Min(mn, p); mx = Vector3.Max(mx, p); }
+                Vector3 span = mx - mn;
+                if (span.x < 1e-6f || span.y < 1e-6f || span.z < 1e-6f) return false;
+                thin = 0; big = 0;
+                for (int i = 1; i < 3; i++)
+                {
+                    if (span[i] < span[thin]) thin = i;
+                    if (span[i] > span[big]) big = i;
+                }
+                if (thin == big) return false;
+                int u = -1, v = -1;
+                for (int i = 0; i < 3; i++) if (i != thin) { if (u < 0) u = i; else v = i; }
+
+                const int G = 12;
+                int Occupancy(int side)
+                {
+                    var cells = new HashSet<int>();
+                    float lo = mn[thin] + span[thin] * 0.15f;
+                    float hi = mx[thin] - span[thin] * 0.15f;
+                    foreach (var p in pts)
+                    {
+                        if (side > 0 ? p[thin] < hi : p[thin] > lo) continue;
+                        int cu = Mathf.Min((int)((p[u] - mn[u]) / span[u] * G), G - 1);
+                        int cv = Mathf.Min((int)((p[v] - mn[v]) / span[v] * G), G - 1);
+                        cells.Add(cu * G + cv);
+                    }
+                    return cells.Count;
+                }
+                strapSign = Occupancy(-1) < Occupancy(+1) ? -1 : 1;
+                return true;
+            }
+            catch
+            {
+                return false;   // 网格不可读等异常：退回包围盒估计
+            }
         }
 
         /// <summary>当前背包是否放了 flippack 标记文件（翻转肩带面）。子目录或根目录均可。</summary>
