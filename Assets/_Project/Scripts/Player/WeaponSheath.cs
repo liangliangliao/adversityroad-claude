@@ -27,8 +27,7 @@ namespace AdversityRoad.Player
         // 过渡
         bool _anim; float _t, _dur; bool _toDrawn;
         bool _transferred;                                  // 拔刀：剑已交接到右手
-        bool _seatCapture;                                  // 收刀：末段入座起点已快照
-        Vector3 _seatStartP, _seatStartS; Quaternion _seatStartR;
+        bool _seatCapture;                                  // （保留位：分段边界一次性动作标记）
         Quaternion _setStartR;                              // 呈鞘渐入起点（世界）
 
         // 自然携持（每帧强制）：左手提鞘、鞘身竖直微前倾、鞘中点贴掌心
@@ -61,6 +60,13 @@ namespace AdversityRoad.Player
             _mouthPt = mouthPt; _botPt = botPt; _midPt = midPt; _palmL = palmLocal;
         }
 
+        // 过渡分段（占总时长比例）——所有分段两端都取【活】目标（跟手或锚定鞘口），
+        // 剑没有任何"自由飘移"段，也不可能斜穿鞘壁：
+        //   拔刀: [0,0.30]剑留鞘中 → [0.30,0.55]沿鞘轴滑出到鞘口 → [0.55,0.80]鞘口→手(双活端) → 交接右手
+        //   收刀: [0,0.50]随手 → [0.50,0.75]手(活)→鞘口(活)对口 → [0.75,1]沿鞘轴滑入到座
+        const float DrawSlide = 0.30f, DrawHand = 0.55f, DrawGrab = 0.80f;
+        const float SheatheAim = 0.50f, SheatheSlide = 0.75f;
+
         /// <summary>在拔刀/收刀之间切换，用 dur 秒过渡（与动画时长同步）。</summary>
         public void Toggle(float dur)
         {
@@ -71,8 +77,14 @@ namespace AdversityRoad.Player
             _t = 0f; _anim = true;
             _transferred = false; _seatCapture = false;
             if (_set != null) { _setStartR = _set.rotation; }
-            // 拔刀：前 35% 剑仍留鞘中（左手呈鞘、右手动画伸手来取），到点才交接到右手；
-            // 收刀：剑本就在右手，保持握持，末段送入左手中的鞘
+        }
+
+        /// <summary>鞘口姿态（鞘本地）：座位姿态沿鞘轴外移一个鞘长——剑尖恰在鞘口。</summary>
+        Vector3 MouthLP()
+        {
+            Vector3 outL = _mouthPt - _botPt;
+            float len = outL.magnitude;
+            return len < 1e-6f ? _sLP : _sLP + outL / len * (len * 0.98f);
         }
 
         void LateUpdate()
@@ -87,41 +99,55 @@ namespace AdversityRoad.Player
 
                 if (_toDrawn)
                 {
-                    if (!_transferred && t >= 0.35f)
+                    if (t < DrawSlide)
                     {
-                        // 交接：右手从鞘口接过剑柄，此后剑随右手（绝不悬空）
-                        _transferred = true;
-                        _blade.SetParent(_rightHand, false);
-                        _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
-                        _addGrip?.Invoke(_rightHand);
+                        if (_blade.parent == _scab)
+                        { _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS; }
                     }
-                    if (!_transferred && _blade.parent == _scab)
+                    else if (t < DrawHand)
                     {
-                        _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
+                        // 沿鞘轴滑出：座位→鞘口（纯轴向，剑始终在鞘管里）
+                        float e = Mathf.SmoothStep(0f, 1f, (t - DrawSlide) / (DrawHand - DrawSlide));
+                        _blade.localRotation = _sLR; _blade.localScale = _sLS;
+                        _blade.localPosition = Vector3.Lerp(_sLP, MouthLP(), e);
+                    }
+                    else if (!_transferred)
+                    {
+                        // 鞘口(活)→右手握位(活)：两端点都实时跟随，t=DrawGrab 时与手位
+                        // 完全一致，交接零跳变
+                        float e = Mathf.SmoothStep(0f, 1f, Mathf.Min(1f, (t - DrawHand) / (DrawGrab - DrawHand)));
+                        WorldPose(_scab, MouthLP(), _sLR, _sLS, out Vector3 mP, out Quaternion mR, out Vector3 mS);
+                        WorldPose(_rightHand, _dLP, _dLR, _dLS, out Vector3 hP, out Quaternion hR, out Vector3 hS);
+                        SetBladeWorld(Vector3.Lerp(mP, hP, e), Quaternion.Slerp(mR, hR, e), Vector3.Lerp(mS, hS, e));
+                        if (t >= DrawGrab)
+                        {
+                            _transferred = true;
+                            _blade.SetParent(_rightHand, false);
+                            _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
+                            _addGrip?.Invoke(_rightHand);
+                        }
                     }
                 }
-                else if (t >= 0.65f)
+                else if (t >= SheatheSlide)
                 {
-                    // 末段：右手把剑送回左手中的鞘——世界位姿平滑并入"入座"（目标实时
-                    // 取自左手中的鞘，鞘不动、剑входит；e=1 与装配姿态完全一致，零跳变）
-                    if (!_seatCapture)
+                    // 末段：沿鞘轴滑入——剑尖已在鞘口，纯轴向推到座位（真实入鞘轨迹）
+                    if (_blade.parent != _scab)
                     {
-                        _seatCapture = true;
-                        _seatStartP = _blade.position; _seatStartR = _blade.rotation; _seatStartS = _blade.lossyScale;
+                        _removeGrip?.Invoke(_rightHand);    // 手放开，剑顺鞘管滑到底
+                        _blade.SetParent(_scab, true);
                     }
-                    float e2 = Mathf.SmoothStep(0f, 1f, (t - 0.65f) / 0.35f);
-                    Vector3 pT = _scab.TransformPoint(_sLP);
-                    Quaternion rT = _scab.rotation * _sLR;
-                    Vector3 sT = Vector3.Scale(_scab.lossyScale, _sLS);
-                    _blade.SetPositionAndRotation(
-                        Vector3.Lerp(_seatStartP, pT, e2),
-                        Quaternion.Slerp(_seatStartR, rT, e2));
-                    Vector3 ws = Vector3.Lerp(_seatStartS, sT, e2);
-                    Vector3 ps = _blade.parent != null ? _blade.parent.lossyScale : Vector3.one;
-                    _blade.localScale = new Vector3(
-                        Mathf.Approximately(ps.x, 0f) ? ws.x : ws.x / ps.x,
-                        Mathf.Approximately(ps.y, 0f) ? ws.y : ws.y / ps.y,
-                        Mathf.Approximately(ps.z, 0f) ? ws.z : ws.z / ps.z);
+                    float e = Mathf.SmoothStep(0f, 1f, (t - SheatheSlide) / (1f - SheatheSlide));
+                    _blade.localRotation = _sLR; _blade.localScale = _sLS;
+                    _blade.localPosition = Vector3.Lerp(MouthLP(), _sLP, e);
+                }
+                else if (t >= SheatheAim)
+                {
+                    // 对口：右手握位(活)→鞘口(活)——剑尖被引导到鞘口、剑轴对齐鞘轴，
+                    // 两端点都实时跟随（跟手/跟鞘），e=1 时剑尖恰好落在鞘口
+                    float e = Mathf.SmoothStep(0f, 1f, (t - SheatheAim) / (SheatheSlide - SheatheAim));
+                    WorldPose(_rightHand, _dLP, _dLR, _dLS, out Vector3 hP, out Quaternion hR, out Vector3 hS);
+                    WorldPose(_scab, MouthLP(), _sLR, _sLS, out Vector3 mP, out Quaternion mR, out Vector3 mS);
+                    SetBladeWorld(Vector3.Lerp(hP, mP, e), Quaternion.Slerp(hR, mR, e), Vector3.Lerp(hS, mS, e));
                 }
 
                 if (_t >= 1f)
@@ -131,10 +157,19 @@ namespace AdversityRoad.Player
                     _transferred = false; _seatCapture = false;
                     if (!_drawn)
                     {
-                        // 入座：撤右手握拳，剑落回鞘下的装配姿态（末段已对齐，零跳变）
-                        _removeGrip?.Invoke(_rightHand);
-                        _blade.SetParent(_scab, false);
+                        if (_blade.parent != _scab)
+                        {
+                            _removeGrip?.Invoke(_rightHand);
+                            _blade.SetParent(_scab, false);
+                        }
                         _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
+                    }
+                    else if (!_transferred)
+                    {
+                        // 极短时长下可能没走到交接段：直接落到右手握位
+                        _blade.SetParent(_rightHand, false);
+                        _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
+                        _addGrip?.Invoke(_rightHand);
                     }
                 }
                 return;
@@ -166,6 +201,24 @@ namespace AdversityRoad.Player
             float ramp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t / 0.3f));
             _set.rotation = Quaternion.Slerp(_setStartR, target, ramp);
             _set.position += palmW - _scab.TransformPoint(_midPt);   // 鞘中点钉掌心
+        }
+
+        static void WorldPose(Transform parent, Vector3 lp, Quaternion lr, Vector3 ls,
+            out Vector3 pos, out Quaternion rot, out Vector3 scl)
+        {
+            pos = parent.TransformPoint(lp);
+            rot = parent.rotation * lr;
+            scl = Vector3.Scale(parent.lossyScale, ls);
+        }
+
+        void SetBladeWorld(Vector3 pos, Quaternion rot, Vector3 worldScale)
+        {
+            _blade.SetPositionAndRotation(pos, rot);
+            Vector3 ps = _blade.parent != null ? _blade.parent.lossyScale : Vector3.one;
+            _blade.localScale = new Vector3(
+                Mathf.Approximately(ps.x, 0f) ? worldScale.x : worldScale.x / ps.x,
+                Mathf.Approximately(ps.y, 0f) ? worldScale.y : worldScale.y / ps.y,
+                Mathf.Approximately(ps.z, 0f) ? worldScale.z : worldScale.z / ps.z);
         }
 
         /// <summary>每帧自然携持：鞘轴(鞘底→鞘口)对齐"竖直微前倾"、鞘中点贴左手掌心。
