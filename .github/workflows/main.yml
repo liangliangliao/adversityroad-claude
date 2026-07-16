@@ -14,6 +14,19 @@ jobs:
   diagnoseAssets:
     runs-on: ubuntu-latest
     steps:
+      # 与 buildAndroid 相同：Unity 编辑器镜像解压很大，不清盘会偶发
+      # "no space left on device"（c2003ea 的诊断作业即因此失败）
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
       - name: Checkout project
         uses: actions/checkout@v4
         with:
