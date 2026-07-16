@@ -8,11 +8,11 @@ namespace AdversityRoad.Player
     /// 收刀（默认）：剑在鞘中（挂鞘节点下、每帧复位，不可能分离）；左手竖提剑鞘
     /// （柄朝上微前倾），任何动作下都是自然携持。
     ///
-    /// 拔/收刀过渡（与 Draw/Sheathing 动作时长同步）：剑【全程握在右手】，绝不脱手
-    /// 悬空；剑鞘转为【横向呈鞘】——鞘口套在剑身上、沿剑轴滑动：
-    ///   拔刀 = 鞘自剑身上退开直至剑尖脱鞘；收刀 = 鞘口自剑尖吞入直至柄底入座。
-    /// 呈鞘姿态有 0.3 段的柔和渐入（从携持姿态摆到横向），收刀末端把鞘的相对姿态
-    /// 并到装配姿态（含 roll），入座零跳变。
+    /// 拔/收刀过渡（与 Draw/Sheathing 动作时长同步）：剑鞘【始终钉在左手掌心】
+    /// （绝不跟着剑跑到右手），仅把鞘口迎向剑柄方向——左手横托呈鞘：
+    ///   拔刀 = 前 35% 剑留鞘中（右手动画伸手来取），交接后剑随右手抽离；
+    ///   收刀 = 右手持剑送回，末段 35% 剑的世界位姿平滑并入左手鞘中的装配姿态
+    ///   （目标实时取自鞘，e=1 与装配完全一致，入座零跳变）。
     /// </summary>
     [DefaultExecutionOrder(5000)]   // 在所有动画/骨骼驱动之后跑，复位与呈鞘不被覆盖
     public class WeaponSheath : MonoBehaviour
@@ -26,7 +26,10 @@ namespace AdversityRoad.Player
 
         // 过渡
         bool _anim; float _t, _dur; bool _toDrawn;
-        Vector3 _setStartP; Quaternion _setStartR;         // 呈鞘渐入起点（世界）
+        bool _transferred;                                  // 拔刀：剑已交接到右手
+        bool _seatCapture;                                  // 收刀：末段入座起点已快照
+        Vector3 _seatStartP, _seatStartS; Quaternion _seatStartR;
+        Quaternion _setStartR;                              // 呈鞘渐入起点（世界）
 
         // 自然携持（每帧强制）：左手提鞘、鞘身竖直微前倾、鞘中点贴掌心
         Transform _set, _lhand, _visual;
@@ -66,15 +69,10 @@ namespace AdversityRoad.Player
             _toDrawn = !_drawn;
             _dur = Mathf.Max(0.25f, dur);
             _t = 0f; _anim = true;
-            if (_set != null) { _setStartP = _set.position; _setStartR = _set.rotation; }
-            if (_toDrawn)
-            {
-                // 拔刀从第一帧起就握柄——手不离柄；鞘随后被"呈鞘"逻辑套在剑上滑退
-                _blade.SetParent(_rightHand, false);
-                _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
-                _addGrip?.Invoke(_rightHand);
-            }
-            // 收刀：剑本就在右手，保持握持直到完全入鞘
+            _transferred = false; _seatCapture = false;
+            if (_set != null) { _setStartR = _set.rotation; }
+            // 拔刀：前 35% 剑仍留鞘中（左手呈鞘、右手动画伸手来取），到点才交接到右手；
+            // 收刀：剑本就在右手，保持握持，末段送入左手中的鞘
         }
 
         void LateUpdate()
@@ -84,15 +82,56 @@ namespace AdversityRoad.Player
             if (_anim)
             {
                 _t += Time.deltaTime / _dur;
-                float e = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t));
-                PresentScabbard(e);
+                float t = Mathf.Clamp01(_t);
+                AimScabbard();   // 鞘始终钉在左手掌心，鞘口迎向剑柄（横向呈鞘）
+
+                if (_toDrawn)
+                {
+                    if (!_transferred && t >= 0.35f)
+                    {
+                        // 交接：右手从鞘口接过剑柄，此后剑随右手（绝不悬空）
+                        _transferred = true;
+                        _blade.SetParent(_rightHand, false);
+                        _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
+                        _addGrip?.Invoke(_rightHand);
+                    }
+                    if (!_transferred && _blade.parent == _scab)
+                    {
+                        _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
+                    }
+                }
+                else if (t >= 0.65f)
+                {
+                    // 末段：右手把剑送回左手中的鞘——世界位姿平滑并入"入座"（目标实时
+                    // 取自左手中的鞘，鞘不动、剑входит；e=1 与装配姿态完全一致，零跳变）
+                    if (!_seatCapture)
+                    {
+                        _seatCapture = true;
+                        _seatStartP = _blade.position; _seatStartR = _blade.rotation; _seatStartS = _blade.lossyScale;
+                    }
+                    float e2 = Mathf.SmoothStep(0f, 1f, (t - 0.65f) / 0.35f);
+                    Vector3 pT = _scab.TransformPoint(_sLP);
+                    Quaternion rT = _scab.rotation * _sLR;
+                    Vector3 sT = Vector3.Scale(_scab.lossyScale, _sLS);
+                    _blade.SetPositionAndRotation(
+                        Vector3.Lerp(_seatStartP, pT, e2),
+                        Quaternion.Slerp(_seatStartR, rT, e2));
+                    Vector3 ws = Vector3.Lerp(_seatStartS, sT, e2);
+                    Vector3 ps = _blade.parent != null ? _blade.parent.lossyScale : Vector3.one;
+                    _blade.localScale = new Vector3(
+                        Mathf.Approximately(ps.x, 0f) ? ws.x : ws.x / ps.x,
+                        Mathf.Approximately(ps.y, 0f) ? ws.y : ws.y / ps.y,
+                        Mathf.Approximately(ps.z, 0f) ? ws.z : ws.z / ps.z);
+                }
+
                 if (_t >= 1f)
                 {
                     _anim = false;
                     _drawn = _toDrawn;
+                    _transferred = false; _seatCapture = false;
                     if (!_drawn)
                     {
-                        // 入座：撤右手握拳，剑落回鞘下的装配姿态（呈鞘末端已对齐，零跳变）
+                        // 入座：撤右手握拳，剑落回鞘下的装配姿态（末段已对齐，零跳变）
                         _removeGrip?.Invoke(_rightHand);
                         _blade.SetParent(_scab, false);
                         _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
@@ -111,45 +150,26 @@ namespace AdversityRoad.Player
             }
         }
 
-        /// <summary>呈鞘：鞘口套在剑身上、沿剑轴滑动（k=入鞘深度）。前 0.3 段自携持
-        /// 姿态柔和摆到横向；收刀末端把鞘姿态并到装配相对姿态（roll 吻合，入座零跳变）。</summary>
-        void PresentScabbard(float e)
+        /// <summary>呈鞘（过渡期间）：鞘中点【始终钉在左手掌心】（鞘绝不离开左手、
+        /// 绝不跟着剑跑），仅把鞘口方向迎向剑柄（剑未出鞘时迎向来取剑的右手）——
+        /// 左手横托剑鞘、右手精准拔/收，鞘口与剑的对准由双手动画自然完成。</summary>
+        void AimScabbard()
         {
-            if (_set == null) return;
-            float k = _toDrawn ? 1f - e : e;
-            Vector3 gripW = _blade.TransformPoint(_gripL);
-            Vector3 tipW = _blade.TransformPoint(_tipL);
-            Vector3 a = tipW - gripW;
-            if (a.sqrMagnitude < 1e-10f) return;
-            float bladeLenW = a.magnitude; a /= bladeLenW;
-
-            Vector3 mouthW = _scab.TransformPoint(_mouthPt);
-            Vector3 botW = _scab.TransformPoint(_botPt);
-            Vector3 cur = botW - mouthW;
-            float scabLenW = cur.magnitude;
-            if (scabLenW < 1e-6f) return;
-
-            // 鞘轴(口→底)对齐剑轴(柄→尖)
-            Quaternion target = Quaternion.FromToRotation(cur / scabLenW, a) * _set.rotation;
-            if (!_toDrawn)
-            {
-                // 收刀末端并入装配相对姿态：scab.rotation → blade.rotation * inv(sLR)
-                Quaternion scabSeat = _blade.rotation * Quaternion.Inverse(_sLR);
-                Quaternion rRel = Quaternion.Inverse(_set.rotation) * _scab.rotation;
-                target = Quaternion.Slerp(target, scabSeat * Quaternion.Inverse(rRel), e);
-            }
+            if (_set == null || _lhand == null) return;
+            Vector3 palmW = _lhand.TransformPoint(_palmL);
+            bool bladeOut = !_toDrawn || _transferred;
+            Vector3 aimPt = bladeOut ? _blade.TransformPoint(_gripL) : _rightHand.position;
+            Vector3 aim = aimPt - palmW;
+            Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);   // 底→口
+            if (aim.sqrMagnitude < 1e-8f || axisW.sqrMagnitude < 1e-10f) return;
+            Quaternion target = Quaternion.FromToRotation(axisW.normalized, aim.normalized) * _set.rotation;
             float ramp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t / 0.3f));
             _set.rotation = Quaternion.Slerp(_setStartR, target, ramp);
-
-            // 鞘口落在剑上的插入点（自剑尖回退 insert；k=1 时与入座位置精确一致）
-            float insert = k * Mathf.Min(scabLenW * 0.98f, bladeLenW * 0.95f);
-            Vector3 mouthTarget = tipW - a * insert;
-            Vector3 posTarget = _set.position + (mouthTarget - _scab.TransformPoint(_mouthPt));
-            _set.position = Vector3.Lerp(_setStartP, posTarget, ramp);
+            _set.position += palmW - _scab.TransformPoint(_midPt);   // 鞘中点钉掌心
         }
 
         /// <summary>每帧自然携持：鞘轴(鞘底→鞘口)对齐"竖直微前倾"、鞘中点贴左手掌心。
-        /// 只做最小旋转修正，绕竖轴的朝向仍随手转动（转身时剑鞘自然跟随）。</summary>
+        /// 旋转带平滑（呈鞘结束后柔和转回竖提）；绕竖轴朝向仍随手转动。</summary>
         void CarryScabbard()
         {
             if (_set == null || _lhand == null) return;
@@ -159,7 +179,9 @@ namespace AdversityRoad.Player
                 ? Vector3.ProjectOnPlane(_visual.forward, Vector3.up) : Vector3.forward;
             if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward;
             Vector3 want = (Vector3.up * 0.92f + fwd.normalized * 0.39f).normalized;
-            _set.rotation = Quaternion.FromToRotation(axisW.normalized, want) * _set.rotation;
+            Quaternion target = Quaternion.FromToRotation(axisW.normalized, want) * _set.rotation;
+            _set.rotation = Quaternion.Slerp(_set.rotation, target,
+                1f - Mathf.Exp(-12f * Time.deltaTime));
             _set.position += _lhand.TransformPoint(_palmL) - _scab.TransformPoint(_midPt);
         }
     }

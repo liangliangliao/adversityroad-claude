@@ -28,7 +28,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 11;
+        public override uint GetVersion() => 12;
 
         // 材质描述后处理放到最后执行（高于 URP 内置的 FBX 材质后处理），
         // 保证内嵌贴图的接线以本脚本为准，不被后续后处理清掉。
@@ -48,10 +48,11 @@ namespace AdversityRoad.EditorTools
             // 会因材质没连上贴图而显示为一片白模——"换了带皮肤模型却还是白模"的根因之一）
             mi.materialImportMode = ModelImporterMaterialImportMode.ImportViaMaterialDescription;
             mi.materialLocation = ModelImporterMaterialLocation.InPrefab;   // 内嵌材质，直接用内嵌贴图
-            // 武器/背包网格开启 Read/Write：运行时几何分析需要读顶点
-            // （武器=截面分析判柄端；背包=实测三轴与肩带面朝向）
+            // 武器/背包/面具网格开启 Read/Write：运行时几何分析需要读顶点
+            // （武器=截面判柄端+刃轴精修；背包=实测三轴与肩带面；面具=实测眼孔线）
             string ap = assetPath.Replace('\\', '/');
-            if (ap.Contains("/Characters/Weapons") || ap.Contains("/Characters/Backpacks"))
+            if (ap.Contains("/Characters/Weapons") || ap.Contains("/Characters/Backpacks")
+                || ap.Contains("/Characters/Masks"))
                 mi.isReadable = true;
             // 匹配 Anims/ 与角色专属动作库 Anims2/（及未来的 AnimsN/）
             bool isAnim = assetPath.Replace('\\', '/').Contains("/Characters/Anims");

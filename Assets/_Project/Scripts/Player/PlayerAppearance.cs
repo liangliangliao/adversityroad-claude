@@ -973,30 +973,99 @@ namespace AdversityRoad.Player
                     * Quaternion.Inverse(Quaternion.LookRotation(nW, hW)) * mk.rotation;
 
             // 脸面锚点：优先眼骨中点（各模型一致地落在眼睛上，不随头骨原点高低漂移）
-            // 面具眼孔对准眼睛：猫耳/顶饰把面具几何中心【抬高】，眼孔落在中心【偏下】；
-            // 若把中心对到眼睛，眼孔会降到眼睛下方（遮住眼睛）。把中心【上移】一小段，让
-            // 偏下的眼孔升到眼睛高度对准双眼。rise 为正=上移。
             Vector3 up = Vector3.up;
-            float rise = headW * 0.18f;                           // 上移量(实测 0.34 偏高、0 偏低，取中)
             var eyeL = FindEye(head, "lefteye", "eyel", "eye_l");
             var eyeR = FindEye(head, "righteye", "eyer", "eye_r");
             Vector3 target;
+            bool haveEyes = eyeL != null || eyeR != null;
             if (eyeL != null && eyeR != null)
-                target = (eyeL.position + eyeR.position) * 0.5f + fwd * (headW * 0.22f) + up * rise;
-            else if (eyeL != null || eyeR != null)
-                target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f) + up * rise;
+                target = (eyeL.position + eyeR.position) * 0.5f + fwd * (headW * 0.22f);
+            else if (haveEyes)
+                target = (eyeL != null ? eyeL : eyeR).position + fwd * (headW * 0.22f);
             else
                 // 无眼骨：头骨原点上方约半个头宽(眼高)、前方约 0.4 头宽（贴脸不悬空）
-                target = head.position + fwd * (headW * 0.4f) + up * (headW * 0.5f + rise);
+                target = head.position + fwd * (headW * 0.4f) + up * (headW * 0.5f);
 
-            // 按面具【背面】贴脸就座，而不是把中心对到脸点——否则半个厚度陷进头里，
-            // 头部几何(鼻/颊)戳穿面具只露出残片，看起来"残缺不完整"。把整块面具沿
-            // 法向前推到脸表面之外(半厚 + 微量间隙)，正面完整呈现、不与头穿插。
-            // 对齐后面具正面法向已转到角色前方(fwd)，沿 fwd 前推即"往脸外"。
+            // 面具上与眼睛对位的锚点：优先【实测眼孔线】——按纵向切片量截面宽，
+            // 猫耳/顶饰是窄突起，脸板顶=自上而下首个宽度≥72% 最大宽的切片，
+            // 眼线≈脸板顶下方 30% 脸板高（数据驱动，不再靠常数试凑=之前反复戴高/
+            // 戴低的根因）。顶点不可读时退回"中心上移 0.18 头宽"的经验值。
+            Vector3 anchorLocal = lb.center;
+            if (TryMaskEyeLine(mk, lb, hLocal, axisOf(mid), out Vector3 eyePtLocal))
+                anchorLocal = eyePtLocal;
+            else
+                target += up * (headW * 0.18f);
+
+            // 按面具【背面】贴脸就座，而不是把锚点埋进头里——半厚+微量间隙沿脸外前推，
+            // 正面完整呈现、不与头穿插（对齐后面具法向已转到角色前方 fwd）。
             float halfDepthW = (mk.TransformPoint(lb.center + axisOf(thin) * sz[thin] * 0.5f)
                 - mk.TransformPoint(lb.center)).magnitude;
             Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f);
-            mk.position += seat - mk.TransformPoint(lb.center);
+            mk.position += seat - mk.TransformPoint(anchorLocal);
+        }
+
+        /// <summary>实测面具眼孔线（面具本地空间）：沿纵向(hL)切 24 片、量每片横向(wL)
+        /// 截面宽——猫耳/顶饰是窄突起，脸板顶=自上而下首个宽度≥72% 最大宽的切片，
+        /// 眼线≈脸板顶下方 30% 脸板高。返回眼线锚点（横/厚向取包围盒中心）。
+        /// 顶点不可读/样本不足返回 false。</summary>
+        static bool TryMaskEyeLine(Transform mk, Bounds lb, Vector3 hL, Vector3 wL, out Vector3 eyePtLocal)
+        {
+            eyePtLocal = lb.center;
+            try
+            {
+                const int B = 24;
+                var wmin = new float[B]; var wmax = new float[B]; var cnt = new int[B];
+                for (int i = 0; i < B; i++) { wmin[i] = float.MaxValue; wmax[i] = float.MinValue; }
+                float hLo = float.MaxValue, hHi = float.MinValue;
+                var pts = new List<Vector3>(4096);
+                void Sample(Transform t, Mesh m)
+                {
+                    if (m == null || !m.isReadable) return;
+                    var vs = m.vertices;
+                    var mat = mk.worldToLocalMatrix * t.localToWorldMatrix;
+                    int stride = Mathf.Max(1, vs.Length / 5000);
+                    for (int i = 0; i < vs.Length; i += stride)
+                    {
+                        Vector3 p = mat.MultiplyPoint3x4(vs[i]);
+                        pts.Add(p);
+                        float h = Vector3.Dot(p, hL);
+                        if (h < hLo) hLo = h;
+                        if (h > hHi) hHi = h;
+                    }
+                }
+                foreach (var mf in mk.GetComponentsInChildren<MeshFilter>(true)) Sample(mf.transform, mf.sharedMesh);
+                foreach (var smr in mk.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Sample(smr.transform, smr.sharedMesh);
+                if (pts.Count < 300 || hHi - hLo < 1e-6f) return false;
+                foreach (var p in pts)
+                {
+                    int b = Mathf.Clamp((int)((Vector3.Dot(p, hL) - hLo) / (hHi - hLo) * B), 0, B - 1);
+                    float w = Vector3.Dot(p, wL);
+                    if (w < wmin[b]) wmin[b] = w;
+                    if (w > wmax[b]) wmax[b] = w;
+                    cnt[b]++;
+                }
+                float maxW = 0f; int filled = 0;
+                for (int i = 0; i < B; i++)
+                {
+                    if (cnt[i] < 4) continue;
+                    filled++;
+                    maxW = Mathf.Max(maxW, wmax[i] - wmin[i]);
+                }
+                if (filled < 12 || maxW < 1e-6f) return false;
+                float hTop = hHi;
+                for (int i = B - 1; i >= 0; i--)
+                {
+                    if (cnt[i] >= 4 && wmax[i] - wmin[i] >= maxW * 0.72f)
+                    { hTop = hLo + (i + 0.5f) / B * (hHi - hLo); break; }
+                }
+                float eyeH = hTop - 0.30f * (hTop - hLo);
+                eyePtLocal = lb.center + hL * (eyeH - Vector3.Dot(lb.center, hL));
+                return true;
+            }
+            catch
+            {
+                return false;   // 网格不可读等异常：退回经验偏移
+            }
         }
 
         /// <summary>在头骨下找眼睛骨（多种命名）。规范化去符号后包含匹配。</summary>
