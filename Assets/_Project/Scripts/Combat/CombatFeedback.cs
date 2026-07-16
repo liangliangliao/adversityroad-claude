@@ -573,37 +573,97 @@ namespace AdversityRoad.Combat
 
         // ---------- 挥击剑气 ----------
 
+        /// <summary>剑气（弧月刃气）：程序化新月弧网格，双层（亮芯+柔光晕）叠加加色发光，
+        /// 沿挥击方向飞出、边飞边舒展淡出——替代旧的"发光方块拉长"式刀光。
+        /// 轻击=窄弧快飞、随机斜角；重击/绝招=宽弧更亮、飞更远。不用任何圆圈。</summary>
         public static void SwingArc(Transform owner, bool heavy, Color color)
         {
             Ensure();
             GameAudio.Play(GameAudio.Sfx.Swing, heavy ? 0.9f : 0.6f);
-            var arc = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Object.Destroy(arc.GetComponent<Collider>());
-            // 一道细窄的斜向刀光，出现在身前偏上（不再是横铺一大片色块）
-            arc.transform.position = owner.position + owner.forward * 0.95f + Vector3.up * 1.25f;
-            float tilt = (heavy ? Random.Range(-14f, 14f) : Random.Range(-42f, 42f)) + 58f;
-            arc.transform.rotation = owner.rotation * Quaternion.Euler(0, 0, tilt);
-            arc.GetComponent<MeshRenderer>().sharedMaterial =
-                MatFX(Color.Lerp(color, Color.white, 0.35f), heavy ? 0.38f : 0.28f);   // 更透，不盖住招式
-            _i.StartCoroutine(_i.ArcAnim(arc, heavy));
+            float tilt = (heavy ? Random.Range(-12f, 12f) : Random.Range(-46f, 46f)) + 58f;
+            Vector3 origin = owner.position + owner.forward * 1.0f + Vector3.up * 1.25f;
+            Quaternion rot = owner.rotation * Quaternion.Euler(0, 0, tilt);
+            // 双层：内层亮芯（窄、白热）+ 外层光晕（宽、本色），同步飞行
+            _i.StartCoroutine(_i.QiAnim(SpawnCrescent(heavy, Color.Lerp(color, Color.white, 0.55f),
+                heavy ? 0.5f : 0.4f, 0.8f), origin, rot, owner.forward, heavy, 0f));
+            _i.StartCoroutine(_i.QiAnim(SpawnCrescent(heavy, color,
+                heavy ? 0.3f : 0.22f, 1.25f), origin, rot, owner.forward, heavy, 0.02f));
         }
 
-        IEnumerator ArcAnim(GameObject arc, bool heavy)
+        static Mesh _qiMeshLight, _qiMeshHeavy;
+
+        /// <summary>新月弧网格（本地 XY 面）：外缘随角度收细成月牙尖，顶点色 alpha
+        /// 中段亮、两尖渐隐——一张网格即呈现"剑气"的月牙形与羽化边。</summary>
+        static Mesh CrescentMesh(bool heavy)
         {
-            float dur = heavy ? 0.16f : 0.12f;
+            Mesh cache = heavy ? _qiMeshHeavy : _qiMeshLight;
+            if (cache != null) return cache;
+            float arcDeg = heavy ? 130f : 100f;
+            float r0 = heavy ? 0.85f : 0.7f;
+            float belly = heavy ? 0.42f : 0.3f;      // 月牙最厚处
+            const int Seg = 24;
+            var v = new Vector3[(Seg + 1) * 2];
+            var col = new Color[(Seg + 1) * 2];
+            var tris = new int[Seg * 6];
+            float half = arcDeg * Mathf.Deg2Rad * 0.5f;
+            for (int i = 0; i <= Seg; i++)
+            {
+                float u = (float)i / Seg;                     // 0..1 along the arc
+                float a = -half + u * half * 2f;
+                float thick = belly * Mathf.Pow(Mathf.Cos((u - 0.5f) * Mathf.PI), 0.75f);
+                Vector3 dir = new Vector3(Mathf.Sin(a), Mathf.Cos(a), 0f);
+                v[i * 2] = dir * r0;
+                v[i * 2 + 1] = dir * (r0 + thick);
+                float fade = Mathf.Pow(Mathf.Cos((u - 0.5f) * Mathf.PI), 1.5f);   // 两尖渐隐
+                col[i * 2] = new Color(1, 1, 1, fade);
+                col[i * 2 + 1] = new Color(1, 1, 1, fade * 0.15f);                // 外缘羽化
+            }
+            for (int i = 0; i < Seg; i++)
+            {
+                int a0 = i * 2, b0 = i * 2 + 1, a1 = (i + 1) * 2, b1 = (i + 1) * 2 + 1;
+                tris[i * 6] = a0; tris[i * 6 + 1] = a1; tris[i * 6 + 2] = b0;
+                tris[i * 6 + 3] = b0; tris[i * 6 + 4] = a1; tris[i * 6 + 5] = b1;
+            }
+            cache = new Mesh { vertices = v, colors = col, triangles = tris };
+            cache.RecalculateNormals();
+            cache.RecalculateBounds();
+            if (heavy) _qiMeshHeavy = cache; else _qiMeshLight = cache;
+            return cache;
+        }
+
+        static GameObject SpawnCrescent(bool heavy, Color c, float alpha, float widthMul)
+        {
+            var go = new GameObject("SwordQi");
+            go.AddComponent<MeshFilter>().sharedMesh = CrescentMesh(heavy);
+            var mr = go.AddComponent<MeshRenderer>();
+            var m = MatFX(c, alpha);
+            if (m.HasProperty("_Cull")) m.SetFloat("_Cull", 0f);   // 双面（背面也可见）
+            mr.sharedMaterial = m;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            go.transform.localScale = new Vector3(widthMul, widthMul, 1f);
+            return go;
+        }
+
+        /// <summary>剑气飞行：沿挥向飞出、逐渐舒展放大并淡出；重击飞更快更远。</summary>
+        IEnumerator QiAnim(GameObject qi, Vector3 origin, Quaternion rot, Vector3 fly, bool heavy, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            if (qi == null) yield break;
+            qi.transform.SetPositionAndRotation(origin, rot);
+            float dur = heavy ? 0.42f : 0.3f;
+            float speed = heavy ? 9f : 6.5f;
+            Vector3 s0 = qi.transform.localScale;
             float t = 0;
-            // 细长弧刃：长度方向拉长、厚度极薄（Z≈0.03），像一道光而非实体板
-            Vector3 max = heavy ? new Vector3(2.0f, 0.14f, 0.03f) : new Vector3(1.45f, 0.1f, 0.03f);
-            while (t < dur && arc != null)
+            while (t < dur && qi != null)
             {
                 t += Time.deltaTime;
-                float k = t / dur;
-                arc.transform.localScale = Vector3.Lerp(new Vector3(0.35f, 0.05f, 0.03f), max,
-                    Mathf.Sin(k * Mathf.PI));
-                FadeAlpha(arc, 1f - Time.deltaTime / dur * 1.3f);   // 快速淡出
+                float k = Mathf.Clamp01(t / dur);
+                qi.transform.position += fly * (speed * (1f - k * 0.45f) * Time.deltaTime);
+                qi.transform.localScale = s0 * (1f + k * (heavy ? 1.1f : 0.7f));
+                FadeAlpha(qi, 1f - Time.deltaTime / dur * 1.15f);   // 渐隐
                 yield return null;
             }
-            if (arc != null) Destroy(arc);
+            if (qi != null) Destroy(qi);
         }
     }
 }
