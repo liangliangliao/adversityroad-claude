@@ -437,6 +437,67 @@ namespace AdversityRoad.Player
             foreach (var t in adopt) t.SetParent(scab, true);
         }
 
+        /// <summary>刃身中轴精修：篮状护手等单侧突出的附件会把包围盒长轴挤离真实刃轴
+        /// （插鞘后在鞘口处能看出几厘米错位="没精准插入"）。取刃段（柄→尖 50%~99% 区间，
+        /// 远离护手）顶点按轴向切片求每片质心、以首末质心拟合刃身中轴线。
+        /// 返回精修后的剑尖参考点与刃轴方向（剑组本地）；顶点不可读/样本不足返回 false。</summary>
+        public static bool RefineBladeLine(Transform blade, Vector3 gripL, Vector3 tipL,
+            out Vector3 tipRef, out Vector3 dirRef)
+        {
+            tipRef = tipL;
+            dirRef = tipL - gripL;
+            float len = dirRef.magnitude;
+            if (len < 1e-4f) return false;
+            dirRef /= len;
+            try
+            {
+                Vector3 axis = dirRef;
+                const int S = 12;
+                var sum = new Vector3[S];
+                var cnt = new int[S];
+                void Sample(Transform t, Mesh m)
+                {
+                    if (m == null || !m.isReadable) return;
+                    var vs = m.vertices;
+                    var mat = blade.worldToLocalMatrix * t.localToWorldMatrix;
+                    int stride = Mathf.Max(1, vs.Length / 6000);
+                    for (int i = 0; i < vs.Length; i += stride)
+                    {
+                        Vector3 p = mat.MultiplyPoint3x4(vs[i]);
+                        float f = Vector3.Dot(p - gripL, axis) / len;
+                        if (f < 0.5f || f > 0.99f) continue;      // 只取刃段（避开护手/柄）
+                        int si = Mathf.Clamp((int)((f - 0.5f) / 0.49f * S), 0, S - 1);
+                        sum[si] += p; cnt[si]++;
+                    }
+                }
+                foreach (var mf in blade.GetComponentsInChildren<MeshFilter>(true)) Sample(mf.transform, mf.sharedMesh);
+                foreach (var smr in blade.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Sample(smr.transform, smr.sharedMesh);
+
+                Vector3 first = Vector3.zero, last = Vector3.zero;
+                int firstI = -1, lastI = -1, have = 0;
+                for (int i = 0; i < S; i++)
+                {
+                    if (cnt[i] < 8) continue;
+                    Vector3 c = sum[i] / cnt[i];
+                    if (firstI < 0) { first = c; firstI = i; }
+                    last = c; lastI = i; have++;
+                }
+                if (have < 6 || lastI <= firstI) return false;
+                Vector3 d = last - first;
+                if (d.sqrMagnitude < 1e-10f) return false;
+                d.Normalize();
+                if (Vector3.Dot(d, axis) < 0f) d = -d;
+                dirRef = d;
+                // 尖端参考点 = 原尖端投影到精修中轴线上（点在线上，装配即把整条刃轴钉到鞘管中轴）
+                tipRef = last + d * Vector3.Dot(tipL - last, d);
+                return true;
+            }
+            catch
+            {
+                return false;   // 网格不可读等异常：保持包围盒轴
+            }
+        }
+
         /// <summary>装配成套带鞘武器（剑+鞘，该模型两部件在源文件里就是【摆拍分离】姿态，
         /// 必须运行时装配）：把剑身的【实际带网格节点】整体编组为 BladeGroup 挂到剑鞘
         /// 节点下（被移动的就是被渲染的网格本身，无论导入器怎么组织层级都不可能"没生效"），
@@ -502,12 +563,44 @@ namespace AdversityRoad.Player
             LongAxisEnds(sb, out Vector3 sa0, out Vector3 sa1);
             bool gripAtA = DecideGripEnd(blade, bb, ba0, ba1);
             Vector3 gripL = gripAtA ? ba0 : ba1, tipL = gripAtA ? ba1 : ba0;
-            Vector3 mouthL = sa1, botL = sa0;              // 约定：鞘口=长轴高端（下方持握时鞘口朝拳眼侧）
+
+            // 鞘轴取【鞘管网格自身包围盒】（排除挂环，紧致=真实鞘管中轴）；
+            // 鞘口端沿用长轴高端约定（与整体包围盒方向对齐取向）
+            Vector3 mouthL = sa1, botL = sa0;
+            {
+                Transform tubeT = null; Mesh tubeMesh = null; int tubeV = 0;
+                foreach (var mf3 in scab.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf3.sharedMesh == null || mf3.transform.IsChildOf(blade)) continue;
+                    if (mf3.sharedMesh.vertexCount > tubeV)
+                    { tubeV = mf3.sharedMesh.vertexCount; tubeT = mf3.transform; tubeMesh = mf3.sharedMesh; }
+                }
+                if (tubeT != null)
+                {
+                    LongAxisEnds(tubeMesh.bounds, out Vector3 t0, out Vector3 t1);
+                    Vector3 e0 = scab.InverseTransformPoint(tubeT.TransformPoint(t0));
+                    Vector3 e1 = scab.InverseTransformPoint(tubeT.TransformPoint(t1));
+                    Vector3 boxDir = sa1 - sa0;
+                    bool e1IsMouth = Vector3.Dot(e1 - e0, boxDir) >= 0f;
+                    mouthL = e1IsMouth ? e1 : e0;
+                    botL = e1IsMouth ? e0 : e1;
+                }
+            }
+
+            // 刃身中轴精修：篮状护手单侧突出会把包围盒轴挤离真实刃轴（鞘口处可见的
+            // "没精准插入"）。取刃段（近尖端一半）顶点按轴向切片求质心、拟合中轴线。
             Vector3 bDir = tipL - gripL;
+            float bladeLen = bDir.magnitude;
             Vector3 sDir = botL - mouthL;                  // 鞘口→鞘底 = 插入方向
-            float bladeLen = bDir.magnitude, scabLen = sDir.magnitude;
+            float scabLen = sDir.magnitude;
             if (bladeLen < 1e-4f || scabLen < 1e-4f) return;
             bDir /= bladeLen; sDir /= scabLen;
+            if (RefineBladeLine(blade, gripL, tipL, out Vector3 tipRef, out Vector3 dirRef))
+            {
+                bDir = dirRef;
+                tipL = tipRef;
+                gripL = tipRef - dirRef * bladeLen;
+            }
 
             Quaternion q = Quaternion.FromToRotation(bDir, sDir);
             // 同一模型拆出的剑与鞘原比例即正确（柄长=剑长-鞘长自然露出）；仅当比例
@@ -519,9 +612,10 @@ namespace AdversityRoad.Player
             Quaternion sLR = q; Vector3 sLS = Vector3.one * s;
             blade.localPosition = sLP; blade.localRotation = sLR; blade.localScale = sLS;
 
-            // 3) 定尺：整套按【剑鞘长度≈0.62 身高】等比缩放
+            // 3) 定尺：按【剑长≈0.62 身高】等比缩放整套——与拔刀后 FitAndGripWeapon 的
+            //    目标长度一致，出鞘/入鞘全程剑的尺寸连续（不再出现入座瞬间缩放跳变）
             float targetLen = 0.62f * MecanimCharacter.TargetHeight * Mathf.Max(0.4f, visualRoot.lossyScale.y);
-            float curLen = (scab.TransformPoint(sa1) - scab.TransformPoint(sa0)).magnitude;
+            float curLen = (blade.TransformPoint(tipL) - blade.TransformPoint(gripL)).magnitude;
             if (curLen > 1e-4f) set.localScale *= Mathf.Clamp(targetLen / curLen, 0.01f, 100f);
 
             // 4) 左手【横握剑鞘中部】：鞘轴对齐掌握持轴且鞘口朝拇指/拳眼侧（拔刀手可及），
@@ -530,7 +624,7 @@ namespace AdversityRoad.Player
             Vector3 outW = scab.TransformPoint(mouthL) - scab.TransformPoint(botL);   // 鞘底→鞘口（世界）
             if (outW.sqrMagnitude > 1e-8f)
                 set.rotation = Quaternion.FromToRotation(outW.normalized, axisW) * set.rotation;
-            set.position += palm - scab.TransformPoint(sb.center);   // 鞘中点→掌心
+            set.position += palm - scab.TransformPoint((mouthL + botL) * 0.5f);   // 鞘管中点→掌心
             lhand.gameObject.AddComponent<FingerGrip>()
                 .Setup(lhand, lhand.InverseTransformDirection(axisW).normalized, palm);
 
@@ -541,11 +635,7 @@ namespace AdversityRoad.Player
             blade.SetParent(scab, false);
             blade.localPosition = sLP; blade.localRotation = sLR; blade.localScale = sLS;
 
-            // 6) 鞘口滑动参数：过渡时先对准鞘口、再沿鞘轴滑入/抽出（鞘本地空间）
-            Vector3 mouthDir = -sDir;                 // 指向鞘口外 = 抽出方向
-            float slide = bladeLen * s * 0.92f;       // 抽出距离≈剑长（柄在鞘口略留余量）
-
-            // 7) 世界空间验收：剑身包围盒中心应落在鞘中心附近（鞘长 35% 内），
+            // 6) 世界空间验收：剑身包围盒中心应落在鞘中心附近（鞘长 35% 内），
             //    结果直接打屏幕字幕——装配是否真正生效一目了然
             Vector3 bladeCtrW = blade.TransformPoint(bb.center);
             Vector3 scabCtrW = scab.TransformPoint(sb.center);
@@ -558,8 +648,9 @@ namespace AdversityRoad.Player
 
             if (_sheath != null) Destroy(_sheath);
             _sheath = visualRoot.gameObject.AddComponent<WeaponSheath>();
-            _sheath.Setup(blade, scab, sLP, sLR, sLS, mouthDir, slide, rhand, dLP, dLR, dLS,
-                // 拔刀到位：右手握拳 + 包掌心枢轴（耍花绕掌心挥、刀光轴跟随）
+            _sheath.Setup(blade, scab, sLP, sLR, sLS, rhand, dLP, dLR, dLS,
+                gripL, tipL,   // 剑柄端/剑尖（剑组本地坐标；TransformPoint 自带组缩放）
+                // 拔刀起手：右手握拳 + 包掌心枢轴（手不离柄；耍花绕掌心挥、刀光轴跟随）
                 rh =>
                 {
                     FitAndGripWeapon(blade, rh, out Vector3 bl, out Vector3 gw);
@@ -569,7 +660,7 @@ namespace AdversityRoad.Player
                     g.Setup(rh, bl, gw);
                     if (poser != null) poser.weaponPivot = _drawnPivot;
                 },
-                // 收刀/过渡开始：撤右手握拳与掌心枢轴（先把剑身救出再销毁枢轴）
+                // 收刀入座：撤右手握拳与掌心枢轴（先把剑身救出再销毁枢轴）
                 rh =>
                 {
                     var g = rh.GetComponent<FingerGrip>();
@@ -584,7 +675,7 @@ namespace AdversityRoad.Player
                 });
             // 自然携持：每帧把鞘摆竖直(柄朝上微前倾)、鞘中点贴左手掌心——
             // 不再依赖装备瞬间的手掌姿势（T-pose 烘焙是"整套横穿身前"的根因）
-            _sheath.SetCarry(set, lhand, visualRoot, mouthL, botL, sb.center,
+            _sheath.SetCarry(set, lhand, visualRoot, mouthL, botL, (mouthL + botL) * 0.5f,
                 lhand.InverseTransformPoint(palm));
             if (poser != null) poser.weaponPivot = null;   // 收刀状态：耍花/刀光不驱动剑身
         }
