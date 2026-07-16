@@ -87,11 +87,32 @@ namespace AdversityRoad.EditorTools
                 sb.Append('\n');
                 if (parts.Count == 0) return;
 
-                // 复演装配核心并做世界空间核对（与 SetupSheathedWeapon 同公式）
+                // 复演装配核心并做世界空间核对（与 SetupSheathedWeapon 同公式，含组轴归正）
                 PlayerAppearance.LocalBounds(scab, out Bounds sbnd);
                 var blade = new GameObject("BladeGroup").transform;
                 blade.SetParent(scab, false);
                 blade.localPosition = Vector3.zero; blade.localRotation = Quaternion.identity; blade.localScale = Vector3.one;
+                Transform mainT = null; Mesh mainMesh = null; int mainV = 0;
+                foreach (var p in parts)
+                {
+                    Mesh mm = null;
+                    var mf2 = p.GetComponent<MeshFilter>();
+                    if (mf2 != null) mm = mf2.sharedMesh;
+                    if (mm == null)
+                    {
+                        var sm2 = p.GetComponent<SkinnedMeshRenderer>();
+                        if (sm2 != null) mm = sm2.sharedMesh;
+                    }
+                    if (mm != null && mm.vertexCount > mainV) { mainV = mm.vertexCount; mainT = p; mainMesh = mm; }
+                }
+                if (mainT != null)
+                {
+                    Bounds mmb = mainMesh.bounds;
+                    PlayerAppearance.LongAxisEnds(mmb, out Vector3 m0, out Vector3 m1);
+                    Vector3 axW = mainT.TransformPoint(m1) - mainT.TransformPoint(m0);
+                    if (axW.sqrMagnitude > 1e-10f)
+                        blade.rotation = Quaternion.FromToRotation(blade.up, axW.normalized) * blade.rotation;
+                }
                 foreach (var p in parts) p.SetParent(blade, true);
                 PlayerAppearance.LocalBounds(blade, out Bounds bbnd);
                 PlayerAppearance.LongAxisEnds(bbnd, out Vector3 ba0, out Vector3 ba1);

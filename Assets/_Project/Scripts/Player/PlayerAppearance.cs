@@ -454,12 +454,37 @@ namespace AdversityRoad.Player
             // 0) 先量剑鞘（此刻剑身还没挂进来，鞘包围盒=鞘管+挂环，干净）
             bool sbOk = LocalBounds(scab, out Bounds sb);
 
-            // 1) 剑身编组：网格节点保持相互姿态（成剑整体）挂入 BladeGroup（鞘节点之下）
+            // 1) 剑身编组：网格节点保持相互姿态（成剑整体）挂入 BladeGroup（鞘节点之下）。
+            //    【组轴归正】先按主网格自身包围盒（紧致框=真实剑轴）把组坐标系 +Y 对到
+            //    剑轴上再收部件——组框直接在鞘坐标系里量"斜放的剑"会得到斜框轴
+            //    （CI 实测：斜框量出剑长 0.850，真实 0.947），装配把框轴当剑轴 →
+            //    剑在鞘中斜穿、拔刀握位歪（"还是分离/没握住剑柄"的根因）。
             var blade = new GameObject("BladeGroup").transform;
             blade.SetParent(scab, false);
             blade.localPosition = Vector3.zero;
             blade.localRotation = Quaternion.identity;
             blade.localScale = Vector3.one;
+            Transform mainT = null; Mesh mainMesh = null; int mainV = 0;
+            foreach (var p in parts)
+            {
+                Mesh mm = null;
+                var mf2 = p.GetComponent<MeshFilter>();
+                if (mf2 != null) mm = mf2.sharedMesh;
+                if (mm == null)
+                {
+                    var sm2 = p.GetComponent<SkinnedMeshRenderer>();
+                    if (sm2 != null) mm = sm2.sharedMesh;
+                }
+                if (mm != null && mm.vertexCount > mainV) { mainV = mm.vertexCount; mainT = p; mainMesh = mm; }
+            }
+            if (mainT != null)
+            {
+                Bounds mb = mainMesh.bounds;
+                LongAxisEnds(mb, out Vector3 m0, out Vector3 m1);
+                Vector3 axW = mainT.TransformPoint(m1) - mainT.TransformPoint(m0);
+                if (axW.sqrMagnitude > 1e-10f)
+                    blade.rotation = Quaternion.FromToRotation(blade.up, axW.normalized) * blade.rotation;
+            }
             foreach (var p in parts) p.SetParent(blade, true);
 
             // 2) 剑身入鞘（剑鞘本地空间解析装配）
@@ -692,17 +717,20 @@ namespace AdversityRoad.Player
             float packH = WorldExtentAlong(bp, lb, up);
             float packD = WorldExtentAlong(bp, lb, fwd);
 
-            // 座位偏移：胸骨中心在躯干内部，外移【躯干半厚+0.38 包厚】——背板贴背表面、
-            // 肩带环略嵌向双肩（正好"穿"在肩上）；抬升让包顶到肩线。
-            // 实际摆位交给 BackpackRig 每帧执行。
+            // 座位偏移：胸骨中心在躯干内部，外移【躯干半厚+0.34 包厚】——背板贴紧背表面
+            // （略微嵌入=“融合一体”的贴合感）、肩带环嵌向双肩；抬升让包顶到肩线。
+            // 实际摆位交给 BackpackRig 每帧执行（含随双肩连线的躯干扭转）。
             float torsoHalf = bodyH * 0.07f;
-            float backOff = torsoHalf + packD * 0.38f;
+            float backOff = torsoHalf * 0.85f + packD * 0.34f;
             float liftOff = bodyH * 0.12f - packH * 0.5f;
 
             bp.gameObject.AddComponent<BackpackRig>().Setup(visualRoot,
                 MecanimCharacter.FindBone(model, "hips"),
                 MecanimCharacter.FindBone(model, "neck") ?? MecanimCharacter.FindBone(model, "head"),
-                back, qFix, lb.center, backOff, liftOff);
+                back,
+                MecanimCharacter.FindBone(model, "leftshoulder") ?? MecanimCharacter.FindBone(model, "leftarm"),
+                MecanimCharacter.FindBone(model, "rightshoulder") ?? MecanimCharacter.FindBone(model, "rightarm"),
+                qFix, lb.center, backOff, liftOff);
         }
 
         /// <summary>实测背包三轴与肩带面（装备时一次性计算）：抽样子树全部网格顶点到

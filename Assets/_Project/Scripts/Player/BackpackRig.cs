@@ -17,15 +17,17 @@ namespace AdversityRoad.Player
     [DefaultExecutionOrder(5100)]   // 在动画与骨骼驱动之后跑，姿态不被覆盖
     public class BackpackRig : MonoBehaviour
     {
-        Transform _visual, _hips, _neck, _chest;
+        Transform _visual, _hips, _neck, _chest, _shL, _shR;
         Quaternion _qFix;                  // 模型轴修正：肩带面→+Z(朝身体)、高轴→+Y
         Vector3 _lbCenter;                 // 包围盒中心（包本地）
-        float _backOff, _liftOff;          // 后移量（躯干半厚+0.38包厚）、抬升量（包顶到肩线）
+        float _backOff, _liftOff;          // 后移量（躯干半厚+包厚系数）、抬升量（包顶到肩线）
 
         public void Setup(Transform visual, Transform hips, Transform neck, Transform chest,
+            Transform shL, Transform shR,
             Quaternion qFix, Vector3 lbCenter, float backOff, float liftOff)
         {
             _visual = visual; _hips = hips; _neck = neck; _chest = chest;
+            _shL = shL; _shR = shR;
             _qFix = qFix; _lbCenter = lbCenter;
             _backOff = backOff; _liftOff = liftOff;
             Apply();
@@ -37,12 +39,26 @@ namespace AdversityRoad.Player
         {
             if (_visual == null || _chest == null) return;
 
-            // 竖直跟随躯干（髋→颈），朝向跟随角色面向——与绑定姿势/骨轴约定无关
+            // 竖直跟随躯干（髋→颈）；朝向优先用【双肩连线】实时推（左肩→右肩 × 竖直 =
+            // 躯干真实面向）——攻击/闪避时躯干扭转，背包随之扭转，与身体"融合一体"；
+            // 无肩骨才退回角色移动面向。与绑定姿势/骨轴约定无关。
             Vector3 up = (_neck != null && _hips != null)
                 ? (_neck.position - _hips.position) : Vector3.up;
             if (up.sqrMagnitude < 1e-6f || float.IsNaN(up.x)) up = Vector3.up;
             up.Normalize();
-            Vector3 fwd = Vector3.ProjectOnPlane(_visual.forward, up);
+            Vector3 fwd = Vector3.zero;
+            if (_shL != null && _shR != null)
+            {
+                Vector3 right = _shR.position - _shL.position;
+                if (right.sqrMagnitude > 1e-8f)
+                {
+                    fwd = Vector3.Cross(right.normalized, up);
+                    // 保险：与移动面向背反时翻正（极端扭身动画下不至于突然翻面）
+                    if (fwd.sqrMagnitude > 1e-6f && Vector3.Dot(fwd, _visual.forward) < -0.2f)
+                        fwd = -fwd;
+                }
+            }
+            if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.ProjectOnPlane(_visual.forward, up);
             if (fwd.sqrMagnitude < 1e-6f) fwd = _visual.forward;
             fwd.Normalize();
 
