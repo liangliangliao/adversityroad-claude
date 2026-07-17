@@ -114,6 +114,15 @@ namespace AdversityRoad.Core
             // 无限代付走廊：走廊里的内疚投手与请求膨胀者
             SpawnEnemy(EnemyType.GuiltThrower, EnemyTier.Standard, o[15] + new Vector3(-3, 1.1f, -16), true);
             SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Standard, o[15] + new Vector3(3, 1.1f, 0), true);
+            // 饥饿荒巷：暗处游荡的饥饿犬影
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[16] + new Vector3(-5, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[16] + new Vector3(6, 1.1f, -2), true);
+            // 车库寒夜：空旷处成形的寒风刃与饿犬
+            SpawnEnemy(EnemyType.ColdWindBlade, EnemyTier.Novice, o[17] + new Vector3(-10, 1.1f, -12), true);
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[17] + new Vector3(10, 1.1f, 2), true);
+            // 病房回廊：低强度——只有两道医药债影的低语
+            SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(-4, 1.1f, -20), true);
+            SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(4, 1.1f, -2), true);
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -572,6 +581,9 @@ namespace AdversityRoad.Core
                     break;
                 case EnemyType.InfinitePayer:             // 索取冲击(格挡=破绽)/账单/代付之门
                     root.AddComponent<InfinitePayerBoss>();
+                    break;
+                case EnemyType.ValleyColossus:            // 无力威压/内疚重石/求助电话破防
+                    root.AddComponent<ValleyColossusBoss>();
                     break;
             }
 

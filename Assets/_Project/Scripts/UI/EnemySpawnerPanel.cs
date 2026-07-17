@@ -64,14 +64,16 @@ namespace AdversityRoad.UI
                 EnemyType.ProvokerPasserby, EnemyType.TauntMirror,
                 EnemyType.GoalForgetter, EnemyType.RequestExpander,
                 EnemyType.GuiltThrower, EnemyType.GoodPersonCage,
-                EnemyType.InfinitePayer
+                EnemyType.InfinitePayer,
+                EnemyType.HungerHound, EnemyType.ColdWindBlade,
+                EnemyType.MedDebtShadow, EnemyType.ValleyColossus
             };
             for (int i = 0; i < types.Length; i++)
             {
                 var t = types[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TypeLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-372 + (i % 5) * 186, -164 - (i / 5) * 76),
-                    new Vector2(176, 62), Off, () => SelectType(t), 18);
+                    new Vector2(0.5f, 1f), new Vector2(-390 + (i % 6) * 156, -164 - (i / 6) * 74),
+                    new Vector2(148, 60), Off, () => SelectType(t), 15);
                 _typeButtons.Add((btn, t));
             }
 

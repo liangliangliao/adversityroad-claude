@@ -52,6 +52,10 @@ namespace AdversityRoad.UI
                 case EnemyType.GuiltThrower: return "内疚不是欠条，格挡弹开";
                 case EnemyType.GoodPersonCage: return "被困按『还』打破好人牢笼";
                 case EnemyType.InfinitePayer: return "索取冲击时举盾=明确拒绝";
+                case EnemyType.HungerHound: return "先捡资源回状态，光下应战";
+                case EnemyType.ColdWindBlade: return "先烤火拿暖意，再出手";
+                case EnemyType.MedDebtShadow: return "低语不是账单，近身打断";
+                case EnemyType.ValleyColossus: return "拨求助电话=它的无力感松动";
                 default: return "";
             }
         }

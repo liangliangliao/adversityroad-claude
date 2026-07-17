@@ -53,7 +53,13 @@ namespace AdversityRoad.AI
         RequestExpander,        // 请求膨胀者（外部·"就这一次"近战）
         GuiltThrower,           // 内疚投手（内心·边界远程掷内疚）
         GoodPersonCage,         // 好人牢笼（消耗局 Boss：好人卡附着/困人牢笼）
-        InfinitePayer           // 无限代付者（走廊 Boss：索取冲击/消耗账单/代付之门）
+        InfinitePayer,          // 无限代付者（走廊 Boss：索取冲击/消耗账单/代付之门）
+
+        // ---- 低谷与生存线 ----
+        HungerHound,            // 饥饿犬影（外部·快速扑咬，低血量高压迫）
+        ColdWindBlade,          // 寒风刃（混合·车库寒夜的风刃远程）
+        MedDebtShadow,          // 医药债影（内心·病房回廊的账单低语）
+        ValleyColossus          // 低谷巨像（低谷线 Boss：无力威压/内疚重石/求助破防）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -132,6 +138,10 @@ namespace AdversityRoad.AI
                 case EnemyType.GuiltThrower: return "内疚投手";
                 case EnemyType.GoodPersonCage: return "好人牢笼";
                 case EnemyType.InfinitePayer: return "无限代付者";
+                case EnemyType.HungerHound: return "饥饿犬影";
+                case EnemyType.ColdWindBlade: return "寒风刃";
+                case EnemyType.MedDebtShadow: return "医药债影";
+                case EnemyType.ValleyColossus: return "低谷巨像";
                 default: return "拖延影魔";
             }
         }
@@ -172,6 +182,10 @@ namespace AdversityRoad.AI
                 case EnemyType.GuiltThrower: return new Color(0.6f, 0.42f, 0.5f);
                 case EnemyType.GoodPersonCage: return new Color(0.85f, 0.72f, 0.4f);
                 case EnemyType.InfinitePayer: return new Color(0.4f, 0.5f, 0.45f);
+                case EnemyType.HungerHound: return new Color(0.42f, 0.3f, 0.22f);
+                case EnemyType.ColdWindBlade: return new Color(0.6f, 0.75f, 0.9f);
+                case EnemyType.MedDebtShadow: return new Color(0.75f, 0.8f, 0.85f);
+                case EnemyType.ValleyColossus: return new Color(0.25f, 0.28f, 0.35f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -213,6 +227,10 @@ namespace AdversityRoad.AI
                 case EnemyType.GuiltThrower: return Combat.WeaponKind.None;        // 掷内疚
                 case EnemyType.GoodPersonCage: return Combat.WeaponKind.None;      // 好人卡
                 case EnemyType.InfinitePayer: return Combat.WeaponKind.Staff;      // 账单之杖
+                case EnemyType.HungerHound: return Combat.WeaponKind.Claw;         // 饿犬之牙
+                case EnemyType.ColdWindBlade: return Combat.WeaponKind.None;       // 风刃
+                case EnemyType.MedDebtShadow: return Combat.WeaponKind.None;       // 账单低语
+                case EnemyType.ValleyColossus: return Combat.WeaponKind.Staff;     // 重石之柱
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -227,7 +245,8 @@ namespace AdversityRoad.AI
             t == EnemyType.RuleTwister || t == EnemyType.DebtShadow ||
             t == EnemyType.GazeEye || t == EnemyType.ThousandEyeJudge ||
             t == EnemyType.GambleKing || t == EnemyType.GuiltThrower ||
-            t == EnemyType.GoalForgetter || t == EnemyType.InfinitePayer;
+            t == EnemyType.GoalForgetter || t == EnemyType.InfinitePayer ||
+            t == EnemyType.ColdWindBlade || t == EnemyType.MedDebtShadow;
 
         public static string BaseId(EnemyType t)
         {
@@ -265,6 +284,10 @@ namespace AdversityRoad.AI
                 case EnemyType.GuiltThrower: return "enemy_guilt_thrower";
                 case EnemyType.GoodPersonCage: return "boss_good_person_cage";
                 case EnemyType.InfinitePayer: return "boss_infinite_payer";
+                case EnemyType.HungerHound: return "enemy_hunger_hound";
+                case EnemyType.ColdWindBlade: return "enemy_cold_wind_blade";
+                case EnemyType.MedDebtShadow: return "enemy_med_debt_shadow";
+                case EnemyType.ValleyColossus: return "boss_valley_colossus";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -529,6 +552,38 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
                         maxHealth = 140, posture = 50, physicalDamage = 12, mentalDamage = 16,
                         aggression = 0.55f, defense = 10, moveSpeed = 3.1f, attackRange = 2.2f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.HungerHound:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.External,
+                        maxHealth = 70, posture = 22, physicalDamage = 10, mentalDamage = 8,
+                        aggression = 0.8f, defense = 4, moveSpeed = 5f, attackRange = 1.7f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.ColdWindBlade:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Hybrid,
+                        maxHealth = 90, posture = 30, physicalDamage = 9, mentalDamage = 12,
+                        aggression = 0.55f, defense = 6, moveSpeed = 3.6f, attackRange = 1.9f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.MedDebtShadow:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Internal,
+                        maxHealth = 85, posture = 26, physicalDamage = 6, mentalDamage = 14,
+                        aggression = 0.45f, defense = 5, moveSpeed = 2.8f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.ValleyColossus:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
+                        maxHealth = 155, posture = 55, physicalDamage = 14, mentalDamage = 16,
+                        aggression = 0.45f, defense = 12, moveSpeed = 2.6f, attackRange = 2.4f, detectRange = 17
                     };
                     break;
                 default:

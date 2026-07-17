@@ -32,12 +32,14 @@ namespace AdversityRoad.World
 
         static readonly string[] ZoneIds =
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
-              "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor" };
+              "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor",
+              "alley", "garage", "ward" };
         static readonly string[] ZoneNames =
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
               "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
-              "目标遗忘房", "老实人消耗局", "无限代付走廊" };
+              "目标遗忘房", "老实人消耗局", "无限代付走廊",
+              "饥饿荒巷", "车库寒夜", "病房回廊" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -74,7 +76,10 @@ namespace AdversityRoad.World
                 new Vector3(3600, 0, 0),
                 new Vector3(3900, 0, 0),
                 new Vector3(4200, 0, 0),
-                new Vector3(4500, 0, 0)
+                new Vector3(4500, 0, 0),
+                new Vector3(4800, 0, 0),
+                new Vector3(5100, 0, 0),
+                new Vector3(5400, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -93,7 +98,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30),
                 ctx.zoneOrigins[13] + new Vector3(0, 1.1f, -13),
                 ctx.zoneOrigins[14] + new Vector3(0, 1.1f, -22),
-                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34)
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34),
+                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[17] + new Vector3(0, 1.1f, -26),
+                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, -30)
             };
             ctx.enemySpawns = new[]
             {
@@ -112,7 +120,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[12] + new Vector3(0, 1.1f, 0),
                 ctx.zoneOrigins[13] + new Vector3(0, 1.1f, 12),
                 ctx.zoneOrigins[14] + new Vector3(0, 1.1f, 12),
-                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, 30)
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, 30),
+                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, 14),
+                ctx.zoneOrigins[17] + new Vector3(0, 1.1f, 16),
+                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, 28)
             };
 
             _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
@@ -133,6 +144,9 @@ namespace AdversityRoad.World
             BuildGoalRoom(ctx);
             BuildFavorHall(ctx);
             BuildPayCorridor(ctx);
+            BuildHungerAlley(ctx);
+            BuildColdGarage(ctx);
+            BuildWardCorridor(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -1505,8 +1519,220 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 8f, -14), new Color(0.85f, 0.9f, 0.85f), 36);
             AddCeilingLight(o + new Vector3(0, 8f, 30), new Color(0.9f, 0.95f, 0.9f), 32);
 
-            // 传送门：回责任转嫁法院（南）
+            // 传送门：回责任转嫁法院（南）/ 通往饥饿荒巷（圆厅东北，低谷线开启即解锁）
             MakePortal(ctx, o + new Vector3(0f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(11f, 0, 36), 16, ctx.playerSpawns[16]);
+        }
+
+        // ================= 第十七区：饥饿荒巷（低谷与生存线 其一） =================
+
+        static void BuildHungerAlley(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[16];
+
+            Color wall = new Color(0.24f, 0.22f, 0.2f);
+
+            // 夜晚城市小巷：窄长，资源稀少，尽头是温暖灯光区
+            Box(ctx, "Alley_Floor", o + new Vector3(0, -0.25f, -6), new Vector3(20, 0.5f, 56),
+                new Color(0.3f, 0.29f, 0.28f));
+            Box(ctx, "Alley_EndFloor", o + new Vector3(0, -0.25f, 28), new Vector3(32, 0.5f, 14),
+                new Color(0.36f, 0.33f, 0.3f));
+            Box(ctx, "AlleyWall_W", o + new Vector3(-10, 3f, -6), new Vector3(0.8f, 6, 56), wall);
+            Box(ctx, "AlleyWall_E", o + new Vector3(10, 3f, -6), new Vector3(0.8f, 6, 56), wall);
+            Box(ctx, "AlleyWall_S", o + new Vector3(0, 3f, -34), new Vector3(20, 6, 0.8f), wall);
+            Box(ctx, "AlleyEnd_W", o + new Vector3(-16, 3f, 28), new Vector3(0.8f, 6, 14), wall);
+            Box(ctx, "AlleyEnd_E", o + new Vector3(16, 3f, 28), new Vector3(0.8f, 6, 14), wall);
+            Box(ctx, "AlleyEnd_N", o + new Vector3(0, 3f, 35), new Vector3(32, 6, 0.8f), wall);
+            Box(ctx, "AlleyJoint_W", o + new Vector3(-13, 3f, 21), new Vector3(7f, 6, 0.8f), wall);
+            Box(ctx, "AlleyJoint_E", o + new Vector3(13, 3f, 21), new Vector3(7f, 6, 0.8f), wall);
+
+            // 巷内杂物：垃圾桶/空纸箱/破墙涂鸦/雨水洼
+            TrashBin(ctx, o + new Vector3(-8, 0, -26));
+            TrashBin(ctx, o + new Vector3(7, 0, -10));
+            Box(ctx, "CardboardBox", o + new Vector3(-7, 0.45f, -16), new Vector3(1.4f, 0.9f, 1.1f),
+                new Color(0.55f, 0.45f, 0.3f));
+            Box(ctx, "CardboardBox", o + new Vector3(8, 0.35f, 2), new Vector3(1.1f, 0.7f, 1.0f),
+                new Color(0.5f, 0.42f, 0.28f));
+            Decoration(ctx, "RainPuddle", o + new Vector3(2, 0.02f, -20), new Vector3(4, 0.03f, 2.4f),
+                new Color(0.32f, 0.38f, 0.48f));
+            Decoration(ctx, "RainPuddle", o + new Vector3(-4, 0.02f, 6), new Vector3(3, 0.03f, 2),
+                new Color(0.32f, 0.38f, 0.48f));
+
+            // 资源拾取：水瓶与食物包（低谷线核心：先解决生存）
+            Combat.SupplyPickup.Spawn(o + new Vector3(-7, 0.8f, -22), "水瓶", new Color(0.5f, 0.75f, 0.95f));
+            Combat.SupplyPickup.Spawn(o + new Vector3(7.5f, 0.8f, -4), "食物包", new Color(0.85f, 0.7f, 0.4f));
+            Combat.SupplyPickup.Spawn(o + new Vector3(-6, 0.8f, 12), "食物包", new Color(0.85f, 0.7f, 0.4f));
+
+            // 路灯安全区（光下敢停留）与求助电话亭
+            Lamp(ctx, o + new Vector3(-7, 0, -2));
+            Lamp(ctx, o + new Vector3(8, 0, 16));
+            var booth = Box(ctx, "PhoneBooth", o + new Vector3(12, 1.3f, 30), new Vector3(1.6f, 2.6f, 1.6f),
+                new Color(0.2f, 0.45f, 0.4f));
+            booth.AddComponent<Combat.HelpPhoneBooth>();
+
+            // 尽头温暖灯光区：远处餐馆灯牌
+            Decoration(ctx, "DinerSign", o + new Vector3(0, 4.2f, 34.4f), new Vector3(8, 1.2f, 0.2f),
+                new Color(1f, 0.7f, 0.35f));
+            var warmGo = new GameObject("Alley_WarmLight");
+            warmGo.transform.position = o + new Vector3(0, 4f, 30);
+            var wl = warmGo.AddComponent<Light>();
+            wl.type = LightType.Point;
+            wl.range = 20;
+            wl.intensity = 1.5f;
+            wl.color = new Color(1f, 0.75f, 0.45f);
+
+            // 传送门：回无限代付走廊（南）/ 通往车库寒夜（尽头西侧）
+            MakePortal(ctx, o + new Vector3(0f, 0, -31), 15, ctx.playerSpawns[15] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-12f, 0, 30), 17, ctx.playerSpawns[17]);
+        }
+
+        // ================= 第十八区：车库寒夜（低谷与生存线 其二） =================
+
+        static void BuildColdGarage(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[17];
+
+            Color wall = new Color(0.3f, 0.32f, 0.36f);
+
+            // 寒冷地下车库：大部分区域是寒冷区，取暖点是生命线
+            Box(ctx, "Garage_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(64, 0.5f, 56),
+                new Color(0.36f, 0.38f, 0.42f));
+            Ring(ctx, o, new Vector2(32, 28), 4, wall);
+
+            // 水泥柱阵
+            for (int x = -1; x <= 1; x++)
+                for (int z = -1; z <= 1; z++)
+                {
+                    var pillar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    pillar.name = "GaragePillar";
+                    pillar.transform.position = o + new Vector3(x * 14, 2f, z * 12);
+                    pillar.transform.localScale = new Vector3(1.2f, 2f, 1.2f);
+                    Paint(ctx, pillar, new Color(0.44f, 0.46f, 0.5f));
+                    Player.CameraOcclusionFade.RegisterOccluder(pillar.GetComponent<Renderer>());
+                }
+
+            // 废弃车辆与纸箱
+            Box(ctx, "AbandonedCar", o + new Vector3(-20, 0.55f, -14), new Vector3(1.9f, 1.1f, 4.2f),
+                new Color(0.3f, 0.32f, 0.3f));
+            Box(ctx, "AbandonedCar", o + new Vector3(18, 0.55f, 8), new Vector3(1.9f, 1.1f, 4.2f),
+                new Color(0.32f, 0.3f, 0.34f));
+            Box(ctx, "SleepBox", o + new Vector3(-24, 0.4f, 10), new Vector3(2.2f, 0.8f, 1.4f),
+                new Color(0.5f, 0.42f, 0.3f));
+
+            // 寒冷区覆盖全场（取暖点给暖意豁免）
+            MakeZoneTrigger<Combat.ColdZone>(o + new Vector3(0, 1, 0), new Vector3(62, 2.4f, 54));
+
+            // 三个取暖点：火盆（橙光）——寒夜里的生命线
+            var warmDefs = new[] { new Vector3(-18, 0, -4), new Vector3(6, 0, -18), new Vector3(14, 0, 18) };
+            foreach (var wpos in warmDefs)
+            {
+                var basin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                basin.name = "WarmBasin";
+                basin.transform.position = o + wpos + new Vector3(0, 0.3f, 0);
+                basin.transform.localScale = new Vector3(1.1f, 0.3f, 1.1f);
+                Paint(ctx, basin, new Color(0.4f, 0.3f, 0.22f));
+                var flame = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                Object.DestroyImmediate(flame.GetComponent<Collider>());
+                flame.name = "WarmFlame";
+                flame.transform.position = o + wpos + new Vector3(0, 1.0f, 0);
+                flame.transform.localScale = new Vector3(0.6f, 0.8f, 0.6f);
+                flame.GetComponent<MeshRenderer>().sharedMaterial =
+                    Combat.CombatFeedback.EnergyMaterial(new Color(1f, 0.55f, 0.2f), 0.8f);
+                var lg = new GameObject("WarmLight");
+                lg.transform.position = o + wpos + new Vector3(0, 2f, 0);
+                var l = lg.AddComponent<Light>();
+                l.type = LightType.Point;
+                l.range = 12;
+                l.intensity = 1.5f;
+                l.color = new Color(1f, 0.6f, 0.3f);
+                MakeZoneTrigger<Combat.WarmSpot>(o + wpos + Vector3.up, new Vector3(6f, 2.4f, 6f));
+            }
+
+            // 冷光灯（车库的惨白）
+            AddCeilingLight(o + new Vector3(0, 6.5f, 0), new Color(0.75f, 0.8f, 0.95f), 40);
+
+            // 资源与求助电话
+            Combat.SupplyPickup.Spawn(o + new Vector3(22, 0.8f, -18), "热水", new Color(0.9f, 0.6f, 0.4f));
+            var booth = Box(ctx, "GaragePhoneBooth", o + new Vector3(-26, 1.3f, 22), new Vector3(1.6f, 2.6f, 1.6f),
+                new Color(0.2f, 0.45f, 0.4f));
+            booth.AddComponent<Combat.HelpPhoneBooth>();
+
+            // 传送门：回饥饿荒巷（南）/ 通往病房回廊（东北）
+            MakePortal(ctx, o + new Vector3(-8f, 0, -25), 16, ctx.playerSpawns[16] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(26f, 0, 24), 18, ctx.playerSpawns[18]);
+        }
+
+        // ================= 第十九区：病房回廊（低谷与生存线 终战） =================
+
+        static void BuildWardCorridor(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[18];
+
+            Color wall = new Color(0.6f, 0.62f, 0.62f);
+
+            // 医院走廊：低战斗强度，重在情绪承受——白色灯光、病房门、账单雨
+            Box(ctx, "Ward_Floor", o + new Vector3(0, -0.25f, -8), new Vector3(18, 0.5f, 56),
+                new Color(0.68f, 0.7f, 0.7f));
+            Box(ctx, "WardHall_Floor", o + new Vector3(0, -0.25f, 30), new Vector3(32, 0.5f, 20),
+                new Color(0.64f, 0.66f, 0.66f));
+            Box(ctx, "WardWall_W", o + new Vector3(-9, 2.5f, -8), new Vector3(0.8f, 5, 56), wall);
+            Box(ctx, "WardWall_E", o + new Vector3(9, 2.5f, -8), new Vector3(0.8f, 5, 56), wall);
+            Box(ctx, "WardWall_S", o + new Vector3(0, 2.5f, -36), new Vector3(18, 5, 0.8f), wall);
+            Box(ctx, "WardHallWall_W", o + new Vector3(-16, 2.5f, 30), new Vector3(0.8f, 5, 20), wall);
+            Box(ctx, "WardHallWall_E", o + new Vector3(16, 2.5f, 30), new Vector3(0.8f, 5, 20), wall);
+            Box(ctx, "WardHallWall_N", o + new Vector3(0, 2.5f, 40), new Vector3(32, 5, 0.8f), wall);
+            Box(ctx, "WardJoint_W", o + new Vector3(-12.5f, 2.5f, 20), new Vector3(7.8f, 5, 0.8f), wall);
+            Box(ctx, "WardJoint_E", o + new Vector3(12.5f, 2.5f, 20), new Vector3(7.8f, 5, 0.8f), wall);
+
+            // 病房门与安静提示牌
+            for (int i = 0; i < 5; i++)
+            {
+                float z = -30 + i * 10;
+                float side = (i % 2 == 0) ? -1f : 1f;
+                Decoration(ctx, "WardDoor", o + new Vector3(side * 8.4f, 1.6f, z),
+                    new Vector3(0.25f, 3.2f, 2.2f), new Color(0.45f, 0.55f, 0.6f));
+                Decoration(ctx, "WardDoorSign", o + new Vector3(side * 8.2f, 3.1f, z),
+                    new Vector3(0.15f, 0.5f, 1.0f), new Color(0.85f, 0.88f, 0.9f));
+            }
+            Decoration(ctx, "QuietSign", o + new Vector3(0, 3.6f, -35.4f), new Vector3(4, 0.9f, 0.2f),
+                new Color(0.35f, 0.6f, 0.85f));
+
+            // 长椅与护士站
+            Bench(ctx, o + new Vector3(-6, 0, -12), 90);
+            Bench(ctx, o + new Vector3(6, 0, 4), 270);
+            Box(ctx, "NurseStation", o + new Vector3(-6, 0.7f, 14), new Vector3(4, 1.4f, 2),
+                new Color(0.75f, 0.78f, 0.8f));
+
+            // 账单雨（漂浮的医药账单）
+            var rng = new System.Random(33);
+            for (int i = 0; i < 16; i++)
+                Decoration(ctx, "MedBill",
+                    o + new Vector3(-7 + (float)rng.NextDouble() * 14,
+                        0.8f + (float)rng.NextDouble() * 2.8f, -32 + (float)rng.NextDouble() * 66),
+                    new Vector3(0.4f, 0.02f, 0.55f), new Color(0.92f, 0.94f, 0.96f));
+
+            // 情绪恢复点（长椅旁的暖灯）与两座求助电话亭（Boss 破防机制）
+            var warm = new GameObject("WardWarmLight");
+            warm.transform.position = o + new Vector3(-6, 2.5f, -12);
+            var wl2 = warm.AddComponent<Light>();
+            wl2.type = LightType.Point;
+            wl2.range = 8;
+            wl2.intensity = 1.2f;
+            wl2.color = new Color(1f, 0.85f, 0.6f);
+            var booth1 = Box(ctx, "WardPhoneBooth", o + new Vector3(-13, 1.3f, 26), new Vector3(1.6f, 2.6f, 1.6f),
+                new Color(0.2f, 0.45f, 0.4f));
+            booth1.AddComponent<Combat.HelpPhoneBooth>();
+            var booth2 = Box(ctx, "WardPhoneBooth", o + new Vector3(13, 1.3f, 34), new Vector3(1.6f, 2.6f, 1.6f),
+                new Color(0.2f, 0.45f, 0.4f));
+            booth2.AddComponent<Combat.HelpPhoneBooth>();
+
+            // 白色顶光（医院的冷静）
+            AddCeilingLight(o + new Vector3(0, 7f, -12), new Color(0.95f, 0.97f, 1f), 36);
+            AddCeilingLight(o + new Vector3(0, 7f, 30), new Color(0.95f, 0.97f, 1f), 34);
+
+            // 传送门：回车库寒夜（南）/ 通往旧事回声馆（大厅东北，终章开启即解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, -33), 17, ctx.playerSpawns[17] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(12f, 0, 36), 8, ctx.playerSpawns[8]);
         }
 
         static void AddCeilingLight(Vector3 pos, Color color, float range)
