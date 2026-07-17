@@ -54,6 +54,18 @@ namespace AdversityRoad.AI
         [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
         [HideInInspector] public Material baseMaterial;
 
+        /// <summary>外部伤害倍率（Boss 机制：明天之王泥壳护体、旧我整合阶段等）。</summary>
+        [HideInInspector] public float externalDamageMult = 1f;
+
+        /// <summary>安抚状态（旧我整合阶段）：停止一切攻击与追击，站在原地等待整合。</summary>
+        [HideInInspector] public bool pacified;
+
+        /// <summary>血线保护（0-1）：血量不会被打到该比例以下（旧我必须走整合结局而非击杀）。</summary>
+        [HideInInspector] public float minHpFloor = 0f;
+
+        /// <summary>当前血量比例（Boss 阶段机 0-1）。</summary>
+        public float HpRatio => profile.maxHealth > 0 ? Mathf.Clamp01(_hp / profile.maxHealth) : 0f;
+
         void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
@@ -170,6 +182,22 @@ namespace AdversityRoad.AI
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
                 poser.SetCombatReady(State == EnemyState.Chase || State == EnemyState.Attack
                     || State == EnemyState.MentalAttack);
+            }
+
+            // 安抚状态（旧我整合阶段）：收势站定，不再攻击、不再追击
+            if (pacified)
+            {
+                if (State != EnemyState.Idle)
+                {
+                    State = EnemyState.Idle;
+                    CancelInvoke();
+                    ShowTelegraph(false);
+                    if (attackHitbox != null) attackHitbox.DisableHitbox();
+                    StopMoving();
+                    if (poser != null) poser.SetPose(PoseState.Idle);
+                }
+                UpdateEmotion("平静");
+                return;
             }
 
             if (State == EnemyState.Stagger)
@@ -556,6 +584,18 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead) return;
 
+            // 安抚状态（旧我整合阶段）：不再需要战斗，攻击无效——请走向整合圆环
+            if (pacified)
+            {
+                CombatFeedback.DamageNumber(transform.position, "无需再战",
+                    new Color(0.7f, 0.85f, 1f), 1.15f);
+                return;
+            }
+            // Boss 护体（明天之王泥壳等）：伤害大幅削减时给出机制提示
+            if (externalDamageMult <= 0.35f && Time.time - _lastHurtT > 3f)
+                CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.4f, "护体",
+                    new Color(0.7f, 0.7f, 0.5f), 1.05f);
+
             // ---- 偷袭：敌人未察觉（待机/巡逻）时被打 = 趁其不备，1.8 倍伤害且无法防御 ----
             bool unaware = State == EnemyState.Idle || State == EnemyState.Patrol;
             float sneakMult = 1f;
@@ -627,8 +667,11 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Stagger) final *= 1.6f;
             // 调试模式：敌人耐揍，大幅削减实际伤害（方便测试，不被秒杀）
             if (Core.GameDebug.TankyEnemies) final *= Core.GameDebug.TankyDamageScale;
+            // Boss 护体倍率：血量与韧性同步受保护（破防要走机制，不能硬磨）
+            final *= externalDamageMult;
             _hp -= final;
-            _posture -= dmg.postureDamage;
+            if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
+            _posture -= dmg.postureDamage * externalDamageMult;
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
@@ -744,6 +787,29 @@ namespace AdversityRoad.AI
                 if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
                 CombatFeedback.SlowMo(0.5f, 0.15f);
             }
+        }
+
+        /// <summary>机制性强制破绽（火种齐燃/整合触发等 Boss 事件）：进入长硬直吃增伤。</summary>
+        public void ForceBreak(float duration)
+        {
+            if (State == EnemyState.Dead) return;
+            CancelInvoke(nameof(OpenAttackHitbox));
+            CancelInvoke(nameof(FireHitbox));
+            CancelInvoke(nameof(FireProjectile));
+            ShowTelegraph(false);
+            if (attackHitbox != null) attackHitbox.DisableHitbox();
+            _posture = profile.posture;
+            State = EnemyState.Stagger;
+            _staggerTimer = duration;
+            StopMoving();
+            if (poser != null) poser.SetPose(PoseState.Stagger);
+            if (statusBar != null)
+            {
+                statusBar.SetPosture(_posture, profile.posture);
+                statusBar.SetEmotion("破绽！！猛攻！");
+            }
+            if (dialogue != null) dialogue.Show("【破绽】", 2.2f);
+            CombatFeedback.SlowMo(0.5f, 0.15f);
         }
 
         /// <summary>蓄力气场外推：玩家蓄力风场把靠近的敌人持续推出半径外（无法近身攻击）。

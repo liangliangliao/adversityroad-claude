@@ -41,6 +41,9 @@ namespace AdversityRoad.AI
                   "别追究了，追究显得你小气。" } },
             { WeaknessAxis.WillpowerCollapse, new[]
                 { "撑不住就松手，多轻松。", "你的意志，比纸还薄。" } },
+            { WeaknessAxis.FailureFear, new[]
+                { "你以前就是这样。", "你改不了的。", "你失败过太多次了。",
+                  "过去才是真正的你。", "还记得那次吗？再放一遍给你看。" } },
         };
 
         static readonly Dictionary<string, string[]> ZoneLines = new Dictionary<string, string[]>
@@ -51,6 +54,12 @@ namespace AdversityRoad.AI
             { "job",    new[] { "投出去的，都石沉大海。", "这扇门，不会为你开。", "已读，不回。" } },
             { "plaza",  new[] { "整座城市都在等着看你失败。", "你走不到终点的。" } },
             { "court",  new[] { "这也是你的责任。", "全都怪你，签字画押吧。", "你不背，谁背？" } },
+            { "judgment", new[] { "你是不是太敏感了？", "这么小的事，你也要说？",
+                  "你也有问题，凭什么怪别人。", "不值得计较，是你小题大做。" } },
+            { "swamp",  new[] { "明天再开始，泥里多舒服。", "再准备一下，还不够完美。",
+                  "现在状态不好，改天吧。", "你看，手机上有新消息。" } },
+            { "echo",   new[] { "这个展柜里，是你搞砸的那次。", "旧话再放一遍：你不行。",
+                  "过去循环播放中……", "你走不出这座回声馆的。" } },
         };
 
         static readonly Random Rng = new Random();

@@ -30,5 +30,13 @@ namespace AdversityRoad.Combat
             var p = other.GetComponentInParent<PlayerController>();
             if (p != null) p.MoveSpeedMultiplier = 1f;
         }
+
+        // 临时深泥（明天之王浇灌的）到时干涸销毁：玩家还站在里面时 OnTriggerExit
+        // 不会触发，主动把减速还原
+        void OnDestroy()
+        {
+            var p = FindObjectOfType<PlayerController>();
+            if (p != null) p.MoveSpeedMultiplier = 1f;
+        }
     }
 }

@@ -51,8 +51,11 @@ namespace AdversityRoad.Core
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
             BuildPlayer(_world.playerSpawns[zone]);
             BuildCamera();
+            EnemySpawnHook.Spawn = SpawnEnemy;   // Boss 战中召唤援军（明天之王/旧我）
             SpawnChapterEnemy();
+            SpawnZoneMinions();
             ZoneBuilder.SpawnLife(_world);
+            SpawnShadowGuardianIfEarned();
             BuildHUD();
             SetupChapterQuest();
             ShowChapterIntro();
@@ -64,7 +67,37 @@ namespace AdversityRoad.Core
                     Personalization.WeaknessAxis.SelfDoubt,
                     Personalization.WeaknessAxis.NoiseSensitivity,
                     Personalization.WeaknessAxis.Shame,
-                    Personalization.WeaknessAxis.BoundaryConflict);
+                    Personalization.WeaknessAxis.BoundaryConflict,
+                    Personalization.WeaknessAxis.FairnessSensitivity,
+                    Personalization.WeaknessAxis.FailureFear);
+        }
+
+        /// <summary>
+        /// 新章节区域的常驻小敌人：让审判庭/沼泽/回声馆不只有 Boss——
+        /// 探索路上会遭遇主题杂兵（uniqueId，不推进章节任务）。
+        /// </summary>
+        void SpawnZoneMinions()
+        {
+            var o = _world.zoneOrigins;
+            // 小题大做审判庭：旁观席前的小题大做鬼与旁观嘲笑者
+            SpawnEnemy(EnemyType.OverreactGhost, EnemyTier.Standard, o[6] + new Vector3(-6, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.OverreactGhost, EnemyTier.Novice, o[6] + new Vector3(7, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.MockingBystander, EnemyTier.Standard, o[6] + new Vector3(10, 1.1f, 10), true);
+            // 拖延沼泽：泥里的明日泥怪与完美准备者
+            SpawnEnemy(EnemyType.TomorrowMud, EnemyTier.Standard, o[7] + new Vector3(-8, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.TomorrowMud, EnemyTier.Novice, o[7] + new Vector3(12, 1.1f, -2), true);
+            SpawnEnemy(EnemyType.PerfectPreparer, EnemyTier.Standard, o[7] + new Vector3(-4, 1.1f, 10), true);
+            // 旧事回声馆：展柜长廊里的旧话复读者/过去判官/反刍虫群
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[8] + new Vector3(-7, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.PastJudge, EnemyTier.Standard, o[8] + new Vector3(8, 1.1f, -10), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[8] + new Vector3(0, 1.1f, 2), true);
+        }
+
+        /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
+        void SpawnShadowGuardianIfEarned()
+        {
+            if (PlayerPrefs.GetInt("adversity_shadow_guardian", 0) != 1 || _player == null) return;
+            Combat.ShadowGuardian.Spawn(_player.transform.position - _player.transform.forward * 2.5f);
         }
 
         void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
@@ -81,8 +114,9 @@ namespace AdversityRoad.Core
         int CurrentChapterZone()
         {
             var story = StoryManager.Instance;
-            if (story == null || story.AllCleared)
-                return StoryManager.Chapters[StoryManager.Chapters.Length - 1].zoneIndex;
+            if (story == null) return 0;
+            // 主线完结后回到安全屋（独居小屋）：自由修炼从家出发
+            if (story.AllCleared) return 0;
             return story.Current.zoneIndex;
         }
 
@@ -363,8 +397,11 @@ namespace AdversityRoad.Core
             if (story == null || story.AllCleared) return;
             var ch = story.Current;
             if (_currentChapterEnemy != null) return;
-            _currentChapterEnemy = SpawnEnemy(ch.enemyType, ch.enemyTier,
-                _world.enemySpawns[ch.zoneIndex], false);
+            // 章节可覆盖出生点（如第八章刺激放大器出现在街心广场而非区域默认点）
+            Vector3 pos = ch.spawnOffset != Vector3.zero
+                ? _world.zoneOrigins[ch.zoneIndex] + ch.spawnOffset
+                : _world.enemySpawns[ch.zoneIndex];
+            _currentChapterEnemy = SpawnEnemy(ch.enemyType, ch.enemyTier, pos, false);
         }
 
         /// <summary>玩家在"敌人+"面板自由添加的挑战。</summary>
@@ -467,9 +504,25 @@ namespace AdversityRoad.Core
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
 
-            // 全责法官专属：周期性抛掷责任球（真假责任判断机制）
-            if (type == EnemyType.TotalResponsibilityJudge)
-                root.AddComponent<ResponsibilityJudge>();
+            // Boss 专属行为组件：把方案里的关卡机制落到对应心魔身上
+            switch (type)
+            {
+                case EnemyType.TotalResponsibilityJudge:  // 抛掷责任球（真假责任判断）
+                    root.AddComponent<ResponsibilityJudge>();
+                    break;
+                case EnemyType.SelfDenialGavel:           // 标签弹幕/审判冲击波/否定重锤
+                    root.AddComponent<GavelBoss>();
+                    break;
+                case EnemyType.StimulusAmplifier:         // 噪声放大/幻影假目标
+                    root.AddComponent<StimulusAmplifierBoss>();
+                    break;
+                case EnemyType.TomorrowKing:              // 泥壳护体/召唤泥怪/深泥浇灌
+                    root.AddComponent<TomorrowKingBoss>();
+                    break;
+                case EnemyType.OldSelf:                   // 四阶段：复读/冻结/召回/整合
+                    root.AddComponent<OldSelfBoss>();
+                    break;
+            }
 
             return root;
         }

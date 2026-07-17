@@ -30,8 +30,11 @@ namespace AdversityRoad.World
     {
         public static string CurrentZoneId = "home";
 
-        static readonly string[] ZoneIds = { "home", "dojo", "street", "job", "plaza", "court" };
-        static readonly string[] ZoneNames = { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院" };
+        static readonly string[] ZoneIds =
+            { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo" };
+        static readonly string[] ZoneNames =
+            { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
+              "小题大做审判庭", "拖延沼泽", "旧事回声馆" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -49,7 +52,10 @@ namespace AdversityRoad.World
                 new Vector3(600, 0, 0),
                 new Vector3(900, 0, 0),
                 new Vector3(1200, 0, 0),
-                new Vector3(1500, 0, 0)
+                new Vector3(1500, 0, 0),
+                new Vector3(1800, 0, 0),
+                new Vector3(2100, 0, 0),
+                new Vector3(2400, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -58,7 +64,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[2] + new Vector3(-40, 1.1f, 8),
                 ctx.zoneOrigins[3] + new Vector3(-38, 1.1f, 0),
                 ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0),
-                ctx.zoneOrigins[5] + new Vector3(0, 1.1f, -40)
+                ctx.zoneOrigins[5] + new Vector3(0, 1.1f, -40),
+                ctx.zoneOrigins[6] + new Vector3(0, 1.1f, -32),
+                ctx.zoneOrigins[7] + new Vector3(0, 1.1f, -42),
+                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, -38)
             };
             ctx.enemySpawns = new[]
             {
@@ -67,7 +76,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[2] + new Vector3(15, 1.1f, 9),
                 ctx.zoneOrigins[3] + new Vector3(10, 1.1f, 5),
                 ctx.zoneOrigins[4] + new Vector3(0, 1.1f, 8),
-                ctx.zoneOrigins[5] + new Vector3(0, 1.1f, 28)
+                ctx.zoneOrigins[5] + new Vector3(0, 1.1f, 28),
+                ctx.zoneOrigins[6] + new Vector3(0, 1.1f, 26),
+                ctx.zoneOrigins[7] + new Vector3(0, 1.1f, 28),
+                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, 30)
             };
 
             BuildHome(ctx);
@@ -76,6 +88,9 @@ namespace AdversityRoad.World
             BuildJobSquare(ctx);
             BuildPlaza(ctx);
             BuildResponsibilityCourt(ctx);
+            BuildJudgmentCourt(ctx);
+            BuildProcrastinationSwamp(ctx);
+            BuildEchoMuseum(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -206,6 +221,17 @@ namespace AdversityRoad.World
             TrashBin(ctx, o + new Vector3(24, 0, -10.5f));
             Crosswalk(ctx, o + new Vector3(0, 0, 0), false);
             BusStop(ctx, o + new Vector3(32, 0, 9.5f));
+
+            // 刺激放大器 Boss 场地：街心人行道上的小广场——四周是广告牌与噪声源
+            var arenaMark = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(arenaMark.GetComponent<Collider>());
+            arenaMark.name = "StreetBossArena";
+            arenaMark.transform.position = o + new Vector3(0, 0.05f, 9);
+            arenaMark.transform.localScale = new Vector3(14f, 0.02f, 9f);
+            Paint(ctx, arenaMark, new Color(0.48f, 0.46f, 0.5f));
+            AdBoard(ctx, o + new Vector3(-8, 0, 13.4f), 0);
+            AdBoard(ctx, o + new Vector3(8, 0, 13.4f), 0);
+            AdBoard(ctx, o + new Vector3(14, 0, -13.4f), 180);
 
             // 车辆路线（双向两车道）
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(-46, 0.55f, -2), b = o + new Vector3(46, 0.55f, -2) });
@@ -475,6 +501,415 @@ namespace AdversityRoad.World
 
             // 返回城市广场（门厅一侧）
             MakePortal(ctx, o + new Vector3(15f, 0, -42), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
+            // 通往小题大做审判庭（审判席东侧的侧门）——公平与承诺线继续
+            MakePortal(ctx, o + new Vector3(18f, 0, 42), 6, ctx.playerSpawns[6]);
+        }
+
+        // ================= 第七区：小题大做审判庭 =================
+
+        static void BuildJudgmentCourt(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[6];
+            Combat.JudgmentState.Reset();
+
+            Color wall = new Color(0.24f, 0.2f, 0.26f);
+            Color stone = new Color(0.32f, 0.29f, 0.34f);
+
+            // 畸形审判庭：狭长大厅，中央通道通向倾斜的法官席
+            Box(ctx, "Judgment_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(44, 0.5f, 78), stone);
+            Decoration(ctx, "JudgmentAisle", o + new Vector3(0, 0.02f, 0), new Vector3(8, 0.04f, 74),
+                new Color(0.45f, 0.38f, 0.38f));
+            Ring(ctx, o, new Vector2(22, 39), 6, wall);
+
+            // 压迫式冷光
+            AddCeilingLight(o + new Vector3(0, 10f, -18), new Color(0.85f, 0.85f, 1f), 40);
+            AddCeilingLight(o + new Vector3(0, 10f, 20), new Color(0.9f, 0.85f, 1f), 40);
+
+            // 两侧旁观者席：高台 + 一排排旁观者阴影（被围观的压迫感）
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(ctx, "GalleryStand", o + new Vector3(side * 16, 0.6f, -6),
+                    new Vector3(8, 1.2f, 40), new Color(0.28f, 0.24f, 0.3f));
+                for (int i = 0; i < 6; i++)
+                    Decoration(ctx, "BystanderShadow",
+                        o + new Vector3(side * 16, 2.3f, -24 + i * 7),
+                        new Vector3(1.0f, 2.2f, 0.6f), new Color(0.1f, 0.1f, 0.14f));
+            }
+
+            // 浮动标签：悬浮在通道上空的否定之词（事实之刃可击碎）
+            var labels = new[]
+            {
+                ("太敏感", new Vector3(-4, 2.4f, -18)),
+                ("小题大做", new Vector3(4.5f, 2.6f, -10)),
+                ("你也有问题", new Vector3(-4.5f, 2.3f, -2)),
+                ("不值得计较", new Vector3(4, 2.5f, 6)),
+                ("想太多了", new Vector3(-3.5f, 2.7f, 14)),
+                ("就你事多", new Vector3(3.5f, 2.4f, 20)),
+            };
+            foreach (var (text, pos) in labels)
+                MakeFloatingLabel(ctx, o + pos, text);
+
+            // 证据桌：中庭——走近即"看清事实"，此后标签一击即碎
+            var table = Box(ctx, "EvidenceTable", o + new Vector3(-7, 0.55f, -6),
+                new Vector3(3.4f, 1.1f, 2.2f), new Color(0.42f, 0.3f, 0.2f));
+            Decoration(ctx, "EvidencePapers", o + new Vector3(-7, 1.16f, -6),
+                new Vector3(2.4f, 0.06f, 1.4f), new Color(0.93f, 0.9f, 0.8f));
+            table.AddComponent<Combat.EvidenceTable>();
+
+            // 破碎镜子：西侧墙边——看清被扭曲的倒影，回补自尊
+            var mirror = Box(ctx, "BrokenMirror", o + new Vector3(-20.5f, 1.8f, 10),
+                new Vector3(0.3f, 3.2f, 2.4f), new Color(0.72f, 0.78f, 0.9f));
+            for (int i = 0; i < 3; i++)
+                Decoration(ctx, "MirrorCrack", o + new Vector3(-20.3f, 1.2f + i * 0.9f, 9.4f + i * 0.5f),
+                    new Vector3(0.08f, 1.4f, 0.1f), new Color(0.2f, 0.22f, 0.3f));
+            mirror.AddComponent<Combat.BrokenMirror>();
+
+            // 审判席（Boss 平台）：倾斜的高台 + 巨大法槌
+            Box(ctx, "GavelBenchStep", o + new Vector3(0, 0.35f, 24), new Vector3(12, 0.7f, 2.5f),
+                new Color(0.3f, 0.22f, 0.2f));
+            var bench = Box(ctx, "GavelBench", o + new Vector3(0, 1.4f, 31), new Vector3(18, 2.8f, 6),
+                new Color(0.26f, 0.18f, 0.16f));
+            bench.transform.rotation = Quaternion.Euler(0, 0, 3.5f);   // 倾斜的法官席：这里的公平是歪的
+            Decoration(ctx, "GiantGavelHead", o + new Vector3(0, 6.2f, 33.5f),
+                new Vector3(4.2f, 1.8f, 1.8f), new Color(0.5f, 0.36f, 0.2f));
+            Decoration(ctx, "GiantGavelHandle", o + new Vector3(0, 3.9f, 33.5f),
+                new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
+
+            // 传送门：回责任转嫁法院 / 通往拖延沼泽（击败自我否定法槌后解锁）
+            MakePortal(ctx, o + new Vector3(-14f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(14f, 0, -35), 7, ctx.playerSpawns[7]);
+        }
+
+        /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
+        static void MakeFloatingLabel(WorldContext ctx, Vector3 pos, string text)
+        {
+            var root = new GameObject("FloatingLabel_" + text);
+            root.transform.position = pos;
+
+            var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            board.name = "LabelBoard";
+            Object.DestroyImmediate(board.GetComponent<Collider>());
+            board.transform.SetParent(root.transform, false);
+            board.transform.localScale = new Vector3(2.2f, 1.0f, 0.15f);
+            Paint(ctx, board, new Color(0.65f, 0.5f, 0.3f));
+
+            var tmGo = new GameObject("LabelText");
+            tmGo.transform.SetParent(root.transform, false);
+            tmGo.transform.localPosition = new Vector3(0, 0, -0.1f);
+            var tm = tmGo.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 48;
+            tm.characterSize = 0.045f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = new Color(0.15f, 0.1f, 0.08f);
+            var tmr = tmGo.GetComponent<MeshRenderer>();
+            if (tm.font != null) tmr.material = tm.font.material;
+
+            var col = root.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(2.4f, 1.4f, 1.2f);
+
+            var label = root.AddComponent<Combat.FloatingLabel>();
+            label.labelText = text;
+        }
+
+        // ================= 第八区：拖延沼泽 =================
+
+        static void BuildProcrastinationSwamp(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[7];
+            Combat.SwampState.Reset();
+
+            // 沼泽底色：暗绿褐的湿地
+            Box(ctx, "Swamp_Ground", o + new Vector3(0, -0.25f, 0), new Vector3(92, 0.5f, 100),
+                new Color(0.24f, 0.26f, 0.18f));
+            Ring(ctx, o, new Vector2(46, 50), 4, new Color(0.2f, 0.22f, 0.16f));
+
+            // 昏沉雾灯
+            AddCeilingLight(o + new Vector3(0, 12f, -20), new Color(0.75f, 0.8f, 0.6f), 55);
+            AddCeilingLight(o + new Vector3(0, 12f, 25), new Color(0.7f, 0.75f, 0.6f), 50);
+
+            // 浅泥带（轻微减速）与深泥潭（大幅减速+行动力流失）：交错铺在主路线上
+            MireZone(ctx, o + new Vector3(-8, 0, -30), new Vector3(16, 2, 10), 0.72f, 2f, false);
+            MireZone(ctx, o + new Vector3(10, 0, -16), new Vector3(18, 2, 12), 0.72f, 2f, false);
+            MireZone(ctx, o + new Vector3(-6, 0, 0), new Vector3(14, 2, 10), 0.45f, 5f, true);
+            MireZone(ctx, o + new Vector3(12, 0, 12), new Vector3(12, 2, 10), 0.45f, 5f, true);
+            MireZone(ctx, o + new Vector3(-14, 0, 20), new Vector3(12, 2, 8), 0.72f, 2f, false);
+
+            // 干地平台：泥中的落脚点（可绕行路线）
+            var dryColor = new Color(0.5f, 0.44f, 0.32f);
+            Box(ctx, "DryPlatform", o + new Vector3(-18, 0.15f, -12), new Vector3(6, 0.3f, 6), dryColor);
+            Box(ctx, "DryPlatform", o + new Vector3(2, 0.15f, -8), new Vector3(5, 0.3f, 5), dryColor);
+            Box(ctx, "DryPlatform", o + new Vector3(20, 0.15f, 2), new Vector3(6, 0.3f, 6), dryColor);
+            Box(ctx, "DryPlatform", o + new Vector3(-4, 0.15f, 14), new Vector3(5, 0.3f, 5), dryColor);
+
+            // 目标石板：站上恢复行动力（明确的目标是干地）
+            var goal1 = Box(ctx, "GoalStone", o + new Vector3(-20, 0.2f, 6), new Vector3(4.4f, 0.4f, 4.4f),
+                new Color(0.75f, 0.68f, 0.45f));
+            MakeZoneTrigger<Combat.GoalStoneZone>(goal1.transform.position + Vector3.up,
+                new Vector3(4.4f, 2f, 4.4f));
+            var goal2 = Box(ctx, "GoalStone", o + new Vector3(16, 0.2f, 22), new Vector3(4.4f, 0.4f, 4.4f),
+                new Color(0.75f, 0.68f, 0.45f));
+            MakeZoneTrigger<Combat.GoalStoneZone>(goal2.transform.position + Vector3.up,
+                new Vector3(4.4f, 2f, 4.4f));
+
+            // 手机光点区：诱人偏离主路线的幽蓝光（站入即流失专注与行动力）
+            PhoneLight(ctx, o + new Vector3(22, 0, -24));
+            PhoneLight(ctx, o + new Vector3(-24, 0, -2));
+            PhoneLight(ctx, o + new Vector3(26, 0, 12));
+
+            // 床铺藤蔓与漂浮计划纸：沼泽里的拖延残骸
+            var rng = new System.Random(64);
+            for (int i = 0; i < 4; i++)
+            {
+                var vine = Box(ctx, "BedVine", o + new Vector3(-30 + i * 17, 0.6f, -34 + (i % 2) * 10),
+                    new Vector3(3.2f, 1.2f, 1.4f), new Color(0.24f, 0.34f, 0.22f));
+                vine.transform.rotation = Quaternion.Euler(0, (float)rng.NextDouble() * 90f, 0);
+            }
+            for (int i = 0; i < 18; i++)
+            {
+                var paper = Decoration(ctx, "PlanPaper",
+                    o + new Vector3(-36 + (float)rng.NextDouble() * 72,
+                        0.5f + (float)rng.NextDouble() * 2.6f,
+                        -40 + (float)rng.NextDouble() * 76),
+                    new Vector3(0.5f, 0.02f, 0.7f), new Color(0.9f, 0.9f, 0.85f));
+                paper.transform.rotation = Quaternion.Euler(
+                    (float)rng.NextDouble() * 40 - 20, (float)rng.NextDouble() * 360, 0);
+            }
+            // 破碎日历：拖延的时间残骸
+            Decoration(ctx, "BrokenCalendar", o + new Vector3(6, 1.2f, -36),
+                new Vector3(2.2f, 2.4f, 0.15f), new Color(0.85f, 0.82f, 0.75f));
+            Decoration(ctx, "CalendarTear", o + new Vector3(6.4f, 0.4f, -35.6f),
+                new Vector3(1.2f, 0.8f, 0.1f), new Color(0.8f, 0.76f, 0.7f));
+
+            // Boss 泥台：北端圆形高台，三座五分钟火种台环绕（齐燃破防）
+            var mudStage = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            mudStage.name = "TomorrowKingStage";
+            mudStage.transform.position = o + new Vector3(0, 0.15f, 30);
+            mudStage.transform.localScale = new Vector3(26f, 0.15f, 26f);
+            Paint(ctx, mudStage, new Color(0.3f, 0.26f, 0.2f));
+            SparkAltar(ctx, o + new Vector3(-11, 0, 24));
+            SparkAltar(ctx, o + new Vector3(11, 0, 24));
+            SparkAltar(ctx, o + new Vector3(0, 0, 40));
+
+            // 传送门：回审判庭 / 通往旧事回声馆（击败明天之王后解锁）
+            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 6, ctx.playerSpawns[6] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(28f, 0, 44), 8, ctx.playerSpawns[8]);
+        }
+
+        /// <summary>沼泽泥地：视觉贴片 + 减速/耗行动力触发区。深泥颜色更深。</summary>
+        static void MireZone(WorldContext ctx, Vector3 basePos, Vector3 size,
+            float speedMult, float drainPerSec, bool deep)
+        {
+            Decoration(ctx, deep ? "DeepMud" : "ShallowMud", basePos + new Vector3(0, 0.03f, 0),
+                new Vector3(size.x, 0.06f, size.z),
+                deep ? new Color(0.1f, 0.07f, 0.14f) : new Color(0.17f, 0.15f, 0.12f));
+            var zone = new GameObject(deep ? "DeepMudZone" : "ShallowMudZone");
+            zone.transform.position = basePos + new Vector3(0, 1, 0);
+            var col = zone.AddComponent<BoxCollider>();
+            col.size = size;
+            var mire = zone.AddComponent<Combat.ProcrastinationMire>();
+            mire.speedMultiplier = speedMult;
+            mire.actionDrainPerSec = drainPerSec;
+        }
+
+        /// <summary>手机光点区：幽蓝的诱惑光圈 + 消耗触发区。</summary>
+        static void PhoneLight(WorldContext ctx, Vector3 basePos)
+        {
+            var glow = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(glow.GetComponent<Collider>());
+            glow.name = "PhoneGlow";
+            glow.transform.position = basePos + new Vector3(0, 0.04f, 0);
+            glow.transform.localScale = new Vector3(7f, 0.02f, 7f);
+            Paint(ctx, glow, new Color(0.35f, 0.6f, 0.95f));
+
+            var phone = Decoration(ctx, "PhoneScreen", basePos + new Vector3(0, 0.5f, 0),
+                new Vector3(0.8f, 0.06f, 1.6f), new Color(0.6f, 0.8f, 1f));
+            phone.transform.rotation = Quaternion.Euler(0, 30f, 0);
+
+            var lightGo = new GameObject("PhoneLightGlow");
+            lightGo.transform.position = basePos + new Vector3(0, 1.6f, 0);
+            var l = lightGo.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.range = 9;
+            l.intensity = 1.1f;
+            l.color = new Color(0.5f, 0.7f, 1f);
+
+            MakeZoneTrigger<Combat.PhoneLightZone>(basePos + Vector3.up, new Vector3(7f, 2f, 7f));
+        }
+
+        /// <summary>五分钟火种台：石座+火盆（走近点燃，三座齐燃 Boss 破防）。</summary>
+        static void SparkAltar(WorldContext ctx, Vector3 basePos)
+        {
+            var pedestal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pedestal.name = "SparkAltar";
+            pedestal.transform.position = basePos + new Vector3(0, 0.5f, 0);
+            pedestal.transform.localScale = new Vector3(1.6f, 0.5f, 1.6f);
+            Paint(ctx, pedestal, new Color(0.45f, 0.4f, 0.35f));
+
+            var bowl = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(bowl.GetComponent<Collider>());
+            bowl.name = "SparkBowl";
+            bowl.transform.position = basePos + new Vector3(0, 1.1f, 0);
+            bowl.transform.localScale = new Vector3(1.2f, 0.18f, 1.2f);
+            Paint(ctx, bowl, new Color(0.3f, 0.26f, 0.22f));
+
+            var root = new GameObject("SparkAltarRoot");
+            root.transform.position = basePos + new Vector3(0, 1.1f, 0);
+            root.AddComponent<Combat.FireSparkAltar>();
+        }
+
+        /// <summary>通用触发区辅助：在指定位置放一个带触发碰撞盒的组件。</summary>
+        static T MakeZoneTrigger<T>(Vector3 pos, Vector3 size) where T : Component
+        {
+            var zone = new GameObject(typeof(T).Name + "Zone");
+            zone.transform.position = pos;
+            var col = zone.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = size;
+            return zone.AddComponent<T>();
+        }
+
+        /// <summary>街边广告牌：噪声与视觉刺激源（刺激放大器场地装饰）。</summary>
+        static void AdBoard(WorldContext ctx, Vector3 basePos, float yRot)
+        {
+            var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pole.name = "AdPole";
+            pole.transform.position = basePos + new Vector3(0, 1.5f, 0);
+            pole.transform.localScale = new Vector3(0.18f, 1.5f, 0.18f);
+            Paint(ctx, pole, new Color(0.3f, 0.3f, 0.34f));
+
+            var board = Decoration(ctx, "AdBoard", basePos + new Vector3(0, 3.4f, 0),
+                new Vector3(3.2f, 1.8f, 0.15f), new Color(0.95f, 0.75f, 0.35f));
+            board.transform.rotation = Quaternion.Euler(0, yRot, 0);
+        }
+
+        // ================= 第九区：旧事回声馆 =================
+
+        static void BuildEchoMuseum(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[8];
+            Combat.EchoState.Reset();
+
+            Color wall = new Color(0.16f, 0.16f, 0.22f);
+
+            // 记忆博物馆：昏暗大厅，展柜长廊 → 大门 → 终局镜面平台
+            Box(ctx, "Echo_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(52, 0.5f, 92),
+                new Color(0.2f, 0.2f, 0.26f));
+            Decoration(ctx, "EchoCarpet", o + new Vector3(0, 0.02f, -14), new Vector3(7, 0.04f, 56),
+                new Color(0.3f, 0.24f, 0.32f));
+            Ring(ctx, o, new Vector2(26, 46), 6, wall);
+
+            // 幽蓝顶光（博物馆的旧梦色）
+            AddCeilingLight(o + new Vector3(0, 10f, -24), new Color(0.6f, 0.65f, 0.9f), 42);
+            AddCeilingLight(o + new Vector3(0, 10f, 4), new Color(0.6f, 0.65f, 0.9f), 40);
+            AddCeilingLight(o + new Vector3(0, 10f, 30), new Color(0.75f, 0.78f, 1f), 42);
+
+            // 旧事展柜长廊：四座展柜（靠近触发回声 → 站定归档；归档 3 座开终局大门）
+            var cases = new[]
+            {
+                ("失败记录", new Vector3(-9, 0, -28)),
+                ("旧标签", new Vector3(9, 0, -22)),
+                ("未说出口的话", new Vector3(-9, 0, -12)),
+                ("被放大的批评", new Vector3(9, 0, -4)),
+            };
+            foreach (var (label, pos) in cases)
+                MakeEchoCase(ctx, o + pos, label);
+
+            // 失败展廊：两侧的旧照片墙与碎镜框（氛围装饰）
+            for (int i = 0; i < 5; i++)
+            {
+                Decoration(ctx, "OldPhotoFrame", o + new Vector3(-25.4f, 2.2f, -34 + i * 9),
+                    new Vector3(0.15f, 1.6f, 2.0f), new Color(0.5f, 0.45f, 0.35f));
+                Decoration(ctx, "OldPhoto", o + new Vector3(-25.25f, 2.2f, -34 + i * 9),
+                    new Vector3(0.08f, 1.2f, 1.5f), new Color(0.65f, 0.6f, 0.5f));
+                Decoration(ctx, "MirrorShardWall", o + new Vector3(25.4f, 2.0f, -30 + i * 9),
+                    new Vector3(0.15f, 1.3f + (i % 3) * 0.4f, 1.1f), new Color(0.6f, 0.68f, 0.82f));
+            }
+
+            // 终局大门：归档满 3 座自动沉入地面
+            var gate = Box(ctx, "EchoBossGate", o + new Vector3(0, 2.5f, 12), new Vector3(14, 5, 1.2f),
+                new Color(0.32f, 0.3f, 0.42f));
+            gate.AddComponent<Combat.EchoBossGate>();
+            Box(ctx, "GateWall", o + new Vector3(-20, 2.5f, 12), new Vector3(26, 5, 1.2f), wall);
+            Box(ctx, "GateWall", o + new Vector3(20, 2.5f, 12), new Vector3(26, 5, 1.2f), wall);
+            Decoration(ctx, "GateSign", o + new Vector3(0, 5.6f, 11.6f), new Vector3(10, 0.9f, 0.2f),
+                new Color(0.5f, 0.4f, 0.6f));
+
+            // 终局镜面平台：圆形镜面 + 环绕的章节场景碎片
+            var mirrorStage = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            mirrorStage.name = "FinalMirrorArena";
+            mirrorStage.transform.position = o + new Vector3(0, 0.08f, 30);
+            mirrorStage.transform.localScale = new Vector3(26f, 0.08f, 26f);
+            Paint(ctx, mirrorStage, new Color(0.55f, 0.62f, 0.78f));
+            // 环绕平台的记忆碎片柱：一路走来的章节残影
+            var shardColors = new[]
+            {
+                new Color(0.6f, 0.55f, 0.45f),   // 赌桌/审判庭
+                new Color(0.42f, 0.42f, 0.44f),  // 街道
+                new Color(0.24f, 0.26f, 0.18f),  // 沼泽
+                new Color(0.26f, 0.24f, 0.28f),  // 法院
+                new Color(0.5f, 0.42f, 0.34f),   // 小屋
+                new Color(0.55f, 0.45f, 0.32f),  // 武馆
+            };
+            for (int i = 0; i < 6; i++)
+            {
+                float ang = i * Mathf.PI / 3f;
+                var shard = Box(ctx, "MemoryShard",
+                    o + new Vector3(Mathf.Cos(ang) * 15f, 1.6f, 30 + Mathf.Sin(ang) * 15f),
+                    new Vector3(1.6f, 3.2f, 0.4f), shardColors[i]);
+                shard.transform.rotation = Quaternion.Euler(0, ang * Mathf.Rad2Deg + 90f, 8f);
+            }
+
+            // 传送门：回拖延沼泽 / 回独居小屋（安全屋——终局之后回家）
+            MakePortal(ctx, o + new Vector3(-14f, 0, -42), 7, ctx.playerSpawns[7] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(14f, 0, -42), 0, ctx.playerSpawns[0]);
+        }
+
+        /// <summary>旧事展柜：底座+半透明玻璃罩+内容物+回声光+标签，归档交互。</summary>
+        static void MakeEchoCase(WorldContext ctx, Vector3 basePos, string label)
+        {
+            var pedestal = Box(ctx, "EchoCasePedestal", basePos + new Vector3(0, 0.5f, 0),
+                new Vector3(2.2f, 1.0f, 2.2f), new Color(0.3f, 0.28f, 0.36f));
+
+            var glass = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(glass.GetComponent<Collider>());
+            glass.name = "EchoCaseGlass";
+            glass.transform.position = basePos + new Vector3(0, 1.9f, 0);
+            glass.transform.localScale = new Vector3(1.9f, 1.8f, 1.9f);
+            glass.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(new Color(0.6f, 0.7f, 0.9f), 0.18f);
+
+            Decoration(ctx, "EchoRelic", basePos + new Vector3(0, 1.5f, 0),
+                new Vector3(0.7f, 0.7f, 0.7f), new Color(0.55f, 0.5f, 0.42f));
+
+            // 回声光：未归档时亮着的不安之光（归档后熄灭）
+            var glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            Object.DestroyImmediate(glow.GetComponent<Collider>());
+            glow.name = "EchoGlow";
+            glow.transform.position = basePos + new Vector3(0, 3.2f, 0);
+            glow.transform.localScale = Vector3.one * 0.5f;
+            var glowR = glow.GetComponent<MeshRenderer>();
+            glowR.sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(new Color(0.75f, 0.5f, 0.9f), 0.8f);
+
+            var tmGo = new GameObject("EchoCaseLabel");
+            tmGo.transform.position = basePos + new Vector3(0, 3.9f, 0);
+            var tm = tmGo.AddComponent<TextMesh>();
+            tm.text = label;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 44;
+            tm.characterSize = 0.05f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = new Color(0.8f, 0.82f, 0.95f);
+            var tmr = tmGo.GetComponent<MeshRenderer>();
+            if (tm.font != null) tmr.material = tm.font.material;
+            tmGo.AddComponent<FaceCamera>();
+
+            var echoCase = pedestal.AddComponent<Combat.EchoDisplayCase>();
+            echoCase.memoryLabel = label;
+            echoCase.SetGlow(glowR);
         }
 
         static void AddCeilingLight(Vector3 pos, Color color, float range)

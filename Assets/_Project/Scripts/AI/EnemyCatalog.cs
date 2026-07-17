@@ -11,7 +11,26 @@ namespace AdversityRoad.AI
         ShameMirror,            // 羞耻镜像（内心·羞耻）
         ProcrastinationShadow,  // 拖延影魔（Boss 原型）
         NoReplyKing,            // 无回应之王（求职荒原 Boss：拒信飞刃）
-        TotalResponsibilityJudge // 全责法官（责任转嫁法院 Boss：抛掷责任球）
+        TotalResponsibilityJudge, // 全责法官（责任转嫁法院 Boss：抛掷责任球）
+
+        // ---- 小题大做审判庭（公平与承诺线） ----
+        OverreactGhost,         // 小题大做鬼（外部·公平刺痛近战）
+        MockingBystander,       // 旁观嘲笑者（内心·羞耻远程）
+        SelfDenialGavel,        // 自我否定法槌（审判庭 Boss：标签弹幕/审判冲击波/否定重锤）
+
+        // ---- 一声咳嗽的街道（外界刺激线） ----
+        StimulusAmplifier,      // 刺激放大器（街道 Boss：噪声放大/幻影假目标）
+
+        // ---- 拖延沼泽（拖延与目标线） ----
+        TomorrowMud,            // 明日泥怪（外部·拖延近战，迟缓但耐打）
+        PerfectPreparer,        // 完美准备者（内心·低信心远程："再准备一下"）
+        TomorrowKing,           // 明天之王（沼泽 Boss：泥壳护体，点燃三座火种台才能破防）
+
+        // ---- 旧事回声馆（旧我与新我线） ----
+        OldVoiceRepeater,       // 旧话复读者（内心·旧事回声远程）
+        PastJudge,              // 过去判官（外部·旧事近战审判）
+        RuminationSwarm,        // 反刍虫群（内心·小型快速缠身）
+        OldSelf                 // 旧我（终局 Boss：旧话复读/身份冻结/失败召回/整合选择）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -64,6 +83,17 @@ namespace AdversityRoad.AI
                 case EnemyType.ShameMirror: return "羞耻镜像";
                 case EnemyType.NoReplyKing: return "无回应之王";
                 case EnemyType.TotalResponsibilityJudge: return "全责法官";
+                case EnemyType.OverreactGhost: return "小题大做鬼";
+                case EnemyType.MockingBystander: return "旁观嘲笑者";
+                case EnemyType.SelfDenialGavel: return "自我否定法槌";
+                case EnemyType.StimulusAmplifier: return "刺激放大器";
+                case EnemyType.TomorrowMud: return "明日泥怪";
+                case EnemyType.PerfectPreparer: return "完美准备者";
+                case EnemyType.TomorrowKing: return "明天之王";
+                case EnemyType.OldVoiceRepeater: return "旧话复读者";
+                case EnemyType.PastJudge: return "过去判官";
+                case EnemyType.RuminationSwarm: return "反刍虫群";
+                case EnemyType.OldSelf: return "旧我";
                 default: return "拖延影魔";
             }
         }
@@ -78,6 +108,17 @@ namespace AdversityRoad.AI
                 case EnemyType.ShameMirror: return new Color(0.75f, 0.6f, 0.85f);
                 case EnemyType.NoReplyKing: return new Color(0.62f, 0.66f, 0.75f);
                 case EnemyType.TotalResponsibilityJudge: return new Color(0.55f, 0.16f, 0.2f);
+                case EnemyType.OverreactGhost: return new Color(0.85f, 0.55f, 0.25f);
+                case EnemyType.MockingBystander: return new Color(0.65f, 0.5f, 0.75f);
+                case EnemyType.SelfDenialGavel: return new Color(0.6f, 0.32f, 0.2f);
+                case EnemyType.StimulusAmplifier: return new Color(0.9f, 0.55f, 0.15f);
+                case EnemyType.TomorrowMud: return new Color(0.35f, 0.28f, 0.16f);
+                case EnemyType.PerfectPreparer: return new Color(0.55f, 0.62f, 0.55f);
+                case EnemyType.TomorrowKing: return new Color(0.3f, 0.2f, 0.45f);
+                case EnemyType.OldVoiceRepeater: return new Color(0.45f, 0.42f, 0.55f);
+                case EnemyType.PastJudge: return new Color(0.38f, 0.3f, 0.3f);
+                case EnemyType.RuminationSwarm: return new Color(0.5f, 0.22f, 0.45f);
+                case EnemyType.OldSelf: return new Color(0.18f, 0.18f, 0.25f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -93,6 +134,17 @@ namespace AdversityRoad.AI
                 case EnemyType.ShameMirror: return Combat.WeaponKind.Sword;       // 镜像之剑
                 case EnemyType.NoReplyKing: return Combat.WeaponKind.Sword;       // 拒信之剑
                 case EnemyType.TotalResponsibilityJudge: return Combat.WeaponKind.Staff; // 法槌·长杖
+                case EnemyType.OverreactGhost: return Combat.WeaponKind.Claw;      // 挑刺之爪
+                case EnemyType.MockingBystander: return Combat.WeaponKind.None;    // 纯嘲笑远程
+                case EnemyType.SelfDenialGavel: return Combat.WeaponKind.Staff;    // 否定法槌
+                case EnemyType.StimulusAmplifier: return Combat.WeaponKind.None;   // 纯噪声远程
+                case EnemyType.TomorrowMud: return Combat.WeaponKind.None;         // 泥拳
+                case EnemyType.PerfectPreparer: return Combat.WeaponKind.None;     // 计划纸念弹
+                case EnemyType.TomorrowKing: return Combat.WeaponKind.Blade;       // 明日大刀
+                case EnemyType.OldVoiceRepeater: return Combat.WeaponKind.None;    // 旧话回声
+                case EnemyType.PastJudge: return Combat.WeaponKind.Staff;          // 过往裁尺
+                case EnemyType.RuminationSwarm: return Combat.WeaponKind.Claw;     // 虫群噬咬
+                case EnemyType.OldSelf: return Combat.WeaponKind.Sword;            // 与你同款的旧剑
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -100,7 +152,10 @@ namespace AdversityRoad.AI
         /// <summary>该类型是否具备远程攻击（心念弹/拒信飞刃）。</summary>
         public static bool RangedOf(EnemyType t) =>
             t == EnemyType.SelfDoubtWhisper || t == EnemyType.ShameMirror ||
-            t == EnemyType.ProcrastinationShadow || t == EnemyType.NoReplyKing;
+            t == EnemyType.ProcrastinationShadow || t == EnemyType.NoReplyKing ||
+            t == EnemyType.MockingBystander || t == EnemyType.StimulusAmplifier ||
+            t == EnemyType.PerfectPreparer || t == EnemyType.OldVoiceRepeater ||
+            t == EnemyType.SelfDenialGavel || t == EnemyType.OldSelf;
 
         public static string BaseId(EnemyType t)
         {
@@ -112,6 +167,17 @@ namespace AdversityRoad.AI
                 case EnemyType.ShameMirror: return "enemy_shame_mirror";
                 case EnemyType.NoReplyKing: return "boss_no_reply_king";
                 case EnemyType.TotalResponsibilityJudge: return "boss_total_responsibility_judge";
+                case EnemyType.OverreactGhost: return "enemy_overreact_ghost";
+                case EnemyType.MockingBystander: return "enemy_mocking_bystander";
+                case EnemyType.SelfDenialGavel: return "boss_self_denial_gavel";
+                case EnemyType.StimulusAmplifier: return "boss_stimulus_amplifier";
+                case EnemyType.TomorrowMud: return "enemy_tomorrow_mud";
+                case EnemyType.PerfectPreparer: return "enemy_perfect_preparer";
+                case EnemyType.TomorrowKing: return "boss_tomorrow_king";
+                case EnemyType.OldVoiceRepeater: return "enemy_old_voice_repeater";
+                case EnemyType.PastJudge: return "enemy_past_judge";
+                case EnemyType.RuminationSwarm: return "enemy_rumination_swarm";
+                case EnemyType.OldSelf: return "boss_old_self";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -168,6 +234,94 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
                         maxHealth = 125, posture = 46, physicalDamage = 12, mentalDamage = 16,
                         aggression = 0.5f, defense = 10, moveSpeed = 3f, attackRange = 2.1f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.OverreactGhost:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.External,
+                        maxHealth = 95, posture = 34, physicalDamage = 9, mentalDamage = 11,
+                        aggression = 0.6f, defense = 7, moveSpeed = 3.6f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.MockingBystander:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Internal,
+                        maxHealth = 75, posture = 26, physicalDamage = 5, mentalDamage = 14,
+                        aggression = 0.5f, defense = 4, moveSpeed = 2.8f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.SelfDenialGavel:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Boss,
+                        maxHealth = 130, posture = 48, physicalDamage = 13, mentalDamage = 16,
+                        aggression = 0.55f, defense = 10, moveSpeed = 2.9f, attackRange = 2.2f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.StimulusAmplifier:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.NoiseSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 115, posture = 42, physicalDamage = 10, mentalDamage = 18,
+                        aggression = 0.5f, defense = 8, moveSpeed = 3.4f, attackRange = 2f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.TomorrowMud:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.External,
+                        maxHealth = 120, posture = 45, physicalDamage = 10, mentalDamage = 9,
+                        aggression = 0.4f, defense = 12, moveSpeed = 2.2f, attackRange = 1.9f, detectRange = 12
+                    };
+                    break;
+                case EnemyType.PerfectPreparer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.LowConfidence, category = EnemyCategory.Internal,
+                        maxHealth = 80, posture = 28, physicalDamage = 6, mentalDamage = 13,
+                        aggression = 0.45f, defense = 5, moveSpeed = 2.9f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.TomorrowKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.Boss,
+                        maxHealth = 140, posture = 50, physicalDamage = 13, mentalDamage = 15,
+                        aggression = 0.5f, defense = 10, moveSpeed = 2.8f, attackRange = 2.3f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.OldVoiceRepeater:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Internal,
+                        maxHealth = 85, posture = 30, physicalDamage = 6, mentalDamage = 15,
+                        aggression = 0.5f, defense = 5, moveSpeed = 3f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.PastJudge:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.External,
+                        maxHealth = 105, posture = 38, physicalDamage = 11, mentalDamage = 11,
+                        aggression = 0.55f, defense = 9, moveSpeed = 3.3f, attackRange = 1.9f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.RuminationSwarm:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Internal,
+                        maxHealth = 60, posture = 20, physicalDamage = 6, mentalDamage = 10,
+                        aggression = 0.75f, defense = 3, moveSpeed = 4.8f, attackRange = 1.6f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.OldSelf:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Boss,
+                        maxHealth = 160, posture = 55, physicalDamage = 14, mentalDamage = 17,
+                        aggression = 0.6f, defense = 11, moveSpeed = 3.4f, attackRange = 2.2f, detectRange = 18
                     };
                     break;
                 default:
