@@ -19,6 +19,7 @@ namespace AdversityRoad.UI
         public StatBar ruminationBar;   // 反刍值：越满越糟（与其它条相反）
         public StatBar drainBar;        // 关系消耗值：越满越糟（技能冷却变长）
         public Text questText;
+        public Text goalText;       // 今日目标常驻行（目标板系统）
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
         public Image[] momentumPips; // 意势点（0-3）
@@ -47,10 +48,13 @@ namespace AdversityRoad.UI
             GameEvents.OnLockStateChanged += OnLockState;
             GameEvents.OnSkillBanner += OnBanner;
             GameEvents.OnComboCount += OnComboCount;
+            GameEvents.OnGoalChanged += RefreshGoal;
+            RefreshGoal();
         }
 
         void OnDisable()
         {
+            GameEvents.OnGoalChanged -= RefreshGoal;
             GameEvents.OnPlayerHpChanged -= OnHp;
             GameEvents.OnMentalStatChanged -= OnMental;
             GameEvents.OnQuestUpdated -= OnQuest;
@@ -202,6 +206,11 @@ namespace AdversityRoad.UI
                 if (bar.LastRatio * max > cur + 0.5f) Pulse(new Color(0.35f, 0.05f, 0.5f), 0.35f);
                 bar.SetValue(cur, max);
             }
+        }
+
+        void RefreshGoal()
+        {
+            if (goalText != null) goalText.text = GoalSystem.HudLine();
         }
 
         void OnQuest(string questId)

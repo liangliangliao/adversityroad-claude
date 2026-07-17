@@ -16,10 +16,11 @@ namespace AdversityRoad.UI
         CodexPanel _codex;
         ArchivePanel _archive;
         LevelSelectPanel _levelSelect;
+        MissionBoardPanel _missionBoard;
 
         public static SafeHousePanel Create(Transform canvas, ReflectionPanel reflection,
             GrowthPanel growth, EquipmentPanel equipment, CodexPanel codex, ArchivePanel archive,
-            LevelSelectPanel levelSelect)
+            LevelSelectPanel levelSelect, MissionBoardPanel missionBoard)
         {
             var comp = canvas.gameObject.AddComponent<SafeHousePanel>();
             comp._reflection = reflection;
@@ -28,13 +29,14 @@ namespace AdversityRoad.UI
             comp._codex = codex;
             comp._archive = archive;
             comp._levelSelect = levelSelect;
+            comp._missionBoard = missionBoard;
             comp.Build(canvas);
             return comp;
         }
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SafeHousePanel", new Vector2(760, 930),
+            _panel = UiUtil.MakePanel(canvas, "SafeHousePanel", new Vector2(760, 1030),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "安 全 屋", 42,
@@ -52,6 +54,7 @@ namespace AdversityRoad.UI
             MakeEntry("图鉴 · 识别心魔模式", 3, () => Open(_codex != null ? (System.Action)_codex.Toggle : null));
             MakeEntry("档案 · 归档过的旧事", 4, () => Open(_archive != null ? (System.Action)_archive.Toggle : null));
             MakeEntry("关卡 · 传送到已解锁区域", 5, () => Open(_levelSelect != null ? (System.Action)_levelSelect.Toggle : null));
+            MakeEntry("目标 · 钉下今日唯一目标", 6, () => Open(_missionBoard != null ? (System.Action)_missionBoard.Toggle : null));
 
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
                 new Vector2(0, 52), new Vector2(260, 72),

@@ -23,6 +23,7 @@ namespace AdversityRoad.AI
         EnemyController _ec;
         Transform _player;
         float _summonCd = 8f, _mudCd = 5f;
+        float _hintAt = -99f;
         bool _shellBroken;
 
         void Awake() => _ec = GetComponent<EnemyController>();
@@ -54,6 +55,14 @@ namespace AdversityRoad.AI
             if (_player == null || _ec.State == EnemyState.Stagger) return;
             float dist = Vector3.Distance(transform.position, _player.position);
             if (dist > 26f) return;
+
+            // 破防指引：泥壳未破时周期性提示火种进度（防止玩家不知机制对壳干砍）
+            if (!_shellBroken && Time.time - _hintAt > 20f && dist < 20f)
+            {
+                _hintAt = Time.time;
+                GameEvents.RaiseSubtitle("泥壳护体中（火种 " + SwampState.SparksLit + "/" +
+                    SwampState.SparksNeeded + "）——走近场边的火种台点燃它，三座齐燃泥壳即碎。");
+            }
 
             float dt = Time.deltaTime;
             _summonCd -= dt; _mudCd -= dt;

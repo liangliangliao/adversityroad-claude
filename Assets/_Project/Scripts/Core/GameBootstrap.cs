@@ -626,6 +626,13 @@ namespace AdversityRoad.Core
             UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
             hud.questText = qText;
 
+            // 今日目标常驻行（目标板系统）：主线任务下方一行淡金色小字
+            var gText = UiUtil.MakeText(canvasGo.transform, "GoalText", "", 22,
+                TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.55f));
+            UiUtil.SetRect(gText, new Vector2(0.5f, 1f), new Vector2(0, -58), new Vector2(1000, 32));
+            hud.goalText = gText;
+            gText.text = GoalSystem.HudLine();   // HUD 建立时 OnEnable 已跑过，这里补一次初始显示
+
             var subText = UiUtil.MakeText(canvasGo.transform, "Subtitle", "", 28,
                 TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.75f));
             UiUtil.SetRect(subText, new Vector2(0.5f, 0f), new Vector2(0, 130), new Vector2(1300, 44));
@@ -690,9 +697,10 @@ namespace AdversityRoad.Core
             var codexPanel = CodexPanel.Create(canvasGo.transform);
             var archivePanel = ArchivePanel.Create(canvasGo.transform);
             var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
+            var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
-                levelSelectPanel);
+                levelSelectPanel, missionBoardPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
             // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口

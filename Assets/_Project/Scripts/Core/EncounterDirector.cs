@@ -66,13 +66,13 @@ namespace AdversityRoad.Core
             switch (axis)
             {
                 case WeaknessAxis.NoiseSensitivity: return EnemyType.CoughAssassin;
-                case WeaknessAxis.Shame: return EnemyType.ShameMirror;
+                case WeaknessAxis.Shame: return EnemyType.MockingBystander;
                 case WeaknessAxis.JobAnxiety: return EnemyType.NoReplyKing;
-                case WeaknessAxis.BoundaryConflict:
-                case WeaknessAxis.FairnessSensitivity: return EnemyType.TotalResponsibilityJudge;
-                case WeaknessAxis.SelfDoubt:
-                case WeaknessAxis.LowConfidence:
-                case WeaknessAxis.FailureFear: return EnemyType.SelfDoubtWhisper;
+                case WeaknessAxis.BoundaryConflict: return EnemyType.TotalResponsibilityJudge;
+                case WeaknessAxis.FairnessSensitivity: return EnemyType.OverreactGhost;
+                case WeaknessAxis.SelfDoubt: return EnemyType.SelfDoubtWhisper;
+                case WeaknessAxis.LowConfidence: return EnemyType.PerfectPreparer;
+                case WeaknessAxis.FailureFear: return EnemyType.OldVoiceRepeater;
                 default: return EnemyType.TomorrowPhantom;
             }
         }

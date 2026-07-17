@@ -287,6 +287,75 @@ namespace AdversityRoad.Core
             PlayerPrefs.DeleteKey(ReflectionKey);
             _unlocked = null;
             _log = null;
+            GoalSystem.DeleteAll();
+        }
+    }
+
+    /// <summary>
+    /// 目标板系统（方案：玩家每次进入游戏都要完成一个明确的小目标 + 现实行动映射）。
+    /// 钉下「今日唯一目标」→ HUD 常驻显示 → 完成打卡获得复盘点（每日一次）。
+    /// 目标可以是游戏内挑战，也可以是现实行动小任务——由玩家自己写。
+    /// </summary>
+    public static class GoalSystem
+    {
+        const string GoalKey = "adversity_today_goal";
+        const string DateKey = "adversity_today_goal_date";
+        const string DoneKey = "adversity_today_goal_done";
+
+        static string Today => System.DateTime.Now.ToString("yyyy-MM-dd");
+
+        public static string CurrentGoal => PlayerPrefs.GetString(GoalKey, "");
+
+        /// <summary>钉的是不是今天的目标（跨天自动过期，鼓励每天重新定向）。</summary>
+        public static bool PinnedToday =>
+            PlayerPrefs.GetString(DateKey, "") == Today && CurrentGoal.Length > 0;
+
+        public static bool DoneToday =>
+            PinnedToday && PlayerPrefs.GetInt(DoneKey, 0) == 1;
+
+        /// <summary>钉下今日唯一目标（目标钉：一天只钉一个，钉新的覆盖旧的）。</summary>
+        public static void Pin(string goal)
+        {
+            goal = (goal ?? "").Trim();
+            if (goal.Length == 0) return;
+            if (goal.Length > 60) goal = goal.Substring(0, 60);
+            PlayerPrefs.SetString(GoalKey, goal);
+            PlayerPrefs.SetString(DateKey, Today);
+            PlayerPrefs.SetInt(DoneKey, 0);
+            PlayerPrefs.Save();
+            GameEvents.RaiseGoalChanged();
+            GameEvents.RaiseSubtitle("目标钉下：「" + goal + "」——今天只做这一件事，做五分钟也算开始。");
+        }
+
+        /// <summary>完成打卡：复盘点 +1（每日一次），恢复行动力。返回是否成功。</summary>
+        public static bool CompleteToday(Player.PlayerStats stats)
+        {
+            if (!PinnedToday || DoneToday) return false;
+            PlayerPrefs.SetInt(DoneKey, 1);
+            PlayerPrefs.Save();
+            GrowthSystem.AddPoints(1);
+            if (stats != null)
+            {
+                stats.RestoreAxis(Personalization.WeaknessAxis.Procrastination, 40f);
+                stats.ReduceRumination(15f);
+            }
+            GameEvents.RaiseGoalChanged();
+            GameEvents.RaiseSubtitle("今日目标完成——行动先于完美状态，你已经赢下今天。");
+            return true;
+        }
+
+        /// <summary>HUD 常驻行文案（空字符串 = 不显示）。</summary>
+        public static string HudLine()
+        {
+            if (!PinnedToday) return "";
+            return (DoneToday ? "✓ 已完成 · " : "◎ 今日目标 · ") + CurrentGoal;
+        }
+
+        public static void DeleteAll()
+        {
+            PlayerPrefs.DeleteKey(GoalKey);
+            PlayerPrefs.DeleteKey(DateKey);
+            PlayerPrefs.DeleteKey(DoneKey);
         }
     }
 }

@@ -38,6 +38,10 @@ namespace AdversityRoad.UI
             new SceneTemplate { sceneId = "street", displayName = "噪声街区", primaryAxis = WeaknessAxis.NoiseSensitivity, themeTag = "专注", baseIntensity = 0.6f },
             new SceneTemplate { sceneId = "job", displayName = "求职荒原", primaryAxis = WeaknessAxis.JobAnxiety, themeTag = "求职", baseIntensity = 0.7f },
             new SceneTemplate { sceneId = "plaza", displayName = "城市广场", primaryAxis = WeaknessAxis.Procrastination, themeTag = "意志", baseIntensity = 0.8f },
+            new SceneTemplate { sceneId = "court", displayName = "责任转嫁法院", primaryAxis = WeaknessAxis.BoundaryConflict, themeTag = "边界,责任", baseIntensity = 0.7f },
+            new SceneTemplate { sceneId = "judgment", displayName = "小题大做审判庭", primaryAxis = WeaknessAxis.FairnessSensitivity, themeTag = "公平,自尊", baseIntensity = 0.65f },
+            new SceneTemplate { sceneId = "swamp", displayName = "拖延沼泽", primaryAxis = WeaknessAxis.Procrastination, themeTag = "拖延,行动", baseIntensity = 0.6f },
+            new SceneTemplate { sceneId = "echo", displayName = "旧事回声馆", primaryAxis = WeaknessAxis.FailureFear, themeTag = "旧事,失败,整合", baseIntensity = 0.75f },
         };
 
         public static ProfilePanel Create(Transform canvas)

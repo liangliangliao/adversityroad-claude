@@ -263,6 +263,9 @@ namespace AdversityRoad.World
 
             MakePortal(ctx, o + new Vector3(-50f, 0, 8), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(50f, 0, 8), 3, ctx.playerSpawns[3]);
+            // 拖延沼泽主入口：街道尽头东南侧的湿地小径——
+            // 第九章（打完街心广场的刺激放大器）章节推进的一瞬即解锁，门就在战场旁边
+            MakePortal(ctx, o + new Vector3(42f, 0, -9), 7, ctx.playerSpawns[7]);
         }
 
         // ================= 第四区：求职荒原 =================
@@ -345,12 +348,16 @@ namespace AdversityRoad.World
             Decoration(ctx, "RoadZ", o + new Vector3(-30, 0.03f, 0), new Vector3(8, 0.04f, 110),
                 new Color(0.2f, 0.2f, 0.22f));
 
-            // 喷泉
+            // 喷泉（底座碰撞体换成薄盒：Cylinder 胶囊碰撞体非均匀缩放会成 r=3 隐形球）
             var basin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(basin.GetComponent<Collider>());
             basin.name = "Fountain";
             basin.transform.position = o + new Vector3(0, 0.3f, -10);
             basin.transform.localScale = new Vector3(6, 0.3f, 6);
             Paint(ctx, basin, new Color(0.4f, 0.55f, 0.65f));
+            var basinCol = new GameObject("FountainCollider");
+            basinCol.transform.position = o + new Vector3(0, 0.3f, -10);
+            basinCol.AddComponent<BoxCollider>().size = new Vector3(5.2f, 0.6f, 5.2f);
             var jet = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             jet.name = "FountainJet";
             Object.DestroyImmediate(jet.GetComponent<Collider>());
@@ -592,9 +599,10 @@ namespace AdversityRoad.World
             Decoration(ctx, "GiantGavelHandle", o + new Vector3(0, 3.9f, 33.5f),
                 new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
 
-            // 传送门：回责任转嫁法院 / 通往拖延沼泽（击败自我否定法槌后解锁）
+            // 传送门：回责任转嫁法院。
+            // （拖延沼泽的入口不在这里——第八章要先回噪声街区打刺激放大器，
+            //   沼泽主入口设在街区尽头：章节推进的那一刻门就解锁，不留"锁死的门"）
             MakePortal(ctx, o + new Vector3(-14f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(14f, 0, -35), 7, ctx.playerSpawns[7]);
         }
 
         /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
@@ -700,18 +708,22 @@ namespace AdversityRoad.World
             Decoration(ctx, "CalendarTear", o + new Vector3(6.4f, 0.4f, -35.6f),
                 new Vector3(1.2f, 0.8f, 0.1f), new Color(0.8f, 0.76f, 0.7f));
 
-            // Boss 泥台：北端圆形高台，三座五分钟火种台环绕（齐燃破防）
+            // Boss 泥台：北端圆形场地标识（纯装饰贴地圆盘）。
+            // 注意：Cylinder 原始体自带胶囊碰撞体，非均匀缩放(26,0.15,26)会退化成
+            // 半径 13 米的隐形巨球——把整个 Boss 区罩死（玩家进不去、Boss 出不来、
+            // NavMesh 被隔断）。必须销毁碰撞体，战斗发生在平地上。
             var mudStage = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(mudStage.GetComponent<Collider>());
             mudStage.name = "TomorrowKingStage";
-            mudStage.transform.position = o + new Vector3(0, 0.15f, 30);
-            mudStage.transform.localScale = new Vector3(26f, 0.15f, 26f);
+            mudStage.transform.position = o + new Vector3(0, 0.05f, 30);
+            mudStage.transform.localScale = new Vector3(26f, 0.04f, 26f);
             Paint(ctx, mudStage, new Color(0.3f, 0.26f, 0.2f));
             SparkAltar(ctx, o + new Vector3(-11, 0, 24));
             SparkAltar(ctx, o + new Vector3(11, 0, 24));
             SparkAltar(ctx, o + new Vector3(0, 0, 40));
 
-            // 传送门：回审判庭 / 通往旧事回声馆（击败明天之王后解锁）
-            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 6, ctx.playerSpawns[6] + new Vector3(2, 0, 0));
+            // 传送门：回噪声街区（主入口来路）/ 通往旧事回声馆（击败明天之王章节推进即解锁）
+            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(28f, 0, 44), 8, ctx.playerSpawns[8]);
         }
 
@@ -854,11 +866,13 @@ namespace AdversityRoad.World
             Decoration(ctx, "GateSign", o + new Vector3(0, 5.6f, 11.6f), new Vector3(10, 0.9f, 0.2f),
                 new Color(0.5f, 0.4f, 0.6f));
 
-            // 终局镜面平台：圆形镜面 + 环绕的章节场景碎片
+            // 终局镜面平台：圆形镜面 + 环绕的章节场景碎片（纯装饰贴地圆盘——
+            // 同泥台：Cylinder 的胶囊碰撞体在非均匀缩放下会变成隐形巨球，必须销毁）
             var mirrorStage = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(mirrorStage.GetComponent<Collider>());
             mirrorStage.name = "FinalMirrorArena";
-            mirrorStage.transform.position = o + new Vector3(0, 0.08f, 30);
-            mirrorStage.transform.localScale = new Vector3(26f, 0.08f, 26f);
+            mirrorStage.transform.position = o + new Vector3(0, 0.05f, 30);
+            mirrorStage.transform.localScale = new Vector3(26f, 0.04f, 26f);
             Paint(ctx, mirrorStage, new Color(0.55f, 0.62f, 0.78f));
             // 环绕平台的记忆碎片柱：一路走来的章节残影
             var shardColors = new[]
