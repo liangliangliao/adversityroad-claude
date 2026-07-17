@@ -31,10 +31,12 @@ namespace AdversityRoad.World
         public static string CurrentZoneId = "home";
 
         static readonly string[] ZoneIds =
-            { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo" };
+            { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
+              "gamble", "carpark", "gazehall", "crossroad" };
         static readonly string[] ZoneNames =
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
-              "小题大做审判庭", "拖延沼泽", "旧事回声馆" };
+              "小题大做审判庭", "拖延沼泽", "旧事回声馆",
+              "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -64,7 +66,11 @@ namespace AdversityRoad.World
                 new Vector3(1500, 0, 0),
                 new Vector3(1800, 0, 0),
                 new Vector3(2100, 0, 0),
-                new Vector3(2400, 0, 0)
+                new Vector3(2400, 0, 0),
+                new Vector3(2700, 0, 0),
+                new Vector3(3000, 0, 0),
+                new Vector3(3300, 0, 0),
+                new Vector3(3600, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -76,7 +82,11 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[5] + new Vector3(0, 1.1f, -40),
                 ctx.zoneOrigins[6] + new Vector3(0, 1.1f, -32),
                 ctx.zoneOrigins[7] + new Vector3(0, 1.1f, -42),
-                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, -38)
+                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, -38),
+                ctx.zoneOrigins[9] + new Vector3(0, 1.1f, -9),
+                ctx.zoneOrigins[10] + new Vector3(0, 1.1f, -24),
+                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30)
             };
             ctx.enemySpawns = new[]
             {
@@ -88,7 +98,11 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[5] + new Vector3(0, 1.1f, 28),
                 ctx.zoneOrigins[6] + new Vector3(0, 1.1f, 26),
                 ctx.zoneOrigins[7] + new Vector3(0, 1.1f, 28),
-                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, 30)
+                ctx.zoneOrigins[8] + new Vector3(0, 1.1f, 30),
+                ctx.zoneOrigins[9] + new Vector3(0, 1.1f, 5),
+                ctx.zoneOrigins[10] + new Vector3(0, 1.1f, 16),
+                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, 26),
+                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, 0)
             };
 
             _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
@@ -102,6 +116,10 @@ namespace AdversityRoad.World
             BuildJudgmentCourt(ctx);
             BuildProcrastinationSwamp(ctx);
             BuildEchoMuseum(ctx);
+            BuildGambleDen(ctx);
+            BuildDebtCarPark(ctx);
+            BuildGazeHall(ctx);
+            BuildCrossroad(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -180,6 +198,8 @@ namespace AdversityRoad.World
 
             MakePortal(ctx, o + new Vector3(-24f, 0, 0), 0, ctx.playerSpawns[0]);
             MakePortal(ctx, o + new Vector3(24f, 0, 0), 2, ctx.playerSpawns[2]);
+            // 武馆后门 → 两元赌桌（公平与承诺线 其一，序章通关后解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, 22), 9, ctx.playerSpawns[9]);
         }
 
         // ================= 第三区：噪声街区 =================
@@ -264,8 +284,10 @@ namespace AdversityRoad.World
             MakePortal(ctx, o + new Vector3(-50f, 0, 8), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(50f, 0, 8), 3, ctx.playerSpawns[3]);
             // 拖延沼泽主入口：街道尽头东南侧的湿地小径——
-            // 第九章（打完街心广场的刺激放大器）章节推进的一瞬即解锁，门就在战场旁边
+            // 拖延线开启的一瞬即解锁，门就在刺激放大器战场旁边
             MakePortal(ctx, o + new Vector3(42f, 0, -9), 7, ctx.playerSpawns[7]);
+            // 眼神审判走廊入口：街道西南侧（刺激线其二）
+            MakePortal(ctx, o + new Vector3(-42f, 0, -9), 11, ctx.playerSpawns[11]);
         }
 
         // ================= 第四区：求职荒原 =================
@@ -599,10 +621,9 @@ namespace AdversityRoad.World
             Decoration(ctx, "GiantGavelHandle", o + new Vector3(0, 3.9f, 33.5f),
                 new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
 
-            // 传送门：回责任转嫁法院。
-            // （拖延沼泽的入口不在这里——第八章要先回噪声街区打刺激放大器，
-            //   沼泽主入口设在街区尽头：章节推进的那一刻门就解锁，不留"锁死的门"）
-            MakePortal(ctx, o + new Vector3(-14f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
+            // 传送门：回债务车影（公平线来路）/ 通往责任转嫁法院（边界线时代的通道）
+            MakePortal(ctx, o + new Vector3(-14f, 0, -35), 10, ctx.playerSpawns[10] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(14f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
         }
 
         /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
@@ -941,6 +962,325 @@ namespace AdversityRoad.World
             var echoCase = pedestal.AddComponent<Combat.EchoDisplayCase>();
             echoCase.memoryLabel = label;
             echoCase.SetGlow(glowR);
+        }
+
+        // ================= 第十区：两元赌桌（公平与承诺线 其一） =================
+
+        static void BuildGambleDen(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[9];
+
+            Color wall = new Color(0.3f, 0.26f, 0.22f);
+
+            // 狭小棋牌室：压迫感来自空间小 + 围观者多
+            Box(ctx, "Gamble_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(28, 0.5f, 28),
+                new Color(0.4f, 0.33f, 0.26f));
+            Ring(ctx, o, 14, 4, wall);
+
+            // 破旧灯泡：昏黄低光
+            var bulb = new GameObject("GambleBulb");
+            bulb.transform.position = o + new Vector3(0, 3.6f, 2);
+            var bl = bulb.AddComponent<Light>();
+            bl.type = LightType.Point;
+            bl.range = 18;
+            bl.intensity = 1.0f;
+            bl.color = new Color(1f, 0.8f, 0.5f);
+            Decoration(ctx, "BulbWire", o + new Vector3(0, 4.0f, 2), new Vector3(0.05f, 0.9f, 0.05f),
+                new Color(0.15f, 0.15f, 0.15f));
+
+            // 中央赌桌（视觉中心 + 可绕行掩体）
+            var table = Box(ctx, "GambleTable", o + new Vector3(0, 0.5f, 2), new Vector3(3.6f, 1.0f, 2.4f),
+                new Color(0.16f, 0.35f, 0.22f));
+            Decoration(ctx, "TableTrim", o + new Vector3(0, 1.02f, 2), new Vector3(3.7f, 0.06f, 2.5f),
+                new Color(0.35f, 0.24f, 0.16f));
+            // 桌上散落的硬币与纸牌
+            var rng = new System.Random(21);
+            for (int i = 0; i < 6; i++)
+                Decoration(ctx, "Coin", o + new Vector3(-1.2f + (float)rng.NextDouble() * 2.4f, 1.1f,
+                    1.2f + (float)rng.NextDouble() * 1.6f),
+                    new Vector3(0.16f, 0.03f, 0.16f), new Color(0.95f, 0.85f, 0.4f));
+            for (int i = 0; i < 4; i++)
+                Decoration(ctx, "Card", o + new Vector3(-1f + i * 0.7f, 1.08f, 2.4f),
+                    new Vector3(0.3f, 0.02f, 0.42f), new Color(0.92f, 0.92f, 0.88f));
+
+            // 椅子（可撞倒的障碍感——低矮碰撞体）
+            Box(ctx, "GambleChair", o + new Vector3(-2.8f, 0.35f, 2), new Vector3(0.9f, 0.7f, 0.9f),
+                new Color(0.3f, 0.26f, 0.22f));
+            Box(ctx, "GambleChair", o + new Vector3(2.8f, 0.35f, 2), new Vector3(0.9f, 0.7f, 0.9f),
+                new Color(0.3f, 0.26f, 0.22f));
+            Box(ctx, "GambleChair", o + new Vector3(0, 0.35f, 4.4f), new Vector3(0.9f, 0.7f, 0.9f),
+                new Color(0.3f, 0.26f, 0.22f));
+
+            // 账本对质（核心机制）：桌角的账本——走近即令赖账王语塞破绽
+            var ledger = Box(ctx, "Ledger", o + new Vector3(1.5f, 1.12f, 1.3f),
+                new Vector3(0.7f, 0.14f, 0.5f), new Color(0.55f, 0.42f, 0.25f));
+            Object.DestroyImmediate(ledger.GetComponent<Collider>());
+            var ledgerRoot = new GameObject("LedgerRoot");
+            ledgerRoot.transform.position = o + new Vector3(1.5f, 1.0f, 1.3f);
+            ledgerRoot.AddComponent<Combat.LedgerProp>();
+
+            // 四周围观者阴影（被围观的压迫感）
+            for (int i = 0; i < 8; i++)
+            {
+                float ang = i * Mathf.PI / 4f;
+                Decoration(ctx, "OnlookerShadow",
+                    o + new Vector3(Mathf.Cos(ang) * 11f, 1.1f, Mathf.Sin(ang) * 11f),
+                    new Vector3(1.0f, 2.2f, 0.6f), new Color(0.1f, 0.1f, 0.12f));
+            }
+
+            // 传送门：回训练武馆（南）/ 通往债务车影（北，击败赖账王章节推进即解锁）
+            MakePortal(ctx, o + new Vector3(-8f, 0, -12), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(8f, 0, 12), 10, ctx.playerSpawns[10]);
+        }
+
+        // ================= 第十一区：债务车影（公平与承诺线 其二） =================
+
+        static void BuildDebtCarPark(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[10];
+            Combat.DebtState.Reset();
+
+            // 夜晚停车场：冷灰地面 + 立柱 + 车阵窄路
+            Box(ctx, "CarPark_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(72, 0.5f, 62),
+                new Color(0.3f, 0.3f, 0.33f));
+            Ring(ctx, o, new Vector2(36, 31), 4, new Color(0.24f, 0.24f, 0.27f));
+
+            // 停车位标线
+            for (int i = 0; i < 8; i++)
+            {
+                Decoration(ctx, "ParkLine", o + new Vector3(-28 + i * 8, 0.03f, -14),
+                    new Vector3(0.25f, 0.04f, 10), new Color(0.8f, 0.8f, 0.75f));
+                Decoration(ctx, "ParkLine", o + new Vector3(-28 + i * 8, 0.03f, 2),
+                    new Vector3(0.25f, 0.04f, 10), new Color(0.8f, 0.8f, 0.75f));
+            }
+
+            // 立柱阵（遮挡与绕位）
+            for (int x = -1; x <= 1; x++)
+                for (int z = -1; z <= 1; z++)
+                {
+                    var pillar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    pillar.name = "ParkPillar";
+                    pillar.transform.position = o + new Vector3(x * 16, 2f, z * 12 - 4);
+                    pillar.transform.localScale = new Vector3(1.1f, 2f, 1.1f);
+                    Paint(ctx, pillar, new Color(0.42f, 0.42f, 0.45f));
+                    Player.CameraOcclusionFade.RegisterOccluder(pillar.GetComponent<Renderer>());
+                }
+
+            // 停放的车（车阵窄路：追逐与闪避空间）
+            var rng = new System.Random(37);
+            for (int i = 0; i < 7; i++)
+            {
+                float x = -24 + i * 8 + (i % 2) * 1.5f;
+                float z = (i % 2 == 0) ? -14 : 2;
+                var car = Box(ctx, "ParkedCar", o + new Vector3(x, 0.55f, z), new Vector3(1.9f, 1.1f, 4.2f),
+                    new Color(0.25f + (float)rng.NextDouble() * 0.3f,
+                              0.25f + (float)rng.NextDouble() * 0.3f,
+                              0.3f + (float)rng.NextDouble() * 0.3f));
+                var cabin = Decoration(ctx, "CarCabin", o + new Vector3(x, 1.35f, z - 0.1f),
+                    new Vector3(1.6f, 0.5f, 2.1f), new Color(0.55f, 0.65f, 0.75f));
+                cabin.transform.SetParent(car.transform, true);
+            }
+
+            // 地面积水（夜色反光）
+            Decoration(ctx, "Puddle", o + new Vector3(-10, 0.02f, 8), new Vector3(5, 0.03f, 3.2f),
+                new Color(0.35f, 0.42f, 0.55f));
+            Decoration(ctx, "Puddle", o + new Vector3(14, 0.02f, -6), new Vector3(4, 0.03f, 2.6f),
+                new Color(0.35f, 0.42f, 0.55f));
+
+            // 中央幻影车：被强光照亮的"未结清的故事"
+            var ghostCar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(ghostCar.GetComponent<Collider>());
+            ghostCar.name = "PhantomCar";
+            ghostCar.transform.position = o + new Vector3(0, 0.65f, 20);
+            ghostCar.transform.localScale = new Vector3(2.1f, 1.3f, 4.6f);
+            ghostCar.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(new Color(0.7f, 0.8f, 1f), 0.35f);
+            var spot = new GameObject("PhantomCarLight");
+            spot.transform.position = o + new Vector3(0, 6f, 20);
+            var sl = spot.AddComponent<Light>();
+            sl.type = LightType.Point;
+            sl.range = 20;
+            sl.intensity = 1.6f;
+            sl.color = new Color(0.85f, 0.9f, 1f);
+            // Boss 场地标识（贴地圆盘，无碰撞）
+            var arena = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(arena.GetComponent<Collider>());
+            arena.name = "DebtArena";
+            arena.transform.position = o + new Vector3(0, 0.04f, 18);
+            arena.transform.localScale = new Vector3(22f, 0.03f, 22f);
+            Paint(ctx, arena, new Color(0.34f, 0.34f, 0.38f));
+
+            // 三张欠条残片：集齐即碎债王护体
+            Combat.DebtNoteProp.Spawn(o + new Vector3(-22, 1.2f, 12));
+            Combat.DebtNoteProp.Spawn(o + new Vector3(24, 1.2f, 6));
+            Combat.DebtNoteProp.Spawn(o + new Vector3(-4, 1.2f, -22));
+
+            // 冷光灯
+            AddCeilingLight(o + new Vector3(-14, 7f, -6), new Color(0.8f, 0.85f, 1f), 30);
+            AddCeilingLight(o + new Vector3(14, 7f, 6), new Color(0.8f, 0.85f, 1f), 30);
+
+            // 传送门：回两元赌桌（南）/ 通往小题大做审判庭（东北，公平线其三）
+            MakePortal(ctx, o + new Vector3(-10f, 0, -28), 9, ctx.playerSpawns[9] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(30f, 0, 26), 6, ctx.playerSpawns[6]);
+        }
+
+        // ================= 第十二区：眼神审判走廊（外界刺激线 其二） =================
+
+        static void BuildGazeHall(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[11];
+
+            Color wall = new Color(0.2f, 0.18f, 0.26f);
+
+            // 狭长走廊（z -35..15）+ 尽头圆形镜厅（z 15..39）
+            Box(ctx, "GazeHall_Corridor", o + new Vector3(0, -0.25f, -10), new Vector3(18, 0.5f, 50),
+                new Color(0.26f, 0.24f, 0.32f));
+            Box(ctx, "GazeHall_Hall", o + new Vector3(0, -0.25f, 27), new Vector3(30, 0.5f, 24),
+                new Color(0.3f, 0.28f, 0.38f));
+
+            // 走廊两壁
+            Box(ctx, "GazeWall_W", o + new Vector3(-9, 2.5f, -10), new Vector3(0.8f, 5, 50), wall);
+            Box(ctx, "GazeWall_E", o + new Vector3(9, 2.5f, -10), new Vector3(0.8f, 5, 50), wall);
+            Box(ctx, "GazeWall_S", o + new Vector3(0, 2.5f, -35), new Vector3(18, 5, 0.8f), wall);
+            // 镜厅围墙 + 走廊-镜厅接口墙
+            Box(ctx, "GazeHallWall_W", o + new Vector3(-15, 2.5f, 27), new Vector3(0.8f, 5, 24), wall);
+            Box(ctx, "GazeHallWall_E", o + new Vector3(15, 2.5f, 27), new Vector3(0.8f, 5, 24), wall);
+            Box(ctx, "GazeHallWall_N", o + new Vector3(0, 2.5f, 39), new Vector3(30, 5, 0.8f), wall);
+            Box(ctx, "GazeJoint_W", o + new Vector3(-12, 2.5f, 15), new Vector3(6.8f, 5, 0.8f), wall);
+            Box(ctx, "GazeJoint_E", o + new Vector3(12, 2.5f, 15), new Vector3(6.8f, 5, 0.8f), wall);
+
+            // 两壁的眼睛灯与镜面（被注视感）
+            for (int i = 0; i < 7; i++)
+            {
+                float z = -30 + i * 7;
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    var eye = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    Object.DestroyImmediate(eye.GetComponent<Collider>());
+                    eye.name = "WallEye";
+                    eye.transform.position = o + new Vector3(side * 8.4f, 2.6f, z);
+                    eye.transform.localScale = new Vector3(0.5f, 0.5f, 0.25f);
+                    Paint(ctx, eye, new Color(0.85f, 0.82f, 0.95f));
+                    var pupil = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    Object.DestroyImmediate(pupil.GetComponent<Collider>());
+                    pupil.name = "WallEyePupil";
+                    pupil.transform.position = o + new Vector3(side * 8.2f, 2.6f, z);
+                    pupil.transform.localScale = Vector3.one * 0.2f;
+                    Paint(ctx, pupil, new Color(0.2f, 0.15f, 0.3f));
+                }
+                if (i % 2 == 0)
+                    Decoration(ctx, "CorridorMirror", o + new Vector3((i % 4 == 0 ? -8.3f : 8.3f), 1.9f, z + 3),
+                        new Vector3(0.12f, 2.6f, 1.8f), new Color(0.6f, 0.68f, 0.82f));
+            }
+
+            // 凝视压力区：走廊中后段（定心姿态减免、不读心盾免疫）
+            MakeZoneTrigger<Combat.NoiseZone>(o + new Vector3(0, 1, -14), new Vector3(16, 2.5f, 12));
+            MakeZoneTrigger<Combat.NoiseZone>(o + new Vector3(0, 1, 4), new Vector3(16, 2.5f, 12));
+
+            // 镜厅：环形镜面 + 中央凝视之台
+            for (int i = 0; i < 8; i++)
+            {
+                float ang = i * Mathf.PI / 4f;
+                var mirror = Decoration(ctx, "HallMirror",
+                    o + new Vector3(Mathf.Cos(ang) * 12f, 2.2f, 27 + Mathf.Sin(ang) * 9f),
+                    new Vector3(1.8f, 3.6f, 0.15f), new Color(0.62f, 0.7f, 0.85f));
+                mirror.transform.rotation = Quaternion.Euler(0, ang * Mathf.Rad2Deg + 90f, 0);
+            }
+            var gazeDisc = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(gazeDisc.GetComponent<Collider>());
+            gazeDisc.name = "GazeArena";
+            gazeDisc.transform.position = o + new Vector3(0, 0.04f, 27);
+            gazeDisc.transform.localScale = new Vector3(18f, 0.03f, 18f);
+            Paint(ctx, gazeDisc, new Color(0.36f, 0.34f, 0.46f));
+
+            // 幽紫顶光
+            AddCeilingLight(o + new Vector3(0, 8f, -14), new Color(0.7f, 0.65f, 0.9f), 34);
+            AddCeilingLight(o + new Vector3(0, 8f, 27), new Color(0.75f, 0.7f, 1f), 32);
+
+            // 传送门：回噪声街区（南）/ 通往陌生挑衅路口（镜厅东北角）
+            MakePortal(ctx, o + new Vector3(0f, 0, -31), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(11f, 0, 35), 12, ctx.playerSpawns[12]);
+        }
+
+        // ================= 第十三区：陌生挑衅路口（外界刺激线 其三） =================
+
+        static void BuildCrossroad(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[12];
+
+            Box(ctx, "Crossroad_Ground", o + new Vector3(0, -0.25f, 0), new Vector3(80, 0.5f, 80),
+                new Color(0.45f, 0.45f, 0.47f));
+            Ring(ctx, o, 40, 4, new Color(0.3f, 0.3f, 0.34f));
+
+            // 十字马路（四条臂 = 车流幻影危险区；中心路口 = 战场）
+            Decoration(ctx, "RoadX", o + new Vector3(0, 0.02f, 0), new Vector3(80, 0.04f, 9),
+                new Color(0.2f, 0.2f, 0.22f));
+            Decoration(ctx, "RoadZ", o + new Vector3(0, 0.03f, 0), new Vector3(9, 0.04f, 80),
+                new Color(0.2f, 0.2f, 0.22f));
+            // 危险区红色警示条 + 车流幻影伤害区（中心 |x|,|z|<8 为安全战场）
+            var armDefs = new[]
+            {
+                (new Vector3(-24, 1, 0), new Vector3(30, 2f, 8)),
+                (new Vector3(24, 1, 0), new Vector3(30, 2f, 8)),
+                (new Vector3(0, 1, -24), new Vector3(8, 2f, 30)),
+                (new Vector3(0, 1, 24), new Vector3(8, 2f, 30)),
+            };
+            foreach (var (pos, size) in armDefs)
+            {
+                var z = MakeZoneTrigger<Combat.TrafficPhantomZone>(o + pos, size);
+                Decoration(ctx, "TrafficWarn", o + new Vector3(pos.x, 0.05f, pos.z),
+                    new Vector3(size.x, 0.03f, size.z), new Color(0.55f, 0.22f, 0.2f));
+            }
+            // 中心路口铺装（安全战场标识）
+            Decoration(ctx, "CrossCenter", o + new Vector3(0, 0.06f, 0), new Vector3(15, 0.03f, 15),
+                new Color(0.55f, 0.53f, 0.5f));
+            Crosswalk(ctx, o + new Vector3(0, 0.03f, 10.5f), false);
+            Crosswalk(ctx, o + new Vector3(0, 0.03f, -10.5f), false);
+            Crosswalk(ctx, o + new Vector3(10.5f, 0.03f, 0), true);
+            Crosswalk(ctx, o + new Vector3(-10.5f, 0.03f, 0), true);
+
+            // 红绿灯柱（四角）
+            for (int i = 0; i < 4; i++)
+            {
+                float sx = (i % 2 == 0) ? -1f : 1f;
+                float sz = (i < 2) ? -1f : 1f;
+                Vector3 basePos = o + new Vector3(sx * 10f, 0, sz * 10f);
+                var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pole.name = "TrafficPole";
+                pole.transform.position = basePos + new Vector3(0, 2f, 0);
+                pole.transform.localScale = new Vector3(0.18f, 2f, 0.18f);
+                Paint(ctx, pole, new Color(0.25f, 0.25f, 0.28f));
+                Decoration(ctx, "TrafficLightBox", basePos + new Vector3(0, 4.1f, 0),
+                    new Vector3(0.4f, 1.0f, 0.4f), new Color(0.18f, 0.18f, 0.2f));
+                Decoration(ctx, "TrafficRed", basePos + new Vector3(0, 4.4f, 0.22f),
+                    new Vector3(0.22f, 0.22f, 0.06f), new Color(0.9f, 0.2f, 0.15f));
+                Decoration(ctx, "TrafficGreen", basePos + new Vector3(0, 3.9f, 0.22f),
+                    new Vector3(0.22f, 0.22f, 0.06f), new Color(0.2f, 0.85f, 0.3f));
+            }
+
+            // 街角围观人群阴影（挑衅的观众）
+            var rng = new System.Random(53);
+            for (int i = 0; i < 10; i++)
+            {
+                float sx = (i % 2 == 0) ? -1f : 1f;
+                float sz = (i % 4 < 2) ? -1f : 1f;
+                Decoration(ctx, "CrowdShadow",
+                    o + new Vector3(sx * (14 + (float)rng.NextDouble() * 10),
+                        1.1f, sz * (14 + (float)rng.NextDouble() * 10)),
+                    new Vector3(1.0f, 2.2f, 0.6f), new Color(0.12f, 0.12f, 0.15f));
+            }
+            // 护栏（路口四角的短栏，可作掩体）
+            Box(ctx, "GuardRail", o + new Vector3(12, 0.5f, 12), new Vector3(6, 1f, 0.3f),
+                new Color(0.6f, 0.6f, 0.65f));
+            Box(ctx, "GuardRail", o + new Vector3(-12, 0.5f, -12), new Vector3(6, 1f, 0.3f),
+                new Color(0.6f, 0.6f, 0.65f));
+
+            Lamp(ctx, o + new Vector3(16, 0, -16));
+            Lamp(ctx, o + new Vector3(-16, 0, 16));
+
+            // 传送门：回眼神审判走廊（西南）/ 回噪声街区（东南，刺激线终战方向）
+            MakePortal(ctx, o + new Vector3(-30f, 0, -30), 11, ctx.playerSpawns[11] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(30f, 0, -30), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
         }
 
         static void AddCeilingLight(Vector3 pos, Color color, float range)

@@ -789,6 +789,16 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>Boss 机制回血（两元赖账王耍赖回血等）：按最大生命比例恢复。</summary>
+        public void HealFraction(float frac)
+        {
+            if (State == EnemyState.Dead) return;
+            _hp = Mathf.Min(profile.maxHealth, _hp + profile.maxHealth * Mathf.Clamp01(frac));
+            if (statusBar != null) statusBar.SetHealth(_hp, profile.maxHealth);
+            CombatFeedback.DamageNumber(transform.position, "耍赖回血",
+                new Color(0.6f, 0.9f, 0.6f), 1.1f);
+        }
+
         /// <summary>机制性强制破绽（火种齐燃/整合触发等 Boss 事件）：进入长硬直吃增伤。</summary>
         public void ForceBreak(float duration)
         {

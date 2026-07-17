@@ -37,6 +37,16 @@ namespace AdversityRoad.UI
                 case EnemyType.PastJudge: return "失败是事实，不是身份";
                 case EnemyType.RuminationSwarm: return "范围技扫清，复盘归档降反刍";
                 case EnemyType.OldSelf: return "不杀死，整合——站入整合圆环";
+                case EnemyType.DebtDodger: return "事实姿态；账在账本上";
+                case EnemyType.RuleTwister: return "打断它'改规则'的施法";
+                case EnemyType.DebtShadow: return "结清一件是一件，别缠斗";
+                case EnemyType.GambleKing: return "账本对质=大破绽；别放它回血";
+                case EnemyType.DebtCarKing: return "捡齐三张欠条破护体";
+                case EnemyType.GazeEye: return "被看见≠被否定，近身打断";
+                case EnemyType.MaskFace: return "面具下没有真评价";
+                case EnemyType.ThousandEyeJudge: return "不读心盾破幻影，清场打真身";
+                case EnemyType.ProvokerPasserby: return "别追进车流，等它近身";
+                case EnemyType.TauntMirror: return "挑衅标记亮时忍住不打";
                 default: return "";
             }
         }

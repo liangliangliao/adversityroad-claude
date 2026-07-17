@@ -91,6 +91,19 @@ namespace AdversityRoad.Core
             SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[8] + new Vector3(-7, 1.1f, -18), true);
             SpawnEnemy(EnemyType.PastJudge, EnemyTier.Standard, o[8] + new Vector3(8, 1.1f, -10), true);
             SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[8] + new Vector3(0, 1.1f, 2), true);
+            // 两元赌桌：桌边的赖账牌手与规则篡改者
+            SpawnEnemy(EnemyType.DebtDodger, EnemyTier.Novice, o[9] + new Vector3(-5, 1.1f, -3), true);
+            SpawnEnemy(EnemyType.RuleTwister, EnemyTier.Novice, o[9] + new Vector3(6, 1.1f, -1), true);
+            // 债务车影：车阵间的欠款残影
+            SpawnEnemy(EnemyType.DebtShadow, EnemyTier.Standard, o[10] + new Vector3(-14, 1.1f, -6), true);
+            SpawnEnemy(EnemyType.DebtShadow, EnemyTier.Novice, o[10] + new Vector3(12, 1.1f, 2), true);
+            // 眼神审判走廊：凝视眼球与表情面具
+            SpawnEnemy(EnemyType.GazeEye, EnemyTier.Standard, o[11] + new Vector3(-4, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.GazeEye, EnemyTier.Novice, o[11] + new Vector3(4, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.MaskFace, EnemyTier.Standard, o[11] + new Vector3(0, 1.1f, 8), true);
+            // 陌生挑衅路口：街角的挑衅路人
+            SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Standard, o[12] + new Vector3(-13, 1.1f, 13), true);
+            SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Novice, o[12] + new Vector3(13, 1.1f, -13), true);
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -529,6 +542,18 @@ namespace AdversityRoad.Core
                 case EnemyType.OldSelf:                   // 四阶段：复读/冻结/召回/整合
                     root.AddComponent<OldSelfBoss>();
                     break;
+                case EnemyType.GambleKing:                // 硬币弹幕/耍赖回血/账本对质破防
+                    root.AddComponent<GambleKingBoss>();
+                    break;
+                case EnemyType.DebtCarKing:               // 欠条护体/车灯眩光/召唤残影
+                    root.AddComponent<DebtCarKingBoss>();
+                    break;
+                case EnemyType.ThousandEyeJudge:          // 凝视光束/虚假凝视点/万目扫射
+                    root.AddComponent<ThousandEyeJudgeBoss>();
+                    break;
+                case EnemyType.TauntMirror:               // 挑衅窗口：追打变强、不理破绽
+                    root.AddComponent<TauntMirrorBoss>();
+                    break;
             }
 
             return root;
@@ -878,7 +903,9 @@ namespace AdversityRoad.Core
                 return;
             }
             var ch = story.Current;
-            _battleFlow.ShowStory(ch.title, ch.intro, "出发");
+            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题
+            _battleFlow.ShowStory(story.CurrentAct.title,
+                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro, "出发");
         }
 
         // ================= 工具 =================

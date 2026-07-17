@@ -27,7 +27,15 @@ namespace AdversityRoad.World
             var story = StoryManager.Instance;
             if (story != null && !story.ZoneUnlocked(targetZoneIndex))
             {
-                GameEvents.RaiseSubtitle("此路被心魔封锁——先完成当前章节的试炼。");
+                // 找到解锁该区域的子章，明确告诉玩家这扇门什么时候开
+                string when = "先完成当前子章的试炼";
+                foreach (var ch in StoryManager.Chapters)
+                    if (ch.zoneIndex == targetZoneIndex)
+                    {
+                        when = "主线推进到【" + ch.title + "】时开启";
+                        break;
+                    }
+                GameEvents.RaiseSubtitle("此路通往【" + targetName + "】，现在被心魔封锁——" + when + "。");
                 return;
             }
 

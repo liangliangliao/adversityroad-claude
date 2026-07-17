@@ -30,7 +30,21 @@ namespace AdversityRoad.AI
         OldVoiceRepeater,       // 旧话复读者（内心·旧事回声远程）
         PastJudge,              // 过去判官（外部·旧事近战审判）
         RuminationSwarm,        // 反刍虫群（内心·小型快速缠身）
-        OldSelf                 // 旧我（终局 Boss：旧话复读/身份冻结/失败召回/整合选择）
+        OldSelf,                // 旧我（终局 Boss：旧话复读/身份冻结/失败召回/整合选择）
+
+        // ---- 两元赌桌 / 债务车影（公平与承诺线） ----
+        DebtDodger,             // 赖账牌手（外部·公平刺痛近战）
+        RuleTwister,            // 规则篡改者（混合·公平远程"改规则"）
+        DebtShadow,             // 欠款残影（内心·未结清之事的具象）
+        GambleKing,             // 两元赖账王（赌桌 Boss：硬币弹幕/耍赖回血/账本对质破防）
+        DebtCarKing,            // 新车债王（停车场 Boss：车灯眩光/召唤残影/欠条护体）
+
+        // ---- 眼神审判走廊 / 陌生挑衅路口（外界刺激线） ----
+        GazeEye,                // 凝视眼球（内心·被注视感远程）
+        MaskFace,               // 表情面具（外部·假笑之下的评价近战）
+        ThousandEyeJudge,       // 万眼审判者（镜厅 Boss：凝视光束/虚假凝视点）
+        ProvokerPasserby,       // 挑衅路人（外部·故意找茬近战）
+        TauntMirror             // 挑衅镜像（路口 Boss：挑衅窗口——追打变强、不理破绽）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -94,6 +108,16 @@ namespace AdversityRoad.AI
                 case EnemyType.PastJudge: return "过去判官";
                 case EnemyType.RuminationSwarm: return "反刍虫群";
                 case EnemyType.OldSelf: return "旧我";
+                case EnemyType.DebtDodger: return "赖账牌手";
+                case EnemyType.RuleTwister: return "规则篡改者";
+                case EnemyType.DebtShadow: return "欠款残影";
+                case EnemyType.GambleKing: return "两元赖账王";
+                case EnemyType.DebtCarKing: return "新车债王";
+                case EnemyType.GazeEye: return "凝视眼球";
+                case EnemyType.MaskFace: return "表情面具";
+                case EnemyType.ThousandEyeJudge: return "万眼审判者";
+                case EnemyType.ProvokerPasserby: return "挑衅路人";
+                case EnemyType.TauntMirror: return "挑衅镜像";
                 default: return "拖延影魔";
             }
         }
@@ -119,6 +143,16 @@ namespace AdversityRoad.AI
                 case EnemyType.PastJudge: return new Color(0.38f, 0.3f, 0.3f);
                 case EnemyType.RuminationSwarm: return new Color(0.5f, 0.22f, 0.45f);
                 case EnemyType.OldSelf: return new Color(0.18f, 0.18f, 0.25f);
+                case EnemyType.DebtDodger: return new Color(0.6f, 0.45f, 0.2f);
+                case EnemyType.RuleTwister: return new Color(0.55f, 0.5f, 0.28f);
+                case EnemyType.DebtShadow: return new Color(0.35f, 0.32f, 0.4f);
+                case EnemyType.GambleKing: return new Color(0.72f, 0.5f, 0.15f);
+                case EnemyType.DebtCarKing: return new Color(0.3f, 0.35f, 0.5f);
+                case EnemyType.GazeEye: return new Color(0.7f, 0.65f, 0.85f);
+                case EnemyType.MaskFace: return new Color(0.8f, 0.75f, 0.65f);
+                case EnemyType.ThousandEyeJudge: return new Color(0.6f, 0.55f, 0.9f);
+                case EnemyType.ProvokerPasserby: return new Color(0.85f, 0.35f, 0.3f);
+                case EnemyType.TauntMirror: return new Color(0.65f, 0.7f, 0.75f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -145,6 +179,16 @@ namespace AdversityRoad.AI
                 case EnemyType.PastJudge: return Combat.WeaponKind.Staff;          // 过往裁尺
                 case EnemyType.RuminationSwarm: return Combat.WeaponKind.Claw;     // 虫群噬咬
                 case EnemyType.OldSelf: return Combat.WeaponKind.Sword;            // 与你同款的旧剑
+                case EnemyType.DebtDodger: return Combat.WeaponKind.None;          // 甩牌
+                case EnemyType.RuleTwister: return Combat.WeaponKind.None;         // 篡改的规则纸
+                case EnemyType.DebtShadow: return Combat.WeaponKind.Claw;          // 残影之爪
+                case EnemyType.GambleKing: return Combat.WeaponKind.None;          // 硬币与牌
+                case EnemyType.DebtCarKing: return Combat.WeaponKind.Blade;        // 债契大刀
+                case EnemyType.GazeEye: return Combat.WeaponKind.None;             // 纯凝视
+                case EnemyType.MaskFace: return Combat.WeaponKind.Claw;            // 面具下的利爪
+                case EnemyType.ThousandEyeJudge: return Combat.WeaponKind.None;    // 千目凝视
+                case EnemyType.ProvokerPasserby: return Combat.WeaponKind.None;    // 寻衅拳脚
+                case EnemyType.TauntMirror: return Combat.WeaponKind.Sword;        // 镜像之剑
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -155,7 +199,10 @@ namespace AdversityRoad.AI
             t == EnemyType.ProcrastinationShadow || t == EnemyType.NoReplyKing ||
             t == EnemyType.MockingBystander || t == EnemyType.StimulusAmplifier ||
             t == EnemyType.PerfectPreparer || t == EnemyType.OldVoiceRepeater ||
-            t == EnemyType.SelfDenialGavel || t == EnemyType.OldSelf;
+            t == EnemyType.SelfDenialGavel || t == EnemyType.OldSelf ||
+            t == EnemyType.RuleTwister || t == EnemyType.DebtShadow ||
+            t == EnemyType.GazeEye || t == EnemyType.ThousandEyeJudge ||
+            t == EnemyType.GambleKing;
 
         public static string BaseId(EnemyType t)
         {
@@ -178,6 +225,16 @@ namespace AdversityRoad.AI
                 case EnemyType.PastJudge: return "enemy_past_judge";
                 case EnemyType.RuminationSwarm: return "enemy_rumination_swarm";
                 case EnemyType.OldSelf: return "boss_old_self";
+                case EnemyType.DebtDodger: return "enemy_debt_dodger";
+                case EnemyType.RuleTwister: return "enemy_rule_twister";
+                case EnemyType.DebtShadow: return "enemy_debt_shadow";
+                case EnemyType.GambleKing: return "boss_gamble_king";
+                case EnemyType.DebtCarKing: return "boss_debt_car_king";
+                case EnemyType.GazeEye: return "enemy_gaze_eye";
+                case EnemyType.MaskFace: return "enemy_mask_face";
+                case EnemyType.ThousandEyeJudge: return "boss_thousand_eye_judge";
+                case EnemyType.ProvokerPasserby: return "enemy_provoker_passerby";
+                case EnemyType.TauntMirror: return "boss_taunt_mirror";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -322,6 +379,86 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Boss,
                         maxHealth = 160, posture = 55, physicalDamage = 14, mentalDamage = 17,
                         aggression = 0.6f, defense = 11, moveSpeed = 3.4f, attackRange = 2.2f, detectRange = 18
+                    };
+                    break;
+                case EnemyType.DebtDodger:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.External,
+                        maxHealth = 90, posture = 32, physicalDamage = 9, mentalDamage = 11,
+                        aggression = 0.55f, defense = 6, moveSpeed = 3.4f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.RuleTwister:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.Hybrid,
+                        maxHealth = 85, posture = 28, physicalDamage = 7, mentalDamage = 13,
+                        aggression = 0.5f, defense = 5, moveSpeed = 3f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.DebtShadow:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.Internal,
+                        maxHealth = 80, posture = 26, physicalDamage = 6, mentalDamage = 13,
+                        aggression = 0.5f, defense = 4, moveSpeed = 3.1f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.GambleKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 120, posture = 44, physicalDamage = 11, mentalDamage = 15,
+                        aggression = 0.55f, defense = 9, moveSpeed = 3f, attackRange = 2f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.DebtCarKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 135, posture = 48, physicalDamage = 13, mentalDamage = 15,
+                        aggression = 0.5f, defense = 10, moveSpeed = 3.1f, attackRange = 2.2f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.GazeEye:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Internal,
+                        maxHealth = 75, posture = 24, physicalDamage = 5, mentalDamage = 14,
+                        aggression = 0.5f, defense = 4, moveSpeed = 2.9f, attackRange = 1.8f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.MaskFace:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 95, posture = 34, physicalDamage = 10, mentalDamage = 10,
+                        aggression = 0.6f, defense = 7, moveSpeed = 3.7f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.ThousandEyeJudge:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
+                        maxHealth = 125, posture = 44, physicalDamage = 11, mentalDamage = 18,
+                        aggression = 0.5f, defense = 9, moveSpeed = 3.2f, attackRange = 2f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.ProvokerPasserby:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.NoiseSensitivity, category = EnemyCategory.External,
+                        maxHealth = 100, posture = 36, physicalDamage = 11, mentalDamage = 10,
+                        aggression = 0.7f, defense = 7, moveSpeed = 4.2f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.TauntMirror:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.NoiseSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 130, posture = 46, physicalDamage = 12, mentalDamage = 15,
+                        aggression = 0.6f, defense = 10, moveSpeed = 3.6f, attackRange = 2.1f, detectRange = 16
                     };
                     break;
                 default:

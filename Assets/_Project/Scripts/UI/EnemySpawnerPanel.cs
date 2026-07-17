@@ -56,14 +56,19 @@ namespace AdversityRoad.UI
                 EnemyType.TomorrowMud, EnemyType.PerfectPreparer,
                 EnemyType.TomorrowKing, EnemyType.OldVoiceRepeater,
                 EnemyType.PastJudge, EnemyType.RuminationSwarm,
-                EnemyType.OldSelf
+                EnemyType.OldSelf,
+                EnemyType.DebtDodger, EnemyType.RuleTwister,
+                EnemyType.DebtShadow, EnemyType.GambleKing,
+                EnemyType.DebtCarKing, EnemyType.GazeEye,
+                EnemyType.MaskFace, EnemyType.ThousandEyeJudge,
+                EnemyType.ProvokerPasserby, EnemyType.TauntMirror
             };
             for (int i = 0; i < types.Length; i++)
             {
                 var t = types[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TypeLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-345 + (i % 4) * 230, -166 - (i / 4) * 80),
-                    new Vector2(218, 66), Off, () => SelectType(t), 21);
+                    new Vector2(0.5f, 1f), new Vector2(-372 + (i % 5) * 186, -164 - (i / 5) * 76),
+                    new Vector2(176, 62), Off, () => SelectType(t), 18);
                 _typeButtons.Add((btn, t));
             }
 

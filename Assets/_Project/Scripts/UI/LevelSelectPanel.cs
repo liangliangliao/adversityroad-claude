@@ -43,9 +43,9 @@ namespace AdversityRoad.UI
             {
                 int zone = i;
                 var btn = UiUtil.MakeButton(_panel.transform, "",
-                    new Vector2(0.5f, 1f), new Vector2(-270 + (i % 2) * 540, -180 - (i / 2) * 130),
-                    new Vector2(520, 112), new Color(0.2f, 0.22f, 0.3f, 0.96f),
-                    () => Teleport(zone), 24);
+                    new Vector2(0.5f, 1f), new Vector2(-380 + (i % 3) * 380, -180 - (i / 3) * 128),
+                    new Vector2(360, 112), new Color(0.2f, 0.22f, 0.3f, 0.96f),
+                    () => Teleport(zone), 20);
                 var label = btn.GetComponentInChildren<Text>();
                 label.alignment = TextAnchor.MiddleLeft;
                 var lrt = label.GetComponent<RectTransform>();
