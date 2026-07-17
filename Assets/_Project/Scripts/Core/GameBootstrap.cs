@@ -123,6 +123,22 @@ namespace AdversityRoad.Core
             // 病房回廊：低强度——只有两道医药债影的低语
             SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(-4, 1.1f, -20), true);
             SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(4, 1.1f, -2), true);
+            // 哲学虚无图书馆：书架间的引文幽灵与怀疑学者
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Novice, o[19] + new Vector3(-11, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Standard, o[19] + new Vector3(11, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.DoubtScholar, EnemyTier.Standard, o[19] + new Vector3(0, 1.1f, -10), true);
+            // 无限追问大厅：门与门之间的怀疑学者与反刍虫群
+            SpawnEnemy(EnemyType.DoubtScholar, EnemyTier.Standard, o[20] + new Vector3(-10, 1.1f, -24), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[20] + new Vector3(8, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Novice, o[20] + new Vector3(-4, 1.1f, 8), true);
+            // 意志断桥：桥头的引文幽灵（桥面留给走位，不设杂兵）
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Standard, o[21] + new Vector3(-5, 1.1f, -42), true);
+            // 失败展览馆：展品间的旧话复读者与过去判官
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[22] + new Vector3(-8, 1.1f, -14), true);
+            SpawnEnemy(EnemyType.PastJudge, EnemyTier.Standard, o[22] + new Vector3(8, 1.1f, 0), true);
+            // 意志塔：广场石柱间的旧话复读者与反刍虫群（塔台留给登塔）
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[23] + new Vector3(-9, 1.1f, -14), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[23] + new Vector3(9, 1.1f, -8), true);
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -584,6 +600,15 @@ namespace AdversityRoad.Core
                     break;
                 case EnemyType.ValleyColossus:            // 无力威压/内疚重石/求助电话破防
                     root.AddComponent<ValleyColossusBoss>();
+                    break;
+                case EnemyType.ConceptMazeMaster:         // 引文护体(三灯台破)/引文弹幕/概念迷环
+                    root.AddComponent<ConceptMazeMasterBoss>();
+                    break;
+                case EnemyType.QuestionBeast:             // 问题弹幕连射/召唤引文幽灵
+                    root.AddComponent<QuestionBeastBoss>();
+                    break;
+                case EnemyType.InfiniteAsker:             // 追问弹幕/意义崩桥/行动答台破防
+                    root.AddComponent<InfiniteAskerBoss>();
                     break;
             }
 

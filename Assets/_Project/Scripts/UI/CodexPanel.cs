@@ -56,6 +56,11 @@ namespace AdversityRoad.UI
                 case EnemyType.ColdWindBlade: return "先烤火拿暖意，再出手";
                 case EnemyType.MedDebtShadow: return "低语不是账单，近身打断";
                 case EnemyType.ValleyColossus: return "拨求助电话=它的无力感松动";
+                case EnemyType.QuoteGhost: return "别接引文辩论，贴身打断";
+                case EnemyType.DoubtScholar: return "它的问题是诱饵，别停下追问";
+                case EnemyType.ConceptMazeMaster: return "点亮三座行动灯台破引文护体";
+                case EnemyType.QuestionBeast: return "穿发亮的行动之门，别碰问题之门";
+                case EnemyType.InfiniteAsker: return "用『行动答台』回答=它当场语塞";
                 default: return "";
             }
         }

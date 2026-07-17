@@ -33,13 +33,15 @@ namespace AdversityRoad.World
         static readonly string[] ZoneIds =
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
               "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor",
-              "alley", "garage", "ward" };
+              "alley", "garage", "ward",
+              "library", "hall", "bridge", "exhibit", "tower" };
         static readonly string[] ZoneNames =
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
               "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
               "目标遗忘房", "老实人消耗局", "无限代付走廊",
-              "饥饿荒巷", "车库寒夜", "病房回廊" };
+              "饥饿荒巷", "车库寒夜", "病房回廊",
+              "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -79,7 +81,12 @@ namespace AdversityRoad.World
                 new Vector3(4500, 0, 0),
                 new Vector3(4800, 0, 0),
                 new Vector3(5100, 0, 0),
-                new Vector3(5400, 0, 0)
+                new Vector3(5400, 0, 0),
+                new Vector3(5700, 0, 0),
+                new Vector3(6000, 0, 0),
+                new Vector3(6300, 0, 0),
+                new Vector3(6600, 0, 0),
+                new Vector3(6900, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -101,7 +108,12 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34),
                 ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -30),
                 ctx.zoneOrigins[17] + new Vector3(0, 1.1f, -26),
-                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, -30)
+                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[19] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[20] + new Vector3(0, 1.1f, -32),
+                ctx.zoneOrigins[21] + new Vector3(0, 1.1f, -42),
+                ctx.zoneOrigins[22] + new Vector3(0, 1.1f, -28),
+                ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30)
             };
             ctx.enemySpawns = new[]
             {
@@ -123,7 +135,12 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[15] + new Vector3(0, 1.1f, 30),
                 ctx.zoneOrigins[16] + new Vector3(0, 1.1f, 14),
                 ctx.zoneOrigins[17] + new Vector3(0, 1.1f, 16),
-                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, 28)
+                ctx.zoneOrigins[18] + new Vector3(0, 1.1f, 28),
+                ctx.zoneOrigins[19] + new Vector3(0, 1.1f, 16),
+                ctx.zoneOrigins[20] + new Vector3(0, 1.1f, 26),
+                ctx.zoneOrigins[21] + new Vector3(0, 1.1f, 34),
+                ctx.zoneOrigins[22] + new Vector3(0, 1.1f, 16),
+                ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26)
             };
 
             _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
@@ -147,6 +164,11 @@ namespace AdversityRoad.World
             BuildHungerAlley(ctx);
             BuildColdGarage(ctx);
             BuildWardCorridor(ctx);
+            BuildPhilLibrary(ctx);
+            BuildQuestionHall(ctx);
+            BuildWillBridge(ctx);
+            BuildFailureExhibit(ctx);
+            BuildWillTower(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -1730,9 +1752,326 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 7f, -12), new Color(0.95f, 0.97f, 1f), 36);
             AddCeilingLight(o + new Vector3(0, 7f, 30), new Color(0.95f, 0.97f, 1f), 34);
 
-            // 传送门：回车库寒夜（南）/ 通往旧事回声馆（大厅东北，终章开启即解锁）
+            // 传送门：回车库寒夜（南）/ 通往哲学虚无图书馆（大厅东北，哲学线开启即解锁）
             MakePortal(ctx, o + new Vector3(0f, 0, -33), 17, ctx.playerSpawns[17] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(12f, 0, 36), 8, ctx.playerSpawns[8]);
+            MakePortal(ctx, o + new Vector3(12f, 0, 36), 19, ctx.playerSpawns[19]);
+        }
+
+        // ================= 第二十区：哲学虚无图书馆（哲学与行动线 其一） =================
+
+        static void BuildPhilLibrary(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[19];
+            Combat.PhilState.Reset();   // 重建世界即清空灯台/行动之门计数
+
+            Color wall = new Color(0.34f, 0.3f, 0.26f);
+            Color shelf = new Color(0.42f, 0.32f, 0.2f);
+
+            // 昏暗的大图书馆：无穷书架间弥漫"读了这么多还是不知道怎么活"的雾
+            Box(ctx, "Library_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(66, 0.5f, 74),
+                new Color(0.35f, 0.32f, 0.28f));
+            Ring(ctx, o, new Vector2(33, 37), 6, wall);
+
+            // 书架阵（留出中央走道与灯台空地）
+            for (int row = 0; row < 4; row++)
+                for (int col = -2; col <= 2; col++)
+                {
+                    if (col == 0) continue; // 中央走道
+                    float z = -22 + row * 12;
+                    var shelfGo = Box(ctx, "BookShelf", o + new Vector3(col * 11, 2.2f, z),
+                        new Vector3(6.5f, 4.4f, 1.6f), shelf);
+                    Player.CameraOcclusionFade.RegisterOccluder(shelfGo.GetComponent<Renderer>());
+                    // 书脊色带
+                    Decoration(ctx, "BookSpines", o + new Vector3(col * 11, 2.2f, z + 0.85f),
+                        new Vector3(6.1f, 3.6f, 0.1f),
+                        new Color(0.3f + (row * 0.08f), 0.25f, 0.2f + (col + 2) * 0.05f));
+                }
+
+            // 散落的书堆与阅读桌
+            var rng = new System.Random(47);
+            for (int i = 0; i < 10; i++)
+                Decoration(ctx, "BookPile",
+                    o + new Vector3(-26 + (float)rng.NextDouble() * 52, 0.25f,
+                        -30 + (float)rng.NextDouble() * 60),
+                    new Vector3(0.9f, 0.5f, 0.7f), new Color(0.55f, 0.5f, 0.4f));
+            Box(ctx, "ReadingDesk", o + new Vector3(-8, 0.7f, -28), new Vector3(3.5f, 1.4f, 1.6f),
+                new Color(0.45f, 0.36f, 0.24f));
+            Box(ctx, "ReadingDesk", o + new Vector3(8, 0.7f, -28), new Vector3(3.5f, 1.4f, 1.6f),
+                new Color(0.45f, 0.36f, 0.24f));
+
+            // 三座行动灯台（三座齐亮 → 概念迷宫师引文护体崩碎）
+            var lampDefs = new[] { new Vector3(-22, 0, 6), new Vector3(22, 0, 6), new Vector3(0, 0, 30) };
+            foreach (var lpos in lampDefs)
+            {
+                var pedestal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pedestal.name = "ActionLamp";
+                pedestal.transform.position = o + lpos + new Vector3(0, 0.6f, 0);
+                pedestal.transform.localScale = new Vector3(0.9f, 0.6f, 0.9f);
+                Paint(ctx, pedestal, new Color(0.5f, 0.42f, 0.28f));
+                var root = new GameObject("ActionLampRoot");
+                root.transform.position = o + lpos;
+                root.AddComponent<Combat.ActionLampAltar>();
+            }
+
+            // 昏黄吊灯（图书馆的沉郁）
+            AddCeilingLight(o + new Vector3(0, 7f, -14), new Color(0.85f, 0.75f, 0.55f), 38);
+            AddCeilingLight(o + new Vector3(0, 7f, 18), new Color(0.85f, 0.75f, 0.55f), 38);
+
+            // 传送门：回病房回廊（南）/ 通往无限追问大厅（北，其二开启即解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, -34), 18, ctx.playerSpawns[18] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(0f, 0, 34), 20, ctx.playerSpawns[20]);
+        }
+
+        // ================= 第二十一区：无限追问大厅（哲学与行动线 其二） =================
+
+        static void BuildQuestionHall(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[20];
+
+            Color wall = new Color(0.3f, 0.3f, 0.38f);
+
+            // 环形大厅：墙上挂满问题之门（诱饵），只有发亮的行动之门通向前方
+            Box(ctx, "Hall_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(60, 0.5f, 76),
+                new Color(0.32f, 0.32f, 0.38f));
+            Ring(ctx, o, new Vector2(30, 38), 6, wall);
+
+            // 三道隔断墙把大厅分成四段，每段留一个行动之门缺口（其余是问题之门）
+            float[] gateZ = { -18, 0, 18 };
+            float[] gapX = { -18, 12, -6 };
+            string[] questions = { "为什么偏偏是我？", "如果又失败了怎么办？", "人生到底有什么意义？" };
+            for (int i = 0; i < 3; i++)
+            {
+                float z = gateZ[i];
+                float gx = gapX[i];
+                // 隔断墙（缺口两侧）
+                float leftW = (gx - 2.2f) - (-30);
+                float rightW = 30 - (gx + 2.2f);
+                Box(ctx, "HallDivider_L", o + new Vector3(-30 + leftW / 2f, 2.5f, z),
+                    new Vector3(leftW, 5, 1), wall);
+                Box(ctx, "HallDivider_R", o + new Vector3(30 - rightW / 2f, 2.5f, z),
+                    new Vector3(rightW, 5, 1), wall);
+
+                // 缺口即"行动之门"：发亮门框 + 恢复触发器
+                Decoration(ctx, "ActionDoorGlow", o + new Vector3(gx, 2.2f, z),
+                    new Vector3(4.2f, 4.4f, 0.2f), new Color(1f, 0.8f, 0.35f));
+                MakeZoneTrigger<Combat.ActionDoorZone>(o + new Vector3(gx, 1.5f, z),
+                    new Vector3(4.2f, 3f, 2.4f));
+
+                // 同一段墙上的问题之门（诱饵）：暗紫色门 + 反刍触发器
+                float[] fakeXs = { gx - 16f, gx + 16f };
+                foreach (var fx in fakeXs)
+                {
+                    if (fx < -27 || fx > 27) continue;
+                    Decoration(ctx, "QuestionDoor", o + new Vector3(fx, 2f, z - 0.8f),
+                        new Vector3(3.2f, 4f, 0.3f), new Color(0.4f, 0.25f, 0.55f));
+                    var q = MakeZoneTrigger<Combat.QuestionDoorZone>(o + new Vector3(fx, 1.5f, z - 1.2f),
+                        new Vector3(3.4f, 3f, 2f));
+                    q.question = questions[i];
+                }
+            }
+
+            // 悬浮问号雕塑（大厅的压迫感）
+            var rng = new System.Random(53);
+            for (int i = 0; i < 12; i++)
+                Decoration(ctx, "FloatingQuestion",
+                    o + new Vector3(-24 + (float)rng.NextDouble() * 48,
+                        3f + (float)rng.NextDouble() * 2.5f, -30 + (float)rng.NextDouble() * 60),
+                    new Vector3(0.5f, 1.1f, 0.3f), new Color(0.55f, 0.45f, 0.75f));
+
+            // 冷紫顶光
+            AddCeilingLight(o + new Vector3(0, 7.5f, -20), new Color(0.75f, 0.7f, 0.95f), 36);
+            AddCeilingLight(o + new Vector3(0, 7.5f, 12), new Color(0.75f, 0.7f, 0.95f), 36);
+
+            // 传送门：回图书馆（南）/ 通往意志断桥（北，其三开启即解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, -35), 19, ctx.playerSpawns[19] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(0f, 0, 35), 21, ctx.playerSpawns[21]);
+        }
+
+        // ================= 第二十二区：意志断桥（哲学与行动线 终战） =================
+
+        static void BuildWillBridge(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[21];
+
+            // 深渊之上的断桥：桥面有缺口，缺口旁只有一条窄板可以绕行——
+            // 失足坠入虚无会被送回桥头（不惩罚死亡，再走一次）。
+            // 桥头平台
+            Box(ctx, "BridgeHead", o + new Vector3(0, -0.25f, -44), new Vector3(20, 0.5f, 14),
+                new Color(0.4f, 0.4f, 0.46f));
+            // 深渊底（纯视觉，坠落由回送区处理）
+            Decoration(ctx, "AbyssFloor", o + new Vector3(0, -9f, 0), new Vector3(70, 0.2f, 100),
+                new Color(0.05f, 0.04f, 0.1f));
+
+            // 桥段与缺口：四段桥面，段间 2.6m 缺口，缺口旁交替伸出窄板
+            float[] segZ = { -30, -14, 2, 18 };
+            for (int i = 0; i < segZ.Length; i++)
+            {
+                Box(ctx, "BridgeSeg", o + new Vector3(0, -0.25f, segZ[i]), new Vector3(6, 0.5f, 13),
+                    new Color(0.44f, 0.44f, 0.5f));
+                // 缺口旁的窄板（交替左右）：可以小心走过去
+                float side = (i % 2 == 0) ? -1f : 1f;
+                Box(ctx, "BridgePlank", o + new Vector3(side * 3.6f, -0.25f, segZ[i] + 8f),
+                    new Vector3(1.1f, 0.5f, 4.4f), new Color(0.5f, 0.42f, 0.3f));
+                // 断裂的栏杆残段
+                Decoration(ctx, "BrokenRail", o + new Vector3(-3.2f, 0.7f, segZ[i] - 3),
+                    new Vector3(0.15f, 0.9f, 5f), new Color(0.3f, 0.3f, 0.36f));
+                Decoration(ctx, "BrokenRail", o + new Vector3(3.2f, 0.7f, segZ[i] + 2),
+                    new Vector3(0.15f, 0.9f, 4f), new Color(0.3f, 0.3f, 0.36f));
+            }
+            // 桥头连接段
+            Box(ctx, "BridgeSeg", o + new Vector3(0, -0.25f, -37.5f), new Vector3(6, 0.5f, 3),
+                new Color(0.44f, 0.44f, 0.5f));
+
+            // Boss 决战平台（桥的尽头）
+            Box(ctx, "BridgeArena", o + new Vector3(0, -0.25f, 34), new Vector3(34, 0.5f, 22),
+                new Color(0.42f, 0.42f, 0.48f));
+            Box(ctx, "BridgeArenaLink", o + new Vector3(0, -0.25f, 24.5f), new Vector3(6, 0.5f, 1),
+                new Color(0.44f, 0.44f, 0.5f));
+
+            // 深渊回送区：覆盖整座桥下方，摔下去传回桥头
+            var fall = MakeZoneTrigger<Combat.VoidFallZone>(o + new Vector3(0, -6f, -4),
+                new Vector3(66, 3f, 96));
+            fall.respawnPoint = ctx.playerSpawns[21];
+
+            // 行动答台（Boss 平台一角）：用"做"回答无限追问 → Boss 大破绽
+            var answer = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            answer.name = "ActionAnswerAltar";
+            answer.transform.position = o + new Vector3(-12, 0.6f, 30);
+            answer.transform.localScale = new Vector3(1.0f, 0.6f, 1.0f);
+            Paint(ctx, answer, new Color(0.55f, 0.45f, 0.28f));
+            var answerRoot = new GameObject("ActionAnswerRoot");
+            answerRoot.transform.position = o + new Vector3(-12, 0, 30);
+            answerRoot.AddComponent<Combat.ActionAnswerAltar>();
+
+            // 幽蓝雾灯（深渊的冷）
+            AddCeilingLight(o + new Vector3(0, 6f, -20), new Color(0.6f, 0.7f, 0.95f), 34);
+            AddCeilingLight(o + new Vector3(0, 6f, 30), new Color(0.6f, 0.7f, 0.95f), 36);
+
+            // 传送门：回追问大厅（桥头）/ 通往失败展览馆（Boss 平台北，旧我线开启即解锁）
+            MakePortal(ctx, o + new Vector3(-7f, 0, -46), 20, ctx.playerSpawns[20] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(12f, 0, 42), 22, ctx.playerSpawns[22]);
+        }
+
+        // ================= 第二十三区：失败展览馆（旧我与新我线 其一） =================
+
+        static void BuildFailureExhibit(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[22];
+
+            Color wall = new Color(0.28f, 0.26f, 0.3f);
+
+            // 展览馆：过去的失败被裱起来打上射灯——旧审判官逼你在每件展品前停留
+            Box(ctx, "Exhibit_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(58, 0.5f, 66),
+                new Color(0.3f, 0.28f, 0.32f));
+            Ring(ctx, o, new Vector2(29, 33), 6, wall);
+
+            // 展品基座 + 裱框"失败"（红色射灯）
+            string[] failures = { "搞砸的演讲", "亏掉的积蓄", "断掉的关系", "放弃的计划", "错过的机会", "失败的创业" };
+            for (int i = 0; i < failures.Length; i++)
+            {
+                float x = (i % 2 == 0) ? -16f : 16f;
+                float z = -22 + (i / 2) * 18;
+                Box(ctx, "ExhibitBase", o + new Vector3(x, 0.5f, z), new Vector3(3f, 1f, 3f),
+                    new Color(0.4f, 0.38f, 0.42f));
+                Decoration(ctx, "ExhibitFrame", o + new Vector3(x, 2.2f, z), new Vector3(2.4f, 2f, 0.25f),
+                    new Color(0.55f, 0.45f, 0.25f));
+                Decoration(ctx, "ExhibitCanvas", o + new Vector3(x, 2.2f, z + 0.05f),
+                    new Vector3(2f, 1.6f, 0.18f), new Color(0.2f, 0.18f, 0.24f));
+                var spot = new GameObject("ExhibitSpot");
+                spot.transform.position = o + new Vector3(x, 5f, z);
+                var sl = spot.AddComponent<Light>();
+                sl.type = LightType.Spot;
+                sl.range = 9;
+                sl.spotAngle = 46;
+                sl.intensity = 1.8f;
+                sl.color = new Color(0.95f, 0.4f, 0.35f);
+                sl.transform.rotation = Quaternion.Euler(90, 0, 0);
+            }
+
+            // 中央"荣誉"展台（其实是空的——失败没有资格定义你）
+            Box(ctx, "CenterPlinth", o + new Vector3(0, 0.6f, 6), new Vector3(4f, 1.2f, 4f),
+                new Color(0.45f, 0.42f, 0.48f));
+            Decoration(ctx, "EmptyFrame", o + new Vector3(0, 2.6f, 6), new Vector3(2.8f, 2.2f, 0.25f),
+                new Color(0.6f, 0.55f, 0.35f));
+
+            // 长椅（复盘席）
+            Bench(ctx, o + new Vector3(-6, 0, -8), 90);
+            Bench(ctx, o + new Vector3(6, 0, 16), 270);
+
+            // 冷白展灯
+            AddCeilingLight(o + new Vector3(0, 7f, -12), new Color(0.9f, 0.9f, 0.95f), 36);
+            AddCeilingLight(o + new Vector3(0, 7f, 16), new Color(0.9f, 0.9f, 0.95f), 36);
+
+            // 传送门：回意志断桥（南）/ 通往意志塔（北，其二开启即解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, -30), 21, ctx.playerSpawns[21] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(0f, 0, 30), 23, ctx.playerSpawns[23]);
+        }
+
+        // ================= 第二十四区：意志塔（旧我与新我线 其二） =================
+
+        static void BuildWillTower(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[23];
+
+            Color wall = new Color(0.32f, 0.3f, 0.38f);
+
+            // 塔底广场 + 三层递升的塔台：旧声音复读机在最高层等你，
+            // 每登一层，塔壁上的旧话就淡一分。
+            Box(ctx, "Tower_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(56, 0.5f, 70),
+                new Color(0.34f, 0.32f, 0.4f));
+            Ring(ctx, o, new Vector2(28, 35), 7, wall);
+
+            // 三层塔台（坡道相连，NavMesh 可走）
+            float[] tierY = { 1.2f, 2.4f, 3.6f };
+            float[] tierZ = { 2, 14, 26 };
+            float[] tierHalf = { 13, 10, 8 };
+            for (int i = 0; i < 3; i++)
+            {
+                Box(ctx, "TowerTier", o + new Vector3(0, tierY[i] - 0.25f, tierZ[i]),
+                    new Vector3(tierHalf[i] * 2, 0.5f, 11), new Color(0.42f, 0.4f, 0.48f));
+                // 坡道（从下一层/地面接上来，交替左右）
+                float side = (i % 2 == 0) ? -1f : 1f;
+                float rampBaseY = i == 0 ? 0f : tierY[i - 1];
+                var ramp = Box(ctx, "TowerRamp",
+                    o + new Vector3(side * (tierHalf[i] - 2f), (rampBaseY + tierY[i]) / 2f - 0.25f,
+                        tierZ[i] - 7.5f),
+                    new Vector3(3.4f, 0.5f, 7.5f), new Color(0.48f, 0.44f, 0.52f));
+                ramp.transform.rotation = Quaternion.Euler(-Mathf.Rad2Deg *
+                    Mathf.Atan2(tierY[i] - rampBaseY, 7.5f), 0, 0);
+                // 塔壁上的旧话石板（越高越淡）
+                float fade = 0.65f - i * 0.18f;
+                Decoration(ctx, "OldWordsSlab", o + new Vector3(-tierHalf[i] + 1f, tierY[i] + 1.6f, tierZ[i]),
+                    new Vector3(0.2f, 1.6f, 4f), new Color(fade, fade * 0.6f, fade * 0.75f));
+                Decoration(ctx, "OldWordsSlab", o + new Vector3(tierHalf[i] - 1f, tierY[i] + 1.6f, tierZ[i]),
+                    new Vector3(0.2f, 1.6f, 4f), new Color(fade, fade * 0.6f, fade * 0.75f));
+            }
+
+            // 塔顶的新我之光
+            var apex = new GameObject("TowerApexLight");
+            apex.transform.position = o + new Vector3(0, tierY[2] + 5f, tierZ[2]);
+            var al = apex.AddComponent<Light>();
+            al.type = LightType.Point;
+            al.range = 26;
+            al.intensity = 1.6f;
+            al.color = new Color(1f, 0.9f, 0.65f);
+
+            // 广场石柱（旧我的影壁）
+            for (int i = -2; i <= 2; i++)
+            {
+                if (i == 0) continue;
+                var pillar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pillar.name = "TowerPillar";
+                pillar.transform.position = o + new Vector3(i * 9, 2.5f, -18);
+                pillar.transform.localScale = new Vector3(1.3f, 2.5f, 1.3f);
+                Paint(ctx, pillar, new Color(0.4f, 0.38f, 0.46f));
+                Player.CameraOcclusionFade.RegisterOccluder(pillar.GetComponent<Renderer>());
+            }
+
+            AddCeilingLight(o + new Vector3(0, 8f, -10), new Color(0.8f, 0.78f, 0.95f), 38);
+
+            // 传送门：回失败展览馆（南）/ 通往旧事回声馆（塔侧，终局开启即解锁）
+            MakePortal(ctx, o + new Vector3(0f, 0, -32), 22, ctx.playerSpawns[22] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-20f, 0, 24), 8, ctx.playerSpawns[8]);
         }
 
         static void AddCeilingLight(Vector3 pos, Color color, float range)

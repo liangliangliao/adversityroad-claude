@@ -66,7 +66,10 @@ namespace AdversityRoad.UI
                 EnemyType.GuiltThrower, EnemyType.GoodPersonCage,
                 EnemyType.InfinitePayer,
                 EnemyType.HungerHound, EnemyType.ColdWindBlade,
-                EnemyType.MedDebtShadow, EnemyType.ValleyColossus
+                EnemyType.MedDebtShadow, EnemyType.ValleyColossus,
+                EnemyType.QuoteGhost, EnemyType.DoubtScholar,
+                EnemyType.ConceptMazeMaster, EnemyType.QuestionBeast,
+                EnemyType.InfiniteAsker
             };
             for (int i = 0; i < types.Length; i++)
             {

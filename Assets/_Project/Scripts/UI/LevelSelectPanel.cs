@@ -8,7 +8,7 @@ using AdversityRoad.World;
 namespace AdversityRoad.UI
 {
     /// <summary>
-    /// 关卡选择（安全屋·传送）：列出九大区域与解锁状态，一键传送到已解锁区域出生点。
+    /// 关卡选择（安全屋·传送）：列出全部区域与解锁状态，一键传送到已解锁区域出生点。
     /// 当前章节的目标区域高亮标注——解决"通关后不知道下一章入口在哪"的引导问题。
     /// 未解锁区域按剧情锁定（跟随 StoryManager.ZoneUnlocked）。
     /// </summary>
@@ -43,9 +43,9 @@ namespace AdversityRoad.UI
             {
                 int zone = i;
                 var btn = UiUtil.MakeButton(_panel.transform, "",
-                    new Vector2(0.5f, 1f), new Vector2(-380 + (i % 3) * 380, -180 - (i / 3) * 128),
-                    new Vector2(360, 112), new Color(0.2f, 0.22f, 0.3f, 0.96f),
-                    () => Teleport(zone), 20);
+                    new Vector2(0.5f, 1f), new Vector2(-426 + (i % 4) * 284, -180 - (i / 4) * 128),
+                    new Vector2(268, 112), new Color(0.2f, 0.22f, 0.3f, 0.96f),
+                    () => Teleport(zone), 18);
                 var label = btn.GetComponentInChildren<Text>();
                 label.alignment = TextAnchor.MiddleLeft;
                 var lrt = label.GetComponent<RectTransform>();

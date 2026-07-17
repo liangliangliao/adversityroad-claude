@@ -59,7 +59,14 @@ namespace AdversityRoad.AI
         HungerHound,            // 饥饿犬影（外部·快速扑咬，低血量高压迫）
         ColdWindBlade,          // 寒风刃（混合·车库寒夜的风刃远程）
         MedDebtShadow,          // 医药债影（内心·病房回廊的账单低语）
-        ValleyColossus          // 低谷巨像（低谷线 Boss：无力威压/内疚重石/求助破防）
+        ValleyColossus,         // 低谷巨像（低谷线 Boss：无力威压/内疚重石/求助破防）
+
+        // ---- 哲学与行动线 ----
+        QuoteGhost,             // 引文幽灵（内心·"某某说过"的远程引文弹）
+        DoubtScholar,           // 怀疑学者（混合·"你确定吗？"远程质询）
+        ConceptMazeMaster,      // 概念迷宫师（图书馆 Boss：引文弹幕/概念迷环/灯台破防）
+        QuestionBeast,          // 无限问题兽（大厅 Boss：问题弹幕狂涨反刍/召唤引文幽灵）
+        InfiniteAsker           // 无限追问者（断桥 Boss：追问弹幕/崩桥/行动答台破防）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -142,6 +149,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ColdWindBlade: return "寒风刃";
                 case EnemyType.MedDebtShadow: return "医药债影";
                 case EnemyType.ValleyColossus: return "低谷巨像";
+                case EnemyType.QuoteGhost: return "引文幽灵";
+                case EnemyType.DoubtScholar: return "怀疑学者";
+                case EnemyType.ConceptMazeMaster: return "概念迷宫师";
+                case EnemyType.QuestionBeast: return "无限问题兽";
+                case EnemyType.InfiniteAsker: return "无限追问者";
                 default: return "拖延影魔";
             }
         }
@@ -186,6 +198,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ColdWindBlade: return new Color(0.6f, 0.75f, 0.9f);
                 case EnemyType.MedDebtShadow: return new Color(0.75f, 0.8f, 0.85f);
                 case EnemyType.ValleyColossus: return new Color(0.25f, 0.28f, 0.35f);
+                case EnemyType.QuoteGhost: return new Color(0.55f, 0.6f, 0.75f);
+                case EnemyType.DoubtScholar: return new Color(0.45f, 0.5f, 0.62f);
+                case EnemyType.ConceptMazeMaster: return new Color(0.4f, 0.35f, 0.6f);
+                case EnemyType.QuestionBeast: return new Color(0.6f, 0.35f, 0.55f);
+                case EnemyType.InfiniteAsker: return new Color(0.35f, 0.4f, 0.65f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -231,6 +248,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ColdWindBlade: return Combat.WeaponKind.None;       // 风刃
                 case EnemyType.MedDebtShadow: return Combat.WeaponKind.None;       // 账单低语
                 case EnemyType.ValleyColossus: return Combat.WeaponKind.Staff;     // 重石之柱
+                case EnemyType.QuoteGhost: return Combat.WeaponKind.None;          // 引文弹
+                case EnemyType.DoubtScholar: return Combat.WeaponKind.Staff;       // 质询之杖
+                case EnemyType.ConceptMazeMaster: return Combat.WeaponKind.Staff;  // 概念之杖
+                case EnemyType.QuestionBeast: return Combat.WeaponKind.Claw;       // 问题之爪
+                case EnemyType.InfiniteAsker: return Combat.WeaponKind.None;       // 纯追问
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -246,7 +268,10 @@ namespace AdversityRoad.AI
             t == EnemyType.GazeEye || t == EnemyType.ThousandEyeJudge ||
             t == EnemyType.GambleKing || t == EnemyType.GuiltThrower ||
             t == EnemyType.GoalForgetter || t == EnemyType.InfinitePayer ||
-            t == EnemyType.ColdWindBlade || t == EnemyType.MedDebtShadow;
+            t == EnemyType.ColdWindBlade || t == EnemyType.MedDebtShadow ||
+            t == EnemyType.QuoteGhost || t == EnemyType.DoubtScholar ||
+            t == EnemyType.ConceptMazeMaster || t == EnemyType.QuestionBeast ||
+            t == EnemyType.InfiniteAsker;
 
         public static string BaseId(EnemyType t)
         {
@@ -288,6 +313,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ColdWindBlade: return "enemy_cold_wind_blade";
                 case EnemyType.MedDebtShadow: return "enemy_med_debt_shadow";
                 case EnemyType.ValleyColossus: return "boss_valley_colossus";
+                case EnemyType.QuoteGhost: return "enemy_quote_ghost";
+                case EnemyType.DoubtScholar: return "enemy_doubt_scholar";
+                case EnemyType.ConceptMazeMaster: return "boss_concept_maze_master";
+                case EnemyType.QuestionBeast: return "boss_question_beast";
+                case EnemyType.InfiniteAsker: return "boss_infinite_asker";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -584,6 +614,46 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
                         maxHealth = 155, posture = 55, physicalDamage = 14, mentalDamage = 16,
                         aggression = 0.45f, defense = 12, moveSpeed = 2.6f, attackRange = 2.4f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.QuoteGhost:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Internal,
+                        maxHealth = 78, posture = 24, physicalDamage = 5, mentalDamage = 13,
+                        aggression = 0.5f, defense = 4, moveSpeed = 2.9f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.DoubtScholar:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Hybrid,
+                        maxHealth = 92, posture = 30, physicalDamage = 8, mentalDamage = 13,
+                        aggression = 0.5f, defense = 6, moveSpeed = 3.2f, attackRange = 1.9f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.ConceptMazeMaster:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Boss,
+                        maxHealth = 130, posture = 46, physicalDamage = 11, mentalDamage = 16,
+                        aggression = 0.5f, defense = 10, moveSpeed = 3f, attackRange = 2.1f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.QuestionBeast:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Boss,
+                        maxHealth = 125, posture = 44, physicalDamage = 12, mentalDamage = 15,
+                        aggression = 0.6f, defense = 9, moveSpeed = 3.8f, attackRange = 2f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.InfiniteAsker:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
+                        maxHealth = 145, posture = 52, physicalDamage = 13, mentalDamage = 17,
+                        aggression = 0.55f, defense = 10, moveSpeed = 3.2f, attackRange = 2.2f, detectRange = 18
                     };
                     break;
                 default:
