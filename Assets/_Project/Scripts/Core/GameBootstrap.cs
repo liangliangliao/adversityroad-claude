@@ -109,6 +109,13 @@ namespace AdversityRoad.Core
             _currentChapterEnemy = null;
             SpawnChapterEnemy();
             SetupChapterQuest();
+
+            // 下一战场指引：明确说出目标区域 + 快速传送入口（跨区域章节不再迷路）
+            var story = StoryManager.Instance;
+            if (story != null && !story.AllCleared && story.Current != null)
+                GameEvents.RaiseSubtitle("下一战场：【" +
+                    ZoneBuilder.ZoneNameOf(story.Current.zoneIndex) +
+                    "】——右上角「传送」面板可直达。");
         }
 
         int CurrentChapterZone()
@@ -677,15 +684,20 @@ namespace AdversityRoad.Core
             UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
                 new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
 
-            // 安全屋枢纽：复盘 / 技能树 / 装备套装 / 敌人图鉴 / 旧事档案
+            // 安全屋枢纽：复盘 / 技能树 / 装备套装 / 敌人图鉴 / 旧事档案 / 关卡传送
             var growthPanel = GrowthPanel.Create(canvasGo.transform);
             var equipmentPanel = EquipmentPanel.Create(canvasGo.transform);
             var codexPanel = CodexPanel.Create(canvasGo.transform);
             var archivePanel = ArchivePanel.Create(canvasGo.transform);
+            var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
-                reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel);
+                reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
+                levelSelectPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
+            // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口
+            UiUtil.MakeButton(canvasGo.transform, "传送", new Vector2(1, 1), new Vector2(-945, -116),
+                new Vector2(150, 64), new Color(0.3f, 0.45f, 0.6f, 0.85f), levelSelectPanel.Toggle, 26);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();

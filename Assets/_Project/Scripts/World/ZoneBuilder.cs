@@ -42,6 +42,15 @@ namespace AdversityRoad.World
         public static string ZoneNameOf(int index) =>
             index >= 0 && index < ZoneNames.Length ? ZoneNames[index] : "";
 
+        public static int ZoneCount => ZoneIds.Length;
+
+        // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用
+        static Vector3[] _spawnTable;
+
+        public static Vector3 PlayerSpawnOf(int index) =>
+            _spawnTable != null && index >= 0 && index < _spawnTable.Length
+                ? _spawnTable[index] : Vector3.up * 1.1f;
+
         public static void BuildAll(WorldContext ctx)
         {
             Player.CameraOcclusionFade.ClearOccluders();   // 重建世界前清空旧遮挡登记
@@ -81,6 +90,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[7] + new Vector3(0, 1.1f, 28),
                 ctx.zoneOrigins[8] + new Vector3(0, 1.1f, 30)
             };
+
+            _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
 
             BuildHome(ctx);
             BuildDojo(ctx);
@@ -232,6 +243,12 @@ namespace AdversityRoad.World
             AdBoard(ctx, o + new Vector3(-8, 0, 13.4f), 0);
             AdBoard(ctx, o + new Vector3(8, 0, 13.4f), 0);
             AdBoard(ctx, o + new Vector3(14, 0, -13.4f), 180);
+
+            // 噪声区（方案·环境机制）：广告牌下与公交站旁的环境噪声——
+            // 站入专注缓慢流失，定心姿态减免、不读心盾免疫；影响很轻（防晕原则）
+            MakeZoneTrigger<Combat.NoiseZone>(o + new Vector3(0, 1, 11), new Vector3(20, 2.5f, 6));
+            MakeZoneTrigger<Combat.NoiseZone>(o + new Vector3(32, 1, 9.5f), new Vector3(8, 2.5f, 6));
+            MakeZoneTrigger<Combat.NoiseZone>(o + new Vector3(14, 1, -12), new Vector3(8, 2.5f, 6));
 
             // 车辆路线（双向两车道）
             ctx.carRoutes.Add(new CarRoute { a = o + new Vector3(-46, 0.55f, -2), b = o + new Vector3(46, 0.55f, -2) });
@@ -501,8 +518,8 @@ namespace AdversityRoad.World
 
             // 返回城市广场（门厅一侧）
             MakePortal(ctx, o + new Vector3(15f, 0, -42), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
-            // 通往小题大做审判庭（审判席东侧的侧门）——公平与承诺线继续
-            MakePortal(ctx, o + new Vector3(18f, 0, 42), 6, ctx.playerSpawns[6]);
+            // 通往小题大做审判庭（审判席东侧，正对主通道尽头，一眼可见）——公平与承诺线继续
+            MakePortal(ctx, o + new Vector3(18f, 0, 28), 6, ctx.playerSpawns[6]);
         }
 
         // ================= 第七区：小题大做审判庭 =================

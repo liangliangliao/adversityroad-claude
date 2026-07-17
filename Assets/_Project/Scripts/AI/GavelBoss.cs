@@ -25,7 +25,7 @@ namespace AdversityRoad.AI
         EnemyController _ec;
         Transform _player;
         PlayerCombatController _playerCombat;
-        float _volleyCd = 3f, _shockCd = 8f, _slamCd = 5f;
+        float _volleyCd = 3f, _shockCd = 8f, _slamCd = 5f, _summonCd = 10f;
         bool _busy;
         int _announcedPhase;
 
@@ -49,7 +49,14 @@ namespace AdversityRoad.AI
             AnnouncePhase();
 
             float dt = Time.deltaTime;
-            _volleyCd -= dt; _shockCd -= dt; _slamCd -= dt;
+            _volleyCd -= dt; _shockCd -= dt; _slamCd -= dt; _summonCd -= dt;
+
+            // 二阶段起：围攻审判——从旁观席召唤旁观嘲笑者助阵（场上限 2）
+            if (Phase >= 2 && _summonCd <= 0)
+            {
+                _summonCd = 16f;
+                SummonBystanders();
+            }
 
             // 三阶段：自我否定重锤优先（追身落锤）
             if (Phase >= 3 && _slamCd <= 0 && dist < 12f)
@@ -87,6 +94,21 @@ namespace AdversityRoad.AI
                     GameEvents.RaiseSubtitle("『自我否定法槌』疯狂自我否定——重锤追身落下，看准红圈翻滚！");
                     break;
             }
+        }
+
+        /// <summary>围攻审判：旁观席上的嘲笑声落成实体——召唤旁观嘲笑者从侧面袭来。</summary>
+        void SummonBystanders()
+        {
+            if (EnemySpawnHook.AliveCount("enemy_mocking_bystander") >= 2) return;
+            // 从两侧旁观席方向生成（相对 Boss 左右横向 8 米）
+            Vector3 side = Random.value < 0.5f ? transform.right : -transform.right;
+            var minion = EnemySpawnHook.SpawnNear(EnemyType.MockingBystander,
+                EnemyTier.Novice, transform.position + side * 8f);
+            if (minion == null) return;
+            CombatFeedback.Debris(minion.transform.position, new Color(0.65f, 0.5f, 0.75f), 5);
+            if (_ec.dialogue != null) _ec.dialogue.Show("旁听席——都来看看这个小题大做的人！", 2.4f);
+            GameEvents.RaiseSubtitle("围攻审判：旁观嘲笑者入场——嘲笑不是事实，别被拖走节奏。");
+            GameAudio.Play(GameAudio.Sfx.Alert, 0.45f);
         }
 
         /// <summary>标签弹幕：三连发"否定标签"心念弹（自尊轴）。</summary>
@@ -189,6 +211,14 @@ namespace AdversityRoad.AI
                         sourcePosition = spot,
                         attackerId = _ec.profile.enemyId
                     });
+
+                // 法槌裂缝：重锤落地后槌身出现裂缝——短暂破绽窗口（用事实之刃猛攻）
+                yield return new WaitForSeconds(0.25f);
+                if (_ec.State != EnemyState.Dead)
+                {
+                    _ec.ForceBreak(1.6f);
+                    GameEvents.RaiseSubtitle("法槌裂缝显现——用事实之刃猛攻这道破绽！");
+                }
             }
             _busy = false;
         }
