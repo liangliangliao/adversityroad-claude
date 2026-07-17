@@ -117,6 +117,7 @@ namespace AdversityRoad.UI
                 return;
             }
             SaveSystem.DeleteAll();
+            Core.GrowthSystem.DeleteAll();   // 清空成长/图鉴/档案的内存缓存
             PlayerPrefs.DeleteAll();
             PlayerPrefs.Save();
             try

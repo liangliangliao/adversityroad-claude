@@ -7,15 +7,17 @@ namespace AdversityRoad.UI
 {
     /// <summary>
     /// 战后复盘（安全屋核心）：把这一战整理成四栏——事实 / 感受 / 边界 / 行动。
-    /// 「归档此战」清空反刍值并回补心理属性——用复盘代替反刍，把刺痛转成经验。
-    /// 内容按当前章节主题生成（抽象化，绝不复刻真实人物/事件）。
+    /// 四栏可编辑（默认按当前章节主题生成，抽象化不复刻真实人物/事件；也可手动改写成自己的话）。
+    /// 「归档此战」：清空反刍、回补心理属性、写入旧事档案、并获得 1 复盘点（技能树货币）。
+    /// 用复盘代替反刍，把刺痛转成经验。
     /// </summary>
     public class ReflectionPanel : MonoBehaviour
     {
         GameObject _panel;
-        Text _factText, _feelText, _boundText, _actText, _ruminationText;
+        InputField _factInput, _feelInput, _boundInput, _actInput;
+        Text _ruminationText;
 
-        // 四栏文案：事实 / 感受 / 边界 / 行动，按章节顺序对应五章主题 + 自由模式兜底。
+        // 四栏默认文案：事实 / 感受 / 边界 / 行动，按章节顺序对应十章主题 + 自由模式兜底。
         static readonly string[][] ChapterReflections =
         {
             new[] {
@@ -48,6 +50,26 @@ namespace AdversityRoad.UI
                 "内疚让你习惯默认承担——好像不背，就是你不够好。",
                 "我只承担属于我的那部分：多一分是内耗，少一分是逃避。",
                 "现实里：下一次先分清「这是谁的责任」，再决定要不要帮。" },
+            new[] {
+                "你面对了否定、标签和「太敏感」「小题大做」的审判。",
+                "被说「小题大做」时，你差点跟着否定自己的感受。",
+                "我可以感受强烈，但这不等于没有理由——事实先于评价。",
+                "现实里：下一次先说清事实，再决定是否继续解释。" },
+            new[] {
+                "熟悉的街道被放大成针对你的证据：咳嗽、转头、低语。",
+                "你想追上每一个刺激，证明它是不是冲你来的。",
+                "无法确认的事情，不直接当事实——注意力先拿回来。",
+                "现实里：练习一次「听见但不跟随」，五分钟不查证任何猜测。" },
+            new[] {
+                "泥壳、深泥、手机光点和「再准备一下」把你困在原地。",
+                "你等状态好、等准备足——等待本身成了最深的泥。",
+                "不让准备代替行动；火种不大，五分钟就够点燃。",
+                "现实里：现在就做五分钟——做完再决定要不要继续。" },
+            new[] {
+                "旧我反复播放过去的失败、旧标签和未说出口的话。",
+                "你差点把失败当成身份，把过去当成全部的自己。",
+                "过去发生过，但不是我的全部；旧我不必杀死，只需更新。",
+                "现实里：把一个旧标签改写成一个新的行动句。" },
         };
 
         static readonly string[] FreeMode =
@@ -67,43 +89,49 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "ReflectionPanel", new Vector2(1200, 900),
+            _panel = UiUtil.MakePanel(canvas, "ReflectionPanel", new Vector2(1200, 960),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "战 后 复 盘", 40,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
-            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -46), new Vector2(700, 56));
+            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(700, 54));
 
-            _factText  = MakeColumn("事实 · 发生了什么", new Color(0.85f, 0.9f, 1f), -120);
-            _feelText  = MakeColumn("感受 · 我为什么被刺痛", new Color(1f, 0.8f, 0.8f), -300);
-            _boundText = MakeColumn("边界 · 下一次更早守住什么", new Color(0.6f, 0.9f, 0.7f), -480);
-            _actText   = MakeColumn("行动 · 下一步现实小任务", new Color(1f, 0.85f, 0.5f), -660);
+            var hint = UiUtil.MakeText(_panel.transform, "Hint",
+                "四栏可直接改写成自己的话；归档 = 反刍清零 + 写入档案 + 复盘点 +1", 22,
+                TextAnchor.MiddleCenter, new Color(0.75f, 0.78f, 0.82f));
+            UiUtil.SetRect(hint, new Vector2(0.5f, 1f), new Vector2(0, -86), new Vector2(1000, 30));
+
+            _factInput  = MakeColumn("事实 · 发生了什么", new Color(0.85f, 0.9f, 1f), -120);
+            _feelInput  = MakeColumn("感受 · 我为什么被刺痛", new Color(1f, 0.8f, 0.8f), -300);
+            _boundInput = MakeColumn("边界 · 下一次更早守住什么", new Color(0.6f, 0.9f, 0.7f), -480);
+            _actInput   = MakeColumn("行动 · 下一步现实小任务", new Color(1f, 0.85f, 0.5f), -660);
 
             _ruminationText = UiUtil.MakeText(_panel.transform, "Rum", "", 22,
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.6f, 0.85f));
-            UiUtil.SetRect(_ruminationText, new Vector2(0.5f, 1f), new Vector2(0, -790), new Vector2(1000, 30));
+            UiUtil.SetRect(_ruminationText, new Vector2(0.5f, 1f), new Vector2(0, -830), new Vector2(1000, 30));
 
-            UiUtil.MakeButton(_panel.transform, "归档此战（清空反刍值）", new Vector2(0.5f, 0f),
-                new Vector2(-210, 56), new Vector2(560, 74),
-                new Color(0.25f, 0.5f, 0.35f, 0.95f), OnArchive, 26);
+            UiUtil.MakeButton(_panel.transform, "归档此战（清反刍·入档案·+1复盘点）", new Vector2(0.5f, 0f),
+                new Vector2(-180, 52), new Vector2(640, 72),
+                new Color(0.25f, 0.5f, 0.35f, 0.95f), OnArchive, 24);
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
-                new Vector2(300, 56), new Vector2(260, 74),
+                new Vector2(330, 52), new Vector2(260, 72),
                 new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 26);
 
             _panel.SetActive(false);
         }
 
-        Text MakeColumn(string header, Color headColor, float y)
+        InputField MakeColumn(string header, Color headColor, float y)
         {
             var h = UiUtil.MakeText(_panel.transform, "H", header, 24,
                 TextAnchor.MiddleLeft, headColor);
             UiUtil.SetRect(h, new Vector2(0.5f, 1f), new Vector2(0, y), new Vector2(1080, 32));
             h.fontStyle = FontStyle.Bold;
 
-            var body = UiUtil.MakeText(_panel.transform, "B", "", 24,
-                TextAnchor.UpperLeft, new Color(0.95f, 0.95f, 0.95f));
-            UiUtil.SetRect(body, new Vector2(0.5f, 1f), new Vector2(0, y - 68), new Vector2(1080, 110));
-            return body;
+            var input = UiUtil.MakeInput(_panel.transform, "写下你的" + header.Substring(0, 2) + "……",
+                new Vector2(0.5f, 1f), new Vector2(0, y - 88), new Vector2(1080, 128), true);
+            var t = input.textComponent;
+            t.fontSize = 23;
+            return input;
         }
 
         void Refresh()
@@ -115,10 +143,10 @@ namespace AdversityRoad.UI
                 int idx = Mathf.Clamp(story.Chapter, 0, ChapterReflections.Length - 1);
                 r = ChapterReflections[idx];
             }
-            _factText.text = r[0];
-            _feelText.text = r[1];
-            _boundText.text = r[2];
-            _actText.text = r[3];
+            _factInput.text = r[0];
+            _feelInput.text = r[1];
+            _boundInput.text = r[2];
+            _actInput.text = r[3];
 
             var stats = Stats();
             _ruminationText.text = stats != null
@@ -135,12 +163,32 @@ namespace AdversityRoad.UI
         void OnArchive()
         {
             var stats = Stats();
+            // 复盘点只在真的有反刍要处理时发放（防止反复点归档刷点）
+            bool earned = stats != null && stats.rumination >= 10f;
             if (stats != null)
             {
                 stats.ReduceRumination(999f);
                 stats.RestoreMental(25f);
             }
-            GameEvents.RaiseSubtitle("已归档：事实留下，反刍清零。旧事进入档案，不再无限回放。");
+
+            // 写入旧事档案（安全屋「档案」面板可回看）
+            var story = StoryManager.Instance;
+            string chapterTitle = story != null && !story.AllCleared && story.Current != null
+                ? story.Current.title : "自由修炼";
+            GrowthSystem.SaveReflection(new ReflectionEntry
+            {
+                chapterTitle = chapterTitle,
+                fact = _factInput.text,
+                feeling = _feelInput.text,
+                boundary = _boundInput.text,
+                action = _actInput.text,
+            });
+            if (earned) GrowthSystem.AddPoints(1);
+
+            GameAudio.Play(GameAudio.Sfx.Parry, 0.7f);
+            GameEvents.RaiseSubtitle(earned
+                ? "已归档：事实留下，反刍清零，复盘点 +1。旧事进入档案，不再无限回放。"
+                : "已归档入档案。（反刍值需≥10 才发复盘点——先去面对困境，再回来复盘）");
             Refresh();
         }
 

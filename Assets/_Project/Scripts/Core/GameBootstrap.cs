@@ -677,6 +677,16 @@ namespace AdversityRoad.Core
             UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
                 new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
 
+            // 安全屋枢纽：复盘 / 技能树 / 装备套装 / 敌人图鉴 / 旧事档案
+            var growthPanel = GrowthPanel.Create(canvasGo.transform);
+            var equipmentPanel = EquipmentPanel.Create(canvasGo.transform);
+            var codexPanel = CodexPanel.Create(canvasGo.transform);
+            var archivePanel = ArchivePanel.Create(canvasGo.transform);
+            var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
+                reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel);
+            UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
+                new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
+
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
 
