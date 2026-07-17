@@ -113,6 +113,132 @@ namespace AdversityRoad.Combat
     }
 
     /// <summary>
+    /// 好人卡之墙（好人牢笼 Boss 机制）：围住玩家的金色卡墙。
+    /// 「责任归还」技能立即打破；否则数秒后自行消散。
+    /// </summary>
+    public class CageWall : MonoBehaviour
+    {
+        public float lifetime = 4.5f;
+
+        float _dieAt;
+
+        public static CageWall Spawn(Vector3 pos, Quaternion rot)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "GoodCardWall";
+            go.transform.position = pos;
+            go.transform.rotation = rot;
+            go.transform.localScale = new Vector3(3.2f, 2.4f, 0.25f);
+            go.GetComponent<MeshRenderer>().sharedMaterial =
+                CombatFeedback.EnergyMaterial(new Color(0.95f, 0.8f, 0.4f), 0.55f);
+            return go.AddComponent<CageWall>();
+        }
+
+        void Start() => _dieAt = Time.time + lifetime;
+
+        void Update()
+        {
+            if (Time.time >= _dieAt) Break(false);
+        }
+
+        public void Break(bool byPlayer = true)
+        {
+            CombatFeedback.Debris(transform.position, new Color(0.95f, 0.8f, 0.4f), 5);
+            if (byPlayer) GameAudio.Play(GameAudio.Sfx.HeavyHit, 0.6f);
+            Destroy(gameObject);
+        }
+
+        /// <summary>打破场上全部好人卡墙（责任归还技能调用），返回打破数量。</summary>
+        public static int BreakAll()
+        {
+            int n = 0;
+            foreach (var w in FindObjectsOfType<CageWall>()) { w.Break(); n++; }
+            return n;
+        }
+    }
+
+    /// <summary>
+    /// 代付之门（无限代付者 Boss 机制）：地上开出的吸取之门——
+    /// 站在其中意志与边界被持续吸走。限时消散，走开即止。
+    /// </summary>
+    public class PayDrainZone : MonoBehaviour
+    {
+        public float willDrainPerSec = 4f;
+        public float boundaryDrainPerSec = 4f;
+
+        public static PayDrainZone Spawn(Vector3 groundPos, float lifetime)
+        {
+            var visual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(visual.GetComponent<Collider>());
+            visual.name = "PayGateVisual";
+            visual.transform.position = groundPos + Vector3.up * 0.04f;
+            visual.transform.localScale = new Vector3(5f, 0.02f, 5f);
+            visual.GetComponent<MeshRenderer>().sharedMaterial =
+                CombatFeedback.EnergyMaterial(new Color(0.35f, 0.6f, 0.45f), 0.5f);
+            Object.Destroy(visual, lifetime);
+
+            var zone = new GameObject("PayDrainZone");
+            zone.transform.position = groundPos + Vector3.up * 1f;
+            var col = zone.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(5f, 2f, 5f);
+            Object.Destroy(zone, lifetime);
+            return zone.AddComponent<PayDrainZone>();
+        }
+
+        void OnTriggerStay(Collider other)
+        {
+            var p = other.GetComponentInParent<PlayerController>();
+            if (p == null) return;
+            p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.WillpowerCollapse,
+                willDrainPerSec * Time.deltaTime);
+            p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.BoundaryConflict,
+                boundaryDrainPerSec * Time.deltaTime);
+        }
+    }
+
+    /// <summary>
+    /// 代付请求区（无限代付走廊）：走廊上一道道"请求"——
+    /// **举着盾通过 = 明确拒绝**（回补边界、消退关系消耗）；
+    /// 空手走过 = 默认代付（边界受损、关系消耗上升）。
+    /// 方案"默认同意走廊变长，明确边界走廊缩短"的可玩化。
+    /// </summary>
+    [RequireComponent(typeof(Collider))]
+    public class PayRequestZone : MonoBehaviour
+    {
+        public float rearmCooldown = 20f;
+
+        float _readyAt;
+
+        void Awake() => GetComponent<Collider>().isTrigger = true;
+
+        void OnTriggerEnter(Collider other)
+        {
+            if (Time.time < _readyAt) return;
+            var p = other.GetComponentInParent<PlayerController>();
+            if (p == null) return;
+            _readyAt = Time.time + rearmCooldown;
+
+            var combat = p.GetComponent<PlayerCombatController>();
+            if (combat != null && combat.IsGuarding)
+            {
+                p.Stats.RestoreAxis(Personalization.WeaknessAxis.BoundaryConflict, 8f);
+                p.Stats.ReduceRelationshipDrain(8f);
+                CombatFeedback.HitSpark(p.transform.position + Vector3.up, new Color(0.4f, 0.85f, 0.6f), 4);
+                GameAudio.Play(GameAudio.Sfx.Parry, 0.5f);
+                GameEvents.RaiseSubtitle("举盾通过——明确拒绝：「这次费用需要你自己承担。」边界回稳。");
+            }
+            else
+            {
+                p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.BoundaryConflict, 8f);
+                p.Stats.AddRelationshipDrain(10f);
+                GameAudio.Play(GameAudio.Sfx.Hurt, 0.45f);
+                GameEvents.RaiseSubtitle("空手走过请求区=默认代付——下一道请求，试试举着盾（格挡）通过。");
+            }
+        }
+    }
+
+    /// <summary>
     /// 车流幻影区（陌生挑衅路口）：马路上呼啸的幻影车流——
     /// 站在其中持续掉血。挑衅镜像会引诱你追进来："不被拖入战场"的空间化。
     /// </summary>

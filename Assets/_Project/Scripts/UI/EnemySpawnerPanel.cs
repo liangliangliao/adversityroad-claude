@@ -34,7 +34,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(980, 960),
+            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(980, 1050),
                 new Color(0.08f, 0.08f, 0.12f, 0.96f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "添 加 心 魔 挑 战", 40,
@@ -61,7 +61,10 @@ namespace AdversityRoad.UI
                 EnemyType.DebtShadow, EnemyType.GambleKing,
                 EnemyType.DebtCarKing, EnemyType.GazeEye,
                 EnemyType.MaskFace, EnemyType.ThousandEyeJudge,
-                EnemyType.ProvokerPasserby, EnemyType.TauntMirror
+                EnemyType.ProvokerPasserby, EnemyType.TauntMirror,
+                EnemyType.GoalForgetter, EnemyType.RequestExpander,
+                EnemyType.GuiltThrower, EnemyType.GoodPersonCage,
+                EnemyType.InfinitePayer
             };
             for (int i = 0; i < types.Length; i++)
             {
@@ -74,14 +77,14 @@ namespace AdversityRoad.UI
 
             var tierLabel = UiUtil.MakeText(_panel.transform, "TierLabel", "难度", 28,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-400, -620), new Vector2(120, 40));
+            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-400, -710), new Vector2(120, 40));
 
             EnemyTier[] tiers = { EnemyTier.Novice, EnemyTier.Standard, EnemyTier.Elite, EnemyTier.Chief };
             for (int i = 0; i < tiers.Length; i++)
             {
                 var t = tiers[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TierLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -690),
+                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -780),
                     new Vector2(175, 70), Off, () => SelectTier(t), 26);
                 _tierButtons.Add((btn, t));
             }

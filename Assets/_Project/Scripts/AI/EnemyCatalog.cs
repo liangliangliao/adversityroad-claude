@@ -44,7 +44,16 @@ namespace AdversityRoad.AI
         MaskFace,               // 表情面具（外部·假笑之下的评价近战）
         ThousandEyeJudge,       // 万眼审判者（镜厅 Boss：凝视光束/虚假凝视点）
         ProvokerPasserby,       // 挑衅路人（外部·故意找茬近战）
-        TauntMirror             // 挑衅镜像（路口 Boss：挑衅窗口——追打变强、不理破绽）
+        TauntMirror,            // 挑衅镜像（路口 Boss：挑衅窗口——追打变强、不理破绽）
+
+        // ---- 目标遗忘房（拖延与目标线） ----
+        GoalForgetter,          // 目标遗忘者（房间 Boss：守着落灰的目标板，让你忘记为什么出发）
+
+        // ---- 老实人消耗局 / 无限代付走廊（边界与责任线） ----
+        RequestExpander,        // 请求膨胀者（外部·"就这一次"近战）
+        GuiltThrower,           // 内疚投手（内心·边界远程掷内疚）
+        GoodPersonCage,         // 好人牢笼（消耗局 Boss：好人卡附着/困人牢笼）
+        InfinitePayer           // 无限代付者（走廊 Boss：索取冲击/消耗账单/代付之门）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -118,6 +127,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ThousandEyeJudge: return "万眼审判者";
                 case EnemyType.ProvokerPasserby: return "挑衅路人";
                 case EnemyType.TauntMirror: return "挑衅镜像";
+                case EnemyType.GoalForgetter: return "目标遗忘者";
+                case EnemyType.RequestExpander: return "请求膨胀者";
+                case EnemyType.GuiltThrower: return "内疚投手";
+                case EnemyType.GoodPersonCage: return "好人牢笼";
+                case EnemyType.InfinitePayer: return "无限代付者";
                 default: return "拖延影魔";
             }
         }
@@ -153,6 +167,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ThousandEyeJudge: return new Color(0.6f, 0.55f, 0.9f);
                 case EnemyType.ProvokerPasserby: return new Color(0.85f, 0.35f, 0.3f);
                 case EnemyType.TauntMirror: return new Color(0.65f, 0.7f, 0.75f);
+                case EnemyType.GoalForgetter: return new Color(0.45f, 0.4f, 0.6f);
+                case EnemyType.RequestExpander: return new Color(0.75f, 0.6f, 0.35f);
+                case EnemyType.GuiltThrower: return new Color(0.6f, 0.42f, 0.5f);
+                case EnemyType.GoodPersonCage: return new Color(0.85f, 0.72f, 0.4f);
+                case EnemyType.InfinitePayer: return new Color(0.4f, 0.5f, 0.45f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -189,6 +208,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ThousandEyeJudge: return Combat.WeaponKind.None;    // 千目凝视
                 case EnemyType.ProvokerPasserby: return Combat.WeaponKind.None;    // 寻衅拳脚
                 case EnemyType.TauntMirror: return Combat.WeaponKind.Sword;        // 镜像之剑
+                case EnemyType.GoalForgetter: return Combat.WeaponKind.Staff;      // 遗忘之杖
+                case EnemyType.RequestExpander: return Combat.WeaponKind.None;     // 递不完的请求单
+                case EnemyType.GuiltThrower: return Combat.WeaponKind.None;        // 掷内疚
+                case EnemyType.GoodPersonCage: return Combat.WeaponKind.None;      // 好人卡
+                case EnemyType.InfinitePayer: return Combat.WeaponKind.Staff;      // 账单之杖
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -202,7 +226,8 @@ namespace AdversityRoad.AI
             t == EnemyType.SelfDenialGavel || t == EnemyType.OldSelf ||
             t == EnemyType.RuleTwister || t == EnemyType.DebtShadow ||
             t == EnemyType.GazeEye || t == EnemyType.ThousandEyeJudge ||
-            t == EnemyType.GambleKing;
+            t == EnemyType.GambleKing || t == EnemyType.GuiltThrower ||
+            t == EnemyType.GoalForgetter || t == EnemyType.InfinitePayer;
 
         public static string BaseId(EnemyType t)
         {
@@ -235,6 +260,11 @@ namespace AdversityRoad.AI
                 case EnemyType.ThousandEyeJudge: return "boss_thousand_eye_judge";
                 case EnemyType.ProvokerPasserby: return "enemy_provoker_passerby";
                 case EnemyType.TauntMirror: return "boss_taunt_mirror";
+                case EnemyType.GoalForgetter: return "boss_goal_forgetter";
+                case EnemyType.RequestExpander: return "enemy_request_expander";
+                case EnemyType.GuiltThrower: return "enemy_guilt_thrower";
+                case EnemyType.GoodPersonCage: return "boss_good_person_cage";
+                case EnemyType.InfinitePayer: return "boss_infinite_payer";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -459,6 +489,46 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.NoiseSensitivity, category = EnemyCategory.Boss,
                         maxHealth = 130, posture = 46, physicalDamage = 12, mentalDamage = 15,
                         aggression = 0.6f, defense = 10, moveSpeed = 3.6f, attackRange = 2.1f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.GoalForgetter:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.Boss,
+                        maxHealth = 110, posture = 40, physicalDamage = 11, mentalDamage = 14,
+                        aggression = 0.5f, defense = 8, moveSpeed = 3f, attackRange = 2f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.RequestExpander:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.External,
+                        maxHealth = 95, posture = 34, physicalDamage = 9, mentalDamage = 12,
+                        aggression = 0.6f, defense = 6, moveSpeed = 3.6f, attackRange = 1.8f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.GuiltThrower:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Internal,
+                        maxHealth = 80, posture = 26, physicalDamage = 6, mentalDamage = 14,
+                        aggression = 0.5f, defense = 4, moveSpeed = 3f, attackRange = 1.8f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.GoodPersonCage:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
+                        maxHealth = 130, posture = 46, physicalDamage = 11, mentalDamage = 16,
+                        aggression = 0.5f, defense = 10, moveSpeed = 2.9f, attackRange = 2.1f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.InfinitePayer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
+                        maxHealth = 140, posture = 50, physicalDamage = 12, mentalDamage = 16,
+                        aggression = 0.55f, defense = 10, moveSpeed = 3.1f, attackRange = 2.2f, detectRange = 17
                     };
                     break;
                 default:

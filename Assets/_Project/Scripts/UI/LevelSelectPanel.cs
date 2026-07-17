@@ -28,7 +28,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "LevelSelectPanel", new Vector2(1180, 980),
+            _panel = UiUtil.MakePanel(canvas, "LevelSelectPanel", new Vector2(1180, 1060),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "关 卡 选 择 · 传 送", 38,

@@ -104,6 +104,16 @@ namespace AdversityRoad.Core
             // 陌生挑衅路口：街角的挑衅路人
             SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Standard, o[12] + new Vector3(-13, 1.1f, 13), true);
             SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Novice, o[12] + new Vector3(13, 1.1f, -13), true);
+            // 目标遗忘房：迷宫里的明日幻影与手机诱惑
+            SpawnEnemy(EnemyType.TomorrowPhantom, EnemyTier.Novice, o[13] + new Vector3(10, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.PerfectPreparer, EnemyTier.Novice, o[13] + new Vector3(-8, 1.1f, 3), true);
+            // 老实人消耗局：请求膨胀者与内疚投手
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Standard, o[14] + new Vector3(-16, 1.1f, 2), true);
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Novice, o[14] + new Vector3(16, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.GuiltThrower, EnemyTier.Standard, o[14] + new Vector3(0, 1.1f, 16), true);
+            // 无限代付走廊：走廊里的内疚投手与请求膨胀者
+            SpawnEnemy(EnemyType.GuiltThrower, EnemyTier.Standard, o[15] + new Vector3(-3, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Standard, o[15] + new Vector3(3, 1.1f, 0), true);
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -553,6 +563,15 @@ namespace AdversityRoad.Core
                     break;
                 case EnemyType.TauntMirror:               // 挑衅窗口：追打变强、不理破绽
                     root.AddComponent<TauntMirrorBoss>();
+                    break;
+                case EnemyType.GoalForgetter:             // 遗忘之雾/召唤完美准备者
+                    root.AddComponent<GoalForgetterBoss>();
+                    break;
+                case EnemyType.GoodPersonCage:            // 好人卡附着/困人牢笼
+                    root.AddComponent<GoodPersonCageBoss>();
+                    break;
+                case EnemyType.InfinitePayer:             // 索取冲击(格挡=破绽)/账单/代付之门
+                    root.AddComponent<InfinitePayerBoss>();
                     break;
             }
 

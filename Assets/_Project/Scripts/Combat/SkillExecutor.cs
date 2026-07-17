@@ -204,13 +204,19 @@ namespace AdversityRoad.Combat
             foreach (var ball in FindObjectsOfType<ResponsibilityBall>())
                 if (ball.isFalse) { ball.ForceReturn(); returned++; }
 
+            // 好人牢笼：责任归还把好人卡之墙整圈打破
+            int walls = CageWall.BreakAll();
+
             _player.Stats.RestoreAxis(Personalization.WeaknessAxis.BoundaryConflict, 18f);
             _player.Stats.ReduceRumination(12f);
+            _player.Stats.ReduceRelationshipDrain(10f);
             CombatFeedback.RecipeBurst(transform.position, new Color(0.4f, 0.85f, 0.6f));
             Core.GameEvents.RaiseSkillBanner("「责任归还」");
-            Core.GameEvents.RaiseSubtitle(returned > 0
-                ? "责任归还——把不属于我的" + returned + "份责任，准确地还了回去。"
-                : "责任归还——我只承担属于自己的那部分。");
+            Core.GameEvents.RaiseSubtitle(walls > 0
+                ? "责任归还——好人牢笼被打破！我不是谁的替身人生。"
+                : returned > 0
+                    ? "责任归还——把不属于我的" + returned + "份责任，准确地还了回去。"
+                    : "责任归还——我只承担属于自己的那部分。");
         }
     }
 }

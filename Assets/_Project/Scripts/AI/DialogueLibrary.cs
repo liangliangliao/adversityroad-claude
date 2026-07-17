@@ -68,6 +68,12 @@ namespace AdversityRoad.AI
                   "镜子里的你，真上不了台面。" } },
             { "crossroad", new[] { "他刚才是不是撞你了？", "就这么算了？他们都在看。",
                   "不还手，你就是怂。" } },
+            { "goalroom", new[] { "你进来是要干什么来着？", "先看一眼手机再说。",
+                  "目标板上的灰，就别擦了。" } },
+            { "favorhall", new[] { "你人最好了。", "就这一次，帮个忙不过分吧？",
+                  "大家都指望你呢。" } },
+            { "paycorridor", new[] { "这次也先替我垫上。", "你不会拒绝的，对吧？",
+                  "你的时间反正也不值钱。" } },
         };
 
         static readonly Random Rng = new Random();

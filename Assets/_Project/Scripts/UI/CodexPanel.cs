@@ -47,6 +47,11 @@ namespace AdversityRoad.UI
                 case EnemyType.ThousandEyeJudge: return "不读心盾破幻影，清场打真身";
                 case EnemyType.ProvokerPasserby: return "别追进车流，等它近身";
                 case EnemyType.TauntMirror: return "挑衅标记亮时忍住不打";
+                case EnemyType.GoalForgetter: return "遗忘雾用火种解，直奔目标板";
+                case EnemyType.RequestExpander: return "帮助有边界，不是无限资源";
+                case EnemyType.GuiltThrower: return "内疚不是欠条，格挡弹开";
+                case EnemyType.GoodPersonCage: return "被困按『还』打破好人牢笼";
+                case EnemyType.InfinitePayer: return "索取冲击时举盾=明确拒绝";
                 default: return "";
             }
         }

@@ -42,6 +42,11 @@ namespace AdversityRoad.UI
             new SceneTemplate { sceneId = "judgment", displayName = "小题大做审判庭", primaryAxis = WeaknessAxis.FairnessSensitivity, themeTag = "公平,自尊", baseIntensity = 0.65f },
             new SceneTemplate { sceneId = "swamp", displayName = "拖延沼泽", primaryAxis = WeaknessAxis.Procrastination, themeTag = "拖延,行动", baseIntensity = 0.6f },
             new SceneTemplate { sceneId = "echo", displayName = "旧事回声馆", primaryAxis = WeaknessAxis.FailureFear, themeTag = "旧事,失败,整合", baseIntensity = 0.75f },
+            new SceneTemplate { sceneId = "gamble", displayName = "两元赌桌", primaryAxis = WeaknessAxis.FairnessSensitivity, themeTag = "公平,承诺", baseIntensity = 0.5f },
+            new SceneTemplate { sceneId = "gazehall", displayName = "眼神审判走廊", primaryAxis = WeaknessAxis.Shame, themeTag = "羞耻,注视", baseIntensity = 0.65f },
+            new SceneTemplate { sceneId = "goalroom", displayName = "目标遗忘房", primaryAxis = WeaknessAxis.Procrastination, themeTag = "拖延,目标", baseIntensity = 0.45f },
+            new SceneTemplate { sceneId = "favorhall", displayName = "老实人消耗局", primaryAxis = WeaknessAxis.BoundaryConflict, themeTag = "边界,消耗", baseIntensity = 0.6f },
+            new SceneTemplate { sceneId = "paycorridor", displayName = "无限代付走廊", primaryAxis = WeaknessAxis.BoundaryConflict, themeTag = "边界,代付", baseIntensity = 0.7f },
         };
 
         public static ProfilePanel Create(Transform canvas)

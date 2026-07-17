@@ -32,11 +32,12 @@ namespace AdversityRoad.World
 
         static readonly string[] ZoneIds =
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
-              "gamble", "carpark", "gazehall", "crossroad" };
+              "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor" };
         static readonly string[] ZoneNames =
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
-              "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口" };
+              "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
+              "目标遗忘房", "老实人消耗局", "无限代付走廊" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -70,7 +71,10 @@ namespace AdversityRoad.World
                 new Vector3(2700, 0, 0),
                 new Vector3(3000, 0, 0),
                 new Vector3(3300, 0, 0),
-                new Vector3(3600, 0, 0)
+                new Vector3(3600, 0, 0),
+                new Vector3(3900, 0, 0),
+                new Vector3(4200, 0, 0),
+                new Vector3(4500, 0, 0)
             };
             ctx.playerSpawns = new[]
             {
@@ -86,7 +90,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[9] + new Vector3(0, 1.1f, -9),
                 ctx.zoneOrigins[10] + new Vector3(0, 1.1f, -24),
                 ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -30),
-                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30)
+                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[13] + new Vector3(0, 1.1f, -13),
+                ctx.zoneOrigins[14] + new Vector3(0, 1.1f, -22),
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34)
             };
             ctx.enemySpawns = new[]
             {
@@ -102,7 +109,10 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[9] + new Vector3(0, 1.1f, 5),
                 ctx.zoneOrigins[10] + new Vector3(0, 1.1f, 16),
                 ctx.zoneOrigins[11] + new Vector3(0, 1.1f, 26),
-                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, 0)
+                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, 0),
+                ctx.zoneOrigins[13] + new Vector3(0, 1.1f, 12),
+                ctx.zoneOrigins[14] + new Vector3(0, 1.1f, 12),
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, 30)
             };
 
             _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
@@ -120,6 +130,9 @@ namespace AdversityRoad.World
             BuildDebtCarPark(ctx);
             BuildGazeHall(ctx);
             BuildCrossroad(ctx);
+            BuildGoalRoom(ctx);
+            BuildFavorHall(ctx);
+            BuildPayCorridor(ctx);
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -283,9 +296,8 @@ namespace AdversityRoad.World
 
             MakePortal(ctx, o + new Vector3(-50f, 0, 8), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(50f, 0, 8), 3, ctx.playerSpawns[3]);
-            // 拖延沼泽主入口：街道尽头东南侧的湿地小径——
-            // 拖延线开启的一瞬即解锁，门就在刺激放大器战场旁边
-            MakePortal(ctx, o + new Vector3(42f, 0, -9), 7, ctx.playerSpawns[7]);
+            // 拖延线主入口：街道尽头东南侧——先进「目标遗忘房」找回目标，再入沼泽
+            MakePortal(ctx, o + new Vector3(42f, 0, -9), 13, ctx.playerSpawns[13]);
             // 眼神审判走廊入口：街道西南侧（刺激线其二）
             MakePortal(ctx, o + new Vector3(-42f, 0, -9), 11, ctx.playerSpawns[11]);
         }
@@ -428,8 +440,8 @@ namespace AdversityRoad.World
                 ctx.pedestrianSpawns.Add(o + new Vector3(-18 + i * 12, 1f, 12 - i * 8));
 
             MakePortal(ctx, o + new Vector3(-53f, 0, 0), 3, ctx.playerSpawns[3] + new Vector3(2, 0, 0));
-            // 责任转嫁法院入口：置于东侧大门缺口内的开阔地（不再被楼体/围墙埋住），显眼可达
-            MakePortal(ctx, o + new Vector3(44f, 0, 0), 5, ctx.playerSpawns[5]);
+            // 边界与责任线入口：广场东门先入「老实人消耗局」，再到法院
+            MakePortal(ctx, o + new Vector3(44f, 0, 0), 14, ctx.playerSpawns[14]);
         }
 
         // ================= 第六区：责任转嫁法院 =================
@@ -545,8 +557,9 @@ namespace AdversityRoad.World
             Decoration(ctx, "GavelHandle", o + new Vector3(0, 3.6f, 38.6f), new Vector3(0.5f, 3f, 0.5f),
                 new Color(0.42f, 0.32f, 0.2f));
 
-            // 返回城市广场（门厅一侧）
-            MakePortal(ctx, o + new Vector3(15f, 0, -42), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
+            // 返回老实人消耗局（边界线来路）/ 通往无限代付走廊（边界线其三）
+            MakePortal(ctx, o + new Vector3(15f, 0, -42), 14, ctx.playerSpawns[14] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-18f, 0, 42), 15, ctx.playerSpawns[15]);
             // 通往小题大做审判庭（审判席东侧，正对主通道尽头，一眼可见）——公平与承诺线继续
             MakePortal(ctx, o + new Vector3(18f, 0, 28), 6, ctx.playerSpawns[6]);
         }
@@ -743,8 +756,8 @@ namespace AdversityRoad.World
             SparkAltar(ctx, o + new Vector3(11, 0, 24));
             SparkAltar(ctx, o + new Vector3(0, 0, 40));
 
-            // 传送门：回噪声街区（主入口来路）/ 通往旧事回声馆（击败明天之王章节推进即解锁）
-            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            // 传送门：回目标遗忘房（拖延线来路）/ 通往旧事回声馆（旧我线开启即解锁）
+            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 13, ctx.playerSpawns[13] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(28f, 0, 44), 8, ctx.playerSpawns[8]);
         }
 
@@ -1281,6 +1294,219 @@ namespace AdversityRoad.World
             // 传送门：回眼神审判走廊（西南）/ 回噪声街区（东南，刺激线终战方向）
             MakePortal(ctx, o + new Vector3(-30f, 0, -30), 11, ctx.playerSpawns[11] + new Vector3(2, 0, 0));
             MakePortal(ctx, o + new Vector3(30f, 0, -30), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+        }
+
+        // ================= 第十四区：目标遗忘房（拖延与目标线 其一） =================
+
+        static void BuildGoalRoom(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[13];
+
+            Color wall = new Color(0.42f, 0.38f, 0.34f);
+
+            // 杂乱房间展开成的小迷宫：目标板在最深处
+            Box(ctx, "GoalRoom_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(36, 0.5f, 34),
+                new Color(0.45f, 0.4f, 0.33f));
+            Ring(ctx, o, new Vector2(18, 17), 4, wall);
+
+            // 迷宫隔墙（三道展开的墙：逼玩家绕行，路上全是干扰物）
+            Box(ctx, "MazeWall", o + new Vector3(-5, 1.5f, -7), new Vector3(20, 3, 0.6f), wall);
+            Box(ctx, "MazeWall", o + new Vector3(6, 1.5f, 0), new Vector3(22, 3, 0.6f), wall);
+            Box(ctx, "MazeWall", o + new Vector3(-6, 1.5f, 7), new Vector3(20, 3, 0.6f), wall);
+
+            // 杂乱家具：床（藤蔓化）/衣物堆/未完成任务箱
+            Box(ctx, "MessyBed", o + new Vector3(-13, 0.35f, -12), new Vector3(3, 0.7f, 4.6f),
+                new Color(0.32f, 0.42f, 0.34f));
+            Decoration(ctx, "BedVineWrap", o + new Vector3(-13, 0.8f, -12), new Vector3(3.2f, 0.2f, 4.8f),
+                new Color(0.24f, 0.36f, 0.22f));
+            Box(ctx, "ClothesPile", o + new Vector3(10, 0.4f, -12), new Vector3(2.6f, 0.8f, 2.2f),
+                new Color(0.5f, 0.42f, 0.5f));
+            Box(ctx, "TaskBox", o + new Vector3(14, 0.5f, 3), new Vector3(1.8f, 1f, 1.8f),
+                new Color(0.5f, 0.38f, 0.24f));
+            Decoration(ctx, "TaskBoxLabel", o + new Vector3(14, 1.05f, 3), new Vector3(1.5f, 0.05f, 1.5f),
+                new Color(0.85f, 0.82f, 0.7f));
+
+            // 床铺藤蔓减速带 + 手机光点（干扰物：拖住你、吸走你）
+            MireZone(ctx, o + new Vector3(-10, 0, -10), new Vector3(10, 2, 6), 0.6f, 3f, false);
+            PhoneLight(ctx, o + new Vector3(12, 0, -4));
+
+            // 便利贴与计划纸（散落的"想做但没做"）
+            var rng = new System.Random(77);
+            for (int i = 0; i < 12; i++)
+                Decoration(ctx, "StickyNote",
+                    o + new Vector3(-14 + (float)rng.NextDouble() * 28, 0.05f,
+                        -14 + (float)rng.NextDouble() * 26),
+                    new Vector3(0.4f, 0.02f, 0.4f),
+                    new Color(0.95f, 0.9f, 0.5f + (float)rng.NextDouble() * 0.3f));
+
+            // 闹钟（一次性恢复行动力）与窗户（一次性恢复专注）
+            var clock = Box(ctx, "AlarmClock", o + new Vector3(-14, 0.9f, 5), new Vector3(0.8f, 0.8f, 0.5f),
+                new Color(0.85f, 0.3f, 0.25f));
+            MakeZoneTrigger<Combat.GoalStoneZone>(o + new Vector3(-14, 1, 5), new Vector3(3f, 2f, 3f));
+            Decoration(ctx, "RoomWindow", o + new Vector3(17.6f, 2f, 8), new Vector3(0.15f, 1.8f, 3),
+                new Color(0.65f, 0.8f, 1f));
+
+            // 最深处：落灰的目标板（击败目标遗忘者后在此恢复并被提示钉目标）
+            var board = Box(ctx, "DustyGoalBoard", o + new Vector3(0, 1.6f, 15.4f),
+                new Vector3(3.4f, 1.8f, 0.2f), new Color(0.75f, 0.65f, 0.35f));
+            Decoration(ctx, "BoardDust", o + new Vector3(0, 1.6f, 15.25f), new Vector3(3.0f, 1.4f, 0.05f),
+                new Color(0.6f, 0.56f, 0.48f));
+            board.AddComponent<Combat.GoalBoard>();
+
+            // 暖光（房间该有的温度，只是落了灰）
+            var lampGo = new GameObject("GoalRoom_Lamp");
+            lampGo.transform.position = o + new Vector3(0, 3.4f, 2);
+            var lamp = lampGo.AddComponent<Light>();
+            lamp.type = LightType.Point;
+            lamp.range = 24;
+            lamp.intensity = 1.0f;
+            lamp.color = new Color(1f, 0.88f, 0.68f);
+
+            // 传送门：回噪声街区（南）/ 通往拖延沼泽（东北，拖延线其二）
+            MakePortal(ctx, o + new Vector3(-9f, 0, -14), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(13f, 0, 14), 7, ctx.playerSpawns[7]);
+        }
+
+        // ================= 第十五区：老实人消耗局（边界与责任线 其一） =================
+
+        static void BuildFavorHall(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[14];
+
+            Color wall = new Color(0.36f, 0.33f, 0.3f);
+
+            // 不断扩张的办公大厅：四周是"请求入口"，中央是边界圈
+            Box(ctx, "FavorHall_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(56, 0.5f, 52),
+                new Color(0.5f, 0.47f, 0.42f));
+            Ring(ctx, o, new Vector2(28, 26), 5, wall);
+
+            // 四个请求入口（门洞装饰 + 门口的请求单堆）
+            var gateDefs = new[]
+            {
+                (new Vector3(-24, 0, 0), 90f, "时间"),
+                (new Vector3(24, 0, 0), 90f, "金钱"),
+                (new Vector3(0, 0, 22), 0f, "精力"),
+                (new Vector3(-14, 0, 22), 0f, "情绪"),
+            };
+            foreach (var (pos, rot, res) in gateDefs)
+            {
+                var frame = Decoration(ctx, "RequestGate_" + res, o + pos + new Vector3(0, 2.2f, 0),
+                    new Vector3(3.4f, 4.4f, 0.5f), new Color(0.28f, 0.25f, 0.3f));
+                frame.transform.rotation = Quaternion.Euler(0, rot, 0);
+                var paper = Decoration(ctx, "RequestPile", o + pos + new Vector3(0, 0.3f, 0),
+                    new Vector3(1.8f, 0.6f, 1.4f), new Color(0.9f, 0.88f, 0.8f));
+                paper.transform.rotation = Quaternion.Euler(0, rot + 15f, 0);
+            }
+
+            // 文件堆与电话（被请求淹没的办公桌景）
+            for (int i = 0; i < 5; i++)
+            {
+                var desk = Box(ctx, "FavorDesk", o + new Vector3(-16 + i * 8, 0.5f, -14),
+                    new Vector3(3, 1, 1.6f), new Color(0.42f, 0.32f, 0.22f));
+                Decoration(ctx, "DeskFiles", o + new Vector3(-16 + i * 8, 1.15f, -14),
+                    new Vector3(1.6f, 0.3f, 1.0f), new Color(0.85f, 0.83f, 0.75f));
+            }
+            Decoration(ctx, "OfficePhone", o + new Vector3(-16, 1.15f, -13.6f),
+                new Vector3(0.5f, 0.2f, 0.35f), new Color(0.15f, 0.15f, 0.18f));
+
+            // 中央边界圈：守住的区域（站入恢复边界、清过度负责）
+            var circle = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(circle.GetComponent<Collider>());
+            circle.name = "FavorBoundaryCircle";
+            circle.transform.position = o + new Vector3(0, 0.04f, 2);
+            circle.transform.localScale = new Vector3(6f, 0.02f, 6f);
+            Paint(ctx, circle, new Color(0.3f, 0.75f, 0.5f));
+            MakeZoneTrigger<Combat.BoundaryCircle>(o + new Vector3(0, 1f, 2), new Vector3(6f, 2f, 6f));
+
+            // 好人卡装饰（散落的金色卡片：曾经的"你人真好"）
+            var rng = new System.Random(91);
+            for (int i = 0; i < 10; i++)
+                Decoration(ctx, "GoodCard",
+                    o + new Vector3(-20 + (float)rng.NextDouble() * 40, 0.04f,
+                        -20 + (float)rng.NextDouble() * 40),
+                    new Vector3(0.5f, 0.02f, 0.75f), new Color(0.95f, 0.8f, 0.4f));
+
+            AddCeilingLight(o + new Vector3(0, 8f, 0), new Color(0.95f, 0.92f, 0.85f), 44);
+
+            // 传送门：回城市广场（南）/ 通往责任转嫁法院（东北，边界线其二）
+            MakePortal(ctx, o + new Vector3(-10f, 0, -24), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(22f, 0, 22), 5, ctx.playerSpawns[5]);
+        }
+
+        // ================= 第十六区：无限代付走廊（边界与责任线 其三） =================
+
+        static void BuildPayCorridor(WorldContext ctx)
+        {
+            Vector3 o = ctx.zoneOrigins[15];
+
+            Color wall = new Color(0.28f, 0.3f, 0.28f);
+
+            // 长走廊：两侧无数资源之门，尽头是无限代付者的圆厅
+            Box(ctx, "PayCorridor_Floor", o + new Vector3(0, -0.25f, -8), new Vector3(16, 0.5f, 60),
+                new Color(0.38f, 0.4f, 0.38f));
+            Box(ctx, "PayHall_Floor", o + new Vector3(0, -0.25f, 30), new Vector3(30, 0.5f, 20),
+                new Color(0.42f, 0.44f, 0.42f));
+            Box(ctx, "PayWall_W", o + new Vector3(-8, 2.5f, -8), new Vector3(0.8f, 5, 60), wall);
+            Box(ctx, "PayWall_E", o + new Vector3(8, 2.5f, -8), new Vector3(0.8f, 5, 60), wall);
+            Box(ctx, "PayWall_S", o + new Vector3(0, 2.5f, -38), new Vector3(16, 5, 0.8f), wall);
+            Box(ctx, "PayHallWall_W", o + new Vector3(-15, 2.5f, 30), new Vector3(0.8f, 5, 20), wall);
+            Box(ctx, "PayHallWall_E", o + new Vector3(15, 2.5f, 30), new Vector3(0.8f, 5, 20), wall);
+            Box(ctx, "PayHallWall_N", o + new Vector3(0, 2.5f, 40), new Vector3(30, 5, 0.8f), wall);
+            Box(ctx, "PayJoint_W", o + new Vector3(-11.5f, 2.5f, 22), new Vector3(7.8f, 5, 0.8f), wall);
+            Box(ctx, "PayJoint_E", o + new Vector3(11.5f, 2.5f, 22), new Vector3(7.8f, 5, 0.8f), wall);
+
+            // 两侧资源之门：时间/金钱/精力/情绪/注意力/责任/同情/解释
+            string[] doors = { "时间", "金钱", "精力", "情绪", "注意力", "责任", "同情", "解释" };
+            for (int i = 0; i < doors.Length; i++)
+            {
+                float z = -32 + i * 7;
+                float side = (i % 2 == 0) ? -1f : 1f;
+                Decoration(ctx, "PayDoor_" + doors[i], o + new Vector3(side * 7.4f, 2f, z),
+                    new Vector3(0.3f, 4f, 2.6f), new Color(0.22f, 0.2f, 0.24f));
+                var tmGo = new GameObject("PayDoorSign");
+                tmGo.transform.position = o + new Vector3(side * 6.9f, 3.2f, z);
+                var tm = tmGo.AddComponent<TextMesh>();
+                tm.text = doors[i];
+                tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                tm.fontSize = 44;
+                tm.characterSize = 0.045f;
+                tm.anchor = TextAnchor.MiddleCenter;
+                tm.color = new Color(0.85f, 0.9f, 0.85f);
+                var mr = tmGo.GetComponent<MeshRenderer>();
+                if (tm.font != null) mr.material = tm.font.material;
+                tmGo.AddComponent<FaceCamera>();
+            }
+
+            // 六个「代付请求区」：举盾通过=明确拒绝（边界回补），空手通过=默认代付（被扣资源）
+            for (int i = 0; i < 6; i++)
+            {
+                float z = -30 + i * 8.6f;
+                Decoration(ctx, "PayRequestStrip", o + new Vector3(0, 0.03f, z),
+                    new Vector3(14, 0.03f, 2.6f), new Color(0.5f, 0.42f, 0.3f));
+                MakeZoneTrigger<Combat.PayRequestZone>(o + new Vector3(0, 1, z), new Vector3(14, 2.2f, 2.6f));
+            }
+
+            // 消耗账单雨（装饰）
+            var rng = new System.Random(19);
+            for (int i = 0; i < 14; i++)
+                Decoration(ctx, "BillPaper",
+                    o + new Vector3(-6 + (float)rng.NextDouble() * 12,
+                        0.6f + (float)rng.NextDouble() * 2.8f, -34 + (float)rng.NextDouble() * 56),
+                    new Vector3(0.4f, 0.02f, 0.55f), new Color(0.88f, 0.9f, 0.85f));
+
+            // Boss 圆厅场地标识
+            var payArena = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Object.DestroyImmediate(payArena.GetComponent<Collider>());
+            payArena.name = "PayArena";
+            payArena.transform.position = o + new Vector3(0, 0.04f, 30);
+            payArena.transform.localScale = new Vector3(18f, 0.03f, 18f);
+            Paint(ctx, payArena, new Color(0.34f, 0.4f, 0.36f));
+
+            AddCeilingLight(o + new Vector3(0, 8f, -14), new Color(0.85f, 0.9f, 0.85f), 36);
+            AddCeilingLight(o + new Vector3(0, 8f, 30), new Color(0.9f, 0.95f, 0.9f), 32);
+
+            // 传送门：回责任转嫁法院（南）
+            MakePortal(ctx, o + new Vector3(0f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
         }
 
         static void AddCeilingLight(Vector3 pos, Color color, float range)
