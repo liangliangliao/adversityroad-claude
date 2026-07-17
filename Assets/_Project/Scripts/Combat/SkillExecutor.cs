@@ -30,14 +30,14 @@ namespace AdversityRoad.Combat
             var keys = new List<string>(_cooldowns.Keys);
             foreach (var k in keys) _cooldowns[k] = Mathf.Max(0, _cooldowns[k] - Time.deltaTime);
 
-            // 数字键 1-4 释放已装备技能
-            for (int i = 0; i < Mathf.Min(4, equippedSkills.Count); i++)
+            // 数字键 1-6 释放已装备技能
+            for (int i = 0; i < Mathf.Min(6, equippedSkills.Count); i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);
 
-            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）/ 还（责任归还）
-            if (MobileInput.GetDown("Skill1") && equippedSkills.Count > 0) TryCast(equippedSkills[0]);
-            if (MobileInput.GetDown("Skill2") && equippedSkills.Count > 1) TryCast(equippedSkills[1]);
-            if (MobileInput.GetDown("Skill3") && equippedSkills.Count > 2) TryCast(equippedSkills[2]);
+            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）/ 还（责任归还）/
+            // 火（五分钟火种）/ 盾（不读心盾）/ 收（注意力回收）
+            for (int i = 0; i < Mathf.Min(6, equippedSkills.Count); i++)
+                if (MobileInput.GetDown("Skill" + (i + 1))) TryCast(equippedSkills[i]);
         }
 
         public bool TryCast(Data.SkillDefinition skill)
@@ -67,12 +67,35 @@ namespace AdversityRoad.Combat
             if (skill.selfCostAxisDamage > 0)
                 _player.Stats.TakeMentalDamage(skill.selfCostAxis, skill.selfCostAxisDamage);
 
-            _cooldowns[skill.skillId] = skill.cooldown;
+            // 冷却：成长节点/套装缩减 × 关系消耗过高时被拉长（被掏空的注意力与精力）
+            float cd = skill.cooldown * Core.GrowthSystem.CooldownMult(skill);
+            if (_player.Stats.IsOverDrained) cd *= 1.5f;
+            _cooldowns[skill.skillId] = cd;
             _fsm.RequestState(CombatState.Finisher, skill.castLockTime);
 
             if (skill.isResponsibilityReturn)
             {
                 DoResponsibilityReturn();
+                return true;
+            }
+            if (skill.isFiveMinuteSpark)
+            {
+                DoFiveMinuteSpark(skill);
+                return true;
+            }
+            if (skill.isMindShield)
+            {
+                var buff = GetComponent<MindShieldBuff>();
+                if (buff == null) buff = gameObject.AddComponent<MindShieldBuff>();
+                buff.Arm(10f);
+                CombatFeedback.RecipeBurst(transform.position, new Color(0.5f, 0.75f, 1f));
+                Core.GameEvents.RaiseSkillBanner("「不读心盾」");
+                Core.GameEvents.RaiseSubtitle("不读心盾——无法确认的事，我不把猜测当事实（抵消下一次心理攻击）。");
+                return true;
+            }
+            if (skill.isAttentionRecall)
+            {
+                DoAttentionRecall();
                 return true;
             }
 
@@ -126,6 +149,47 @@ namespace AdversityRoad.Combat
         }
 
         void CloseHitbox() { if (weaponHitbox != null) weaponHitbox.DisableHitbox(); }
+
+        /// <summary>
+        /// 五分钟火种：不等状态完美，先动五分钟——恢复行动力、清除减速与身份冻结、意势+1。
+        /// 拖延沼泽与旧我 Boss 冻结阶段的核心解法。
+        /// </summary>
+        void DoFiveMinuteSpark(Data.SkillDefinition skill)
+        {
+            _player.Stats.RestoreAxis(Personalization.WeaknessAxis.Procrastination, 45f);
+            _player.Stats.ReduceRumination(8f);
+            _player.MoveSpeedMultiplier = 1f;
+
+            var frozen = GetComponent<FrozenDebuff>();
+            bool unfroze = frozen != null;
+            if (frozen != null) Destroy(frozen);
+
+            var combat = GetComponent<PlayerCombatController>();
+            if (combat != null) combat.AddMomentum(1);
+
+            CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.6f, 0.2f));
+            GameAudio.Play(GameAudio.Sfx.Parry, 0.7f);
+            Core.GameEvents.RaiseSkillBanner("「五分钟火种」");
+            Core.GameEvents.RaiseSubtitle(unfroze
+                ? "五分钟火种——行动打破冻结！先做五分钟，动起来再说。"
+                : "五分钟火种——不等动力，先开始；动力是被行动召回的。");
+        }
+
+        /// <summary>
+        /// 注意力回收：清除全部幻影假目标、恢复专注、降低反刍——把注意力从猜测里拿回来。
+        /// 刺激放大器 Boss 战的核心解法。
+        /// </summary>
+        void DoAttentionRecall()
+        {
+            int cleared = PhantomDecoy.ClearAll();
+            _player.Stats.RestoreAxis(Personalization.WeaknessAxis.NoiseSensitivity, 32f);
+            _player.Stats.ReduceRumination(15f);
+            CombatFeedback.RecipeBurst(transform.position, new Color(0.3f, 0.85f, 0.95f));
+            Core.GameEvents.RaiseSkillBanner("「注意力回收」");
+            Core.GameEvents.RaiseSubtitle(cleared > 0
+                ? "注意力回收——" + cleared + " 个幻影散去。不是所有声音都要回应。"
+                : "注意力回收——我把注意力拿回来，放回自己手上的事。");
+        }
 
         /// <summary>
         /// 责任归还：清除「过度负责」减速，把仍在飞来的虚假责任球全部打回法官（每个削韧），

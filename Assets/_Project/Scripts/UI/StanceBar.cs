@@ -34,14 +34,14 @@ namespace AdversityRoad.UI
             {
                 int idx = i;
                 var btn = UiUtil.MakeButton(canvas, defs[i].name, new Vector2(0, 1),
-                    new Vector2(70 + i * 96, -352), new Vector2(90, 54), Off,
+                    new Vector2(70 + i * 96, -366), new Vector2(90, 54), Off,
                     () => { if (stance != null) stance.SetStance(idx); }, 24);
                 _btns[i] = btn;
             }
 
             _mantra = UiUtil.MakeText(canvas, "StanceMantra", "", 22,
                 TextAnchor.MiddleLeft, new Color(1f, 0.88f, 0.6f));
-            UiUtil.SetRect(_mantra, new Vector2(0, 1), new Vector2(560, -352), new Vector2(760, 40));
+            UiUtil.SetRect(_mantra, new Vector2(0, 1), new Vector2(560, -366), new Vector2(760, 40));
 
             GameEvents.OnStanceChanged += OnStance;
             // 初始高亮（StanceSystem.Start 可能已在本帧之前广播过，这里兜底刷新一次）

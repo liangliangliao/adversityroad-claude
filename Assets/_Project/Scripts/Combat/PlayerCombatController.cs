@@ -842,7 +842,8 @@ namespace AdversityRoad.Combat
                 Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
                     heavy ? 1f : 0.8f);
             };
-            float outMult = _stance != null ? _stance.OutgoingPhysicalMult() : 1f;
+            float outMult = (_stance != null ? _stance.OutgoingPhysicalMult() : 1f)
+                * Core.GrowthSystem.PhysicalOutMult();   // 技能树/套装被动增伤
             weaponHitbox.EnableHitbox(new DamageInfo
             {
                 physicalDamage = dmg * outMult,
@@ -856,7 +857,7 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = null;
         }
 
-        void AddMomentum(int n) => SetMomentum(_momentum + n);
+        public void AddMomentum(int n) => SetMomentum(_momentum + n);
 
         /// <summary>技能消耗意势（能量门槛）：足够则扣除返回 true。</summary>
         public bool TrySpendMomentum(int cost)
@@ -989,6 +990,7 @@ namespace AdversityRoad.Combat
                 // 姿态减伤：把姿态切到与来袭弱点轴匹配的一档，可大幅削减这次心理伤害
                 if (_stance != null) mental *= _stance.IncomingMentalMult(dmg.mentalAxis);
 
+                var mindShield = GetComponent<MindShieldBuff>();
                 if (_parryTimer > 0)
                 {
                     _player.Stats.focus = Mathf.Min(_player.Stats.maxFocus,
@@ -996,6 +998,10 @@ namespace AdversityRoad.Combat
                     GameEvents.RaiseMentalStatChanged("focus", _player.Stats.focus, _player.Stats.maxFocus);
                     GameEvents.RaiseSubtitle("定心格挡！心理攻击被化解，专注恢复。");
                     Core.GameAudio.Play(Core.GameAudio.Sfx.Parry);
+                }
+                else if (mindShield != null && mindShield.TryConsume())
+                {
+                    // 不读心盾：这次心理攻击被整个挡下——猜测没能变成事实
                 }
                 else
                 {

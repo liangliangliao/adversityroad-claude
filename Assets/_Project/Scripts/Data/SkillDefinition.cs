@@ -39,6 +39,15 @@ namespace AdversityRoad.Data
         [Header("责任归还（责任转嫁法院专属）：清除过度负责、把虚假责任球打回法官")]
         public bool isResponsibilityReturn = false;
 
+        [Header("五分钟火种：恢复行动力、清除减速/冻结、意势+1（拖延克星）")]
+        public bool isFiveMinuteSpark = false;
+
+        [Header("不读心盾：抵消下一次心理攻击（无法确认的事，不当成事实）")]
+        public bool isMindShield = false;
+
+        [Header("注意力回收：清除全部幻影假目标、恢复专注、降低反刍")]
+        public bool isAttentionRecall = false;
+
         [Header("时序")]
         public float cooldown = 5f;
         public float castLockTime = 0.6f;

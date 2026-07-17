@@ -129,6 +129,7 @@ namespace AdversityRoad.Core
                     ? safetySettings
                     : ScriptableObject.CreateInstance<SafetySettings>();
             CloudDialogueService.Ensure();
+            GrowthSystem.EnsureKillHook();   // 敌人图鉴击败计数
         }
 
         void SetupDayNight()
@@ -216,6 +217,9 @@ namespace AdversityRoad.Core
             // 保持画面干净。combat.innerAura 留空即可，PlayerCombatController 已做空判断。
 
             EquipSkills(skillExec);
+
+            // 技能树上限加成（边界/专注/自尊扩容节点）落到属性
+            GrowthSystem.ApplyMaxBonuses(_player.Stats);
         }
 
         void EquipSkills(SkillExecutor exec)
@@ -259,6 +263,39 @@ namespace AdversityRoad.Core
             guihuan.castLockTime = 0.35f;
             guihuan.isResponsibilityReturn = true;
             exec.equippedSkills.Add(guihuan);
+
+            // 五分钟火种：拖延沼泽/旧我冻结阶段核心技能——不等动力，先开始
+            var huozhong = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            huozhong.skillId = "wufenzhong_huozhong";
+            huozhong.displayName = "五分钟火种";
+            huozhong.description = "先做五分钟：恢复行动力、清除减速与身份冻结、意势+1。动力是被行动召回的。";
+            huozhong.staminaCost = 6;
+            huozhong.cooldown = 10;
+            huozhong.castLockTime = 0.3f;
+            huozhong.isFiveMinuteSpark = true;
+            exec.equippedSkills.Add(huozhong);
+
+            // 不读心盾：外界刺激线核心技能——无法确认的事，不当成事实
+            var budu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            budu.skillId = "buduxin_dun";
+            budu.displayName = "不读心盾";
+            budu.description = "十秒内抵消下一次心理攻击，并令幻影假目标显形消散。无法确认的事，我不把猜测当事实。";
+            budu.staminaCost = 8;
+            budu.cooldown = 14;
+            budu.castLockTime = 0.3f;
+            budu.isMindShield = true;
+            exec.equippedSkills.Add(budu);
+
+            // 注意力回收：刺激放大器 Boss 战核心技能——把注意力拿回来
+            var huishou = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            huishou.skillId = "zhuyili_huishou";
+            huishou.displayName = "注意力回收";
+            huishou.description = "清除全部幻影假目标、恢复专注、降低反刍。不是所有声音都要回应。";
+            huishou.staminaCost = 8;
+            huishou.cooldown = 9;
+            huishou.castLockTime = 0.3f;
+            huishou.isAttentionRecall = true;
+            exec.equippedSkills.Add(huishou);
         }
 
         void BuildCamera()
@@ -491,9 +528,11 @@ namespace AdversityRoad.Core
             hud.focusBar     = CreateBar(canvasGo.transform, "专注", 2, new Color(0.2f, 0.7f, 0.95f));
             hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊", 3, new Color(0.6f, 0.4f, 0.9f));
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
-            hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
+            hud.actionPowerBar = CreateBar(canvasGo.transform, "行动", 5, new Color(0.95f, 0.5f, 0.3f));
             hud.ruminationBar = CreateBar(canvasGo.transform, "反刍", 6, new Color(0.55f, 0.2f, 0.5f));
             hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
+            hud.drainBar      = CreateBar(canvasGo.transform, "消耗", 7, new Color(0.8f, 0.45f, 0.2f));
+            hud.drainBar.SetValue(0, 100);      // 关系消耗从空开始（越满越糟）
 
             // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
             hud.momentumPips = new Image[3];
@@ -502,7 +541,7 @@ namespace AdversityRoad.Core
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -286), new Vector2(34, 34));
+                    new Vector2(40 + i * 46, -310), new Vector2(34, 34));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -516,7 +555,7 @@ namespace AdversityRoad.Core
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -286), new Vector2(400, 40));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -310), new Vector2(400, 40));
             hud.comboText = comboText;
 
             // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
