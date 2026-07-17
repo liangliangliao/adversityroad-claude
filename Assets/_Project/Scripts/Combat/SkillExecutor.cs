@@ -68,9 +68,9 @@ namespace AdversityRoad.Combat
                 _player.Stats.TakeMentalDamage(skill.selfCostAxis, skill.selfCostAxisDamage);
 
             // 冷却：成长节点/套装缩减 × 关系消耗过高时被拉长（被掏空的注意力与精力）
-            float cd = skill.cooldown * Core.GrowthSystem.CooldownMult(skill);
-            if (_player.Stats.IsOverDrained) cd *= 1.5f;
-            _cooldowns[skill.skillId] = cd;
+            float cdTime = skill.cooldown * Core.GrowthSystem.CooldownMult(skill);
+            if (_player.Stats.IsOverDrained) cdTime *= 1.5f;
+            _cooldowns[skill.skillId] = cdTime;
             _fsm.RequestState(CombatState.Finisher, skill.castLockTime);
 
             if (skill.isResponsibilityReturn)
