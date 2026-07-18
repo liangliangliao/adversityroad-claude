@@ -2224,22 +2224,56 @@ namespace AdversityRoad.World
             {
                 for (int i = 0; i < 2; i++)
                 {
-                    var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    body.name = "Car";
+                    Color carCol = new Color(
+                        0.3f + (float)carRng.NextDouble() * 0.6f,
+                        0.3f + (float)carRng.NextDouble() * 0.6f,
+                        0.35f + (float)carRng.NextDouble() * 0.6f);
                     Vector3 start = Vector3.Lerp(route.a, route.b, 0.15f + 0.5f * i);
-                    body.transform.position = start;
-                    body.transform.localScale = new Vector3(1.9f, 1f, 4.2f);
-                    Paint(ctx, body, new Color(
-                        0.3f + (float)carRng.NextDouble() * 0.6f,
-                        0.3f + (float)carRng.NextDouble() * 0.6f,
-                        0.35f + (float)carRng.NextDouble() * 0.6f));
-                    var cabin = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    Object.DestroyImmediate(cabin.GetComponent<Collider>());
-                    cabin.transform.SetParent(body.transform, false);
-                    cabin.transform.localPosition = new Vector3(0, 0.7f, -0.1f);
-                    cabin.transform.localScale = new Vector3(0.85f, 0.55f, 0.5f);
-                    Paint(ctx, cabin, new Color(0.6f, 0.75f, 0.85f));
-                    var mover = body.AddComponent<CarMover>();
+
+                    // 车根：空物体承载碰撞与行驶（+z 为车头，CarMover 朝行进方向），
+                    // 车身/车顶/四轮/车窗/灯为子物件，在本地坐标（根缩放=1）装配，避免非均匀缩放畸变
+                    var root = new GameObject("Car");
+                    root.transform.position = start;
+                    var col = root.AddComponent<BoxCollider>();
+                    col.center = new Vector3(0, 0.55f, 0);
+                    col.size = new Vector3(1.9f, 1.1f, 4.2f);
+
+                    BuildCarPart(ctx, root.transform, "Car", new Vector3(0, 0.5f, 0),
+                        new Vector3(1.9f, 0.7f, 4.2f), carCol, false);                       // 车身
+                    BuildCarPart(ctx, root.transform, "Car", new Vector3(0, 1.0f, -0.15f),
+                        new Vector3(1.62f, 0.6f, 2.1f), carCol * 0.92f, true);                // 车顶座舱
+                    // 前后风挡与侧窗（深色玻璃）
+                    var glass = new Color(0.16f, 0.2f, 0.26f);
+                    BuildCarPart(ctx, root.transform, "CarGlass", new Vector3(0, 1.02f, 0.95f),
+                        new Vector3(1.45f, 0.5f, 0.1f), glass, true);
+                    BuildCarPart(ctx, root.transform, "CarGlass", new Vector3(0, 1.02f, -1.28f),
+                        new Vector3(1.45f, 0.5f, 0.1f), glass, true);
+                    // 车灯：前白后红
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(0.6f, 0.5f, 2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(1f, 0.97f, 0.85f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(-0.6f, 0.5f, 2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(1f, 0.97f, 0.85f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(0.6f, 0.5f, -2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(0.8f, 0.12f, 0.12f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(-0.6f, 0.5f, -2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(0.8f, 0.12f, 0.12f), true);
+                    // 四只车轮（圆盘，轴沿 x）
+                    var rubber = new Color(0.1f, 0.1f, 0.11f);
+                    float[] wx = { -0.95f, 0.95f }, wz = { 1.3f, -1.3f };
+                    foreach (var xx in wx)
+                        foreach (var zz in wz)
+                        {
+                            var wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                            Object.DestroyImmediate(wheel.GetComponent<Collider>());
+                            wheel.name = "Wheel";
+                            wheel.transform.SetParent(root.transform, false);
+                            wheel.transform.localPosition = new Vector3(xx, 0.35f, zz);
+                            wheel.transform.localRotation = Quaternion.Euler(0, 0, 90f);
+                            wheel.transform.localScale = new Vector3(0.72f, 0.12f, 0.72f);
+                            Paint(ctx, wheel, rubber);
+                        }
+
+                    var mover = root.AddComponent<CarMover>();
                     mover.pointA = route.a;
                     mover.pointB = route.b;
                     mover.speed = 6f + (float)carRng.NextDouble() * 4f;
@@ -2288,16 +2322,51 @@ namespace AdversityRoad.World
                 0.4f + (float)rng.NextDouble() * 0.25f);
             Box(ctx, "Building", basePos + new Vector3(0, h / 2, 0), new Vector3(w, h, d), bodyColor);
 
-            // 正面窗户（朝向街道一侧，取 z 更接近区域中心的一面）
             float facing = basePos.z > 0 ? -1f : 1f;
+
+            // 底层裙房（略外扩的基座）：打破"一根方柱"的呆板轮廓
+            Color plinth = bodyColor * 0.82f; plinth.a = 1f;
+            Box(ctx, "BuildingBase", basePos + new Vector3(0, 1.1f, 0),
+                new Vector3(w + 0.8f, 2.2f, d + 0.8f), plinth);
+            // 沿街入口门廊
+            Decoration(ctx, "BuildingDoor", basePos + new Vector3(0, 1.2f, facing * (d / 2f + 0.5f)),
+                new Vector3(2.2f, 2.4f, 0.2f), new Color(0.2f, 0.22f, 0.26f));
+
+            // 顶部女儿墙压顶（外挑一圈）
+            Color parapet = bodyColor * 0.7f; parapet.a = 1f;
+            Box(ctx, "BuildingParapet", basePos + new Vector3(0, h + 0.25f, 0),
+                new Vector3(w + 0.6f, 0.5f, d + 0.6f), parapet);
+
+            // 屋顶设备：水箱 / 空调机组 / 通风管（消灭"平顶方盒"感）
+            var rc = new Color(0.5f, 0.5f, 0.54f);
+            var tank = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tank.name = "RoofTank";
+            tank.transform.position = basePos + new Vector3(-w * 0.22f, h + 1.1f, d * 0.15f);
+            tank.transform.localScale = new Vector3(1.6f, 1.0f, 1.6f);
+            Paint(ctx, tank, new Color(0.55f, 0.5f, 0.45f));
+            Box(ctx, "RoofAC", basePos + new Vector3(w * 0.24f, h + 0.7f, -d * 0.18f),
+                new Vector3(1.8f, 0.9f, 1.3f), rc);
+            Box(ctx, "RoofAC", basePos + new Vector3(w * 0.05f, h + 0.6f, d * 0.28f),
+                new Vector3(1.2f, 0.7f, 1.0f), rc);
+            var vent = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            vent.name = "RoofVent";
+            Object.DestroyImmediate(vent.GetComponent<Collider>());
+            vent.transform.position = basePos + new Vector3(-w * 0.05f, h + 0.9f, -d * 0.02f);
+            vent.transform.localScale = new Vector3(0.35f, 0.8f, 0.35f);
+            Paint(ctx, vent, new Color(0.4f, 0.4f, 0.44f));
+
+            // 正面窗户（带凹陷窗框，朝向街道一侧）
+            Color frame = bodyColor * 0.55f; frame.a = 1f;
             int rows = Mathf.Clamp(Mathf.FloorToInt(h / 3f), 2, 5);
             for (int r = 0; r < rows; r++)
                 for (int cIdx = 0; cIdx < 3; cIdx++)
-                    Decoration(ctx, "Window",
-                        basePos + new Vector3(-w / 3f + cIdx * w / 3f, 2f + r * (h - 3f) / rows,
-                            facing * (d / 2f + 0.06f)),
-                        new Vector3(1.4f, 1.1f, 0.1f),
-                        new Color(0.95f, 0.9f, 0.6f));
+                {
+                    Vector3 wp = basePos + new Vector3(-w / 3f + cIdx * w / 3f, 2f + r * (h - 3f) / rows,
+                        facing * (d / 2f + 0.05f));
+                    Decoration(ctx, "WindowFrame", wp, new Vector3(1.7f, 1.4f, 0.12f), frame);
+                    Decoration(ctx, "Window", wp + new Vector3(0, 0, facing * 0.04f),
+                        new Vector3(1.4f, 1.1f, 0.1f), new Color(0.95f, 0.9f, 0.6f));
+                }
         }
 
         static void Lamp(WorldContext ctx, Vector3 basePos)
@@ -2331,33 +2400,63 @@ namespace AdversityRoad.World
             }
         }
 
-        /// <summary>行道树：树干+双层树冠。</summary>
+        /// <summary>车辆部件：本地坐标下的立方子件（decorative=true 去碰撞体）。</summary>
+        static GameObject BuildCarPart(WorldContext ctx, Transform parent, string name,
+            Vector3 localPos, Vector3 localScale, Color color, bool decorative)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            if (decorative) Object.DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = localScale;
+            Paint(ctx, go, color);
+            return go;
+        }
+
+        /// <summary>行道树：锥形树干 + 分叉枝 + 多球体积树冠（有机、非"棒棒糖"）。</summary>
         static void Tree(WorldContext ctx, Vector3 basePos)
         {
             var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             trunk.name = "TreeTrunk";
-            trunk.transform.position = basePos + new Vector3(0, 1.4f, 0);
-            trunk.transform.localScale = new Vector3(0.3f, 1.4f, 0.3f);
-            Paint(ctx, trunk, new Color(0.4f, 0.28f, 0.16f));
+            trunk.transform.position = basePos + new Vector3(0, 1.5f, 0);
+            trunk.transform.localScale = new Vector3(0.34f, 1.5f, 0.34f);
+            Paint(ctx, trunk, new Color(0.36f, 0.26f, 0.16f));
 
-            var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            crown.name = "TreeCrown";
-            Object.DestroyImmediate(crown.GetComponent<Collider>());
-            crown.transform.position = basePos + new Vector3(0, 3.4f, 0);
-            crown.transform.localScale = Vector3.one * 2.6f;
-            Paint(ctx, crown, new Color(0.2f, 0.45f, 0.2f));
+            // 两根分叉主枝（斜插入树冠）
+            var branchColor = new Color(0.34f, 0.24f, 0.15f);
+            int[] bs = { -1, 1 };
+            foreach (var sgn in bs)
+            {
+                var br = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                br.name = "TreeBranch";
+                Object.DestroyImmediate(br.GetComponent<Collider>());
+                br.transform.position = basePos + new Vector3(sgn * 0.5f, 3.0f, 0);
+                br.transform.rotation = Quaternion.Euler(0, 0, sgn * 32f);
+                br.transform.localScale = new Vector3(0.16f, 0.9f, 0.16f);
+                Paint(ctx, br, branchColor);
+                Player.CameraOcclusionFade.RegisterOccluder(br.GetComponent<Renderer>());
+            }
 
-            var crown2 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            crown2.name = "TreeCrown2";
-            Object.DestroyImmediate(crown2.GetComponent<Collider>());
-            crown2.transform.position = basePos + new Vector3(0.5f, 4.2f, 0.3f);
-            crown2.transform.localScale = Vector3.one * 1.8f;
-            Paint(ctx, crown2, new Color(0.26f, 0.52f, 0.24f));
-
-            // 登记为可遮挡物：挡在镜头与玩家之间时自动淡出（树冠无碰撞体，靠登记表识别）
+            // 多球树冠：不同大小/绿度/偏移堆出有机体积
+            var crowns = new (Vector3 off, float s, Color c)[]
+            {
+                (new Vector3(0f, 3.5f, 0f),    2.7f, new Color(0.20f, 0.44f, 0.20f)),
+                (new Vector3(0.9f, 4.1f, 0.4f),1.9f, new Color(0.26f, 0.52f, 0.24f)),
+                (new Vector3(-0.8f,4.0f,-0.5f),1.7f, new Color(0.22f, 0.48f, 0.22f)),
+                (new Vector3(0.2f, 4.7f, -0.2f),1.5f,new Color(0.30f, 0.56f, 0.28f)),
+            };
+            foreach (var cr in crowns)
+            {
+                var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                s.name = "TreeCrown";
+                Object.DestroyImmediate(s.GetComponent<Collider>());
+                s.transform.position = basePos + cr.off;
+                s.transform.localScale = Vector3.one * cr.s;
+                Paint(ctx, s, cr.c);
+                Player.CameraOcclusionFade.RegisterOccluder(s.GetComponent<Renderer>());
+            }
             Player.CameraOcclusionFade.RegisterOccluder(trunk.GetComponent<Renderer>());
-            Player.CameraOcclusionFade.RegisterOccluder(crown.GetComponent<Renderer>());
-            Player.CameraOcclusionFade.RegisterOccluder(crown2.GetComponent<Renderer>());
         }
 
         static void Bench(WorldContext ctx, Vector3 basePos, float yRot)
