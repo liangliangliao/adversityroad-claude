@@ -1975,9 +1975,34 @@ namespace AdversityRoad.World
                 new Color(0.3f, 0.28f, 0.32f));
             Ring(ctx, o, new Vector2(29, 33), 6, wall);
 
-            // 展品基座 + 裱框"失败"（红色射灯）
-            string[] failures = { "搞砸的演讲", "亏掉的积蓄", "断掉的关系", "放弃的计划", "错过的机会", "失败的创业" };
-            for (int i = 0; i < failures.Length; i++)
+            // 展品内容：优先用玩家真实的失败记录（败给过哪些心魔、各几次）——
+            // 让这一关成为"面对自己真实失败史"的个人化体验；无记录则退回通用主题文案。
+            var real = Core.FailureLog.Breakdown();
+            bool personal = real.Count > 0;
+            string introLine = "";
+            var exhibits = new List<(string label, string plaque, string reframe)>();
+            if (personal)
+            {
+                int falls = Core.FailureLog.TotalDeaths;
+                foreach (var r in real)
+                {
+                    exhibits.Add((
+                        r.label,
+                        "败给「" + r.label + "」× " + r.count,
+                        "你在这里败给「" + r.label + "」" + r.count + " 次——但你也一次次站了起来，它没有定义你。"));
+                    if (exhibits.Count >= 6) break;
+                }
+                introLine = "这些不是别人的失败——是你真实倒下过的地方（累计 " + falls + " 次）。看，然后走过去。";
+            }
+            else
+            {
+                string[] generic = { "搞砸的演讲", "亏掉的积蓄", "断掉的关系", "放弃的计划", "错过的机会", "失败的创业" };
+                foreach (var g in generic)
+                    exhibits.Add((g, g, "「" + g + "」被裱在这里——但发生过，不等于就是你。"));
+            }
+
+            // 展品基座 + 裱框"失败"（红色射灯）+ 可读铭牌 + 走近重构触发
+            for (int i = 0; i < exhibits.Count; i++)
             {
                 float x = (i % 2 == 0) ? -16f : 16f;
                 float z = -22 + (i / 2) * 18;
@@ -1987,6 +2012,9 @@ namespace AdversityRoad.World
                     new Color(0.55f, 0.45f, 0.25f));
                 Decoration(ctx, "ExhibitCanvas", o + new Vector3(x, 2.2f, z + 0.05f),
                     new Vector3(2f, 1.6f, 0.18f), new Color(0.2f, 0.18f, 0.24f));
+                Plaque(o + new Vector3(x, 2.2f, z + 0.2f), exhibits[i].plaque, new Color(0.92f, 0.6f, 0.5f));
+                Plaque(o + new Vector3(x, 1.05f, z + 1.6f), "展品 " + (i + 1), new Color(0.75f, 0.72f, 0.7f));
+
                 var spot = new GameObject("ExhibitSpot");
                 spot.transform.position = o + new Vector3(x, 5f, z);
                 var sl = spot.AddComponent<Light>();
@@ -1996,6 +2024,20 @@ namespace AdversityRoad.World
                 sl.intensity = 1.8f;
                 sl.color = new Color(0.95f, 0.4f, 0.35f);
                 sl.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+                // 走近展品：把"这就是你"的审判，重构成"发生过，但不是你的全部"
+                var reframe = MakeZoneTrigger<ExhibitReframeZone>(o + new Vector3(x, 1.5f, z + 2.2f),
+                    new Vector3(5f, 3f, 4f));
+                reframe.line = exhibits[i].reframe;
+            }
+
+            // 一次性入场提示（仅当有真实失败记录时）：进门告诉玩家这是他自己的失败史
+            if (introLine.Length > 0)
+            {
+                var intro = MakeZoneTrigger<ExhibitReframeZone>(o + new Vector3(0, 1.5f, -8),
+                    new Vector3(40, 3f, 8f));
+                intro.line = introLine;
+                intro.once = true;
             }
 
             // 中央"荣誉"展台（其实是空的——失败没有资格定义你）
@@ -2003,6 +2045,9 @@ namespace AdversityRoad.World
                 new Color(0.45f, 0.42f, 0.48f));
             Decoration(ctx, "EmptyFrame", o + new Vector3(0, 2.6f, 6), new Vector3(2.8f, 2.2f, 0.25f),
                 new Color(0.6f, 0.55f, 0.35f));
+            Plaque(o + new Vector3(0, 2.6f, 6.2f), "（空）", new Color(0.7f, 0.85f, 0.75f));
+            Plaque(o + new Vector3(0, 1.15f, 4.1f),
+                "失败可以陈列，但没资格坐上「定义你是谁」的位置。", new Color(0.75f, 0.9f, 0.8f));
 
             // 长椅（复盘席）
             Bench(ctx, o + new Vector3(-6, 0, -8), 90);
@@ -2559,6 +2604,23 @@ namespace AdversityRoad.World
             portal.targetName = ZoneNameOf(targetZone);
         }
 
+        /// <summary>世界空间铭牌（3D 文字，常朝镜头）：给展品/展台等标注可读文本。</summary>
+        static void Plaque(Vector3 pos, string text, Color color)
+        {
+            var go = new GameObject("Plaque");
+            go.transform.position = pos;
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 44;
+            tm.characterSize = 0.05f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = color;
+            var mr = go.GetComponent<MeshRenderer>();
+            if (tm.font != null) mr.material = tm.font.material;
+            go.AddComponent<FaceCamera>();
+        }
+
         static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
         static void Paint(WorldContext ctx, GameObject go, Color c)
@@ -2654,6 +2716,36 @@ namespace AdversityRoad.World
             if (Camera.main != null)
                 transform.rotation = Quaternion.LookRotation(
                     transform.position - Camera.main.transform.position);
+        }
+    }
+
+    /// <summary>
+    /// 失败展览馆·走近重构触发：靠近某件"失败"展品时，把"这就是你"的审判
+    /// 重构成"发生过，但不是你的全部"。once=true 用作一次性入场提示。
+    /// </summary>
+    public class ExhibitReframeZone : MonoBehaviour
+    {
+        public string line;
+        public bool once;
+        public float cooldown = 12f;
+
+        bool _done;
+        float _readyAt;
+
+        void Awake()
+        {
+            var col = GetComponent<Collider>();
+            if (col != null) col.isTrigger = true;
+        }
+
+        void OnTriggerEnter(Collider other)
+        {
+            if (once && _done) return;
+            if (Time.time < _readyAt) return;
+            var p = other.GetComponentInParent<Player.PlayerController>();
+            if (p == null) return;
+            if (once) _done = true; else _readyAt = Time.time + cooldown;
+            if (!string.IsNullOrEmpty(line)) Core.GameEvents.RaiseSubtitle(line);
         }
     }
 }
