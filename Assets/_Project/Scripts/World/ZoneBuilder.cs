@@ -2460,13 +2460,21 @@ namespace AdversityRoad.World
             portal.targetName = ZoneNameOf(targetZone);
         }
 
-        static readonly Dictionary<Color, Material> MatCache = new Dictionary<Color, Material>();
+        static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
         static void Paint(WorldContext ctx, GameObject go, Color c)
         {
             var r = go.GetComponent<MeshRenderer>();
             if (r == null) return;
-            if (!MatCache.TryGetValue(c, out var m) || m == null)
+
+            // 按物体名判定表面类别（墙/地/木/砖/金属…），并按尺寸算平铺次数——
+            // 同 (颜色, 类别, 平铺) 共享一份材质：既上纹理又不炸材质数（移动端友好，
+            // 保持 SRP Batcher 生效，不用 MaterialPropertyBlock）。
+            SurfaceKind kind = KindOf(go.name);
+            int tile = kind == SurfaceKind.None ? 0 : TileFor(go.transform.localScale);
+            string key = ColorKey(c) + "|" + (int)kind + "|" + tile;
+
+            if (!MatCache.TryGetValue(key, out var m) || m == null)
             {
                 if (ctx.mat != null) m = new Material(ctx.mat);
                 else
@@ -2478,13 +2486,64 @@ namespace AdversityRoad.World
                 m.color = c;
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
                 // 轻度光滑度：让表面在天光/主光下有微弱高光与反射，摆脱"纯哑光塑料"观感
-                // （偏低，避免整场湿滑感；金属度归零，保持非金属本色）
                 if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.18f);
                 if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.18f);
                 if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
-                MatCache[c] = m; // 同色共享材质：大量建筑/窗户下控制移动端开销
+
+                // 程序化细节纹理（灰度）作为 _BaseMap 与颜色相乘：保留分区配色，叠加真实表面
+                if (kind != SurfaceKind.None)
+                {
+                    var alb = ProceduralTextures.Albedo(kind);
+                    if (alb != null)
+                    {
+                        var sc = new Vector2(tile, tile);
+                        if (m.HasProperty("_BaseMap")) { m.SetTexture("_BaseMap", alb); m.SetTextureScale("_BaseMap", sc); }
+                        if (m.HasProperty("_MainTex")) { m.SetTexture("_MainTex", alb); m.SetTextureScale("_MainTex", sc); }
+                    }
+                }
+                MatCache[key] = m;
             }
             r.sharedMaterial = m;
+        }
+
+        /// <summary>颜色量化为稳定字符串键（0..255）。</summary>
+        static string ColorKey(Color c) =>
+            (int)(c.r * 255) + "," + (int)(c.g * 255) + "," + (int)(c.b * 255);
+
+        /// <summary>按物体尺寸估算平铺次数（约每 3 世界单位一格），限幅避免过密/过疏。</summary>
+        static int TileFor(Vector3 s)
+        {
+            float a = Mathf.Abs(s.x), b = Mathf.Abs(s.y), c = Mathf.Abs(s.z);
+            float max = Mathf.Max(a, Mathf.Max(b, c));
+            float min = Mathf.Min(a, Mathf.Min(b, c));
+            float mid = a + b + c - max - min;             // 取两个较大边的均值定平铺
+            return Mathf.Clamp(Mathf.RoundToInt((max + mid) * 0.5f / 3f), 1, 24);
+        }
+
+        /// <summary>按 GameObject 名称把表面归类到对应纹理（发光/玻璃/标牌等保持无纹理）。</summary>
+        static SurfaceKind KindOf(string n)
+        {
+            if (string.IsNullOrEmpty(n)) return SurfaceKind.None;
+            if (NameHas(n, "Glow", "Flame", "Light", "Warn", "Spark", "Window", "Sign",
+                    "Zebra", "Bill", "Crown", "Canvas", "Frame", "Spot", "Portal", "Glass",
+                    "Ped", "Ring")) return SurfaceKind.None;
+            if (NameHas(n, "Bench", "Desk", "Shelf", "Door", "Plank", "SleepBox", "Bed",
+                    "Tree", "Book", "Crate")) return SurfaceKind.Wood;
+            if (NameHas(n, "Pillar", "Car", "Station", "Basin", "Bin", "Pole", "Nurse",
+                    "Booth", "Machine", "Scale", "Rail", "Lamp", "Bus")) return SurfaceKind.Metal;
+            if (NameHas(n, "Building")) return SurfaceKind.Brick;
+            if (NameHas(n, "Road", "Ground", "Pave", "Asphalt", "Street")) return SurfaceKind.Ground;
+            if (NameHas(n, "Carpet", "Mat", "Rug", "Mire")) return SurfaceKind.Fabric;
+            if (NameHas(n, "Wall", "Divider", "Joint")) return SurfaceKind.Plaster;
+            if (NameHas(n, "Floor", "Tier", "Arena", "Seg", "Head", "Plinth", "Base",
+                    "Platform", "Pan", "Ramp")) return SurfaceKind.Concrete;
+            return SurfaceKind.None;
+        }
+
+        static bool NameHas(string n, params string[] keys)
+        {
+            foreach (var k in keys) if (n.Contains(k)) return true;
+            return false;
         }
     }
 
