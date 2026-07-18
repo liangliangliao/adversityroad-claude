@@ -62,6 +62,9 @@ namespace AdversityRoad.Core
             SetupChapterQuest();
             ShowChapterIntro();
 
+            // 回访提醒：若有隔天未确认的现实行动承诺，稍后温和提示去「行动」面板确认
+            if (ActionSystem.DuePendingCount > 0) Invoke(nameof(NudgeActions), 5f);
+
             // 云端台词池预热：进区域即后台预取，喊话零延迟
             if (CloudDialogueService.Instance != null)
                 CloudDialogueService.Instance.WarmUp(ZoneBuilder.CurrentZoneId,
@@ -141,6 +144,14 @@ namespace AdversityRoad.Core
             // 意志塔：广场石柱间的旧话复读者与反刍虫群（塔台留给登塔）
             SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[23] + new Vector3(-9, 1.1f, -14), true);
             SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[23] + new Vector3(9, 1.1f, -8), true);
+        }
+
+        /// <summary>回访提醒：把复盘里许下的现实行动带回玩家眼前（安全屋「行动」面板确认）。</summary>
+        void NudgeActions()
+        {
+            int n = ActionSystem.DuePendingCount;
+            if (n > 0)
+                GameEvents.RaiseSubtitle("有 " + n + " 条现实行动等你确认——回安全屋「行动」面板，告诉游戏你做到了没有。");
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -852,9 +863,10 @@ namespace AdversityRoad.Core
             var archivePanel = ArchivePanel.Create(canvasGo.transform);
             var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
             var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
+            var actionTrackerPanel = ActionTrackerPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
-                levelSelectPanel, missionBoardPanel);
+                levelSelectPanel, missionBoardPanel, actionTrackerPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
             // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口

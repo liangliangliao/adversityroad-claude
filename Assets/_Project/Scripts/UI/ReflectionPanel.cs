@@ -260,10 +260,13 @@ namespace AdversityRoad.UI
             });
             if (earned) GrowthSystem.AddPoints(1);
 
+            // 「行动」栏 → 现实行动承诺：下次回安全屋「行动」面板确认是否做到
+            ActionSystem.AddCommitment(_actInput.text, chapterTitle);
+
             GameAudio.Play(GameAudio.Sfx.Parry, 0.7f);
             GameEvents.RaiseSubtitle(earned
-                ? "已归档：事实留下，反刍清零，复盘点 +1。旧事进入档案，不再无限回放。"
-                : "已归档入档案。（反刍值需≥10 才发复盘点——先去面对困境，再回来复盘）");
+                ? "已归档：反刍清零，复盘点 +1。行动栏已记为现实承诺——下次回「行动」面板确认。"
+                : "已归档入档案。行动栏已记为现实承诺——去做，然后回「行动」面板确认。");
             Refresh();
         }
 
