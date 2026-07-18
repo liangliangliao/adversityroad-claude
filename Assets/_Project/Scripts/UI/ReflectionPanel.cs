@@ -223,6 +223,14 @@ namespace AdversityRoad.UI
             _boundInput.text = r[2];
             _actInput.text = r[3];
 
+            // 死亡诊断种子：刚倒下再战后首次打开复盘时，用诊断预填「感受/行动」两栏
+            if (FailureLog.HasSeed)
+            {
+                var seed = FailureLog.ConsumeSeed();
+                if (!string.IsNullOrEmpty(seed.feeling)) _feelInput.text = seed.feeling;
+                if (!string.IsNullOrEmpty(seed.action)) _actInput.text = seed.action;
+            }
+
             var stats = Stats();
             _ruminationText.text = stats != null
                 ? $"当前反刍值：{Mathf.RoundToInt(stats.rumination)} / {Mathf.RoundToInt(stats.maxRumination)}"

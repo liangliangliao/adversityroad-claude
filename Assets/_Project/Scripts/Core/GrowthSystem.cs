@@ -289,6 +289,7 @@ namespace AdversityRoad.Core
             _log = null;
             GoalSystem.DeleteAll();
             ActionSystem.DeleteAll();
+            FailureLog.DeleteAll();
         }
     }
 
