@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using AdversityRoad.Combat;
 
 namespace AdversityRoad.World
@@ -50,6 +52,14 @@ namespace AdversityRoad.World
             index >= 0 && index < ZoneNames.Length ? ZoneNames[index] : "";
 
         public static int ZoneCount => ZoneIds.Length;
+
+        /// <summary>按区域 id 反查索引（找不到回退 0）。</summary>
+        public static int IndexOfZone(string id)
+        {
+            for (int i = 0; i < ZoneIds.Length; i++)
+                if (ZoneIds[i] == id) return i;
+            return 0;
+        }
 
         // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用
         static Vector3[] _spawnTable;
@@ -2096,6 +2106,92 @@ namespace AdversityRoad.World
             pan.transform.localScale = new Vector3(1.8f, 0.1f, 1.8f);
             Paint(ctx, pan, new Color(0.7f, 0.65f, 0.4f));
             return pan.transform;
+        }
+
+        // ================= 分区氛围·色彩脚本（NavMesh 烘焙后调用，零美术） =================
+
+        /// <summary>一个区域的"色彩脚本"配置：色调滤镜/饱和/对比/暗角/色相偏移/雾色。</summary>
+        struct ZoneMood
+        {
+            public Color filter;    // 色调滤镜（乘算，近白微偏色）
+            public float sat;       // 饱和 -100..100
+            public float con;       // 对比 -100..100
+            public float vig;       // 暗角 0..1
+            public float hue;       // 色相偏移 -180..180
+            public Color fog;       // 该区专属雾色（供 DayNightCycle 混合）
+        }
+
+        static ZoneMood M(Color filter, float sat, float con, float vig, Color fog, float hue = 0f) =>
+            new ZoneMood { filter = filter, sat = sat, con = con, vig = vig, hue = hue, fog = fog };
+
+        // 24 区色彩脚本：每个场景按其心理主题给一套专属氛围（冷/暖/去饱和/压抑/神秘…）
+        static readonly ZoneMood[] Moods =
+        {
+            /*0  独居小屋*/    M(new Color(1.00f,0.92f,0.78f), -12, 8,  0.34f, new Color(0.09f,0.10f,0.15f)),
+            /*1  训练武馆*/    M(new Color(1.00f,0.97f,0.90f),   4, 6,  0.20f, new Color(0.55f,0.58f,0.62f)),
+            /*2  噪声街区*/    M(new Color(0.92f,0.96f,1.05f),  10, 8,  0.22f, new Color(0.62f,0.68f,0.78f)),
+            /*3  求职荒原*/    M(new Color(0.95f,0.96f,1.00f), -28, 6,  0.30f, new Color(0.66f,0.68f,0.72f)),
+            /*4  城市广场*/    M(new Color(1.05f,0.90f,0.72f),  14, 10, 0.24f, new Color(0.30f,0.24f,0.28f)),
+            /*5  责任法院*/    M(new Color(0.88f,0.95f,1.05f),  -6, 14, 0.30f, new Color(0.40f,0.46f,0.56f)),
+            /*6  审判庭*/      M(new Color(0.94f,0.97f,1.02f),  -8, 18, 0.34f, new Color(0.36f,0.40f,0.50f)),
+            /*7  拖延沼泽*/    M(new Color(0.85f,1.00f,0.85f), -18, 8,  0.36f, new Color(0.10f,0.16f,0.12f), -6),
+            /*8  回声馆*/      M(new Color(0.90f,0.94f,1.05f), -20, 6,  0.36f, new Color(0.14f,0.16f,0.24f)),
+            /*9  两元赌桌*/    M(new Color(1.05f,0.95f,0.70f),   6, 12, 0.32f, new Color(0.20f,0.17f,0.12f)),
+            /*10 债务车影*/    M(new Color(0.86f,0.92f,1.08f),   4, 14, 0.30f, new Color(0.10f,0.13f,0.22f)),
+            /*11 眼神走廊*/    M(new Color(0.90f,1.00f,0.98f),  -6, 12, 0.30f, new Color(0.30f,0.40f,0.42f), -4),
+            /*12 挑衅路口*/    M(new Color(1.04f,0.95f,0.85f),  14, 10, 0.24f, new Color(0.34f,0.30f,0.30f)),
+            /*13 目标遗忘房*/  M(new Color(0.92f,0.90f,1.02f), -18, 6,  0.34f, new Color(0.16f,0.15f,0.22f)),
+            /*14 老实人消耗局*/M(new Color(0.93f,0.98f,0.93f), -20, 8,  0.30f, new Color(0.34f,0.40f,0.36f)),
+            /*15 无限代付走廊*/M(new Color(0.88f,0.95f,1.05f), -10, 14, 0.32f, new Color(0.24f,0.30f,0.40f)),
+            /*16 饥饿荒巷*/    M(new Color(0.88f,0.93f,1.06f),   2, 12, 0.34f, new Color(0.10f,0.12f,0.20f)),
+            /*17 车库寒夜*/    M(new Color(0.86f,0.92f,1.08f), -26, 10, 0.34f, new Color(0.16f,0.20f,0.30f)),
+            /*18 病房回廊*/    M(new Color(0.96f,0.99f,1.03f), -14, 6,  0.26f, new Color(0.70f,0.74f,0.80f)),
+            /*19 图书馆*/      M(new Color(1.05f,0.94f,0.72f), -10, 8,  0.36f, new Color(0.18f,0.16f,0.12f)),
+            /*20 追问大厅*/    M(new Color(0.95f,0.88f,1.08f),  -4, 12, 0.34f, new Color(0.20f,0.16f,0.28f), 6),
+            /*21 意志断桥*/    M(new Color(0.82f,0.90f,1.12f),  -8, 16, 0.40f, new Color(0.06f,0.09f,0.18f)),
+            /*22 失败展览馆*/  M(new Color(0.96f,0.97f,1.03f),  -6, 16, 0.32f, new Color(0.30f,0.32f,0.40f)),
+            /*23 意志塔*/      M(new Color(1.04f,0.96f,0.80f),   6, 10, 0.28f, new Color(0.22f,0.22f,0.30f)),
+        };
+
+        /// <summary>该区专属雾色（DayNightCycle 按当前所在区取用；越界回退中性）。</summary>
+        public static Color FogTintOf(int zone) =>
+            zone >= 0 && zone < Moods.Length ? Moods[zone].fog : new Color(0.4f, 0.45f, 0.55f);
+
+        /// <summary>
+        /// 为每个区域生成一个"局部分级 Volume"——镜头进入该区即平滑切到该区色彩脚本。
+        /// 纯后处理、按镜头位置自动混合，不改 RenderSettings，不依赖美术资源。
+        /// NavMesh 烘焙之后再建（触发盒不参与寻路烘焙）。
+        /// </summary>
+        public static void SetupZoneMoods(WorldContext ctx)
+        {
+            for (int i = 0; i < ZoneCount && i < Moods.Length; i++)
+            {
+                var m = Moods[i];
+                var go = new GameObject("ZoneMood_" + ZoneIdOf(i));
+                go.transform.position = ctx.zoneOrigins[i];
+
+                var box = go.AddComponent<BoxCollider>();
+                box.isTrigger = true;
+                box.size = new Vector3(200, 90, 200);   // 覆盖整区（区间距 300，互不重叠）
+
+                var vol = go.AddComponent<Volume>();
+                vol.isGlobal = false;
+                vol.blendDistance = 24f;                // 边缘平滑过渡
+                vol.priority = 20f;                     // 高于全局分级(10)
+
+                var p = ScriptableObject.CreateInstance<VolumeProfile>();
+                vol.sharedProfile = p;
+
+                var ca = p.Add<ColorAdjustments>(true);
+                ca.colorFilter.Override(m.filter);
+                ca.saturation.Override(m.sat);
+                ca.contrast.Override(m.con);
+                if (Mathf.Abs(m.hue) > 0.01f) ca.hueShift.Override(m.hue);
+
+                var vg = p.Add<Vignette>(true);
+                vg.intensity.Override(m.vig);
+                vg.smoothness.Override(0.45f);
+            }
         }
 
         // ================= 动态生命（NavMesh 烘焙后调用） =================

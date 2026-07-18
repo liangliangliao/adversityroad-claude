@@ -45,12 +45,16 @@ namespace AdversityRoad.World
             if (cameraFill != null)
                 cameraFill.intensity = Mathf.Lerp(0.12f, cameraFillDay, dayFactor);
 
-            // 距离雾：极淡，只作远景层次，不遮挡视野（可看清整片区域与远方建筑）
+            // 距离雾：极淡，只作远景层次，不遮挡视野（可看清整片区域与远方建筑）。
+            // 雾色改为跟随"当前所在区域"的专属色彩脚本——沼泽偏绿、断桥幽蓝、
+            // 图书馆昏黄……切换区域时平滑过渡（避免瞬切），强化分区氛围。
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Exponential;
             RenderSettings.fogDensity = Mathf.Lerp(0.0028f, 0.0014f, dayFactor);
-            RenderSettings.fogColor = Color.Lerp(
-                new Color(0.08f, 0.1f, 0.17f), new Color(0.72f, 0.78f, 0.84f), dayFactor);
+            Color zoneFog = ZoneBuilder.FogTintOf(ZoneBuilder.IndexOfZone(ZoneBuilder.CurrentZoneId));
+            Color dayFog = Color.Lerp(zoneFog, new Color(0.72f, 0.78f, 0.84f), 0.55f);
+            Color fogTarget = Color.Lerp(zoneFog, dayFog, dayFactor);
+            RenderSettings.fogColor = Color.Lerp(RenderSettings.fogColor, fogTarget, Time.deltaTime * 2.5f);
 
             bool night = dayFactor < 0.25f;
             if (night != _lampsOn)

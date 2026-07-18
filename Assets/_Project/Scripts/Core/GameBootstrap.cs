@@ -47,6 +47,7 @@ namespace AdversityRoad.Core
             SetupEnvironmentVisuals();
             ZoneBuilder.BuildAll(_world);
             BakeNavMesh();
+            ZoneBuilder.SetupZoneMoods(_world);   // 分区色彩脚本（烘焙后建，触发盒不入寻路）
 
             int zone = CurrentChapterZone();
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
