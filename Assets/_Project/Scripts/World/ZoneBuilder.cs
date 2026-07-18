@@ -2381,6 +2381,11 @@ namespace AdversityRoad.World
                 }
                 m.color = c;
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                // 轻度光滑度：让表面在天光/主光下有微弱高光与反射，摆脱"纯哑光塑料"观感
+                // （偏低，避免整场湿滑感；金属度归零，保持非金属本色）
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.18f);
+                if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.18f);
+                if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
                 MatCache[c] = m; // 同色共享材质：大量建筑/窗户下控制移动端开销
             }
             r.sharedMaterial = m;
