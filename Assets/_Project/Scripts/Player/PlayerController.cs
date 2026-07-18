@@ -108,7 +108,9 @@ namespace AdversityRoad.Player
             Vector3 moveDir = CameraRelative(input);
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
-            float speed = runSpeed * MoveSpeedMultiplier * inputMag;
+            // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
+            float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
+            float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;

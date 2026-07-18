@@ -15,9 +15,11 @@ namespace AdversityRoad.UI
         public StatBar focusBar;
         public StatBar selfWorthBar;
         public StatBar boundaryBar;
-        public StatBar resolveBar;
+        public StatBar actionPowerBar;  // 行动力：抵抗拖延；过低移速下降
         public StatBar ruminationBar;   // 反刍值：越满越糟（与其它条相反）
+        public StatBar drainBar;        // 关系消耗值：越满越糟（技能冷却变长）
         public Text questText;
+        public Text goalText;       // 今日目标常驻行（目标板系统）
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
         public Text subtitleText;   // 底部字幕
         public Image[] momentumPips; // 意势点（0-3）
@@ -46,10 +48,13 @@ namespace AdversityRoad.UI
             GameEvents.OnLockStateChanged += OnLockState;
             GameEvents.OnSkillBanner += OnBanner;
             GameEvents.OnComboCount += OnComboCount;
+            GameEvents.OnGoalChanged += RefreshGoal;
+            RefreshGoal();
         }
 
         void OnDisable()
         {
+            GameEvents.OnGoalChanged -= RefreshGoal;
             GameEvents.OnPlayerHpChanged -= OnHp;
             GameEvents.OnMentalStatChanged -= OnMental;
             GameEvents.OnQuestUpdated -= OnQuest;
@@ -164,7 +169,7 @@ namespace AdversityRoad.UI
 
         void OnMental(string stat, float cur, float max)
         {
-            // 反刍值方向相反：数值"上升"才是受损，用紫色暗角脉冲提示
+            // 反刍/关系消耗方向相反：数值"上升"才是受损，用紫色暗角脉冲提示
             if (stat == "rumination")
             {
                 if (ruminationBar != null)
@@ -172,6 +177,16 @@ namespace AdversityRoad.UI
                     if (cur > ruminationBar.LastRatio * max + 0.5f)
                         Pulse(new Color(0.4f, 0.05f, 0.35f), 0.3f);
                     ruminationBar.SetValue(cur, max);
+                }
+                return;
+            }
+            if (stat == "relationshipDrain")
+            {
+                if (drainBar != null)
+                {
+                    if (cur > drainBar.LastRatio * max + 0.5f)
+                        Pulse(new Color(0.45f, 0.2f, 0.05f), 0.25f);
+                    drainBar.SetValue(cur, max);
                 }
                 return;
             }
@@ -183,7 +198,7 @@ namespace AdversityRoad.UI
                 case "focus": bar = focusBar; break;
                 case "selfWorth": bar = selfWorthBar; break;
                 case "boundary": bar = boundaryBar; break;
-                case "resolve": bar = resolveBar; break;
+                case "actionPower": bar = actionPowerBar; break;
             }
             if (bar != null)
             {
@@ -191,6 +206,11 @@ namespace AdversityRoad.UI
                 if (bar.LastRatio * max > cur + 0.5f) Pulse(new Color(0.35f, 0.05f, 0.5f), 0.35f);
                 bar.SetValue(cur, max);
             }
+        }
+
+        void RefreshGoal()
+        {
+            if (goalText != null) goalText.text = GoalSystem.HudLine();
         }
 
         void OnQuest(string questId)

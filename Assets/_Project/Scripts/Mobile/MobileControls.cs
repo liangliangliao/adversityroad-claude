@@ -65,6 +65,10 @@ namespace AdversityRoad.Mobile
             AddButton("Skill2", "气", new Vector2(-650, 425), 100, new Color(0.35f, 0.8f, 0.95f, 0.75f));
             AddButton("Skill1", "定", new Vector2(-435, 520), 100, new Color(0.4f, 0.55f, 0.9f, 0.75f));
             AddButton("Skill3", "还", new Vector2(-620, 560), 100, new Color(0.35f, 0.75f, 0.55f, 0.78f));
+            // 新迭代技能：火（五分钟火种·拖延克星）/ 盾（不读心盾）/ 收（注意力回收）
+            AddButton("Skill4", "火", new Vector2(-805, 500), 100, new Color(0.95f, 0.55f, 0.2f, 0.78f));
+            AddButton("Skill5", "盾", new Vector2(-450, 660), 100, new Color(0.5f, 0.65f, 0.95f, 0.78f));
+            AddButton("Skill6", "收", new Vector2(-640, 700), 100, new Color(0.3f, 0.85f, 0.9f, 0.78f));
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
             // 拔刀/收刀（带剑鞘武器）：右侧战斗按钮区左上，易点；无鞘武器时点了无效
             AddButton("Sheathe", "拔刀", new Vector2(-815, 470), 96, new Color(0.55f, 0.55f, 0.62f, 0.78f));

@@ -229,7 +229,7 @@ namespace AdversityRoad.EditorTools
             hud.focusBar     = CreateBar(canvasGo.transform, "专注",   2, new Color(0.2f, 0.7f, 0.95f));
             hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊",   3, new Color(0.6f, 0.4f, 0.9f));
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界",   4, new Color(0.3f, 0.8f, 0.5f));
-            hud.resolveBar   = CreateBar(canvasGo.transform, "决断",   5, new Color(0.95f, 0.5f, 0.3f));
+            hud.actionPowerBar = CreateBar(canvasGo.transform, "行动",   5, new Color(0.95f, 0.5f, 0.3f));
 
             // 任务提示文字（顶部中央）
             var questGo = new GameObject("QuestText", typeof(Text));

@@ -35,7 +35,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 940),
+            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1040),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
@@ -89,14 +89,35 @@ namespace AdversityRoad.UI
                 Refresh();
             });
 
+            // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
+            UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
+                new Vector2(0.5f, 1f), new Vector2(0, -650), new Vector2(760, 70),
+                new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
+                {
+                    var story = StoryManager.Instance;
+                    if (story == null || story.AllCleared)
+                    {
+                        GameEvents.RaiseSubtitle("主线已完结，没有可跳过的子章。");
+                        return;
+                    }
+                    string skipped = story.Current.title;
+                    story.SkipChapter();
+                    GameEvents.RaiseSubtitle("已跳过【" + skipped + "】——主线推进到下一子章。");
+                }, 24);
+
+            // 心理安全系统：快速退出战斗——任何时刻一键传送回安全屋（独居小屋）
+            UiUtil.MakeButton(_panel.transform, "一键返回安全屋（立刻脱离当前战斗）",
+                new Vector2(0.5f, 1f), new Vector2(0, -740), new Vector2(760, 70),
+                new Color(0.25f, 0.4f, 0.55f, 0.95f), ReturnToSafeHouse, 24);
+
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -660), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -830), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -724), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -894), new Vector2(900, 32));
 
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f), new Vector2(0, 56),
                 new Vector2(260, 74), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 28);
@@ -108,6 +129,21 @@ namespace AdversityRoad.UI
             UiUtil.MakeButton(_panel.transform, label, new Vector2(0.5f, 1f),
                 new Vector2(0, y), new Vector2(760, 70), Off, onClick, 24);
 
+        /// <summary>一键返回安全屋：不论身处哪个区域/是否交战，立即传送回独居小屋。</summary>
+        void ReturnToSafeHouse()
+        {
+            var player = FindObjectOfType<PlayerController>();
+            if (player == null) return;
+            var cc = player.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+            player.transform.position = new Vector3(0, 1.1f, -5);   // 独居小屋出生点
+            if (cc != null) cc.enabled = true;
+            player.MoveSpeedMultiplier = 1f;
+            World.ZoneBuilder.CurrentZoneId = "home";
+            Hide();
+            GameEvents.RaiseSubtitle("—— 已返回安全屋。喘口气，需要时再出发。——");
+        }
+
         void OnDelete()
         {
             if (!_deleteArmed)
@@ -117,6 +153,7 @@ namespace AdversityRoad.UI
                 return;
             }
             SaveSystem.DeleteAll();
+            Core.GrowthSystem.DeleteAll();   // 清空成长/图鉴/档案的内存缓存
             PlayerPrefs.DeleteAll();
             PlayerPrefs.Save();
             try

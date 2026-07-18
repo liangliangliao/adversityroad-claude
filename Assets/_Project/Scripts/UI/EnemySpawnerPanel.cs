@@ -34,7 +34,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(900, 700),
+            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(980, 1050),
                 new Color(0.08f, 0.08f, 0.12f, 0.96f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "添 加 心 魔 挑 战", 40,
@@ -50,27 +50,46 @@ namespace AdversityRoad.UI
                 EnemyType.TomorrowPhantom, EnemyType.CoughAssassin,
                 EnemyType.SelfDoubtWhisper, EnemyType.ShameMirror,
                 EnemyType.ProcrastinationShadow, EnemyType.NoReplyKing,
-                EnemyType.TotalResponsibilityJudge
+                EnemyType.TotalResponsibilityJudge,
+                EnemyType.OverreactGhost, EnemyType.MockingBystander,
+                EnemyType.SelfDenialGavel, EnemyType.StimulusAmplifier,
+                EnemyType.TomorrowMud, EnemyType.PerfectPreparer,
+                EnemyType.TomorrowKing, EnemyType.OldVoiceRepeater,
+                EnemyType.PastJudge, EnemyType.RuminationSwarm,
+                EnemyType.OldSelf,
+                EnemyType.DebtDodger, EnemyType.RuleTwister,
+                EnemyType.DebtShadow, EnemyType.GambleKing,
+                EnemyType.DebtCarKing, EnemyType.GazeEye,
+                EnemyType.MaskFace, EnemyType.ThousandEyeJudge,
+                EnemyType.ProvokerPasserby, EnemyType.TauntMirror,
+                EnemyType.GoalForgetter, EnemyType.RequestExpander,
+                EnemyType.GuiltThrower, EnemyType.GoodPersonCage,
+                EnemyType.InfinitePayer,
+                EnemyType.HungerHound, EnemyType.ColdWindBlade,
+                EnemyType.MedDebtShadow, EnemyType.ValleyColossus,
+                EnemyType.QuoteGhost, EnemyType.DoubtScholar,
+                EnemyType.ConceptMazeMaster, EnemyType.QuestionBeast,
+                EnemyType.InfiniteAsker
             };
             for (int i = 0; i < types.Length; i++)
             {
                 var t = types[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TypeLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-260 + (i % 3) * 270, -180 - (i / 3) * 90),
-                    new Vector2(250, 72), Off, () => SelectType(t), 24);
+                    new Vector2(0.5f, 1f), new Vector2(-390 + (i % 6) * 156, -164 - (i / 6) * 74),
+                    new Vector2(148, 60), Off, () => SelectType(t), 15);
                 _typeButtons.Add((btn, t));
             }
 
             var tierLabel = UiUtil.MakeText(_panel.transform, "TierLabel", "难度", 28,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-380, -460), new Vector2(120, 40));
+            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-400, -710), new Vector2(120, 40));
 
             EnemyTier[] tiers = { EnemyTier.Novice, EnemyTier.Standard, EnemyTier.Elite, EnemyTier.Chief };
             for (int i = 0; i < tiers.Length; i++)
             {
                 var t = tiers[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TierLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -520),
+                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -780),
                     new Vector2(175, 70), Off, () => SelectTier(t), 26);
                 _tierButtons.Add((btn, t));
             }

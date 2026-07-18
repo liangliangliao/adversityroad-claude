@@ -51,8 +51,11 @@ namespace AdversityRoad.Core
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
             BuildPlayer(_world.playerSpawns[zone]);
             BuildCamera();
+            EnemySpawnHook.Spawn = SpawnEnemy;   // Boss 战中召唤援军（明天之王/旧我）
             SpawnChapterEnemy();
+            SpawnZoneMinions();
             ZoneBuilder.SpawnLife(_world);
+            SpawnShadowGuardianIfEarned();
             BuildHUD();
             SetupChapterQuest();
             ShowChapterIntro();
@@ -64,7 +67,85 @@ namespace AdversityRoad.Core
                     Personalization.WeaknessAxis.SelfDoubt,
                     Personalization.WeaknessAxis.NoiseSensitivity,
                     Personalization.WeaknessAxis.Shame,
-                    Personalization.WeaknessAxis.BoundaryConflict);
+                    Personalization.WeaknessAxis.BoundaryConflict,
+                    Personalization.WeaknessAxis.FairnessSensitivity,
+                    Personalization.WeaknessAxis.FailureFear);
+        }
+
+        /// <summary>
+        /// 新章节区域的常驻小敌人：让审判庭/沼泽/回声馆不只有 Boss——
+        /// 探索路上会遭遇主题杂兵（uniqueId，不推进章节任务）。
+        /// </summary>
+        void SpawnZoneMinions()
+        {
+            var o = _world.zoneOrigins;
+            // 小题大做审判庭：旁观席前的小题大做鬼与旁观嘲笑者
+            SpawnEnemy(EnemyType.OverreactGhost, EnemyTier.Standard, o[6] + new Vector3(-6, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.OverreactGhost, EnemyTier.Novice, o[6] + new Vector3(7, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.MockingBystander, EnemyTier.Standard, o[6] + new Vector3(10, 1.1f, 10), true);
+            // 拖延沼泽：泥里的明日泥怪与完美准备者
+            SpawnEnemy(EnemyType.TomorrowMud, EnemyTier.Standard, o[7] + new Vector3(-8, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.TomorrowMud, EnemyTier.Novice, o[7] + new Vector3(12, 1.1f, -2), true);
+            SpawnEnemy(EnemyType.PerfectPreparer, EnemyTier.Standard, o[7] + new Vector3(-4, 1.1f, 10), true);
+            // 旧事回声馆：展柜长廊里的旧话复读者/过去判官/反刍虫群
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[8] + new Vector3(-7, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.PastJudge, EnemyTier.Standard, o[8] + new Vector3(8, 1.1f, -10), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[8] + new Vector3(0, 1.1f, 2), true);
+            // 两元赌桌：桌边的赖账牌手与规则篡改者
+            SpawnEnemy(EnemyType.DebtDodger, EnemyTier.Novice, o[9] + new Vector3(-5, 1.1f, -3), true);
+            SpawnEnemy(EnemyType.RuleTwister, EnemyTier.Novice, o[9] + new Vector3(6, 1.1f, -1), true);
+            // 债务车影：车阵间的欠款残影
+            SpawnEnemy(EnemyType.DebtShadow, EnemyTier.Standard, o[10] + new Vector3(-14, 1.1f, -6), true);
+            SpawnEnemy(EnemyType.DebtShadow, EnemyTier.Novice, o[10] + new Vector3(12, 1.1f, 2), true);
+            // 眼神审判走廊：凝视眼球与表情面具
+            SpawnEnemy(EnemyType.GazeEye, EnemyTier.Standard, o[11] + new Vector3(-4, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.GazeEye, EnemyTier.Novice, o[11] + new Vector3(4, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.MaskFace, EnemyTier.Standard, o[11] + new Vector3(0, 1.1f, 8), true);
+            // 陌生挑衅路口：街角的挑衅路人
+            SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Standard, o[12] + new Vector3(-13, 1.1f, 13), true);
+            SpawnEnemy(EnemyType.ProvokerPasserby, EnemyTier.Novice, o[12] + new Vector3(13, 1.1f, -13), true);
+            // 目标遗忘房：迷宫里的明日幻影与手机诱惑
+            SpawnEnemy(EnemyType.TomorrowPhantom, EnemyTier.Novice, o[13] + new Vector3(10, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.PerfectPreparer, EnemyTier.Novice, o[13] + new Vector3(-8, 1.1f, 3), true);
+            // 老实人消耗局：请求膨胀者与内疚投手
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Standard, o[14] + new Vector3(-16, 1.1f, 2), true);
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Novice, o[14] + new Vector3(16, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.GuiltThrower, EnemyTier.Standard, o[14] + new Vector3(0, 1.1f, 16), true);
+            // 无限代付走廊：走廊里的内疚投手与请求膨胀者
+            SpawnEnemy(EnemyType.GuiltThrower, EnemyTier.Standard, o[15] + new Vector3(-3, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.RequestExpander, EnemyTier.Standard, o[15] + new Vector3(3, 1.1f, 0), true);
+            // 饥饿荒巷：暗处游荡的饥饿犬影
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[16] + new Vector3(-5, 1.1f, -18), true);
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[16] + new Vector3(6, 1.1f, -2), true);
+            // 车库寒夜：空旷处成形的寒风刃与饿犬
+            SpawnEnemy(EnemyType.ColdWindBlade, EnemyTier.Novice, o[17] + new Vector3(-10, 1.1f, -12), true);
+            SpawnEnemy(EnemyType.HungerHound, EnemyTier.Novice, o[17] + new Vector3(10, 1.1f, 2), true);
+            // 病房回廊：低强度——只有两道医药债影的低语
+            SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(-4, 1.1f, -20), true);
+            SpawnEnemy(EnemyType.MedDebtShadow, EnemyTier.Novice, o[18] + new Vector3(4, 1.1f, -2), true);
+            // 哲学虚无图书馆：书架间的引文幽灵与怀疑学者
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Novice, o[19] + new Vector3(-11, 1.1f, -16), true);
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Standard, o[19] + new Vector3(11, 1.1f, -4), true);
+            SpawnEnemy(EnemyType.DoubtScholar, EnemyTier.Standard, o[19] + new Vector3(0, 1.1f, -10), true);
+            // 无限追问大厅：门与门之间的怀疑学者与反刍虫群
+            SpawnEnemy(EnemyType.DoubtScholar, EnemyTier.Standard, o[20] + new Vector3(-10, 1.1f, -24), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[20] + new Vector3(8, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Novice, o[20] + new Vector3(-4, 1.1f, 8), true);
+            // 意志断桥：桥头的引文幽灵（桥面留给走位，不设杂兵）
+            SpawnEnemy(EnemyType.QuoteGhost, EnemyTier.Standard, o[21] + new Vector3(-5, 1.1f, -42), true);
+            // 失败展览馆：展品间的旧话复读者与过去判官
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[22] + new Vector3(-8, 1.1f, -14), true);
+            SpawnEnemy(EnemyType.PastJudge, EnemyTier.Standard, o[22] + new Vector3(8, 1.1f, 0), true);
+            // 意志塔：广场石柱间的旧话复读者与反刍虫群（塔台留给登塔）
+            SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[23] + new Vector3(-9, 1.1f, -14), true);
+            SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[23] + new Vector3(9, 1.1f, -8), true);
+        }
+
+        /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
+        void SpawnShadowGuardianIfEarned()
+        {
+            if (PlayerPrefs.GetInt("adversity_shadow_guardian", 0) != 1 || _player == null) return;
+            Combat.ShadowGuardian.Spawn(_player.transform.position - _player.transform.forward * 2.5f);
         }
 
         void OnEnable() => GameEvents.OnChapterAdvanced += HandleChapterAdvanced;
@@ -76,13 +157,21 @@ namespace AdversityRoad.Core
             _currentChapterEnemy = null;
             SpawnChapterEnemy();
             SetupChapterQuest();
+
+            // 下一战场指引：明确说出目标区域 + 快速传送入口（跨区域章节不再迷路）
+            var story = StoryManager.Instance;
+            if (story != null && !story.AllCleared && story.Current != null)
+                GameEvents.RaiseSubtitle("下一战场：【" +
+                    ZoneBuilder.ZoneNameOf(story.Current.zoneIndex) +
+                    "】——右上角「传送」面板可直达。");
         }
 
         int CurrentChapterZone()
         {
             var story = StoryManager.Instance;
-            if (story == null || story.AllCleared)
-                return StoryManager.Chapters[StoryManager.Chapters.Length - 1].zoneIndex;
+            if (story == null) return 0;
+            // 主线完结后回到安全屋（独居小屋）：自由修炼从家出发
+            if (story.AllCleared) return 0;
             return story.Current.zoneIndex;
         }
 
@@ -129,6 +218,7 @@ namespace AdversityRoad.Core
                     ? safetySettings
                     : ScriptableObject.CreateInstance<SafetySettings>();
             CloudDialogueService.Ensure();
+            GrowthSystem.EnsureKillHook();   // 敌人图鉴击败计数
         }
 
         void SetupDayNight()
@@ -216,6 +306,9 @@ namespace AdversityRoad.Core
             // 保持画面干净。combat.innerAura 留空即可，PlayerCombatController 已做空判断。
 
             EquipSkills(skillExec);
+
+            // 技能树上限加成（边界/专注/自尊扩容节点）落到属性
+            GrowthSystem.ApplyMaxBonuses(_player.Stats);
         }
 
         void EquipSkills(SkillExecutor exec)
@@ -259,6 +352,39 @@ namespace AdversityRoad.Core
             guihuan.castLockTime = 0.35f;
             guihuan.isResponsibilityReturn = true;
             exec.equippedSkills.Add(guihuan);
+
+            // 五分钟火种：拖延沼泽/旧我冻结阶段核心技能——不等动力，先开始
+            var huozhong = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            huozhong.skillId = "wufenzhong_huozhong";
+            huozhong.displayName = "五分钟火种";
+            huozhong.description = "先做五分钟：恢复行动力、清除减速与身份冻结、意势+1。动力是被行动召回的。";
+            huozhong.staminaCost = 6;
+            huozhong.cooldown = 10;
+            huozhong.castLockTime = 0.3f;
+            huozhong.isFiveMinuteSpark = true;
+            exec.equippedSkills.Add(huozhong);
+
+            // 不读心盾：外界刺激线核心技能——无法确认的事，不当成事实
+            var budu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            budu.skillId = "buduxin_dun";
+            budu.displayName = "不读心盾";
+            budu.description = "十秒内抵消下一次心理攻击，并令幻影假目标显形消散。无法确认的事，我不把猜测当事实。";
+            budu.staminaCost = 8;
+            budu.cooldown = 14;
+            budu.castLockTime = 0.3f;
+            budu.isMindShield = true;
+            exec.equippedSkills.Add(budu);
+
+            // 注意力回收：刺激放大器 Boss 战核心技能——把注意力拿回来
+            var huishou = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            huishou.skillId = "zhuyili_huishou";
+            huishou.displayName = "注意力回收";
+            huishou.description = "清除全部幻影假目标、恢复专注、降低反刍。不是所有声音都要回应。";
+            huishou.staminaCost = 8;
+            huishou.cooldown = 9;
+            huishou.castLockTime = 0.3f;
+            huishou.isAttentionRecall = true;
+            exec.equippedSkills.Add(huishou);
         }
 
         void BuildCamera()
@@ -326,8 +452,11 @@ namespace AdversityRoad.Core
             if (story == null || story.AllCleared) return;
             var ch = story.Current;
             if (_currentChapterEnemy != null) return;
-            _currentChapterEnemy = SpawnEnemy(ch.enemyType, ch.enemyTier,
-                _world.enemySpawns[ch.zoneIndex], false);
+            // 章节可覆盖出生点（如第八章刺激放大器出现在街心广场而非区域默认点）
+            Vector3 pos = ch.spawnOffset != Vector3.zero
+                ? _world.zoneOrigins[ch.zoneIndex] + ch.spawnOffset
+                : _world.enemySpawns[ch.zoneIndex];
+            _currentChapterEnemy = SpawnEnemy(ch.enemyType, ch.enemyTier, pos, false);
         }
 
         /// <summary>玩家在"敌人+"面板自由添加的挑战。</summary>
@@ -430,9 +559,58 @@ namespace AdversityRoad.Core
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
 
-            // 全责法官专属：周期性抛掷责任球（真假责任判断机制）
-            if (type == EnemyType.TotalResponsibilityJudge)
-                root.AddComponent<ResponsibilityJudge>();
+            // Boss 专属行为组件：把方案里的关卡机制落到对应心魔身上
+            switch (type)
+            {
+                case EnemyType.TotalResponsibilityJudge:  // 抛掷责任球（真假责任判断）
+                    root.AddComponent<ResponsibilityJudge>();
+                    break;
+                case EnemyType.SelfDenialGavel:           // 标签弹幕/审判冲击波/否定重锤
+                    root.AddComponent<GavelBoss>();
+                    break;
+                case EnemyType.StimulusAmplifier:         // 噪声放大/幻影假目标
+                    root.AddComponent<StimulusAmplifierBoss>();
+                    break;
+                case EnemyType.TomorrowKing:              // 泥壳护体/召唤泥怪/深泥浇灌
+                    root.AddComponent<TomorrowKingBoss>();
+                    break;
+                case EnemyType.OldSelf:                   // 四阶段：复读/冻结/召回/整合
+                    root.AddComponent<OldSelfBoss>();
+                    break;
+                case EnemyType.GambleKing:                // 硬币弹幕/耍赖回血/账本对质破防
+                    root.AddComponent<GambleKingBoss>();
+                    break;
+                case EnemyType.DebtCarKing:               // 欠条护体/车灯眩光/召唤残影
+                    root.AddComponent<DebtCarKingBoss>();
+                    break;
+                case EnemyType.ThousandEyeJudge:          // 凝视光束/虚假凝视点/万目扫射
+                    root.AddComponent<ThousandEyeJudgeBoss>();
+                    break;
+                case EnemyType.TauntMirror:               // 挑衅窗口：追打变强、不理破绽
+                    root.AddComponent<TauntMirrorBoss>();
+                    break;
+                case EnemyType.GoalForgetter:             // 遗忘之雾/召唤完美准备者
+                    root.AddComponent<GoalForgetterBoss>();
+                    break;
+                case EnemyType.GoodPersonCage:            // 好人卡附着/困人牢笼
+                    root.AddComponent<GoodPersonCageBoss>();
+                    break;
+                case EnemyType.InfinitePayer:             // 索取冲击(格挡=破绽)/账单/代付之门
+                    root.AddComponent<InfinitePayerBoss>();
+                    break;
+                case EnemyType.ValleyColossus:            // 无力威压/内疚重石/求助电话破防
+                    root.AddComponent<ValleyColossusBoss>();
+                    break;
+                case EnemyType.ConceptMazeMaster:         // 引文护体(三灯台破)/引文弹幕/概念迷环
+                    root.AddComponent<ConceptMazeMasterBoss>();
+                    break;
+                case EnemyType.QuestionBeast:             // 问题弹幕连射/召唤引文幽灵
+                    root.AddComponent<QuestionBeastBoss>();
+                    break;
+                case EnemyType.InfiniteAsker:             // 追问弹幕/意义崩桥/行动答台破防
+                    root.AddComponent<InfiniteAskerBoss>();
+                    break;
+            }
 
             return root;
         }
@@ -491,9 +669,11 @@ namespace AdversityRoad.Core
             hud.focusBar     = CreateBar(canvasGo.transform, "专注", 2, new Color(0.2f, 0.7f, 0.95f));
             hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊", 3, new Color(0.6f, 0.4f, 0.9f));
             hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
-            hud.resolveBar   = CreateBar(canvasGo.transform, "决断", 5, new Color(0.95f, 0.5f, 0.3f));
+            hud.actionPowerBar = CreateBar(canvasGo.transform, "行动", 5, new Color(0.95f, 0.5f, 0.3f));
             hud.ruminationBar = CreateBar(canvasGo.transform, "反刍", 6, new Color(0.55f, 0.2f, 0.5f));
             hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
+            hud.drainBar      = CreateBar(canvasGo.transform, "消耗", 7, new Color(0.8f, 0.45f, 0.2f));
+            hud.drainBar.SetValue(0, 100);      // 关系消耗从空开始（越满越糟）
 
             // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
             hud.momentumPips = new Image[3];
@@ -502,7 +682,7 @@ namespace AdversityRoad.Core
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -286), new Vector2(34, 34));
+                    new Vector2(40 + i * 46, -310), new Vector2(34, 34));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -516,7 +696,7 @@ namespace AdversityRoad.Core
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -286), new Vector2(400, 40));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -310), new Vector2(400, 40));
             hud.comboText = comboText;
 
             // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
@@ -526,6 +706,13 @@ namespace AdversityRoad.Core
                 TextAnchor.MiddleCenter, Color.white);
             UiUtil.SetRect(qText, new Vector2(0.5f, 1f), new Vector2(0, -24), new Vector2(1000, 40));
             hud.questText = qText;
+
+            // 今日目标常驻行（目标板系统）：主线任务下方一行淡金色小字
+            var gText = UiUtil.MakeText(canvasGo.transform, "GoalText", "", 22,
+                TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.55f));
+            UiUtil.SetRect(gText, new Vector2(0.5f, 1f), new Vector2(0, -58), new Vector2(1000, 32));
+            hud.goalText = gText;
+            gText.text = GoalSystem.HudLine();   // HUD 建立时 OnEnable 已跑过，这里补一次初始显示
 
             var subText = UiUtil.MakeText(canvasGo.transform, "Subtitle", "", 28,
                 TextAnchor.MiddleCenter, new Color(1f, 0.92f, 0.75f));
@@ -584,6 +771,22 @@ namespace AdversityRoad.Core
             var reflectionPanel = ReflectionPanel.Create(canvasGo.transform);
             UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
                 new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
+
+            // 安全屋枢纽：复盘 / 技能树 / 装备套装 / 敌人图鉴 / 旧事档案 / 关卡传送
+            var growthPanel = GrowthPanel.Create(canvasGo.transform);
+            var equipmentPanel = EquipmentPanel.Create(canvasGo.transform);
+            var codexPanel = CodexPanel.Create(canvasGo.transform);
+            var archivePanel = ArchivePanel.Create(canvasGo.transform);
+            var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
+            var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
+            var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
+                reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
+                levelSelectPanel, missionBoardPanel);
+            UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
+                new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
+            // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口
+            UiUtil.MakeButton(canvasGo.transform, "传送", new Vector2(1, 1), new Vector2(-945, -116),
+                new Vector2(150, 64), new Color(0.3f, 0.45f, 0.6f, 0.85f), levelSelectPanel.Toggle, 26);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
@@ -756,7 +959,9 @@ namespace AdversityRoad.Core
                 return;
             }
             var ch = story.Current;
-            _battleFlow.ShowStory(ch.title, ch.intro, "出发");
+            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题
+            _battleFlow.ShowStory(story.CurrentAct.title,
+                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro, "出发");
         }
 
         // ================= 工具 =================
