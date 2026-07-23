@@ -192,13 +192,15 @@ namespace AdversityRoad.Core
         // ===================== 抽题（加权不放回） =====================
 
         /// <summary>
-        /// 从指定章节 60 题中加权不放回抽取一组题：
+        /// 从指定章节题池中加权不放回抽取一组题：固定 60 题 + AI 题
+        /// （已入库题永远参与；低风险临时题仅在 AI 自动命题开启时参与）。
         /// 基础权重 1；未答过 +3；曾答错 +4；energyTags 命中当前失衡能量 +3。
         /// </summary>
         public static List<QuizQuestion> DrawSession(string chapterId, List<string> imbalanceTags,
             int count = QuestionsPerSession)
         {
             var pool = new List<QuizQuestion>(ChapterQuestions(chapterId));
+            pool.AddRange(QuizAiBank.Usable(chapterId, QuizAiService.FeatureEnabled));
             var picked = new List<QuizQuestion>();
             if (pool.Count == 0) return picked;
             count = Mathf.Min(count, pool.Count);
@@ -309,6 +311,23 @@ namespace AdversityRoad.Core
             p.totalAnswered++;
             if (correct) p.totalCorrect++;
             SaveProgress();
+        }
+
+        /// <summary>玩家在本章答错过的概念（AI 自动命题的「动态题源」上下文用）。</summary>
+        public static List<string> WrongConceptTags(string chapterId, int max)
+        {
+            var p = Progress();
+            var list = new List<string>();
+            foreach (var q in ChapterQuestions(chapterId))
+            {
+                int idx = ProgressIndex(q.questionId);
+                if (idx >= 0 && p.wrongCounts[idx] > 0 && !list.Contains(q.conceptTag))
+                {
+                    list.Add(q.conceptTag);
+                    if (list.Count >= max) break;
+                }
+            }
+            return list;
         }
 
         /// <summary>章节掌握进度：已答对（至少一次）的题数。</summary>

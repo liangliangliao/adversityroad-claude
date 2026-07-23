@@ -155,6 +155,7 @@ namespace AdversityRoad.UI
             SaveSystem.DeleteAll();
             Core.GrowthSystem.DeleteAll();   // 清空成长/图鉴/档案的内存缓存
             Core.QuizSystem.DeleteAll();     // 清空答题记录的内存缓存
+            Core.QuizAiBank.DeleteAll();     // 删除 AI 命题题库（含本地文件）
             PlayerPrefs.DeleteAll();
             PlayerPrefs.Save();
             try

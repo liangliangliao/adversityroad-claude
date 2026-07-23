@@ -231,6 +231,7 @@ namespace AdversityRoad.Core
                     ? safetySettings
                     : ScriptableObject.CreateInstance<SafetySettings>();
             CloudDialogueService.Ensure();
+            QuizAiService.Ensure();          // AI 自动命题：低风险题自动校验后临时可用
             GrowthSystem.EnsureKillHook();   // 敌人图鉴击败计数
         }
 
@@ -876,6 +877,10 @@ namespace AdversityRoad.Core
             // 答题练习：休养生息题库随时可练（战斗中能量失衡时会自动触发）
             UiUtil.MakeButton(canvasGo.transform, "答题", new Vector2(1, 1), new Vector2(-605, -190),
                 new Vector2(150, 64), new Color(0.3f, 0.55f, 0.45f, 0.85f), quizPanel.OpenPractice, 26);
+            // AI 命题审核：开关 AI 自动命题、逐条定夺候选题能否长期入库
+            var quizReviewPanel = QuizReviewPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "命题审核", new Vector2(1, 1), new Vector2(-775, -190),
+                new Vector2(150, 64), new Color(0.5f, 0.4f, 0.3f, 0.85f), quizReviewPanel.Toggle, 24);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();

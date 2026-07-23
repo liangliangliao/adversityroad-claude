@@ -30,6 +30,9 @@ namespace AdversityRoad.Core
         public string apiKey = "";
         public string model = "";                // 留空用各提供商默认模型
 
+        [Header("AI 自动命题（休养生息题库·方案 V3.0 第四十六节）")]
+        public bool aiQuizEnabled = false;       // 开启后低风险题自动校验即临时可用；人工审核定长期入库
+
         static string FilePath => Application.persistentDataPath + "/aiprompts.json";
         static AIPromptConfig _cached;
 

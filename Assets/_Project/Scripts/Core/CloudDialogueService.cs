@@ -188,8 +188,9 @@ namespace AdversityRoad.Core
 
         // ---------- 解析与工具 ----------
 
-        /// <summary>从 OpenAI 兼容响应中提取 choices[0].message.content（轻量字符串解析）。</summary>
-        static string ExtractContent(string json)
+        /// <summary>从 OpenAI 兼容响应中提取 choices[0].message.content（轻量字符串解析）。
+        /// 公开给 QuizAiService（AI 自动命题）复用。</summary>
+        public static string ExtractContent(string json)
         {
             int msg = json.IndexOf("\"message\"", System.StringComparison.Ordinal);
             if (msg < 0) msg = 0;

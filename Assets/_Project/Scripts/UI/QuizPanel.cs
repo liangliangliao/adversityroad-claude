@@ -203,8 +203,12 @@ namespace AdversityRoad.UI
             _progressText.text = "第 " + (_index + 1) + "/" + _session.Count + " 题　｜　本章已掌握 "
                 + QuizSystem.ChapterMastered(chapterId) + "/"
                 + QuizSystem.ChapterQuestions(chapterId).Count + " 题";
+            string aiStatus = QuizAiBank.StatusOf(q.questionId);
+            string aiBadge = aiStatus == QuizAiBank.StatusTemp ? "　｜　AI 临时题·待人工审核"
+                : (aiStatus == QuizAiBank.StatusApproved ? "　｜　AI 题·已入库" : "");
             _metaText.text = "场景：" + q.sceneTag + "　｜　概念：" + q.conceptTag +
-                "　｜　形态：" + q.type + "　｜　难度：" + new string('★', Mathf.Clamp(q.difficulty, 1, 3));
+                "　｜　形态：" + q.type + "　｜　难度：" + new string('★', Mathf.Clamp(q.difficulty, 1, 3)) +
+                aiBadge;
             _questionText.text = q.question;
 
             for (int i = 0; i < 3; i++)
