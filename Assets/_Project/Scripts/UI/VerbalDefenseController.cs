@@ -28,6 +28,9 @@ namespace AdversityRoad.UI
 
         bool _active;
         float _deadline, _nextAllowed;
+
+        /// <summary>攻防进行中（休养生息答题等模态系统据此避让）。</summary>
+        public bool IsActive => _active;
         int _correctIndex;
         string _bestLine;
         WeaknessAxis _axis;
@@ -93,6 +96,8 @@ namespace AdversityRoad.UI
         {
             if (_active || _panel == null) return false;
             if (Time.unscaledTime < _nextAllowed) return false;
+            if (QuizPanel.Instance != null && QuizPanel.Instance.Active)
+                return false; // 休养生息答题中不弹言语攻防
             var gm = GameManager.Instance;
             if (gm != null && gm.safety != null && gm.safety.MentalDamageMultiplier() <= 0f)
                 return false; // 恢复模式：不发起攻防（也没有心理伤害）

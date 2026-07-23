@@ -63,6 +63,8 @@ namespace AdversityRoad.Player
         /// <summary>心理伤害按弱点轴落到对应属性。返回是否触发心理硬直。</summary>
         public bool TakeMentalDamage(Personalization.WeaknessAxis axis, float dmg)
         {
+            // 休养生息答题结束后的短暂护体：心理攻击无效（方案 V3.0：返回战斗给 2 秒保护）
+            if (Core.QuizSystem.IsMentalShielded) return false;
             dmg *= Core.GrowthSystem.MentalTakenMult(axis);
             // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
             AddRumination(dmg * 0.4f);

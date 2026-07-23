@@ -18,11 +18,13 @@ namespace AdversityRoad.UI
         LevelSelectPanel _levelSelect;
         MissionBoardPanel _missionBoard;
         ActionTrackerPanel _actionTracker;
+        QuizPanel _quiz;
         UnityEngine.UI.Button _actionBtn;
 
         public static SafeHousePanel Create(Transform canvas, ReflectionPanel reflection,
             GrowthPanel growth, EquipmentPanel equipment, CodexPanel codex, ArchivePanel archive,
-            LevelSelectPanel levelSelect, MissionBoardPanel missionBoard, ActionTrackerPanel actionTracker)
+            LevelSelectPanel levelSelect, MissionBoardPanel missionBoard, ActionTrackerPanel actionTracker,
+            QuizPanel quiz)
         {
             var comp = canvas.gameObject.AddComponent<SafeHousePanel>();
             comp._reflection = reflection;
@@ -33,6 +35,7 @@ namespace AdversityRoad.UI
             comp._levelSelect = levelSelect;
             comp._missionBoard = missionBoard;
             comp._actionTracker = actionTracker;
+            comp._quiz = quiz;
             comp.Build(canvas);
             return comp;
         }
@@ -59,6 +62,7 @@ namespace AdversityRoad.UI
             MakeEntry("图鉴 · 识别心魔模式", 5, () => Open(_codex != null ? (System.Action)_codex.Toggle : null));
             MakeEntry("档案 · 归档过的旧事", 6, () => Open(_archive != null ? (System.Action)_archive.Toggle : null));
             MakeEntry("关卡 · 传送到已解锁区域", 7, () => Open(_levelSelect != null ? (System.Action)_levelSelect.Toggle : null));
+            MakeEntry("答题 · 常识提醒与恢复训练", 8, () => Open(_quiz != null ? (System.Action)_quiz.OpenPractice : null));
 
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
                 new Vector2(0, 52), new Vector2(260, 72),

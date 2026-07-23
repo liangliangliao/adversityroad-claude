@@ -864,14 +864,18 @@ namespace AdversityRoad.Core
             var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
             var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
             var actionTrackerPanel = ActionTrackerPanel.Create(canvasGo.transform);
+            var quizPanel = QuizPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
-                levelSelectPanel, missionBoardPanel, actionTrackerPanel);
+                levelSelectPanel, missionBoardPanel, actionTrackerPanel, quizPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
             // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口
             UiUtil.MakeButton(canvasGo.transform, "传送", new Vector2(1, 1), new Vector2(-945, -116),
                 new Vector2(150, 64), new Color(0.3f, 0.45f, 0.6f, 0.85f), levelSelectPanel.Toggle, 26);
+            // 答题练习：休养生息题库随时可练（战斗中能量失衡时会自动触发）
+            UiUtil.MakeButton(canvasGo.transform, "答题", new Vector2(1, 1), new Vector2(-605, -190),
+                new Vector2(150, 64), new Color(0.3f, 0.55f, 0.45f, 0.85f), quizPanel.OpenPractice, 26);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
