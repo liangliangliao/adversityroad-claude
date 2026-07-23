@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using AdversityRoad.Combat;
 
 namespace AdversityRoad.World
@@ -50,6 +52,14 @@ namespace AdversityRoad.World
             index >= 0 && index < ZoneNames.Length ? ZoneNames[index] : "";
 
         public static int ZoneCount => ZoneIds.Length;
+
+        /// <summary>按区域 id 反查索引（找不到回退 0）。</summary>
+        public static int IndexOfZone(string id)
+        {
+            for (int i = 0; i < ZoneIds.Length; i++)
+                if (ZoneIds[i] == id) return i;
+            return 0;
+        }
 
         // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用
         static Vector3[] _spawnTable;
@@ -1965,9 +1975,34 @@ namespace AdversityRoad.World
                 new Color(0.3f, 0.28f, 0.32f));
             Ring(ctx, o, new Vector2(29, 33), 6, wall);
 
-            // 展品基座 + 裱框"失败"（红色射灯）
-            string[] failures = { "搞砸的演讲", "亏掉的积蓄", "断掉的关系", "放弃的计划", "错过的机会", "失败的创业" };
-            for (int i = 0; i < failures.Length; i++)
+            // 展品内容：优先用玩家真实的失败记录（败给过哪些心魔、各几次）——
+            // 让这一关成为"面对自己真实失败史"的个人化体验；无记录则退回通用主题文案。
+            var real = Core.FailureLog.Breakdown();
+            bool personal = real.Count > 0;
+            string introLine = "";
+            var exhibits = new List<(string label, string plaque, string reframe)>();
+            if (personal)
+            {
+                int falls = Core.FailureLog.TotalDeaths;
+                foreach (var r in real)
+                {
+                    exhibits.Add((
+                        r.label,
+                        "败给「" + r.label + "」× " + r.count,
+                        "你在这里败给「" + r.label + "」" + r.count + " 次——但你也一次次站了起来，它没有定义你。"));
+                    if (exhibits.Count >= 6) break;
+                }
+                introLine = "这些不是别人的失败——是你真实倒下过的地方（累计 " + falls + " 次）。看，然后走过去。";
+            }
+            else
+            {
+                string[] generic = { "搞砸的演讲", "亏掉的积蓄", "断掉的关系", "放弃的计划", "错过的机会", "失败的创业" };
+                foreach (var g in generic)
+                    exhibits.Add((g, g, "「" + g + "」被裱在这里——但发生过，不等于就是你。"));
+            }
+
+            // 展品基座 + 裱框"失败"（红色射灯）+ 可读铭牌 + 走近重构触发
+            for (int i = 0; i < exhibits.Count; i++)
             {
                 float x = (i % 2 == 0) ? -16f : 16f;
                 float z = -22 + (i / 2) * 18;
@@ -1977,6 +2012,9 @@ namespace AdversityRoad.World
                     new Color(0.55f, 0.45f, 0.25f));
                 Decoration(ctx, "ExhibitCanvas", o + new Vector3(x, 2.2f, z + 0.05f),
                     new Vector3(2f, 1.6f, 0.18f), new Color(0.2f, 0.18f, 0.24f));
+                Plaque(o + new Vector3(x, 2.2f, z + 0.2f), exhibits[i].plaque, new Color(0.92f, 0.6f, 0.5f));
+                Plaque(o + new Vector3(x, 1.05f, z + 1.6f), "展品 " + (i + 1), new Color(0.75f, 0.72f, 0.7f));
+
                 var spot = new GameObject("ExhibitSpot");
                 spot.transform.position = o + new Vector3(x, 5f, z);
                 var sl = spot.AddComponent<Light>();
@@ -1986,6 +2024,20 @@ namespace AdversityRoad.World
                 sl.intensity = 1.8f;
                 sl.color = new Color(0.95f, 0.4f, 0.35f);
                 sl.transform.rotation = Quaternion.Euler(90, 0, 0);
+
+                // 走近展品：把"这就是你"的审判，重构成"发生过，但不是你的全部"
+                var reframe = MakeZoneTrigger<ExhibitReframeZone>(o + new Vector3(x, 1.5f, z + 2.2f),
+                    new Vector3(5f, 3f, 4f));
+                reframe.line = exhibits[i].reframe;
+            }
+
+            // 一次性入场提示（仅当有真实失败记录时）：进门告诉玩家这是他自己的失败史
+            if (introLine.Length > 0)
+            {
+                var intro = MakeZoneTrigger<ExhibitReframeZone>(o + new Vector3(0, 1.5f, -8),
+                    new Vector3(40, 3f, 8f));
+                intro.line = introLine;
+                intro.once = true;
             }
 
             // 中央"荣誉"展台（其实是空的——失败没有资格定义你）
@@ -1993,6 +2045,9 @@ namespace AdversityRoad.World
                 new Color(0.45f, 0.42f, 0.48f));
             Decoration(ctx, "EmptyFrame", o + new Vector3(0, 2.6f, 6), new Vector3(2.8f, 2.2f, 0.25f),
                 new Color(0.6f, 0.55f, 0.35f));
+            Plaque(o + new Vector3(0, 2.6f, 6.2f), "（空）", new Color(0.7f, 0.85f, 0.75f));
+            Plaque(o + new Vector3(0, 1.15f, 4.1f),
+                "失败可以陈列，但没资格坐上「定义你是谁」的位置。", new Color(0.75f, 0.9f, 0.8f));
 
             // 长椅（复盘席）
             Bench(ctx, o + new Vector3(-6, 0, -8), 90);
@@ -2098,6 +2153,92 @@ namespace AdversityRoad.World
             return pan.transform;
         }
 
+        // ================= 分区氛围·色彩脚本（NavMesh 烘焙后调用，零美术） =================
+
+        /// <summary>一个区域的"色彩脚本"配置：色调滤镜/饱和/对比/暗角/色相偏移/雾色。</summary>
+        struct ZoneMood
+        {
+            public Color filter;    // 色调滤镜（乘算，近白微偏色）
+            public float sat;       // 饱和 -100..100
+            public float con;       // 对比 -100..100
+            public float vig;       // 暗角 0..1
+            public float hue;       // 色相偏移 -180..180
+            public Color fog;       // 该区专属雾色（供 DayNightCycle 混合）
+        }
+
+        static ZoneMood M(Color filter, float sat, float con, float vig, Color fog, float hue = 0f) =>
+            new ZoneMood { filter = filter, sat = sat, con = con, vig = vig, hue = hue, fog = fog };
+
+        // 24 区色彩脚本：每个场景按其心理主题给一套专属氛围（冷/暖/去饱和/压抑/神秘…）
+        static readonly ZoneMood[] Moods =
+        {
+            /*0  独居小屋*/    M(new Color(1.00f,0.92f,0.78f), -12, 8,  0.34f, new Color(0.09f,0.10f,0.15f)),
+            /*1  训练武馆*/    M(new Color(1.00f,0.97f,0.90f),   4, 6,  0.20f, new Color(0.55f,0.58f,0.62f)),
+            /*2  噪声街区*/    M(new Color(0.92f,0.96f,1.05f),  10, 8,  0.22f, new Color(0.62f,0.68f,0.78f)),
+            /*3  求职荒原*/    M(new Color(0.95f,0.96f,1.00f), -28, 6,  0.30f, new Color(0.66f,0.68f,0.72f)),
+            /*4  城市广场*/    M(new Color(1.05f,0.90f,0.72f),  14, 10, 0.24f, new Color(0.30f,0.24f,0.28f)),
+            /*5  责任法院*/    M(new Color(0.88f,0.95f,1.05f),  -6, 14, 0.30f, new Color(0.40f,0.46f,0.56f)),
+            /*6  审判庭*/      M(new Color(0.94f,0.97f,1.02f),  -8, 18, 0.34f, new Color(0.36f,0.40f,0.50f)),
+            /*7  拖延沼泽*/    M(new Color(0.85f,1.00f,0.85f), -18, 8,  0.36f, new Color(0.10f,0.16f,0.12f), -6),
+            /*8  回声馆*/      M(new Color(0.90f,0.94f,1.05f), -20, 6,  0.36f, new Color(0.14f,0.16f,0.24f)),
+            /*9  两元赌桌*/    M(new Color(1.05f,0.95f,0.70f),   6, 12, 0.32f, new Color(0.20f,0.17f,0.12f)),
+            /*10 债务车影*/    M(new Color(0.86f,0.92f,1.08f),   4, 14, 0.30f, new Color(0.10f,0.13f,0.22f)),
+            /*11 眼神走廊*/    M(new Color(0.90f,1.00f,0.98f),  -6, 12, 0.30f, new Color(0.30f,0.40f,0.42f), -4),
+            /*12 挑衅路口*/    M(new Color(1.04f,0.95f,0.85f),  14, 10, 0.24f, new Color(0.34f,0.30f,0.30f)),
+            /*13 目标遗忘房*/  M(new Color(0.92f,0.90f,1.02f), -18, 6,  0.34f, new Color(0.16f,0.15f,0.22f)),
+            /*14 老实人消耗局*/M(new Color(0.93f,0.98f,0.93f), -20, 8,  0.30f, new Color(0.34f,0.40f,0.36f)),
+            /*15 无限代付走廊*/M(new Color(0.88f,0.95f,1.05f), -10, 14, 0.32f, new Color(0.24f,0.30f,0.40f)),
+            /*16 饥饿荒巷*/    M(new Color(0.88f,0.93f,1.06f),   2, 12, 0.34f, new Color(0.10f,0.12f,0.20f)),
+            /*17 车库寒夜*/    M(new Color(0.86f,0.92f,1.08f), -26, 10, 0.34f, new Color(0.16f,0.20f,0.30f)),
+            /*18 病房回廊*/    M(new Color(0.96f,0.99f,1.03f), -14, 6,  0.26f, new Color(0.70f,0.74f,0.80f)),
+            /*19 图书馆*/      M(new Color(1.05f,0.94f,0.72f), -10, 8,  0.36f, new Color(0.18f,0.16f,0.12f)),
+            /*20 追问大厅*/    M(new Color(0.95f,0.88f,1.08f),  -4, 12, 0.34f, new Color(0.20f,0.16f,0.28f), 6),
+            /*21 意志断桥*/    M(new Color(0.82f,0.90f,1.12f),  -8, 16, 0.40f, new Color(0.06f,0.09f,0.18f)),
+            /*22 失败展览馆*/  M(new Color(0.96f,0.97f,1.03f),  -6, 16, 0.32f, new Color(0.30f,0.32f,0.40f)),
+            /*23 意志塔*/      M(new Color(1.04f,0.96f,0.80f),   6, 10, 0.28f, new Color(0.22f,0.22f,0.30f)),
+        };
+
+        /// <summary>该区专属雾色（DayNightCycle 按当前所在区取用；越界回退中性）。</summary>
+        public static Color FogTintOf(int zone) =>
+            zone >= 0 && zone < Moods.Length ? Moods[zone].fog : new Color(0.4f, 0.45f, 0.55f);
+
+        /// <summary>
+        /// 为每个区域生成一个"局部分级 Volume"——镜头进入该区即平滑切到该区色彩脚本。
+        /// 纯后处理、按镜头位置自动混合，不改 RenderSettings，不依赖美术资源。
+        /// NavMesh 烘焙之后再建（触发盒不参与寻路烘焙）。
+        /// </summary>
+        public static void SetupZoneMoods(WorldContext ctx)
+        {
+            for (int i = 0; i < ZoneCount && i < Moods.Length; i++)
+            {
+                var m = Moods[i];
+                var go = new GameObject("ZoneMood_" + ZoneIdOf(i));
+                go.transform.position = ctx.zoneOrigins[i];
+
+                var box = go.AddComponent<BoxCollider>();
+                box.isTrigger = true;
+                box.size = new Vector3(200, 90, 200);   // 覆盖整区（区间距 300，互不重叠）
+
+                var vol = go.AddComponent<Volume>();
+                vol.isGlobal = false;
+                vol.blendDistance = 24f;                // 边缘平滑过渡
+                vol.priority = 20f;                     // 高于全局分级(10)
+
+                var p = ScriptableObject.CreateInstance<VolumeProfile>();
+                vol.sharedProfile = p;
+
+                var ca = p.Add<ColorAdjustments>(true);
+                ca.colorFilter.Override(m.filter);
+                ca.saturation.Override(m.sat);
+                ca.contrast.Override(m.con);
+                if (Mathf.Abs(m.hue) > 0.01f) ca.hueShift.Override(m.hue);
+
+                var vg = p.Add<Vignette>(true);
+                vg.intensity.Override(m.vig);
+                vg.smoothness.Override(0.45f);
+            }
+        }
+
         // ================= 动态生命（NavMesh 烘焙后调用） =================
 
         public static void SpawnLife(WorldContext ctx)
@@ -2128,22 +2269,56 @@ namespace AdversityRoad.World
             {
                 for (int i = 0; i < 2; i++)
                 {
-                    var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    body.name = "Car";
+                    Color carCol = new Color(
+                        0.3f + (float)carRng.NextDouble() * 0.6f,
+                        0.3f + (float)carRng.NextDouble() * 0.6f,
+                        0.35f + (float)carRng.NextDouble() * 0.6f);
                     Vector3 start = Vector3.Lerp(route.a, route.b, 0.15f + 0.5f * i);
-                    body.transform.position = start;
-                    body.transform.localScale = new Vector3(1.9f, 1f, 4.2f);
-                    Paint(ctx, body, new Color(
-                        0.3f + (float)carRng.NextDouble() * 0.6f,
-                        0.3f + (float)carRng.NextDouble() * 0.6f,
-                        0.35f + (float)carRng.NextDouble() * 0.6f));
-                    var cabin = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    Object.DestroyImmediate(cabin.GetComponent<Collider>());
-                    cabin.transform.SetParent(body.transform, false);
-                    cabin.transform.localPosition = new Vector3(0, 0.7f, -0.1f);
-                    cabin.transform.localScale = new Vector3(0.85f, 0.55f, 0.5f);
-                    Paint(ctx, cabin, new Color(0.6f, 0.75f, 0.85f));
-                    var mover = body.AddComponent<CarMover>();
+
+                    // 车根：空物体承载碰撞与行驶（+z 为车头，CarMover 朝行进方向），
+                    // 车身/车顶/四轮/车窗/灯为子物件，在本地坐标（根缩放=1）装配，避免非均匀缩放畸变
+                    var root = new GameObject("Car");
+                    root.transform.position = start;
+                    var col = root.AddComponent<BoxCollider>();
+                    col.center = new Vector3(0, 0.55f, 0);
+                    col.size = new Vector3(1.9f, 1.1f, 4.2f);
+
+                    BuildCarPart(ctx, root.transform, "Car", new Vector3(0, 0.5f, 0),
+                        new Vector3(1.9f, 0.7f, 4.2f), carCol, false);                       // 车身
+                    BuildCarPart(ctx, root.transform, "Car", new Vector3(0, 1.0f, -0.15f),
+                        new Vector3(1.62f, 0.6f, 2.1f), carCol * 0.92f, true);                // 车顶座舱
+                    // 前后风挡与侧窗（深色玻璃）
+                    var glass = new Color(0.16f, 0.2f, 0.26f);
+                    BuildCarPart(ctx, root.transform, "CarGlass", new Vector3(0, 1.02f, 0.95f),
+                        new Vector3(1.45f, 0.5f, 0.1f), glass, true);
+                    BuildCarPart(ctx, root.transform, "CarGlass", new Vector3(0, 1.02f, -1.28f),
+                        new Vector3(1.45f, 0.5f, 0.1f), glass, true);
+                    // 车灯：前白后红
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(0.6f, 0.5f, 2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(1f, 0.97f, 0.85f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(-0.6f, 0.5f, 2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(1f, 0.97f, 0.85f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(0.6f, 0.5f, -2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(0.8f, 0.12f, 0.12f), true);
+                    BuildCarPart(ctx, root.transform, "CarLight", new Vector3(-0.6f, 0.5f, -2.1f),
+                        new Vector3(0.35f, 0.22f, 0.08f), new Color(0.8f, 0.12f, 0.12f), true);
+                    // 四只车轮（圆盘，轴沿 x）
+                    var rubber = new Color(0.1f, 0.1f, 0.11f);
+                    float[] wx = { -0.95f, 0.95f }, wz = { 1.3f, -1.3f };
+                    foreach (var xx in wx)
+                        foreach (var zz in wz)
+                        {
+                            var wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                            Object.DestroyImmediate(wheel.GetComponent<Collider>());
+                            wheel.name = "Wheel";
+                            wheel.transform.SetParent(root.transform, false);
+                            wheel.transform.localPosition = new Vector3(xx, 0.35f, zz);
+                            wheel.transform.localRotation = Quaternion.Euler(0, 0, 90f);
+                            wheel.transform.localScale = new Vector3(0.72f, 0.12f, 0.72f);
+                            Paint(ctx, wheel, rubber);
+                        }
+
+                    var mover = root.AddComponent<CarMover>();
                     mover.pointA = route.a;
                     mover.pointB = route.b;
                     mover.speed = 6f + (float)carRng.NextDouble() * 4f;
@@ -2192,16 +2367,51 @@ namespace AdversityRoad.World
                 0.4f + (float)rng.NextDouble() * 0.25f);
             Box(ctx, "Building", basePos + new Vector3(0, h / 2, 0), new Vector3(w, h, d), bodyColor);
 
-            // 正面窗户（朝向街道一侧，取 z 更接近区域中心的一面）
             float facing = basePos.z > 0 ? -1f : 1f;
+
+            // 底层裙房（略外扩的基座）：打破"一根方柱"的呆板轮廓
+            Color plinth = bodyColor * 0.82f; plinth.a = 1f;
+            Box(ctx, "BuildingBase", basePos + new Vector3(0, 1.1f, 0),
+                new Vector3(w + 0.8f, 2.2f, d + 0.8f), plinth);
+            // 沿街入口门廊
+            Decoration(ctx, "BuildingDoor", basePos + new Vector3(0, 1.2f, facing * (d / 2f + 0.5f)),
+                new Vector3(2.2f, 2.4f, 0.2f), new Color(0.2f, 0.22f, 0.26f));
+
+            // 顶部女儿墙压顶（外挑一圈）
+            Color parapet = bodyColor * 0.7f; parapet.a = 1f;
+            Box(ctx, "BuildingParapet", basePos + new Vector3(0, h + 0.25f, 0),
+                new Vector3(w + 0.6f, 0.5f, d + 0.6f), parapet);
+
+            // 屋顶设备：水箱 / 空调机组 / 通风管（消灭"平顶方盒"感）
+            var rc = new Color(0.5f, 0.5f, 0.54f);
+            var tank = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tank.name = "RoofTank";
+            tank.transform.position = basePos + new Vector3(-w * 0.22f, h + 1.1f, d * 0.15f);
+            tank.transform.localScale = new Vector3(1.6f, 1.0f, 1.6f);
+            Paint(ctx, tank, new Color(0.55f, 0.5f, 0.45f));
+            Box(ctx, "RoofAC", basePos + new Vector3(w * 0.24f, h + 0.7f, -d * 0.18f),
+                new Vector3(1.8f, 0.9f, 1.3f), rc);
+            Box(ctx, "RoofAC", basePos + new Vector3(w * 0.05f, h + 0.6f, d * 0.28f),
+                new Vector3(1.2f, 0.7f, 1.0f), rc);
+            var vent = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            vent.name = "RoofVent";
+            Object.DestroyImmediate(vent.GetComponent<Collider>());
+            vent.transform.position = basePos + new Vector3(-w * 0.05f, h + 0.9f, -d * 0.02f);
+            vent.transform.localScale = new Vector3(0.35f, 0.8f, 0.35f);
+            Paint(ctx, vent, new Color(0.4f, 0.4f, 0.44f));
+
+            // 正面窗户（带凹陷窗框，朝向街道一侧）
+            Color frame = bodyColor * 0.55f; frame.a = 1f;
             int rows = Mathf.Clamp(Mathf.FloorToInt(h / 3f), 2, 5);
             for (int r = 0; r < rows; r++)
                 for (int cIdx = 0; cIdx < 3; cIdx++)
-                    Decoration(ctx, "Window",
-                        basePos + new Vector3(-w / 3f + cIdx * w / 3f, 2f + r * (h - 3f) / rows,
-                            facing * (d / 2f + 0.06f)),
-                        new Vector3(1.4f, 1.1f, 0.1f),
-                        new Color(0.95f, 0.9f, 0.6f));
+                {
+                    Vector3 wp = basePos + new Vector3(-w / 3f + cIdx * w / 3f, 2f + r * (h - 3f) / rows,
+                        facing * (d / 2f + 0.05f));
+                    Decoration(ctx, "WindowFrame", wp, new Vector3(1.7f, 1.4f, 0.12f), frame);
+                    Decoration(ctx, "Window", wp + new Vector3(0, 0, facing * 0.04f),
+                        new Vector3(1.4f, 1.1f, 0.1f), new Color(0.95f, 0.9f, 0.6f));
+                }
         }
 
         static void Lamp(WorldContext ctx, Vector3 basePos)
@@ -2235,33 +2445,63 @@ namespace AdversityRoad.World
             }
         }
 
-        /// <summary>行道树：树干+双层树冠。</summary>
+        /// <summary>车辆部件：本地坐标下的立方子件（decorative=true 去碰撞体）。</summary>
+        static GameObject BuildCarPart(WorldContext ctx, Transform parent, string name,
+            Vector3 localPos, Vector3 localScale, Color color, bool decorative)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            if (decorative) Object.DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localScale = localScale;
+            Paint(ctx, go, color);
+            return go;
+        }
+
+        /// <summary>行道树：锥形树干 + 分叉枝 + 多球体积树冠（有机、非"棒棒糖"）。</summary>
         static void Tree(WorldContext ctx, Vector3 basePos)
         {
             var trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             trunk.name = "TreeTrunk";
-            trunk.transform.position = basePos + new Vector3(0, 1.4f, 0);
-            trunk.transform.localScale = new Vector3(0.3f, 1.4f, 0.3f);
-            Paint(ctx, trunk, new Color(0.4f, 0.28f, 0.16f));
+            trunk.transform.position = basePos + new Vector3(0, 1.5f, 0);
+            trunk.transform.localScale = new Vector3(0.34f, 1.5f, 0.34f);
+            Paint(ctx, trunk, new Color(0.36f, 0.26f, 0.16f));
 
-            var crown = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            crown.name = "TreeCrown";
-            Object.DestroyImmediate(crown.GetComponent<Collider>());
-            crown.transform.position = basePos + new Vector3(0, 3.4f, 0);
-            crown.transform.localScale = Vector3.one * 2.6f;
-            Paint(ctx, crown, new Color(0.2f, 0.45f, 0.2f));
+            // 两根分叉主枝（斜插入树冠）
+            var branchColor = new Color(0.34f, 0.24f, 0.15f);
+            int[] bs = { -1, 1 };
+            foreach (var sgn in bs)
+            {
+                var br = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                br.name = "TreeBranch";
+                Object.DestroyImmediate(br.GetComponent<Collider>());
+                br.transform.position = basePos + new Vector3(sgn * 0.5f, 3.0f, 0);
+                br.transform.rotation = Quaternion.Euler(0, 0, sgn * 32f);
+                br.transform.localScale = new Vector3(0.16f, 0.9f, 0.16f);
+                Paint(ctx, br, branchColor);
+                Player.CameraOcclusionFade.RegisterOccluder(br.GetComponent<Renderer>());
+            }
 
-            var crown2 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            crown2.name = "TreeCrown2";
-            Object.DestroyImmediate(crown2.GetComponent<Collider>());
-            crown2.transform.position = basePos + new Vector3(0.5f, 4.2f, 0.3f);
-            crown2.transform.localScale = Vector3.one * 1.8f;
-            Paint(ctx, crown2, new Color(0.26f, 0.52f, 0.24f));
-
-            // 登记为可遮挡物：挡在镜头与玩家之间时自动淡出（树冠无碰撞体，靠登记表识别）
+            // 多球树冠：不同大小/绿度/偏移堆出有机体积
+            var crowns = new (Vector3 off, float s, Color c)[]
+            {
+                (new Vector3(0f, 3.5f, 0f),    2.7f, new Color(0.20f, 0.44f, 0.20f)),
+                (new Vector3(0.9f, 4.1f, 0.4f),1.9f, new Color(0.26f, 0.52f, 0.24f)),
+                (new Vector3(-0.8f,4.0f,-0.5f),1.7f, new Color(0.22f, 0.48f, 0.22f)),
+                (new Vector3(0.2f, 4.7f, -0.2f),1.5f,new Color(0.30f, 0.56f, 0.28f)),
+            };
+            foreach (var cr in crowns)
+            {
+                var s = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                s.name = "TreeCrown";
+                Object.DestroyImmediate(s.GetComponent<Collider>());
+                s.transform.position = basePos + cr.off;
+                s.transform.localScale = Vector3.one * cr.s;
+                Paint(ctx, s, cr.c);
+                Player.CameraOcclusionFade.RegisterOccluder(s.GetComponent<Renderer>());
+            }
             Player.CameraOcclusionFade.RegisterOccluder(trunk.GetComponent<Renderer>());
-            Player.CameraOcclusionFade.RegisterOccluder(crown.GetComponent<Renderer>());
-            Player.CameraOcclusionFade.RegisterOccluder(crown2.GetComponent<Renderer>());
         }
 
         static void Bench(WorldContext ctx, Vector3 basePos, float yRot)
@@ -2364,13 +2604,38 @@ namespace AdversityRoad.World
             portal.targetName = ZoneNameOf(targetZone);
         }
 
-        static readonly Dictionary<Color, Material> MatCache = new Dictionary<Color, Material>();
+        /// <summary>世界空间铭牌（3D 文字，常朝镜头）：给展品/展台等标注可读文本。</summary>
+        static void Plaque(Vector3 pos, string text, Color color)
+        {
+            var go = new GameObject("Plaque");
+            go.transform.position = pos;
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 44;
+            tm.characterSize = 0.05f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = color;
+            var mr = go.GetComponent<MeshRenderer>();
+            if (tm.font != null) mr.material = tm.font.material;
+            go.AddComponent<FaceCamera>();
+        }
+
+        static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
         static void Paint(WorldContext ctx, GameObject go, Color c)
         {
             var r = go.GetComponent<MeshRenderer>();
             if (r == null) return;
-            if (!MatCache.TryGetValue(c, out var m) || m == null)
+
+            // 按物体名判定表面类别（墙/地/木/砖/金属…），并按尺寸算平铺次数——
+            // 同 (颜色, 类别, 平铺) 共享一份材质：既上纹理又不炸材质数（移动端友好，
+            // 保持 SRP Batcher 生效，不用 MaterialPropertyBlock）。
+            SurfaceKind kind = KindOf(go.name);
+            int tile = kind == SurfaceKind.None ? 0 : TileFor(go.transform.localScale);
+            string key = ColorKey(c) + "|" + (int)kind + "|" + tile;
+
+            if (!MatCache.TryGetValue(key, out var m) || m == null)
             {
                 if (ctx.mat != null) m = new Material(ctx.mat);
                 else
@@ -2381,9 +2646,65 @@ namespace AdversityRoad.World
                 }
                 m.color = c;
                 if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-                MatCache[c] = m; // 同色共享材质：大量建筑/窗户下控制移动端开销
+                // 轻度光滑度：让表面在天光/主光下有微弱高光与反射，摆脱"纯哑光塑料"观感
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.18f);
+                if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.18f);
+                if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
+
+                // 程序化细节纹理（灰度）作为 _BaseMap 与颜色相乘：保留分区配色，叠加真实表面
+                if (kind != SurfaceKind.None)
+                {
+                    var alb = ProceduralTextures.Albedo(kind);
+                    if (alb != null)
+                    {
+                        var sc = new Vector2(tile, tile);
+                        if (m.HasProperty("_BaseMap")) { m.SetTexture("_BaseMap", alb); m.SetTextureScale("_BaseMap", sc); }
+                        if (m.HasProperty("_MainTex")) { m.SetTexture("_MainTex", alb); m.SetTextureScale("_MainTex", sc); }
+                    }
+                }
+                MatCache[key] = m;
             }
             r.sharedMaterial = m;
+        }
+
+        /// <summary>颜色量化为稳定字符串键（0..255）。</summary>
+        static string ColorKey(Color c) =>
+            (int)(c.r * 255) + "," + (int)(c.g * 255) + "," + (int)(c.b * 255);
+
+        /// <summary>按物体尺寸估算平铺次数（约每 3 世界单位一格），限幅避免过密/过疏。</summary>
+        static int TileFor(Vector3 s)
+        {
+            float a = Mathf.Abs(s.x), b = Mathf.Abs(s.y), c = Mathf.Abs(s.z);
+            float max = Mathf.Max(a, Mathf.Max(b, c));
+            float min = Mathf.Min(a, Mathf.Min(b, c));
+            float mid = a + b + c - max - min;             // 取两个较大边的均值定平铺
+            return Mathf.Clamp(Mathf.RoundToInt((max + mid) * 0.5f / 3f), 1, 24);
+        }
+
+        /// <summary>按 GameObject 名称把表面归类到对应纹理（发光/玻璃/标牌等保持无纹理）。</summary>
+        static SurfaceKind KindOf(string n)
+        {
+            if (string.IsNullOrEmpty(n)) return SurfaceKind.None;
+            if (NameHas(n, "Glow", "Flame", "Light", "Warn", "Spark", "Window", "Sign",
+                    "Zebra", "Bill", "Crown", "Canvas", "Frame", "Spot", "Portal", "Glass",
+                    "Ped", "Ring")) return SurfaceKind.None;
+            if (NameHas(n, "Bench", "Desk", "Shelf", "Door", "Plank", "SleepBox", "Bed",
+                    "Tree", "Book", "Crate")) return SurfaceKind.Wood;
+            if (NameHas(n, "Pillar", "Car", "Station", "Basin", "Bin", "Pole", "Nurse",
+                    "Booth", "Machine", "Scale", "Rail", "Lamp", "Bus")) return SurfaceKind.Metal;
+            if (NameHas(n, "Building")) return SurfaceKind.Brick;
+            if (NameHas(n, "Road", "Ground", "Pave", "Asphalt", "Street")) return SurfaceKind.Ground;
+            if (NameHas(n, "Carpet", "Mat", "Rug", "Mire")) return SurfaceKind.Fabric;
+            if (NameHas(n, "Wall", "Divider", "Joint")) return SurfaceKind.Plaster;
+            if (NameHas(n, "Floor", "Tier", "Arena", "Seg", "Head", "Plinth", "Base",
+                    "Platform", "Pan", "Ramp")) return SurfaceKind.Concrete;
+            return SurfaceKind.None;
+        }
+
+        static bool NameHas(string n, params string[] keys)
+        {
+            foreach (var k in keys) if (n.Contains(k)) return true;
+            return false;
         }
     }
 
@@ -2395,6 +2716,36 @@ namespace AdversityRoad.World
             if (Camera.main != null)
                 transform.rotation = Quaternion.LookRotation(
                     transform.position - Camera.main.transform.position);
+        }
+    }
+
+    /// <summary>
+    /// 失败展览馆·走近重构触发：靠近某件"失败"展品时，把"这就是你"的审判
+    /// 重构成"发生过，但不是你的全部"。once=true 用作一次性入场提示。
+    /// </summary>
+    public class ExhibitReframeZone : MonoBehaviour
+    {
+        public string line;
+        public bool once;
+        public float cooldown = 12f;
+
+        bool _done;
+        float _readyAt;
+
+        void Awake()
+        {
+            var col = GetComponent<Collider>();
+            if (col != null) col.isTrigger = true;
+        }
+
+        void OnTriggerEnter(Collider other)
+        {
+            if (once && _done) return;
+            if (Time.time < _readyAt) return;
+            var p = other.GetComponentInParent<Player.PlayerController>();
+            if (p == null) return;
+            if (once) _done = true; else _readyAt = Time.time + cooldown;
+            if (!string.IsNullOrEmpty(line)) Core.GameEvents.RaiseSubtitle(line);
         }
     }
 }

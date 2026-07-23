@@ -223,6 +223,14 @@ namespace AdversityRoad.UI
             _boundInput.text = r[2];
             _actInput.text = r[3];
 
+            // 死亡诊断种子：刚倒下再战后首次打开复盘时，用诊断预填「感受/行动」两栏
+            if (FailureLog.HasSeed)
+            {
+                var seed = FailureLog.ConsumeSeed();
+                if (!string.IsNullOrEmpty(seed.feeling)) _feelInput.text = seed.feeling;
+                if (!string.IsNullOrEmpty(seed.action)) _actInput.text = seed.action;
+            }
+
             var stats = Stats();
             _ruminationText.text = stats != null
                 ? $"当前反刍值：{Mathf.RoundToInt(stats.rumination)} / {Mathf.RoundToInt(stats.maxRumination)}"
@@ -260,10 +268,13 @@ namespace AdversityRoad.UI
             });
             if (earned) GrowthSystem.AddPoints(1);
 
+            // 「行动」栏 → 现实行动承诺：下次回安全屋「行动」面板确认是否做到
+            ActionSystem.AddCommitment(_actInput.text, chapterTitle);
+
             GameAudio.Play(GameAudio.Sfx.Parry, 0.7f);
             GameEvents.RaiseSubtitle(earned
-                ? "已归档：事实留下，反刍清零，复盘点 +1。旧事进入档案，不再无限回放。"
-                : "已归档入档案。（反刍值需≥10 才发复盘点——先去面对困境，再回来复盘）");
+                ? "已归档：反刍清零，复盘点 +1。行动栏已记为现实承诺——下次回「行动」面板确认。"
+                : "已归档入档案。行动栏已记为现实承诺——去做，然后回「行动」面板确认。");
             Refresh();
         }
 

@@ -44,8 +44,10 @@ namespace AdversityRoad.Core
 
             _world = new WorldContext { mat = baseMaterial };
             SetupDayNight();
+            SetupEnvironmentVisuals();
             ZoneBuilder.BuildAll(_world);
             BakeNavMesh();
+            ZoneBuilder.SetupZoneMoods(_world);   // 分区色彩脚本（烘焙后建，触发盒不入寻路）
 
             int zone = CurrentChapterZone();
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
@@ -59,6 +61,9 @@ namespace AdversityRoad.Core
             BuildHUD();
             SetupChapterQuest();
             ShowChapterIntro();
+
+            // 回访提醒：若有隔天未确认的现实行动承诺，稍后温和提示去「行动」面板确认
+            if (ActionSystem.DuePendingCount > 0) Invoke(nameof(NudgeActions), 5f);
 
             // 云端台词池预热：进区域即后台预取，喊话零延迟
             if (CloudDialogueService.Instance != null)
@@ -139,6 +144,14 @@ namespace AdversityRoad.Core
             // 意志塔：广场石柱间的旧话复读者与反刍虫群（塔台留给登塔）
             SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[23] + new Vector3(-9, 1.1f, -14), true);
             SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[23] + new Vector3(9, 1.1f, -8), true);
+        }
+
+        /// <summary>回访提醒：把复盘里许下的现实行动带回玩家眼前（安全屋「行动」面板确认）。</summary>
+        void NudgeActions()
+        {
+            int n = ActionSystem.DuePendingCount;
+            if (n > 0)
+                GameEvents.RaiseSubtitle("有 " + n + " 条现实行动等你确认——回安全屋「行动」面板，告诉游戏你做到了没有。");
         }
 
         /// <summary>终局达成过（旧我已整合）：影子护卫随行出生。</summary>
@@ -230,6 +243,60 @@ namespace AdversityRoad.Core
             var cycle = go.AddComponent<DayNightCycle>();
             cycle.sun = sun;
             _world.dayNight = cycle;
+        }
+
+        /// <summary>
+        /// 环境画质产品化（零美术资产，纯运行时，兼容 CI 无头打包）：
+        /// 1) 程序化天空盒——随昼夜太阳方向自动变化，替换纯色背景；
+        /// 2) 天空反射——光滑/金属表面反射天光，廉价增真实感；
+        /// 3) 运行时全局分级 Volume——在管线默认档(Bloom/Tonemapping/Vignette)之上
+        ///    叠加轻度对比/饱和/暖调与更实在的辉光，把"塑料平光"推向"电影质感"。
+        /// 防晕项（运动模糊/色差/畸变/噪点）保持关闭。
+        /// </summary>
+        void SetupEnvironmentVisuals()
+        {
+            // —— 程序化天空盒 ——（Skybox/Procedural 已加入 Always Included Shaders 防剥离）
+            var skyShader = Shader.Find("Skybox/Procedural");
+            if (skyShader != null)
+            {
+                var sky = new Material(skyShader);
+                if (sky.HasProperty("_SunSize")) sky.SetFloat("_SunSize", 0.04f);
+                if (sky.HasProperty("_SunSizeConvergence")) sky.SetFloat("_SunSizeConvergence", 5f);
+                if (sky.HasProperty("_AtmosphereThickness")) sky.SetFloat("_AtmosphereThickness", 1.1f);
+                if (sky.HasProperty("_SkyTint")) sky.SetColor("_SkyTint", new Color(0.5f, 0.6f, 0.75f));
+                if (sky.HasProperty("_GroundColor")) sky.SetColor("_GroundColor", new Color(0.27f, 0.27f, 0.31f));
+                if (sky.HasProperty("_Exposure")) sky.SetFloat("_Exposure", 1.15f);
+                RenderSettings.skybox = sky;
+            }
+            if (_world != null && _world.dayNight != null && _world.dayNight.sun != null)
+                RenderSettings.sun = _world.dayNight.sun;
+
+            // —— 天空环境反射 ——（金属/光滑表面反射天光）
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+            RenderSettings.reflectionIntensity = 0.7f;
+            DynamicGI.UpdateEnvironment();
+
+            // —— 运行时全局分级 Volume ——（叠加在管线默认档之上，priority 更高）
+            var volGo = new GameObject("GlobalPostVolume");
+            var vol = volGo.AddComponent<Volume>();
+            vol.isGlobal = true;
+            vol.priority = 10f;
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            vol.sharedProfile = profile;
+
+            var color = profile.Add<ColorAdjustments>(true);
+            color.contrast.Override(12f);                                   // 轻度增强对比
+            color.saturation.Override(8f);                                  // 轻度提饱和
+            color.colorFilter.Override(new Color(1f, 0.98f, 0.94f));        // 极淡暖调，去数码冷白
+
+            var bloom = profile.Add<Bloom>(true);
+            bloom.intensity.Override(0.7f);                                 // 更实在的高光辉光
+            bloom.threshold.Override(1.05f);
+            bloom.scatter.Override(0.62f);
+
+            var vignette = profile.Add<Vignette>(true);
+            vignette.intensity.Override(0.22f);                            // 极淡暗角聚焦（低于防晕上限）
+            vignette.smoothness.Override(0.4f);
         }
 
         void BakeNavMesh()
@@ -402,6 +469,23 @@ namespace AdversityRoad.Core
             tpc.player = _player;
             tpc.lockOn = _player.GetComponent<LockOnSystem>();
             _player.cameraTransform = camGo.transform;
+
+            // 画质产品化：运行时建的相机默认不开后处理——管线里的 Bloom/Tonemapping/
+            // Vignette 全都不生效（画面发"平"发"塑料"）。这里显式打开后处理 + HDR +
+            // FXAA（移动端友好的抗锯齿）+ 天空盒清屏，让全局体积分级/辉光真正呈现。
+            var cam = camGo.GetComponent<Camera>();
+            if (cam != null)
+            {
+                cam.allowHDR = true;
+                cam.allowMSAA = true;
+                cam.clearFlags = CameraClearFlags.Skybox;
+            }
+            var camData = camGo.GetComponent<UniversalAdditionalCameraData>();
+            if (camData == null) camData = camGo.AddComponent<UniversalAdditionalCameraData>();
+            camData.renderPostProcessing = true;
+            camData.antialiasing = AntialiasingMode.FastApproximateAntialiasing;
+            camData.antialiasingQuality = AntialiasingQuality.Medium;
+            camData.renderShadows = true;
 
             // 遮挡淡出：树木等挡在镜头与玩家之间时自动透明
             var occ = camGo.GetComponent<CameraOcclusionFade>();
@@ -779,9 +863,10 @@ namespace AdversityRoad.Core
             var archivePanel = ArchivePanel.Create(canvasGo.transform);
             var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
             var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
+            var actionTrackerPanel = ActionTrackerPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
-                levelSelectPanel, missionBoardPanel);
+                levelSelectPanel, missionBoardPanel, actionTrackerPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
             // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口

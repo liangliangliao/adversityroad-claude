@@ -288,6 +288,8 @@ namespace AdversityRoad.Core
             _unlocked = null;
             _log = null;
             GoalSystem.DeleteAll();
+            ActionSystem.DeleteAll();
+            FailureLog.DeleteAll();
         }
     }
 

@@ -982,6 +982,9 @@ namespace AdversityRoad.Combat
                 return;
             }
 
+            // 死亡归因：记录最近对玩家造成伤害的心魔（供失败诊断）
+            if (!string.IsNullOrEmpty(dmg.attackerId)) Core.FailureLog.NoteHit(dmg.attackerId);
+
             if (dmg.mentalDamage > 0)
             {
                 float mult = GameManager.Instance != null && GameManager.Instance.safety != null

@@ -33,7 +33,7 @@ namespace AdversityRoad.UI
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -46), new Vector2(700, 56));
 
             var hint = UiUtil.MakeText(_panel.transform, "Hint",
-                "归档过的战斗复盘都在这里——事实留下了，回放停止了。", 24,
+                "归档过的战斗复盘都在这里——事实留下了，回放停止了。顶部为失败洞察。", 24,
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.85f));
             UiUtil.SetRect(hint, new Vector2(0.5f, 1f), new Vector2(0, -96), new Vector2(1000, 34));
 
@@ -71,18 +71,48 @@ namespace AdversityRoad.UI
             Refresh();
         }
 
+        /// <summary>失败洞察块（置于档案顶部）：累计倒下 / 最常败给谁 / 逐项明细。</summary>
+        string FailureInsight()
+        {
+            int falls = FailureLog.TotalDeaths;
+            if (falls <= 0) return "";
+            var sb = new System.Text.StringBuilder();
+            sb.Append("【失败洞察】累计倒下 ").Append(falls).Append(" 次");
+            var mc = FailureLog.MostCommon();
+            if (mc.count > 0)
+                sb.Append(" · 最常败给「").Append(mc.label).Append("」").Append(mc.count).Append(" 次");
+            sb.Append("\n失败是事实，不是身份——你每次都站了起来。\n");
+            var bd = FailureLog.Breakdown();
+            if (bd.Count > 0)
+            {
+                sb.Append("· ");
+                int shown = Mathf.Min(bd.Count, 4);
+                for (int i = 0; i < shown; i++)
+                {
+                    if (i > 0) sb.Append("，");
+                    sb.Append(bd[i].label).Append(' ').Append(bd[i].count);
+                }
+                sb.Append('\n');
+            }
+            sb.Append('\n');
+            return sb.ToString();
+        }
+
         void Refresh()
         {
+            string insight = FailureInsight();
             var entries = GrowthSystem.Reflections();
             if (entries.Count == 0)
             {
-                _bodyText.text = "档案还是空的。\n\n战斗之后打开「复盘」面板，把这一战整理成四栏并归档——\n旧事会从脑内回声，变成这里的一页档案。";
+                _bodyText.text = insight +
+                    "档案还是空的。\n\n战斗之后打开「复盘」面板，把这一战整理成四栏并归档——\n旧事会从脑内回声，变成这里的一页档案。";
                 _pageText.text = "";
                 return;
             }
 
-            // 最新的在最前
+            // 最新的在最前；失败洞察只在第 1 页顶部显示
             var sb = new System.Text.StringBuilder();
+            if (_page == 0) sb.Append(insight);
             int start = entries.Count - 1 - _page * PerPage;
             for (int i = start; i > start - PerPage && i >= 0; i--)
             {
