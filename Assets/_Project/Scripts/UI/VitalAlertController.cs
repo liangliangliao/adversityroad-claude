@@ -18,7 +18,7 @@ namespace AdversityRoad.UI
     {
         const float LowRatio = 0.40f;       // 一级：偏低
         const float SevereRatio = 0.20f;    // 二级：告急
-        const float HpCriticalRatio = 0.15f;// 生命垂危（弹窗）
+        const float HpCriticalRatio = Player.PlayerStats.CriticalHpRatio; // 生命垂危（弹窗，与数据层同源）
         const float Hysteresis = 0.08f;     // 迟滞回差：回升超过阈值+8%才允许再次警告
         const float PromptCooldown = 30f;   // 玩家选择「继续战斗」后弹窗静默时长
 
@@ -40,6 +40,21 @@ namespace AdversityRoad.UI
             comp._quiz = quiz;
             comp.Build(canvas);
             return comp;
+        }
+
+        void OnEnable() => GameEvents.OnLifeThreatened += ForcePrompt;
+        void OnDisable() => GameEvents.OnLifeThreatened -= ForcePrompt;
+
+        /// <summary>事件驱动的强制垂危弹窗：掉血穿越垂危线或濒死守护触发时立即弹出——
+        /// 不依赖每帧轮询（单次高伤害快速穿越会漏检），并且无视「继续战斗」的 30 秒静默期
+        /// （生死关头必须重新给出选择）。</summary>
+        void ForcePrompt()
+        {
+            if (_promptOpen || _prompt == null) return;
+            if (_quiz != null && _quiz.Active) return;   // 已在答题中恢复，不叠加弹窗
+            if (_player == null) _player = FindObjectOfType<PlayerController>();
+            if (_player == null || _player.Stats == null || _player.Stats.IsDead) return;
+            OpenPrompt(_player.Stats);
         }
 
         void Build(Transform canvas)

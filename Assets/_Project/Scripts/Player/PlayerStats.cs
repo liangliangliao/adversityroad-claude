@@ -56,10 +56,34 @@ namespace AdversityRoad.Player
                 AddRelationshipDrain(-drainDecayPerSec * dt);
         }
 
+        /// <summary>生命垂危线（比例）与濒死守护冷却。</summary>
+        public const float CriticalHpRatio = 0.15f;
+        [NonSerialized] float _nextLastStand = -999f;
+
         public void TakePhysicalDamage(float dmg)
         {
+            float before = hp;
             hp = Mathf.Max(0, hp - dmg);
+
+            // 濒死守护：从高于 1 血被一击打穿至 0 时，拦下这次死亡、留 1 点生命，
+            // 并强制弹出「生命垂危」决策——保证严重警告一定出现在倒下之前，
+            // 而不是被单次高伤害直接跳过垂危线（事件驱动，不依赖每帧轮询）。
+            // 90 秒冷却一次：不是无敌，是最后一次选择的机会。
+            if (hp <= 0 && before > 1f && Time.unscaledTime >= _nextLastStand)
+            {
+                hp = 1f;
+                _nextLastStand = Time.unscaledTime + 90f;
+                GameEvents.RaisePlayerHpChanged(hp, maxHp);
+                GameEvents.RaiseSubtitle("濒死守护——这一击没能击倒你，但下一击可以。");
+                GameEvents.RaiseLifeThreatened();
+                return;
+            }
+
             GameEvents.RaisePlayerHpChanged(hp, maxHp);
+            // 掉血穿越垂危线：立即抛事件强制弹窗（轮询在两帧之间会漏掉快速穿越）
+            if (!IsDead && maxHp > 0 &&
+                hp / maxHp < CriticalHpRatio && before / maxHp >= CriticalHpRatio)
+                GameEvents.RaiseLifeThreatened();
             if (IsDead) GameEvents.RaisePlayerDied("physical");
         }
 

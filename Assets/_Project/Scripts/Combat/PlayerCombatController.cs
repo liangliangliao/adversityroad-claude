@@ -757,9 +757,10 @@ namespace AdversityRoad.Combat
                 float d = to.magnitude;
                 if (d > range || d < 0.01f) continue;
                 float ang = hasDir ? Vector3.Angle(preferDir, to)
-                                   : Vector3.Angle(transform.forward, to) * 0.5f;
+                                   : Vector3.Angle(transform.forward, to);
                 if (hasDir && ang > 100f) continue;   // 摇杆明确指向别处：不吸这个敌人
-                float score = d + ang * 0.045f;
+                if (!hasDir && ang > 90f) continue;   // 无输入只吸正面锥内：不转身咬背后的敌人
+                float score = d + ang * (hasDir ? 0.045f : 0.0225f);
                 if (score < bestScore) { bestScore = score; best = e.transform; }
             }
             return best;
@@ -898,20 +899,26 @@ namespace AdversityRoad.Combat
             GameEvents.RaiseMomentumChanged(_momentum);
         }
 
-        /// <summary>瞄准目标（普攻转向与远程技能共用）：手动锁定的目标优先，
-        /// 否则取最近的存活敌人。</summary>
+        /// <summary>瞄准目标（普攻转向、技能连招与远程瞄准共用，与普攻同一套吸附规则）：
+        /// ① 手动锁定的目标绝对优先（锁谁打谁）；
+        /// ② 「攻击吸附」在设置中关闭 → 返回 null，任何动作/技能都不自动转向敌人；
+        /// ③ 吸附开启且未锁定 → 只在正面 90° 锥内软吸附最近敌人（不会转身咬背后的敌人）。</summary>
         public Transform AutoAimTarget()
         {
             var locked = LockedTarget();
             if (locked != null) return locked;
+            if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：技能也完全手操
             var enemies = FindObjectsOfType<AI.EnemyController>();
             Transform best = null;
             float bestDist = Mathf.Max(autoAimRange, 14f);
             foreach (var e in enemies)
             {
                 if (e.State == AI.EnemyState.Dead) continue;
-                float d = Vector3.Distance(transform.position, e.transform.position);
-                if (d < bestDist) { bestDist = d; best = e.transform; }
+                Vector3 to = e.transform.position - transform.position; to.y = 0;
+                float d = to.magnitude;
+                if (d >= bestDist || d < 0.01f) continue;
+                if (Vector3.Angle(transform.forward, to) > 90f) continue;   // 正面锥限制
+                bestDist = d; best = e.transform;
             }
             return best;
         }
