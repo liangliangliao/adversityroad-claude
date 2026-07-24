@@ -493,6 +493,9 @@ namespace AdversityRoad.AI
         {
             ShowTelegraph(false);
             if (State == EnemyState.Dead || _player == null) return;
+            // 凝念能量门禁：每发耗能，打空须停火回气（不能无限制零成本连发）
+            if (!EnemyRangedEnergy.TryFire(this, _player.position, 20f, MaxRangedReach + 2f))
+                return;
             Vector3 origin = transform.position + Vector3.up * 1.3f + transform.forward * 0.8f;
             Vector3 targetPos = _player.position + Vector3.up * 1.0f;
             Projectile.Launch(transform, origin, targetPos - origin,

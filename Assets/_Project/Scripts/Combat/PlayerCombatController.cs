@@ -1079,6 +1079,10 @@ namespace AdversityRoad.Combat
                 // 蓄力气场=防御姿态：受物理伤害大减（敌人也几乎无法近身）
                 bool chargeGuard = _charging;
                 if (chargeGuard) phys *= 0.25f;
+                // 技能连招霸体（Finisher 施展中）：轻击不打断动作且伤害 ×0.6——
+                // 五大连招/超必杀开出来就能完整演完；击倒级重击仍会打断（有代价的豪赌）
+                bool skillArmor = _fsm.Current == CombatState.Finisher;
+                if (skillArmor) phys *= 0.6f;
                 _player.Stats.TakePhysicalDamage(phys);
                 // 心理能量动态：挨打的挫感落到意志/专注/反刍（格挡住的不算）
                 if (!blocked && Dyn() != null)
@@ -1133,7 +1137,7 @@ namespace AdversityRoad.Combat
                         Vector3 fly = transform.position - dmg.sourcePosition; fly.y = 0;
                         if (fly.sqrMagnitude > 0.01f) StartCoroutine(KnockFly(fly.normalized));
                     }
-                    else if (!chargeGuard)
+                    else if (!chargeGuard && !skillArmor)
                     {
                         _fsm.RequestState(CombatState.HitReaction, 0.4f);
                     }

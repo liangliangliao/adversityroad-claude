@@ -222,6 +222,10 @@ namespace AdversityRoad.Combat
 
         void StartCombo(IEnumerator combo)
         {
+            // 起势保护（大作惯例：技能起手无敌帧）：0.65s 内完全免伤——
+            // 保证连招能顺利开出来，不被敌人抢先一下打断在起手式上；
+            // 其后的连招段落由霸体接管（轻击不打断，见 PlayerCombatController.TakeHit）
+            _player.SetInvincible(0.65f);
             if (_comboRoutine != null) StopCoroutine(_comboRoutine);
             _comboRoutine = StartCoroutine(combo);
         }
