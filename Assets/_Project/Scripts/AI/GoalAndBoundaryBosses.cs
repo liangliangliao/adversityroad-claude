@@ -341,10 +341,11 @@ namespace AdversityRoad.AI
                 {
                     _playerCombat.TakeHit(new DamageInfo
                     {
-                        physicalDamage = _ec.profile.physicalDamage * 0.7f,
-                        mentalDamage = _ec.profile.mentalDamage * 0.8f,
+                        // 索取冲击是「默认索取型」心理攻击：压边界+推高关系消耗，不扣 HP
+                        physicalDamage = 0f,
+                        mentalDamage = _ec.profile.mentalDamage * 0.9f,
                         mentalAxis = Personalization.WeaknessAxis.BoundaryConflict,
-                        knockback = 3f,
+                        isMentalOnly = true,
                         sourcePosition = transform.position,
                         attackerId = _ec.profile.enemyId
                     });

@@ -226,10 +226,11 @@ namespace AdversityRoad.AI
                     _playerCombat != null && pc != null && !pc.IsInvincible)
                     _playerCombat.TakeHit(new DamageInfo
                     {
-                        physicalDamage = _ec.profile.physicalDamage * 0.8f,
-                        mentalDamage = _ec.profile.mentalDamage * 0.6f,
+                        // 车灯眩光是「外界刺激型」心理攻击：夺注意力（专注），不扣 HP
+                        physicalDamage = 0f,
+                        mentalDamage = _ec.profile.mentalDamage * 0.9f,
                         mentalAxis = Personalization.WeaknessAxis.NoiseSensitivity,
-                        knockback = 3.5f,
+                        isMentalOnly = true,
                         sourcePosition = transform.position,
                         attackerId = _ec.profile.enemyId
                     });

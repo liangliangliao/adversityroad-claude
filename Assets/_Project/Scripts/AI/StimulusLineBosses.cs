@@ -146,10 +146,11 @@ namespace AdversityRoad.AI
                     _playerCombat != null && pc != null && !pc.IsInvincible)
                     _playerCombat.TakeHit(new DamageInfo
                     {
-                        physicalDamage = _ec.profile.physicalDamage * 0.9f,
-                        mentalDamage = _ec.profile.mentalDamage * 0.6f,
+                        // 凝视/审视是「外界刺激型」言语攻击：只压心神（羞耻/自尊），不扣 HP
+                        physicalDamage = 0f,
+                        mentalDamage = _ec.profile.mentalDamage * 1.1f,
                         mentalAxis = Personalization.WeaknessAxis.Shame,
-                        knockback = 4f,
+                        isMentalOnly = true,
                         sourcePosition = transform.position,
                         attackerId = _ec.profile.enemyId
                     });
