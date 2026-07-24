@@ -148,7 +148,8 @@ namespace AdversityRoad.Core
                 || Ratio(s.boundary, s.maxBoundary) < PositiveLowRatio
                 || Ratio(s.actionPower, s.maxActionPower) < PositiveLowRatio
                 || Ratio(s.rumination, s.maxRumination) > NegativeHighRatio
-                || Ratio(s.relationshipDrain, s.maxRelationshipDrain) > NegativeHighRatio;
+                || Ratio(s.relationshipDrain, s.maxRelationshipDrain) > NegativeHighRatio
+                || Ratio(s.fairnessPain, s.maxFairnessPain) > NegativeHighRatio;
         }
 
         /// <summary>当前失衡能量对应的题目 energyTags（供抽题加权与触发原因展示）。</summary>
@@ -161,14 +162,15 @@ namespace AdversityRoad.Core
             if (Ratio(s.focus, s.maxFocus) < PositiveLowRatio) tags.Add("Focus");
             if (Ratio(s.selfWorth, s.maxSelfWorth) < PositiveLowRatio)
             { tags.Add("SelfWorth"); tags.Add("Shame"); }
-            if (Ratio(s.boundary, s.maxBoundary) < PositiveLowRatio)
-            { tags.Add("Boundary"); tags.Add("FairnessPain"); }
+            if (Ratio(s.boundary, s.maxBoundary) < PositiveLowRatio) tags.Add("Boundary");
             if (Ratio(s.actionPower, s.maxActionPower) < PositiveLowRatio) tags.Add("ActionPower");
             if (Ratio(s.hp, s.maxHp) < PositiveLowRatio) tags.Add("HP");
             if (Ratio(s.stamina, s.maxStamina) < PositiveLowRatio) tags.Add("Stamina");
             if (Ratio(s.rumination, s.maxRumination) > NegativeHighRatio) tags.Add("Rumination");
             if (Ratio(s.relationshipDrain, s.maxRelationshipDrain) > NegativeHighRatio)
                 tags.Add("RelationshipDrain");
+            // 公平刺痛过高：对应「公平与承诺线」题（FairnessPain 标签共 60 题）
+            if (Ratio(s.fairnessPain, s.maxFairnessPain) > NegativeHighRatio) tags.Add("FairnessPain");
             return tags;
         }
 
@@ -186,6 +188,7 @@ namespace AdversityRoad.Core
             if (Ratio(s.actionPower, s.maxActionPower) < PositiveLowRatio) parts.Add("行动力过低");
             if (Ratio(s.rumination, s.maxRumination) > NegativeHighRatio) parts.Add("反刍过高");
             if (Ratio(s.relationshipDrain, s.maxRelationshipDrain) > NegativeHighRatio) parts.Add("关系消耗过高");
+            if (Ratio(s.fairnessPain, s.maxFairnessPain) > NegativeHighRatio) parts.Add("公平刺痛过高");
             return string.Join("、", parts);
         }
 
@@ -268,6 +271,7 @@ namespace AdversityRoad.Core
             GameEvents.RaiseMentalStatChanged("actionPower", s.actionPower, s.maxActionPower);
             if (s.rumination > 0) s.ReduceRumination(RestorePerCorrect);
             if (s.relationshipDrain > 0) s.ReduceRelationshipDrain(RestorePerCorrect);
+            if (s.fairnessPain > 0) s.ReduceFairnessPain(RestorePerCorrect);
         }
 
         // ===================== 答题记录（持久化） =====================

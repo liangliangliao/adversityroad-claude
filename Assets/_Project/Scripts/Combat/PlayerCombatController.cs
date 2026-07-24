@@ -880,7 +880,8 @@ namespace AdversityRoad.Combat
                     heavy ? 1f : 0.8f);
             };
             float outMult = (_stance != null ? _stance.OutgoingPhysicalMult() : 1f)
-                * Core.GrowthSystem.PhysicalOutMult();   // 技能树/套装被动增伤
+                * Core.GrowthSystem.PhysicalOutMult()     // 技能树/套装被动增伤
+                * _player.Stats.FairnessPhysicalOutMult;  // 公平三档：清明/激愤增伤，失控降伤
             weaponHitbox.EnableHitbox(new DamageInfo
             {
                 physicalDamage = dmg * outMult,

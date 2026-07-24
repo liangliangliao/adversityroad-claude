@@ -28,15 +28,36 @@ namespace AdversityRoad.Player
         // 过高（≥70）时技能冷却变长（被消耗掉的注意力与精力）。边界圈/明确拒绝可回落。
         public float relationshipDrain = 0, maxRelationshipDrain = 100;
 
+        // 公平刺痛值（方案「十七、核心数值系统」）：遇到赖账、不守承诺、不公平时上升——越高越糟。
+        // 三档规则：0-30 记住事实、事实之刃更利；31-70 攻击上升但反刍风险增大；
+        // 71-100 愤怒失控风险、判断下降（更易吃心理伤害）。复盘/正确言语回应可回落。
+        public float fairnessPain = 0, maxFairnessPain = 100;
+
         public float staminaRegenPerSec = 15f;
         public float mentalRegenPerSec = 2f;
         public float ruminationDecayPerSec = 1.5f;
         public float drainDecayPerSec = 1.2f;
+        public float fairnessPainDecayPerSec = 1.0f;   // 战斗外缓慢平复（比反刍更慢消退）
 
         public bool IsDead => hp <= 0;
 
         /// <summary>关系消耗过高：技能冷却 ×1.5（见 SkillExecutor）。</summary>
         public bool IsOverDrained => relationshipDrain >= 70f;
+
+        // ===== 公平刺痛三档（方案规则） =====
+        /// <summary>0-30：清明区——事实之刃/公平系技能增伤。</summary>
+        public bool FairnessClear => fairnessPain <= 30f;
+        /// <summary>31-70：激愤区——物理输出小增，但反刍累积风险上升。</summary>
+        public bool FairnessAgitated => fairnessPain > 30f && fairnessPain <= 70f;
+        /// <summary>71-100：失控区——判断下降，心理伤害吃得更重。</summary>
+        public bool FairnessRaging => fairnessPain > 70f;
+
+        /// <summary>公平三档物理输出（方案）：清明区 ×1.12（事实之刃更利）、
+        /// 激愤区 ×1.08（攻击上升，代价是反刍风险）、失控区 ×0.9（被伤口困住、判断下降）。</summary>
+        public float FairnessPhysicalOutMult =>
+            FairnessClear ? 1.12f : FairnessAgitated ? 1.08f : 0.9f;
+        /// <summary>失控区判断下降：心理伤害承受 ×1.25。</summary>
+        public float FairnessMentalTakenMult => FairnessRaging ? 1.25f : 1f;
 
         public void TickRegen(float dt, bool inCombat)
         {
@@ -54,7 +75,21 @@ namespace AdversityRoad.Player
                 AddRumination(-ruminationDecayPerSec * dt);
             if (!inCombat && relationshipDrain > 0)
                 AddRelationshipDrain(-drainDecayPerSec * dt);
+            if (!inCombat && fairnessPain > 0)
+                AddFairnessPain(-fairnessPainDecayPerSec * dt);
         }
+
+        /// <summary>公平刺痛增减（可为负）。触发 UI 更新与失控区提示。</summary>
+        public void AddFairnessPain(float amount)
+        {
+            bool wasRaging = FairnessRaging;
+            fairnessPain = Mathf.Clamp(fairnessPain + amount, 0, maxFairnessPain);
+            GameEvents.RaiseMentalStatChanged("fairnessPain", fairnessPain, maxFairnessPain);
+            if (!wasRaging && FairnessRaging)
+                GameEvents.RaiseSubtitle("公平刺痛失控——愤怒会让判断下降。记住事实，别被伤口困住。");
+        }
+
+        public void ReduceFairnessPain(float amount) => AddFairnessPain(-amount);
 
         /// <summary>生命垂危线（比例）与濒死守护冷却。</summary>
         public const float CriticalHpRatio = 0.15f;
@@ -93,8 +128,11 @@ namespace AdversityRoad.Player
             // 休养生息答题结束后的短暂护体：心理攻击无效（方案 V3.0：返回战斗给 2 秒保护）
             if (Core.QuizSystem.IsMentalShielded) return false;
             dmg *= Core.GrowthSystem.MentalTakenMult(axis);
+            // 公平刺痛失控区（>70）判断下降：一切心理伤害吃得更重（方案三档规则）
+            dmg *= FairnessMentalTakenMult;
             // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
-            AddRumination(dmg * 0.4f);
+            // 激愤区（31-70）反刍风险更大：反刍累积额外 +50%
+            AddRumination(dmg * (FairnessAgitated ? 0.6f : 0.4f));
             switch (axis)
             {
                 case Personalization.WeaknessAxis.Procrastination:
@@ -111,13 +149,18 @@ namespace AdversityRoad.Player
                     selfWorth = Mathf.Max(0, selfWorth - dmg);
                     GameEvents.RaiseMentalStatChanged("selfWorth", selfWorth, maxSelfWorth);
                     return selfWorth <= 0;
-                case Personalization.WeaknessAxis.BoundaryConflict:
                 case Personalization.WeaknessAxis.FairnessSensitivity:
+                    // 公平/不公类攻击（赖账、毁约、小题大做）：主升【公平刺痛值】，
+                    // 并顺带削一点边界（被伤口占据也会松动边界）
+                    AddFairnessPain(dmg);
+                    boundary = Mathf.Max(0, boundary - dmg * 0.4f);
+                    GameEvents.RaiseMentalStatChanged("boundary", boundary, maxBoundary);
+                    return boundary <= 0 || FairnessRaging;
+                case Personalization.WeaknessAxis.BoundaryConflict:
                     boundary = Mathf.Max(0, boundary - dmg);
                     GameEvents.RaiseMentalStatChanged("boundary", boundary, maxBoundary);
                     // 被索取/被转嫁责任的攻击同时消耗关系：边界受损的一半转为关系消耗
-                    if (axis == Personalization.WeaknessAxis.BoundaryConflict)
-                        AddRelationshipDrain(dmg * 0.5f);
+                    AddRelationshipDrain(dmg * 0.5f);
                     return boundary <= 0;
                 case Personalization.WeaknessAxis.FailureFear:
                     // 旧事回声类攻击：一半打自尊、一半直接转成反刍（越想越回放）
@@ -204,12 +247,17 @@ namespace AdversityRoad.Player
                     GameEvents.RaiseMentalStatChanged("selfWorth", selfWorth, maxSelfWorth);
                     break;
                 case Personalization.WeaknessAxis.BoundaryConflict:
-                case Personalization.WeaknessAxis.FairnessSensitivity:
                     boundary = Mathf.Min(maxBoundary, boundary + amount);
                     GameEvents.RaiseMentalStatChanged("boundary", boundary, maxBoundary);
                     // 守住边界的正确回应，同时回落关系消耗
-                    if (axis == Personalization.WeaknessAxis.BoundaryConflict)
-                        ReduceRelationshipDrain(amount * 0.6f);
+                    ReduceRelationshipDrain(amount * 0.6f);
+                    break;
+                case Personalization.WeaknessAxis.FairnessSensitivity:
+                    // 用事实回应不公：主降【公平刺痛值】（记住事实、不被伤口困住），
+                    // 同时回补一点边界
+                    ReduceFairnessPain(amount * 1.2f);
+                    boundary = Mathf.Min(maxBoundary, boundary + amount * 0.5f);
+                    GameEvents.RaiseMentalStatChanged("boundary", boundary, maxBoundary);
                     break;
                 default:
                     will = Mathf.Min(maxWill, will + amount);

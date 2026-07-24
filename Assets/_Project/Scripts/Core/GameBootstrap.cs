@@ -762,15 +762,17 @@ namespace AdversityRoad.Core
             hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
             hud.drainBar      = CreateBar(canvasGo.transform, "消耗", 7, new Color(0.8f, 0.45f, 0.2f));
             hud.drainBar.SetValue(0, 100);      // 关系消耗从空开始（越满越糟）
+            hud.fairnessPainBar = CreateBar(canvasGo.transform, "刺痛", 8, new Color(0.85f, 0.25f, 0.25f));
+            hud.fairnessPainBar.SetValue(0, 100); // 公平刺痛从空开始（越满越糟，三档规则）
 
-            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
+            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点（让位给新增的刺痛条，整体下移）
             hud.momentumPips = new Image[3];
             for (int i = 0; i < 3; i++)
             {
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -310), new Vector2(34, 34));
+                    new Vector2(40 + i * 46, -344), new Vector2(30, 30));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -784,7 +786,7 @@ namespace AdversityRoad.Core
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -310), new Vector2(400, 40));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(200, -344), new Vector2(400, 36));
             hud.comboText = comboText;
 
             // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
