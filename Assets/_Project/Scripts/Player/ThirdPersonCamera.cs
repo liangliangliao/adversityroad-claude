@@ -80,6 +80,8 @@ namespace AdversityRoad.Player
         Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
         Vector2 _focusAnchor;              // 焦点死区锚：小位移不推镜（电影三脚架感）
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
+        Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
+        bool _combatReorient;              // 战斗回正进行中（迟滞开关防小幅摆镜）
         float _pivotH = 0.42f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
@@ -207,15 +209,38 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
+                bool moving = moveSpeed > 1.4f;
+                bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
+
+                // 战斗回正（未锁定）：手动锁定模式下没有锁定目标时，玩家原地换向
+                // ——比如从打前方敌人瞬间转身打背后的敌人——镜头也要跟着转到其
+                // 身后，把新交战方向的敌人框进画面。带迟滞开关：偏差 >40° 才开始
+                // 回正、追到 <10° 停——近身缠斗的小幅换位绝不来回摆镜。
+                if (_playerFsm == null && player != null)
+                    _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
+                bool fighting = _playerFsm != null && _playerFsm.InCombat;
+                if (fighting && !manualRecently)
+                {
+                    float heading = target.eulerAngles.y;   // 角色出招朝向（磁吸已面向交战敌人）
+                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, heading));
+                    if (err > 40f) _combatReorient = true;
+                    else if (err < 10f) _combatReorient = false;
+                    if (_combatReorient)
+                    {
+                        // 比探索回正更快（0.22s 阻尼、封顶 260°/s）：转身打背后的敌人
+                        // 约半秒内完成取景，能立刻看清并确认新目标
+                        _yaw = Mathf.SmoothDampAngle(_yaw, heading, ref _yawFollowVel,
+                            0.22f, 260f, dt);
+                    }
+                }
                 // 探索镜头：玩家一改变朝向，镜头【立刻开始】平稳缓慢地转到其背后
                 // （面朝方向），无需先"持续朝一个方向走一段时间"。
                 //   · 目标 = 角色朝向（PlayerController 已让角色即时朝移动方向），转身即跟；
                 //   · 用大平滑时间的临界阻尼弹簧 SmoothDampAngle：小抖动只带来极轻微慢移
                 //     不晃屏，大转向/掉头则平稳缓慢地归位到身后，绝不猛甩。
-                bool moving = moveSpeed > 1.4f;
-                bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
-                if (moving && !manualRecently)
+                else if (moving && !manualRecently)
                 {
+                    _combatReorient = false;
                     float heading = target.eulerAngles.y;   // 角色（=移动）正前方
                     if (Mathf.Abs(Mathf.DeltaAngle(_yaw, heading)) > exploreReorientAngle)
                         _yaw = Mathf.SmoothDampAngle(_yaw, heading, ref _yawFollowVel,
@@ -223,6 +248,7 @@ namespace AdversityRoad.Player
                 }
                 else
                 {
+                    _combatReorient = false;
                     _yawFollowVel = 0f;
                 }
             }

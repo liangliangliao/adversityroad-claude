@@ -389,6 +389,19 @@ namespace AdversityRoad.Combat
             GameEvents.RaiseComboSeq(sb.ToString());
         }
 
+        /// <summary>闪避取消（大作惯例：翻滚随时切断轻连段收招）：清空连段状态与序列，
+        /// 落地后下一次进攻从头起手——衔接干脆、不残留旧输入。</summary>
+        public void CancelComboForDodge()
+        {
+            _buffered = AttackBtn.None;
+            if (_hitboxRoutine != null)
+            {
+                StopCoroutine(_hitboxRoutine);
+                if (weaponHitbox != null) weaponHitbox.DisableHitbox();
+            }
+            EndCombo();
+        }
+
         void EndCombo()
         {
             _depth = -1;

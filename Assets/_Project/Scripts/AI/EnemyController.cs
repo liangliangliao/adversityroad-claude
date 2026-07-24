@@ -31,6 +31,11 @@ namespace AdversityRoad.AI
         Animator _anim;
         Transform _player;
         float _hp, _posture;
+        // 普通敌人的攻击距离硬上限（Boss 机制关的专属弹幕不走这里）：
+        // 远程心念弹 ≤8m、心理攻击 ≤7m——超距只能追近，禁止超远距离隔空输出
+        const float MaxRangedReach = 8f;
+        const float MaxMentalReach = 7f;
+
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
@@ -246,12 +251,15 @@ namespace AdversityRoad.AI
                     UpdateEmotion("紧逼");
                     MoveTowards(_player.position, dt);
                     if (dist <= profile.attackRange) State = EnemyState.Attack;
-                    // 中距离远程：发射心念弹
+                    // 中距离远程：发射心念弹——距离硬上限 8m：禁止隔半张地图狙击玩家，
+                    // 超距只能继续追近（detectRange 只管"发现"，不管"够得着"）
                     else if (profile.rangedAttack && _rangedCd <= 0 &&
-                             dist > profile.attackRange * 2f && dist < profile.detectRange)
+                             dist > profile.attackRange * 2f && dist < MaxRangedReach)
                         DoRangedAttack();
-                    // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）
-                    else if (dist < profile.detectRange * 0.7f && _mentalCd <= 0 && profile.mentalDamage > 0)
+                    // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）——同样限近距 7m：
+                    // 凝视与低语要贴近才有压迫力，不允许远远地隔空施压
+                    else if (dist < Mathf.Min(profile.detectRange * 0.7f, MaxMentalReach) &&
+                             _mentalCd <= 0 && profile.mentalDamage > 0)
                         DoMentalAttack();
                     else if (dist > profile.detectRange * 1.5f) State = EnemyState.Patrol;
                     break;
@@ -662,7 +670,20 @@ namespace AdversityRoad.AI
                 }
             }
 
-            float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense) * sneakMult;
+            // ---- 部位精准伤害（大作惯例：打得准有实际收益）----
+            // 用判定框算出的真实接触点分部位：头部会心 ×1.35；腿部伤害 ×0.9 但削韧
+            // ×1.4（扫腿更容易打失衡）；躯干标准。配合已有的部位受击反应动画。
+            float partDmgMult = 1f, partPostureMult = 1f;
+            bool headshot = false;
+            if (dmg.hasContact)
+            {
+                float h = dmg.contactPoint.y - transform.position.y;
+                if (h > 0.5f) { partDmgMult = 1.35f; headshot = true; }
+                else if (h < -0.45f) { partDmgMult = 0.9f; partPostureMult = 1.4f; }
+            }
+
+            float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense)
+                * sneakMult * partDmgMult;
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法
             if (State == EnemyState.Stagger) final *= 1.6f;
             // 调试模式：敌人耐揍，大幅削减实际伤害（方便测试，不被秒杀）
@@ -671,7 +692,7 @@ namespace AdversityRoad.AI
             final *= externalDamageMult;
             _hp -= final;
             if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
-            _posture -= dmg.postureDamage * externalDamageMult;
+            _posture -= dmg.postureDamage * partPostureMult * externalDamageMult;
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
@@ -693,9 +714,11 @@ namespace AdversityRoad.AI
                 HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy);
             CombatFeedback.HitFlash(gameObject);
             _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
+            // 头部会心的伤害数字更大更红（部位标签由 HitReactionOverlay 弹出，不重复）
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
-                State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
-                final >= 35f ? 1.6f : 1f);
+                headshot ? new Color(1f, 0.55f, 0.25f)
+                : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
+                headshot ? 1.45f : final >= 35f ? 1.6f : 1f);
             if (dmg.knockback > 0.1f && !fbHeavy)
             {
                 // 击退平滑化：瞬移是"打地鼠式漂移"的最大来源——改为 0.22s 快滑退，

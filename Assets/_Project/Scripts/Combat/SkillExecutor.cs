@@ -231,57 +231,73 @@ namespace AdversityRoad.Combat
 
         // ===================== 定「定心·四象归一」 =====================
 
-        /// <summary>收势凝神 → 三重内收气环（每环削韧+推离周围敌人）→ 旋身归一爆发，
-        /// 心神大幅恢复。护体不是站桩：把周围搅扰整圈荡开。</summary>
+        /// <summary>收势凝神 → 三重内收气环（每环削韧+推离周围敌人）→ 旋身归一爆发
+        /// → 终结段「镇岳跳劈」凌空砸地大范围震波。心神大幅恢复——
+        /// 护体不是站桩：先把周围搅扰整圈荡开，再一击镇场。</summary>
         IEnumerator SteadyHeartCombo(float mentalRestore)
         {
-            _fsm.RequestState(CombatState.Finisher, 1.5f);
+            _fsm.RequestState(CombatState.Finisher, 2.0f);
             Core.GameEvents.RaiseSkillBanner("「定心·四象归一」");
             Pose(PoseState.Charge);
             CombatFeedback.ChargeGale(transform.position, 0.6f);
-            yield return new WaitForSeconds(0.3f);
+            yield return new WaitForSeconds(0.28f);
 
-            // 三重内收气环：由外向内收束（外圈大→内圈小），每环削韧并推离敌人
+            // 三重内收气环：由外向内收束（外圈大→内圈小），伤害递增、削韧并推离敌人
             var ringColor = new Color(0.45f, 0.65f, 1f);
             for (int i = 0; i < 3 && ComboAlive(); i++)
             {
                 CombatFeedback.ShockRing(transform.position, ringColor, 5.5f - i * 1.4f);
                 CombatFeedback.HitSpark(transform.position + Vector3.up * 1.1f, ringColor, 4);
-                Strike(PoseState.AttackSpin, 4f, 14f, 2.5f, 0.02f, 0.14f, 1.2f, "player_skill_dingxin");
+                Strike(PoseState.AttackSpin, 7f + i * 3f, 16f, 2.5f, 0.02f, 0.14f, 1.2f, "player_skill_dingxin");
                 foreach (var e in FindObjectsOfType<AI.EnemyController>())
                     e.Repel(transform.position, 4.5f, 5f, 0.14f);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.5f);
-                yield return new WaitForSeconds(0.26f);
+                yield return new WaitForSeconds(0.24f);
             }
             if (!ComboAlive()) yield break;
 
             // 归一：旋身收势爆发 + 心神恢复 + 短时缓
             Pose(PoseState.AttackSpin);
+            Strike(PoseState.AttackSpin, 14f, 20f, 4f, 0.06f, 0.18f, 1.35f, "player_skill_dingxin");
             CombatFeedback.EnergyBurst(transform.position + Vector3.up * 0.8f, ringColor, 1.1f);
             CombatFeedback.SlowMo(0.5f, 0.15f);
             _player.Stats.RestoreMental(mentalRestore);
-            Core.GameEvents.RaiseSubtitle("四象归一——心神落定，心理属性恢复。");
             Core.GameAudio.Play(Core.GameAudio.Sfx.Parry, 0.8f);
+            yield return new WaitForSeconds(0.4f);
+            if (!ComboAlive()) yield break;
+
+            // 终结段「镇岳」：凌空跳劈砸地，大范围震波镇住整个战场
+            FaceTarget();
+            Pose(PoseState.AttackLeap);
+            Glide(transform.forward * 1.2f, 0.14f);
+            CombatFeedback.SwingArc(transform, true, ringColor);
+            Strike(PoseState.AttackLeap, 26f, 34f, 6f, 0.12f, 0.22f, 1.35f, "player_skill_dingxin");
+            CombatFeedback.ShockRing(transform.position + transform.forward * 1.2f, ringColor, 7f);
+            CombatFeedback.Debris(transform.position + transform.forward * 1.2f, ringColor, 7);
+            Core.GameAudio.Play(Core.GameAudio.Sfx.HeavyHit, 0.8f);
+            Core.GameEvents.RaiseSubtitle("四象归一——心神落定，心理属性恢复。");
         }
 
         // ===================== 收「收心·万流归元」 =====================
 
-        /// <summary>后旋踢起手 → 双旋清场（幻影全灭、每旋一段判定）→
-        /// 万流归元冲击波，专注回收、反刍下降。</summary>
+        /// <summary>三连旋踢清场（伤害递增、每旋轻位移咬向目标）→ 幻影全灭+归元冲击波
+        /// → 终结段「回身斩」时缓收势。专注回收、反刍下降。</summary>
         IEnumerator AttentionRecallCombo()
         {
-            _fsm.RequestState(CombatState.Finisher, 1.3f);
+            _fsm.RequestState(CombatState.Finisher, 1.9f);
             Core.GameEvents.RaiseSkillBanner("「收心·万流归元」");
             FaceTarget();
             var cyan = new Color(0.3f, 0.85f, 0.95f);
 
-            // 双旋清场：两记后旋踢各带环身判定与刀光
-            for (int i = 0; i < 2 && ComboAlive(); i++)
+            // 三连旋踢清场：伤害递增，每旋向目标轻位移（旋进不飘）
+            for (int i = 0; i < 3 && ComboAlive(); i++)
             {
+                FaceTarget();
                 Pose(PoseState.SpinKick);
-                CombatFeedback.SwingArc(transform, i == 1, cyan);
-                Strike(PoseState.SpinKick, 8f, 16f, 3f, 0.08f, 0.18f, 1.25f, "player_skill_huishou");
-                yield return new WaitForSeconds(0.34f);
+                Glide(transform.forward * 0.7f, 0.12f);
+                CombatFeedback.SwingArc(transform, i >= 1, cyan);
+                Strike(PoseState.SpinKick, 10f + i * 4f, 18f, 3f, 0.08f, 0.18f, 1.25f, "player_skill_huishou");
+                yield return new WaitForSeconds(0.3f);
             }
             if (!ComboAlive()) yield break;
 
@@ -292,19 +308,27 @@ namespace AdversityRoad.Combat
             CombatFeedback.EnergyBurst(transform.position + Vector3.up * 0.9f, cyan, 0.95f);
             _player.Stats.RestoreAxis(Personalization.WeaknessAxis.NoiseSensitivity, 32f);
             _player.Stats.ReduceRumination(15f);
+            Core.GameAudio.Play(Core.GameAudio.Sfx.Parry, 0.7f);
+            yield return new WaitForSeconds(0.3f);
+            if (!ComboAlive()) yield break;
+
+            // 终结段「回身斩」：环身大范围收势一斩 + 短时缓
+            Pose(PoseState.AttackSpin);
+            CombatFeedback.SwingArc(transform, true, cyan);
+            Strike(PoseState.AttackSpin, 22f, 26f, 5f, 0.08f, 0.2f, 1.4f, "player_skill_huishou");
+            CombatFeedback.SlowMo(0.5f, 0.14f);
             Core.GameEvents.RaiseSubtitle(cleared > 0
                 ? "万流归元——" + cleared + " 个幻影散去。不是所有声音都要回应。"
                 : "万流归元——我把注意力拿回来，放回自己手上的事。");
-            Core.GameAudio.Play(Core.GameAudio.Sfx.Parry, 0.7f);
         }
 
         // ===================== 还「还域·界返三连」 =====================
 
-        /// <summary>撩斩挑飞 → 旋身反震（虚假责任球全数打回、好人墙整圈震破）→
-        /// 界域震地波+边界回补。把不属于自己的，成套还回去。</summary>
+        /// <summary>撩斩挑飞 → 横斩接力 → 旋身反震（虚假责任球全数打回、好人墙整圈震破）
+        /// → 弓步突刺 → 界域震地波终结+边界回补。把不属于自己的，成套还回去。</summary>
         IEnumerator ResponsibilityReturnCombo()
         {
-            _fsm.RequestState(CombatState.Finisher, 1.4f);
+            _fsm.RequestState(CombatState.Finisher, 2.2f);
             Core.GameEvents.RaiseSkillBanner("「还域·界返三连」");
             FaceTarget();
             var green = new Color(0.4f, 0.85f, 0.6f);
@@ -312,26 +336,46 @@ namespace AdversityRoad.Combat
             // 段1：撩斩挑飞（纵向高弧判定）
             Pose(PoseState.AttackUp);
             CombatFeedback.SwingArc(transform, true, green);
-            Strike(PoseState.AttackUp, 10f, 20f, 4f, 0.1f, 0.16f, 1.15f, "player_skill_guihuan");
-            yield return new WaitForSeconds(0.36f);
+            Strike(PoseState.AttackUp, 14f, 22f, 4f, 0.1f, 0.16f, 1.15f, "player_skill_guihuan");
+            yield return new WaitForSeconds(0.32f);
             if (!ComboAlive()) yield break;
 
-            // 段2：旋身反震——清过度负责、责任球全数打回、好人墙整圈震破
+            // 段2：横斩接力（承上启下的连贯挥击）
+            FaceTarget();
+            Pose(PoseState.Attack);
+            Glide(transform.forward * 0.8f, 0.1f);
+            CombatFeedback.SwingArc(transform, false, green);
+            Strike(PoseState.Attack, 16f, 18f, 3f, 0.08f, 0.16f, 1.2f, "player_skill_guihuan");
+            yield return new WaitForSeconds(0.3f);
+            if (!ComboAlive()) yield break;
+
+            // 段3：旋身反震——清过度负责、责任球全数打回、好人墙整圈震破
             Pose(PoseState.AttackSpin);
             CombatFeedback.SwingArc(transform, true, green);
-            Strike(PoseState.AttackSpin, 12f, 22f, 5f, 0.08f, 0.2f, 1.3f, "player_skill_guihuan");
+            Strike(PoseState.AttackSpin, 18f, 26f, 5f, 0.08f, 0.2f, 1.3f, "player_skill_guihuan");
             var debuff = GetComponent<OverResponsibilityDebuff>();
             if (debuff != null) Destroy(debuff);
             int returned = 0;
             foreach (var ball in FindObjectsOfType<ResponsibilityBall>())
                 if (ball.isFalse) { ball.ForceReturn(); returned++; }
             int walls = CageWall.BreakAll();
-            yield return new WaitForSeconds(0.4f);
+            yield return new WaitForSeconds(0.34f);
             if (!ComboAlive()) yield break;
 
-            // 段3：界域震地波 + 边界回补
-            CombatFeedback.ShockRing(transform.position, green, 6f);
-            CombatFeedback.Debris(transform.position + transform.forward * 0.8f, green, 6);
+            // 段4：弓步突刺——把「不属于我的」钉还回去
+            FaceTarget();
+            Pose(PoseState.SwordThrust);
+            Glide(transform.forward * 1.6f, 0.12f);
+            CombatFeedback.SwingArc(transform, false, green);
+            Strike(PoseState.SwordThrust, 20f, 20f, 3f, 0.08f, 0.16f, 1.25f, "player_skill_guihuan");
+            yield return new WaitForSeconds(0.3f);
+            if (!ComboAlive()) yield break;
+
+            // 段5：界域震地波终结 + 边界回补
+            Pose(PoseState.AttackLeap);
+            Strike(PoseState.AttackLeap, 24f, 30f, 6f, 0.1f, 0.2f, 1.3f, "player_skill_guihuan");
+            CombatFeedback.ShockRing(transform.position, green, 6.5f);
+            CombatFeedback.Debris(transform.position + transform.forward * 0.8f, green, 7);
             CombatFeedback.SlowMo(0.5f, 0.12f);
             _player.Stats.RestoreAxis(Personalization.WeaknessAxis.BoundaryConflict, 18f);
             _player.Stats.ReduceRumination(12f);
@@ -346,12 +390,12 @@ namespace AdversityRoad.Combat
 
         // ===================== 火「燃火·三段突进斩」 =====================
 
-        /// <summary>点火解冻 → 火色双突进斩（每段突进 2 米+直线判定）→
-        /// 上撩火浪终结。行动力点燃、意势+1——动力是被行动召回的。</summary>
+        /// <summary>点火解冻 → 火色三连突进斩（伤害递增、每段突进 2 米）→ 上撩火浪
+        /// → 终结段「烈焰跳劈」落地火环。行动力点燃、意势+1——动力是被行动召回的。</summary>
         IEnumerator FiveMinuteSparkCombo()
         {
-            _fsm.RequestState(CombatState.Finisher, 1.5f);
-            Core.GameEvents.RaiseSkillBanner("「燃火·三段突进斩」");
+            _fsm.RequestState(CombatState.Finisher, 2.2f);
+            Core.GameEvents.RaiseSkillBanner("「燃火·五段燎原」");
             var fire = new Color(1f, 0.6f, 0.2f);
 
             // 点火：先解冻/解减速（先能动，才谈得上突进）
@@ -361,44 +405,58 @@ namespace AdversityRoad.Combat
             if (frozen != null) Destroy(frozen);
             CombatFeedback.RecipeBurst(transform.position, fire);
             Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.6f);
-            yield return new WaitForSeconds(0.2f);
+            yield return new WaitForSeconds(0.18f);
 
-            // 双突进斩：每段面向目标滑行突进 + 直线突刺判定 + 火色刀光
-            for (int i = 0; i < 2 && ComboAlive(); i++)
+            // 三连突进斩：伤害递增，每段面向目标滑行突进 + 直线突刺判定 + 火色刀光
+            for (int i = 0; i < 3 && ComboAlive(); i++)
             {
                 FaceTarget();
                 Pose(PoseState.SwordThrust);
-                Glide(transform.forward * 2.2f, 0.14f);
-                CombatFeedback.SwingArc(transform, i == 1, fire);
+                Glide(transform.forward * 2.2f, 0.13f);
+                CombatFeedback.SwingArc(transform, i == 2, fire);
                 CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f, fire, 5);
-                Strike(PoseState.SwordThrust, 14f, 16f, 2.5f, 0.08f, 0.18f, 1.2f, "player_skill_huozhong");
-                yield return new WaitForSeconds(0.34f);
+                Strike(PoseState.SwordThrust, 16f + i * 4f, 16f, 2.5f, 0.07f, 0.16f, 1.2f, "player_skill_huozhong");
+                yield return new WaitForSeconds(0.3f);
             }
             if (!ComboAlive()) yield break;
 
-            // 上撩火浪终结 + 行动力点燃
+            // 上撩火浪 + 行动力点燃
             Pose(PoseState.AttackUp);
             CombatFeedback.SwingArc(transform, true, fire);
-            Strike(PoseState.AttackUp, 16f, 24f, 5f, 0.1f, 0.18f, 1.3f, "player_skill_huozhong");
+            Strike(PoseState.AttackUp, 22f, 26f, 5f, 0.09f, 0.18f, 1.3f, "player_skill_huozhong");
             CombatFeedback.ShockRing(transform.position + transform.forward * 1f, fire, 4.5f);
             _player.Stats.RestoreAxis(Personalization.WeaknessAxis.Procrastination, 45f);
             _player.Stats.ReduceRumination(8f);
             var combat = Combat();
             if (combat != null) combat.AddMomentum(1);
             Core.GameAudio.Play(Core.GameAudio.Sfx.Parry, 0.7f);
+            yield return new WaitForSeconds(0.34f);
+            if (!ComboAlive()) yield break;
+
+            // 终结段「烈焰跳劈」：凌空砸地，落地火环燎原 + 短时缓
+            FaceTarget();
+            Pose(PoseState.AttackLeap);
+            Glide(transform.forward * 1.4f, 0.14f);
+            CombatFeedback.SwingArc(transform, true, fire);
+            Strike(PoseState.AttackLeap, 30f, 36f, 7f, 0.12f, 0.22f, 1.4f, "player_skill_huozhong");
+            CombatFeedback.ShockRing(transform.position + transform.forward * 1.3f, fire, 7.5f);
+            CombatFeedback.EnergyBurst(transform.position + transform.forward * 1.3f, fire, 1.1f);
+            CombatFeedback.SlowMo(0.45f, 0.16f);
+            Core.GameAudio.Play(Core.GameAudio.Sfx.HeavyHit, 0.85f);
             Core.GameEvents.RaiseSubtitle(unfroze
-                ? "燃火三段——行动打破冻结！先做五分钟，动起来再说。"
-                : "燃火三段——不等动力，先开始；动力是被行动召回的。");
+                ? "燃火燎原——行动打破冻结！先做五分钟，动起来再说。"
+                : "燃火燎原——不等动力，先开始；动力是被行动召回的。");
         }
 
         // ===================== 盾「镜界·退身斩」 =====================
 
         /// <summary>镜环展开护心（十秒内抵消下一次心理攻击）→ 后空翻拉开身位 →
-        /// 掷出镜界气刃（顺带令幻影显形消散）。不硬接，先看清。</summary>
+        /// 双镜界气刃连发 → 终结段「镜返突刺」闪回目标身前反击一击。
+        /// 不硬接，先看清，再反打。</summary>
         IEnumerator MindShieldCombo()
         {
-            _fsm.RequestState(CombatState.Finisher, 1.1f);
-            Core.GameEvents.RaiseSkillBanner("「镜界·退身斩」");
+            _fsm.RequestState(CombatState.Finisher, 1.7f);
+            Core.GameEvents.RaiseSkillBanner("「镜界·退身反击」");
             var blue = new Color(0.5f, 0.75f, 1f);
 
             // 镜环展开：护心 buff 上身
@@ -408,7 +466,7 @@ namespace AdversityRoad.Combat
             Pose(PoseState.Guard);
             CombatFeedback.RecipeBurst(transform.position, blue);
             CombatFeedback.ShockRing(transform.position, blue, 3f);
-            yield return new WaitForSeconds(0.24f);
+            yield return new WaitForSeconds(0.22f);
             if (!ComboAlive()) yield break;
 
             // 后空翻拉开身位（不硬接的身法）
@@ -416,19 +474,32 @@ namespace AdversityRoad.Combat
             Pose(PoseState.SpinKick);
             Glide(-transform.forward * 1.8f, 0.16f);
             CombatFeedback.SwingArc(transform, false, blue);
-            yield return new WaitForSeconds(0.3f);
+            yield return new WaitForSeconds(0.28f);
             if (!ComboAlive()) yield break;
 
-            // 镜界气刃：短程投射，命中削韧（把"猜测"钉回原地）
-            Pose(PoseState.Attack);
-            Vector3 origin = transform.position + Vector3.up * 1.2f + transform.forward * 0.7f;
-            Projectile.Launch(transform, origin, transform.forward, new DamageInfo
+            // 双镜界气刃连发：命中削韧（把"猜测"逐一钉回原地）
+            for (int i = 0; i < 2 && ComboAlive(); i++)
             {
-                physicalDamage = 10f, postureDamage = 18f, knockback = 2f,
-                attackerId = "player_skill_budu"
-            }, 18f, blue, null, 1.1f);
-            Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.6f);
-            Core.GameEvents.RaiseSubtitle("镜界·退身斩——无法确认的事，我不把猜测当事实（抵消下一次心理攻击）。");
+                Pose(PoseState.Attack);
+                Vector3 origin = transform.position + Vector3.up * 1.2f + transform.forward * 0.7f;
+                Projectile.Launch(transform, origin, transform.forward, new DamageInfo
+                {
+                    physicalDamage = 12f, postureDamage = 20f, knockback = 2f,
+                    attackerId = "player_skill_budu"
+                }, 18f, blue, null, 1.1f);
+                Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.6f);
+                yield return new WaitForSeconds(0.24f);
+            }
+            if (!ComboAlive()) yield break;
+
+            // 终结段「镜返突刺」：闪身欺近，反手一记弓步突刺 + 短时缓
+            FaceTarget();
+            Pose(PoseState.SwordThrust);
+            Glide(transform.forward * 2.4f, 0.13f);
+            CombatFeedback.SwingArc(transform, true, blue);
+            Strike(PoseState.SwordThrust, 24f, 26f, 4f, 0.08f, 0.16f, 1.3f, "player_skill_budu");
+            CombatFeedback.SlowMo(0.5f, 0.12f);
+            Core.GameEvents.RaiseSubtitle("镜界反击——无法确认的事，我不把猜测当事实（抵消下一次心理攻击）。");
         }
     }
 }
