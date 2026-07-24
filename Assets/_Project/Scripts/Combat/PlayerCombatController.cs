@@ -127,6 +127,11 @@ namespace AdversityRoad.Combat
         bool _critNext;
         float _lastPerfect;
 
+        // 连段伤害衰减（大作防无限连 cheese）：连续命中数越高，后续伤害温和递减；
+        // 停手约 1.5s 或断连即复位。正常 4—5 段连招几乎不受影响，只压制长时间锁血连打。
+        int _comboHits;
+        float _lastComboHitTime;
+
         bool _charging;
         float _chargeT;
         float _chargeGained;
@@ -871,6 +876,10 @@ namespace AdversityRoad.Combat
             {
                 if (buildMomentum) AddMomentum(1);
                 if (Dyn() != null) _dynamics.OnHitLanded(dmg >= heavyDamage);
+                // 连段计数（伤害衰减用）：命中即累加，断手复位
+                if (Time.time - _lastComboHitTime > 1.5f) _comboHits = 0;
+                _comboHits++;
+                _lastComboHitTime = Time.time;
                 // 打击感：命中顿帧（不晕）随伤害加重 + 打击音效；
                 // 只有重击/大伤害才震屏——普通连段不频繁震屏（防晕）。
                 bool heavy = dmg >= heavyDamage;
@@ -879,9 +888,12 @@ namespace AdversityRoad.Combat
                 Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
                     heavy ? 1f : 0.8f);
             };
+            // 连段衰减：第 7 击起温和递减到最低 0.75 倍（防长时间锁血无限连）
+            float comboScale = Mathf.Lerp(1f, 0.75f, Mathf.Clamp01((_comboHits - 6) / 10f));
             float outMult = (_stance != null ? _stance.OutgoingPhysicalMult() : 1f)
                 * Core.GrowthSystem.PhysicalOutMult()     // 技能树/套装被动增伤
-                * _player.Stats.FairnessPhysicalOutMult;  // 公平三档：清明/激愤增伤，失控降伤
+                * _player.Stats.FairnessPhysicalOutMult   // 公平三档：清明/激愤增伤，失控降伤
+                * comboScale;
             weaponHitbox.EnableHitbox(new DamageInfo
             {
                 physicalDamage = dmg * outMult,
@@ -1075,7 +1087,16 @@ namespace AdversityRoad.Combat
                     CombatFeedback.DamageNumber(transform.position, "被偷袭！",
                         new Color(1f, 0.45f, 0.2f), 1.25f);
                 }
-                bool blocked = IsGuarding && !backstab && _player.Stats.SpendStamina(phys * 0.5f);
+                // 危险攻击（红光·不可格挡）：格挡无效，只能靠闪避（大作读招规则）——
+                // 硬挡会被破防并吃满伤，教玩家看红光就闪
+                if (dmg.unblockable && IsGuarding && !_player.IsInvincible)
+                {
+                    CombatFeedback.DamageNumber(transform.position, "破防！",
+                        new Color(1f, 0.4f, 0.1f), 1.3f);
+                    GameEvents.RaiseSubtitle("危险攻击不可格挡——看红光就闪避！");
+                }
+                bool blocked = IsGuarding && !backstab && !dmg.unblockable
+                    && _player.Stats.SpendStamina(phys * 0.5f);
                 if (blocked) phys *= 0.2f;
                 // 蓄力气场=防御姿态：受物理伤害大减（敌人也几乎无法近身）
                 bool chargeGuard = _charging;
