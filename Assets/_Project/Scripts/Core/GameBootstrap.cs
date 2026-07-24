@@ -334,6 +334,7 @@ namespace AdversityRoad.Core
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
             root.AddComponent<MentalDynamics>();   // 战斗驱动的心理能量动态（受击/被围/命中/击杀）
+            root.AddComponent<InnerVoiceSystem>(); // 内部言语攻击：高反刍/内心敌人在场引出脑内回声
             var skillExec = root.AddComponent<SkillExecutor>();
 
             var poser = root.AddComponent<HumanoidAnimator>();

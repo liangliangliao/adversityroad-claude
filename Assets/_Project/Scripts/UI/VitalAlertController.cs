@@ -59,14 +59,18 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            // 罩屏（默认全透明；raycast 关闭不挡操作）
+            // 低生命暗角：径向渐变精灵（中心透明→边缘泛红），只在屏幕四周泛红，
+            // 中心区域始终清晰——不再用纯色全屏红盖住整个画面（那会让低血时画面
+            // 发糊看不清）。raycast 关闭不挡操作。
             var vg = new GameObject("HpVignette", typeof(Image));
             vg.transform.SetParent(canvas, false);
             var vrt = vg.GetComponent<RectTransform>();
             vrt.anchorMin = Vector2.zero; vrt.anchorMax = Vector2.one;
             vrt.offsetMin = Vector2.zero; vrt.offsetMax = Vector2.zero;
             _vignette = vg.GetComponent<Image>();
-            _vignette.color = new Color(0.8f, 0.05f, 0.05f, 0f);
+            _vignette.sprite = BuildVignetteSprite();
+            _vignette.type = Image.Type.Simple;
+            _vignette.color = new Color(1f, 1f, 1f, 0f);
             _vignette.raycastTarget = false;
 
             // 生命垂危弹窗
@@ -192,14 +196,45 @@ namespace AdversityRoad.UI
             float target = 0f;
             if (!s.IsDead && r < 0.25f)
             {
-                // 越接近垂危脉冲越强：垂危段 0.10—0.22，危险段 0.04—0.10
+                // 边缘暗角（中心透明）→ 强度可以更明显而不糊住画面：
+                // 越接近垂危脉冲越强，中心区域始终看得清
                 float severity = Mathf.InverseLerp(0.25f, 0.05f, r);
                 float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 5f);
-                target = Mathf.Lerp(0.03f, 0.14f, severity) + pulse * Mathf.Lerp(0.02f, 0.08f, severity);
+                target = Mathf.Lerp(0.35f, 0.85f, severity) * (0.7f + 0.3f * pulse);
             }
             var c = _vignette.color;
-            c.a = Mathf.MoveTowards(c.a, target, Time.unscaledDeltaTime * 0.8f);
+            c.r = 0.85f; c.g = 0.05f; c.b = 0.05f;   // 红色泛边（径向 alpha 由精灵提供）
+            c.a = Mathf.MoveTowards(c.a, target, Time.unscaledDeltaTime * 1.6f);
             _vignette.color = c;
+        }
+
+        /// <summary>径向暗角精灵：中心完全透明，向四周边缘平滑升到不透明——
+        /// 只让屏幕边框泛红警示，中心画面保持清晰（大作低血提示的通行做法）。</summary>
+        static Sprite _vignetteSprite;
+        static Sprite BuildVignetteSprite()
+        {
+            if (_vignetteSprite != null) return _vignetteSprite;
+            const int N = 128;
+            // RGBA32 且 RGB=白：UI Image 用 color 着色时才能染成红色（Alpha8 会渲染成黑边）
+            var tex = new Texture2D(N, N, TextureFormat.RGBA32, false);
+            tex.wrapMode = TextureWrapMode.Clamp;
+            var px = new Color[N * N];
+            Vector2 c = new Vector2((N - 1) * 0.5f, (N - 1) * 0.5f);
+            float maxD = c.magnitude;
+            for (int y = 0; y < N; y++)
+                for (int x = 0; x < N; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x, y), c) / maxD;
+                    // 内 60% 半径完全透明；60%→100% 平滑升到 1（平方使边缘更收敛）
+                    float a = Mathf.Clamp01((d - 0.6f) / 0.4f);
+                    a = a * a;
+                    px[y * N + x] = new Color(1f, 1f, 1f, a);
+                }
+            tex.SetPixels(px);
+            tex.Apply();
+            _vignetteSprite = Sprite.Create(tex, new Rect(0, 0, N, N),
+                new Vector2(0.5f, 0.5f), 100f);
+            return _vignetteSprite;
         }
 
         // ===================== 生命垂危弹窗 =====================

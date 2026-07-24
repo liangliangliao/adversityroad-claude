@@ -154,7 +154,9 @@ namespace AdversityRoad.UI
                     player.Stats.RestoreAxis(_axis, aligned ? 34f : 22f);
                     player.Stats.ReduceRumination(aligned ? 30f : 20f);
                 }
-                GameEvents.RaiseSubtitle("『" + _bestLine + "』——回击命中，对方语塞。" +
+                bool inner = _enemy == null;   // 内部言语攻击（脑内回声）：措辞对内不对外
+                GameEvents.RaiseSubtitle("『" + _bestLine + "』——" +
+                    (inner ? "脑内回声散去，念头松开了。" : "回击命中，对方语塞。") +
                     (aligned ? "（姿态契合·加成）" : ""));
                 GameAudio.Play(GameAudio.Sfx.Parry, 0.8f);
             }
@@ -163,9 +165,10 @@ namespace AdversityRoad.UI
                 var pc = player != null ? player.GetComponent<PlayerCombatController>() : null;
                 if (pc != null) pc.TakeHit(_pending); // 内部会按弱点轴扣属性并累积反刍
                 if (player != null) player.Stats.AddRumination(picked < 0 ? 8f : 12f);
+                bool inner = _enemy == null;
                 GameEvents.RaiseSubtitle(picked < 0
-                    ? "沉默以对——那句话钻进了心里。"
-                    : "以牙还牙，只是把自己拖进反刍。");
+                    ? (inner ? "任由回声循环——那个念头钻得更深了。" : "沉默以对——那句话钻进了心里。")
+                    : (inner ? "跟念头较劲——只是把自己更深地拖进反刍。" : "以牙还牙，只是把自己拖进反刍。"));
             }
 
             _enemy = null;
