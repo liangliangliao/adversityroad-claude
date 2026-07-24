@@ -177,6 +177,8 @@ namespace AdversityRoad.Core
         {
             if (s == null) return "";
             var parts = new List<string>();
+            if (Ratio(s.hp, s.maxHp) < 0.15f) parts.Add("生命垂危");
+            else if (Ratio(s.hp, s.maxHp) < PositiveLowRatio) parts.Add("生命偏低");
             if (Ratio(s.will, s.maxWill) < PositiveLowRatio) parts.Add("意志过低");
             if (Ratio(s.focus, s.maxFocus) < PositiveLowRatio) parts.Add("专注过低");
             if (Ratio(s.selfWorth, s.maxSelfWorth) < PositiveLowRatio) parts.Add("自尊过低");

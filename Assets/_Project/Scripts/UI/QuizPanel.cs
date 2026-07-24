@@ -156,6 +156,19 @@ namespace AdversityRoad.UI
                 string.IsNullOrEmpty(reason) ? "" : "触发：" + reason);
         }
 
+        /// <summary>紧急休整入口（生命垂危等警告弹窗的「休整答题」按钮）：
+        /// 玩家主动决定进入，规则与战斗触发相同（答对回能量、结束给心理护体）。</summary>
+        public void OpenEmergency()
+        {
+            if (Active) return;
+            _autoMode = true;
+            if (_player == null) _player = FindObjectOfType<Player.PlayerController>();
+            var stats = _player != null ? _player.Stats : null;
+            string reason = stats != null ? QuizSystem.ImbalanceLabel(stats) : "";
+            BeginSession(stats != null ? QuizSystem.ImbalancedEnergyTags(stats) : null,
+                string.IsNullOrEmpty(reason) ? "紧急休整" : "紧急休整 · " + reason);
+        }
+
         /// <summary>练习模式入口（HUD「答题」按钮）：不需要失衡条件，规则相同。</summary>
         public void OpenPractice()
         {

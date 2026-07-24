@@ -41,7 +41,10 @@ namespace AdversityRoad.Player
         public void TickRegen(float dt, bool inCombat)
         {
             stamina = Mathf.Min(maxStamina, stamina + staminaRegenPerSec * dt);
-            float m = (inCombat ? 0.3f : 1f) * mentalRegenPerSec * dt;
+            // 战斗中被动回复压得很低：心理能量的涨落主要来自战斗行为本身
+            // （受击/被围/站桩流失，命中/击杀/完美闪避回复——见 MentalDynamics），
+            // 否则被动回复会把这些变化当场抹平，条上永远看不到起伏。
+            float m = (inCombat ? 0.1f : 1f) * mentalRegenPerSec * dt;
             will = Mathf.Min(maxWill, will + m);
             focus = Mathf.Min(maxFocus, focus + m);
             selfWorth = Mathf.Min(maxSelfWorth, selfWorth + m);

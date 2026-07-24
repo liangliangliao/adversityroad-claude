@@ -18,6 +18,7 @@ namespace AdversityRoad.UI
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
+        Button _lockModeBtn, _aimAssistBtn;
         bool _deleteArmed;
 
         static readonly Color Off = new Color(0.25f, 0.25f, 0.3f, 0.95f);
@@ -89,9 +90,23 @@ namespace AdversityRoad.UI
                 Refresh();
             });
 
+            // 战斗操作偏好（对齐大型动作游戏惯例）：锁定模式 + 攻击吸附
+            _lockModeBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-195, -650), new Vector2(370, 70), Off, () =>
+                {
+                    LockOnSystem.AutoAcquire = !LockOnSystem.AutoAcquire;
+                    Refresh();
+                }, 22);
+            _aimAssistBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(195, -650), new Vector2(370, 70), Off, () =>
+                {
+                    LockOnSystem.AimAssist = !LockOnSystem.AimAssist;
+                    Refresh();
+                }, 22);
+
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
-                new Vector2(0.5f, 1f), new Vector2(0, -650), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -736), new Vector2(760, 70),
                 new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
                 {
                     var story = StoryManager.Instance;
@@ -107,20 +122,21 @@ namespace AdversityRoad.UI
 
             // 心理安全系统：快速退出战斗——任何时刻一键传送回安全屋（独居小屋）
             UiUtil.MakeButton(_panel.transform, "一键返回安全屋（立刻脱离当前战斗）",
-                new Vector2(0.5f, 1f), new Vector2(0, -740), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -822), new Vector2(760, 70),
                 new Color(0.25f, 0.4f, 0.55f, 0.95f), ReturnToSafeHouse, 24);
 
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -830), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -908), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -894), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -968), new Vector2(900, 32));
 
-            UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f), new Vector2(0, 56),
-                new Vector2(260, 74), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 28);
+            // 关闭移到右上角：底部空间让给新增的操作偏好行
+            UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -46),
+                new Vector2(140, 60), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
 
             _panel.SetActive(false);
         }
@@ -183,6 +199,18 @@ namespace AdversityRoad.UI
                 _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
             if (_debugBtn != null)
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
+            if (_lockModeBtn != null)
+            {
+                _lockModeBtn.GetComponentInChildren<Text>().text =
+                    LockOnSystem.AutoAcquire ? "锁定模式：自动" : "锁定模式：手动（Q/锁键）";
+                _lockModeBtn.GetComponent<Image>().color = LockOnSystem.AutoAcquire ? On : Off;
+            }
+            if (_aimAssistBtn != null)
+            {
+                _aimAssistBtn.GetComponentInChildren<Text>().text =
+                    LockOnSystem.AimAssist ? "攻击吸附：开" : "攻击吸附：关（完全手操）";
+                _aimAssistBtn.GetComponent<Image>().color = LockOnSystem.AimAssist ? On : Off;
+            }
         }
 
         public void Toggle()
