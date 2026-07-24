@@ -267,21 +267,36 @@ namespace AdversityRoad.AI
                     break;
 
                 case EnemyState.Chase:
+                {
                     UpdateEmotion("紧逼");
-                    MoveTowards(_player.position, dt);
-                    if (dist <= profile.attackRange) State = EnemyState.Attack;
-                    // 中距离远程：发射心念弹——距离硬上限 8m：禁止隔半张地图狙击玩家，
-                    // 超距只能继续追近（detectRange 只管"发现"，不管"够得着"）
-                    else if (profile.rangedAttack && _rangedCd <= 0 &&
-                             dist > profile.attackRange * 2f && dist < MaxRangedReach)
-                        DoRangedAttack();
-                    // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）——同样限近距 7m：
-                    // 凝视与低语要贴近才有压迫力，不允许远远地隔空施压
-                    else if (dist < Mathf.Min(profile.detectRange * 0.7f, MaxMentalReach) &&
-                             _mentalCd <= 0 && profile.mentalDamage > 0)
+                    bool isBoss = profile.category == EnemyCategory.Boss;
+                    // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
+                    // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
+                    float standoff = profile.attackRange + 1.8f;
+                    if (dist > standoff)
+                    {
+                        MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
+                    }
+                    else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
+                    {
+                        MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
+                        if (dist <= profile.attackRange) State = EnemyState.Attack;
+                    }
+                    else
+                    {
+                        MaintainStandoff(standoff, dt);      // 没轮到：环上绕圈候场
+                    }
+                    // 中距离言语攻击（内心/混合敌人的主要远程手段——话语弹幕，非物理弹丸）
+                    if (dist < Mathf.Min(profile.detectRange * 0.7f, MaxMentalReach) &&
+                        _mentalCd <= 0 && profile.mentalDamage > 0)
                         DoMentalAttack();
-                    else if (dist > profile.detectRange * 1.5f) State = EnemyState.Patrol;
+                    else if (dist > profile.detectRange * 1.5f)
+                    {
+                        Combat.CombatDirector.Release(this);
+                        State = EnemyState.Patrol;
+                    }
                     break;
+                }
 
                 case EnemyState.Attack:
                     UpdateEmotion("狰狞");
@@ -335,6 +350,35 @@ namespace AdversityRoad.AI
 
         /// <summary>Agent 是否可用：未落在 NavMesh 上时调用 isStopped/SetDestination 会抛异常。</summary>
         bool AgentReady => _agent != null && _agent.enabled && _agent.isOnNavMesh;
+
+        /// <summary>
+        /// 待战环走位（围攻礼让）：没抢到攻击令牌的敌人保持在玩家周围一圈候场——
+        /// 太近则后撤、太远则贴到环上、在环上则绕圈游走，绝不堆挤进玩家身体。
+        /// 让群战像大作那样"一两个进攻、其余围而不攻"，而非一拥而上。
+        /// </summary>
+        void MaintainStandoff(float standoff, float dt)
+        {
+            FaceTarget();
+            if (_player == null) return;
+            Vector3 toP = _player.position - transform.position; toP.y = 0;
+            float d = toP.magnitude;
+            if (d < 0.01f) return;
+            Vector3 dir;
+            if (d < standoff - 0.4f) dir = -toP.normalized;          // 太近：后撤
+            else if (d > standoff + 0.9f) dir = toP.normalized;      // 太远：贴回环上
+            else
+            {
+                _strafeFlipT -= dt;
+                if (_strafeFlipT <= 0)
+                {
+                    _strafeFlipT = Random.Range(1.5f, 3f);
+                    _strafeDir = Random.value < 0.5f ? -1f : 1f;
+                }
+                dir = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;   // 环上绕圈
+            }
+            if (AgentReady) _agent.Move(dir * profile.moveSpeed * 0.5f * dt);
+            else transform.position += dir * profile.moveSpeed * 0.5f * dt;
+        }
 
         void MoveTowards(Vector3 target, float dt)
         {
@@ -536,10 +580,10 @@ namespace AdversityRoad.AI
             Projectile.Launch(transform, origin, targetPos - origin,
                 new DamageInfo
                 {
-                    physicalDamage = profile.physicalDamage * 0.7f,
-                    mentalDamage = profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 言语弹幕：只压心神，不做远程物理削血
+                    mentalDamage = profile.mentalDamage * 0.6f,
                     mentalAxis = profile.targetWeakness,
-                    knockback = 1f,
+                    knockback = 0f,
                     attackerId = profile.enemyId
                 }, 11f, themeColor, baseMaterial);
         }
