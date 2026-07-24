@@ -53,8 +53,8 @@ namespace AdversityRoad.Player
         public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
 
         [Header("探索镜头：玩家一转向，镜头立刻开始平稳缓慢地转到其背后（面朝方向）")]
-        [Tooltip("镜头与角色朝向偏差小于此角度就不必回正（避免细抖）")]
-        public float exploreReorientAngle = 6f;
+        [Tooltip("镜头与角色朝向偏差小于此角度就不必回正（死区放大：细碎修正完全不动镜头）")]
+        public float exploreReorientAngle = 10f;
         [Tooltip("回正平滑时间（临界阻尼弹簧）：偏大=更缓更稳。控制「缓慢跟随」的慢")]
         public float exploreTurnSmoothTime = 0.55f;
         [Tooltip("回正最大转速（度/秒）：封顶让掉头也平稳不猛甩")]
@@ -82,6 +82,13 @@ namespace AdversityRoad.Player
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 战斗回正进行中（迟滞开关防小幅摆镜）
+        // 朝向防抖（魂系/战神跟随镜头的通行做法）：镜头永远追【低通滤波后的朝向】，
+        // 并且只有玩家朝一个方向【持续稳定一小段时间】才开始回正——摇杆快速搓动、
+        // 出招磁吸的瞬间换向都被滤在镜头之外，不再逐帧牵动镜头来回摆。
+        float _headingAvg;                 // 平滑朝向（低通滤波，镜头的实际追踪目标）
+        float _headingHoldT;               // 当前朝向的稳定时长（大幅瞬转会清零重计）
+        float _lastHeading;
+        bool _headingInit;
         float _pivotH = 0.42f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
@@ -182,6 +189,23 @@ namespace AdversityRoad.Player
             // 平滑后的水平速度向量（供移动构图的"引导留白"使用，滤掉逐帧抖动）
             _planarVel = Vector3.Lerp(_planarVel, frameDelta / dt, 5f * dt);
 
+            // ---- 朝向防抖滤波（所有自动回正共用）----
+            float rawHeading = target.eulerAngles.y;
+            if (!_headingInit)
+            {
+                _headingInit = true;
+                _headingAvg = rawHeading;
+                _lastHeading = rawHeading;
+            }
+            // 角速度检测：单帧瞬转（出招磁吸换向/摇杆猛搓）视为"方向还没定下来"，
+            // 稳定计时清零；只有连续低角速度才累计稳定时长
+            float headingRate = Mathf.Abs(Mathf.DeltaAngle(_lastHeading, rawHeading)) / dt;
+            if (headingRate > 220f) _headingHoldT = 0f;
+            else _headingHoldT += dt;
+            _lastHeading = rawHeading;
+            // 低通滤波（≈0.2s 时间常数）：镜头追这个平滑值，瞬时抖动不进入镜头
+            _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-5f * dt));
+
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
@@ -212,38 +236,33 @@ namespace AdversityRoad.Player
                 bool moving = moveSpeed > 1.4f;
                 bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
 
-                // 战斗回正（未锁定）：手动锁定模式下没有锁定目标时，玩家原地换向
-                // ——比如从打前方敌人瞬间转身打背后的敌人——镜头也要跟着转到其
-                // 身后，把新交战方向的敌人框进画面。带迟滞开关：偏差 >40° 才开始
-                // 回正、追到 <10° 停——近身缠斗的小幅换位绝不来回摆镜。
+                // 战斗回正（未锁定）：玩家【持续】转向一个新交战方向（比如转身打背后
+                // 的敌人）时，镜头平稳转到其身后把新目标框进画面。三重防抖：
+                //   · 追踪目标是低通滤波后的 _headingAvg，不是瞬时朝向；
+                //   · 起步门槛 = 偏差 >55° 且该朝向已稳定 0.35s——摇杆搓动/连段
+                //     磁吸的瞬间换向不会触发；
+                //   · 迟滞开关：追到 <12° 停，中途方向又大幅变化则立即中止。
                 if (_playerFsm == null && player != null)
                     _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
                 bool fighting = _playerFsm != null && _playerFsm.InCombat;
                 if (fighting && !manualRecently)
                 {
-                    float heading = target.eulerAngles.y;   // 角色出招朝向（磁吸已面向交战敌人）
-                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, heading));
-                    if (err > 40f) _combatReorient = true;
-                    else if (err < 10f) _combatReorient = false;
+                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
+                    if (err > 55f && _headingHoldT > 0.35f) _combatReorient = true;
+                    else if (err < 12f || _headingHoldT < 0.1f) _combatReorient = false;
                     if (_combatReorient)
-                    {
-                        // 比探索回正更快（0.22s 阻尼、封顶 260°/s）：转身打背后的敌人
-                        // 约半秒内完成取景，能立刻看清并确认新目标
-                        _yaw = Mathf.SmoothDampAngle(_yaw, heading, ref _yawFollowVel,
-                            0.22f, 260f, dt);
-                    }
+                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
+                            0.3f, 180f, dt);
                 }
-                // 探索镜头：玩家一改变朝向，镜头【立刻开始】平稳缓慢地转到其背后
-                // （面朝方向），无需先"持续朝一个方向走一段时间"。
-                //   · 目标 = 角色朝向（PlayerController 已让角色即时朝移动方向），转身即跟；
-                //   · 用大平滑时间的临界阻尼弹簧 SmoothDampAngle：小抖动只带来极轻微慢移
-                //     不晃屏，大转向/掉头则平稳缓慢地归位到身后，绝不猛甩。
-                else if (moving && !manualRecently)
+                // 探索镜头：玩家朝一个方向稳定移动时，镜头平稳缓慢地转到其背后。
+                //   · 目标 = 低通滤波后的朝向（跑动中细碎的左右修正不牵动镜头）；
+                //   · 起步需朝向稳定 0.22s：快速搓摇杆变向不触发回正；
+                //   · 大平滑时间的临界阻尼弹簧：大转向/掉头平稳归位，绝不猛甩。
+                else if (moving && !manualRecently && _headingHoldT > 0.22f)
                 {
                     _combatReorient = false;
-                    float heading = target.eulerAngles.y;   // 角色（=移动）正前方
-                    if (Mathf.Abs(Mathf.DeltaAngle(_yaw, heading)) > exploreReorientAngle)
-                        _yaw = Mathf.SmoothDampAngle(_yaw, heading, ref _yawFollowVel,
+                    if (Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg)) > exploreReorientAngle)
+                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
                             exploreTurnSmoothTime, exploreMaxSpeed, dt);
                 }
                 else
