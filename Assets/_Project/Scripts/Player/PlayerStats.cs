@@ -41,7 +41,10 @@ namespace AdversityRoad.Player
         public void TickRegen(float dt, bool inCombat)
         {
             stamina = Mathf.Min(maxStamina, stamina + staminaRegenPerSec * dt);
-            float m = (inCombat ? 0.3f : 1f) * mentalRegenPerSec * dt;
+            // 战斗中被动回复压得很低：心理能量的涨落主要来自战斗行为本身
+            // （受击/被围/站桩流失，命中/击杀/完美闪避回复——见 MentalDynamics），
+            // 否则被动回复会把这些变化当场抹平，条上永远看不到起伏。
+            float m = (inCombat ? 0.1f : 1f) * mentalRegenPerSec * dt;
             will = Mathf.Min(maxWill, will + m);
             focus = Mathf.Min(maxFocus, focus + m);
             selfWorth = Mathf.Min(maxSelfWorth, selfWorth + m);
@@ -53,16 +56,42 @@ namespace AdversityRoad.Player
                 AddRelationshipDrain(-drainDecayPerSec * dt);
         }
 
+        /// <summary>生命垂危线（比例）与濒死守护冷却。</summary>
+        public const float CriticalHpRatio = 0.15f;
+        [NonSerialized] float _nextLastStand = -999f;
+
         public void TakePhysicalDamage(float dmg)
         {
+            float before = hp;
             hp = Mathf.Max(0, hp - dmg);
+
+            // 濒死守护：从高于 1 血被一击打穿至 0 时，拦下这次死亡、留 1 点生命，
+            // 并强制弹出「生命垂危」决策——保证严重警告一定出现在倒下之前，
+            // 而不是被单次高伤害直接跳过垂危线（事件驱动，不依赖每帧轮询）。
+            // 90 秒冷却一次：不是无敌，是最后一次选择的机会。
+            if (hp <= 0 && before > 1f && Time.unscaledTime >= _nextLastStand)
+            {
+                hp = 1f;
+                _nextLastStand = Time.unscaledTime + 90f;
+                GameEvents.RaisePlayerHpChanged(hp, maxHp);
+                GameEvents.RaiseSubtitle("濒死守护——这一击没能击倒你，但下一击可以。");
+                GameEvents.RaiseLifeThreatened();
+                return;
+            }
+
             GameEvents.RaisePlayerHpChanged(hp, maxHp);
+            // 掉血穿越垂危线：立即抛事件强制弹窗（轮询在两帧之间会漏掉快速穿越）
+            if (!IsDead && maxHp > 0 &&
+                hp / maxHp < CriticalHpRatio && before / maxHp >= CriticalHpRatio)
+                GameEvents.RaiseLifeThreatened();
             if (IsDead) GameEvents.RaisePlayerDied("physical");
         }
 
         /// <summary>心理伤害按弱点轴落到对应属性。返回是否触发心理硬直。</summary>
         public bool TakeMentalDamage(Personalization.WeaknessAxis axis, float dmg)
         {
+            // 休养生息答题结束后的短暂护体：心理攻击无效（方案 V3.0：返回战斗给 2 秒保护）
+            if (Core.QuizSystem.IsMentalShielded) return false;
             dmg *= Core.GrowthSystem.MentalTakenMult(axis);
             // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
             AddRumination(dmg * 0.4f);

@@ -76,6 +76,8 @@ namespace AdversityRoad.AI
             for (int i = 0; i < 3 && _ec.State != EnemyState.Dead; i++)
             {
                 if (_player == null) break;
+                // 凝念能量门禁：每发耗能，打空即中断整轮；超距不发射
+                if (!EnemyRangedEnergy.TryFire(this, _player.position)) break;
                 Vector3 origin = transform.position + Vector3.up * 1.7f + transform.forward * 0.5f;
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo

@@ -231,6 +231,7 @@ namespace AdversityRoad.Core
                     ? safetySettings
                     : ScriptableObject.CreateInstance<SafetySettings>();
             CloudDialogueService.Ensure();
+            QuizAiService.Ensure();          // AI 自动命题：低风险题自动校验后临时可用
             GrowthSystem.EnsureKillHook();   // 敌人图鉴击败计数
         }
 
@@ -332,6 +333,7 @@ namespace AdversityRoad.Core
             root.AddComponent<StanceSystem>();     // 五种战斗姿态（Awake 早于 PlayerCombatController.Awake 读取）
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
+            root.AddComponent<MentalDynamics>();   // 战斗驱动的心理能量动态（受击/被围/命中/击杀）
             var skillExec = root.AddComponent<SkillExecutor>();
 
             var poser = root.AddComponent<HumanoidAnimator>();
@@ -383,12 +385,13 @@ namespace AdversityRoad.Core
             var dingxin = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             dingxin.skillId = "dingxin_huti";
             dingxin.displayName = "定心护体";
-            dingxin.description = "消耗意志凝神定心，恢复专注、自尊与决断。";
+            dingxin.description = "定心·四象归一：收势凝神，三重内收气环荡开周围搅扰（削韧+推离），旋身归一爆发并恢复心理属性。";
             dingxin.staminaCost = 0;
             dingxin.willCost = 25;
             dingxin.mentalRestore = 45;
             dingxin.cooldown = 12;
-            dingxin.castLockTime = 0.4f;
+            dingxin.castLockTime = 2.0f;
+            dingxin.isSteadyHeartGuard = true;
             exec.equippedSkills.Add(dingxin);
 
             // 能量斩：远程大能量攻击——需 2 点意势积累才能释放，伤害极高
@@ -413,10 +416,10 @@ namespace AdversityRoad.Core
             var guihuan = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             guihuan.skillId = "zeren_guihuan";
             guihuan.displayName = "责任归还";
-            guihuan.description = "把不属于自己的责任准确还回去：清除过度负责减速，将飞来的虚假责任球打回法官，回补边界。";
+            guihuan.description = "还域·界返三连：撩斩挑飞→旋身反震（虚假责任球全数打回、好人墙整圈震破）→界域震地波并回补边界。";
             guihuan.staminaCost = 10;
             guihuan.cooldown = 6;
-            guihuan.castLockTime = 0.35f;
+            guihuan.castLockTime = 2.2f;
             guihuan.isResponsibilityReturn = true;
             exec.equippedSkills.Add(guihuan);
 
@@ -424,10 +427,10 @@ namespace AdversityRoad.Core
             var huozhong = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             huozhong.skillId = "wufenzhong_huozhong";
             huozhong.displayName = "五分钟火种";
-            huozhong.description = "先做五分钟：恢复行动力、清除减速与身份冻结、意势+1。动力是被行动召回的。";
+            huozhong.description = "燃火·三段突进斩：点火解冻→火色双突进斩→上撩火浪终结。恢复行动力、意势+1——动力是被行动召回的。";
             huozhong.staminaCost = 6;
             huozhong.cooldown = 10;
-            huozhong.castLockTime = 0.3f;
+            huozhong.castLockTime = 2.2f;
             huozhong.isFiveMinuteSpark = true;
             exec.equippedSkills.Add(huozhong);
 
@@ -435,10 +438,10 @@ namespace AdversityRoad.Core
             var budu = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             budu.skillId = "buduxin_dun";
             budu.displayName = "不读心盾";
-            budu.description = "十秒内抵消下一次心理攻击，并令幻影假目标显形消散。无法确认的事，我不把猜测当事实。";
+            budu.description = "镜界·退身斩：镜环展开护心（抵消下一次心理攻击）→后空翻拉开身位→掷出镜界气刃。无法确认的事，不当成事实。";
             budu.staminaCost = 8;
             budu.cooldown = 14;
-            budu.castLockTime = 0.3f;
+            budu.castLockTime = 1.7f;
             budu.isMindShield = true;
             exec.equippedSkills.Add(budu);
 
@@ -446,10 +449,10 @@ namespace AdversityRoad.Core
             var huishou = ScriptableObject.CreateInstance<Data.SkillDefinition>();
             huishou.skillId = "zhuyili_huishou";
             huishou.displayName = "注意力回收";
-            huishou.description = "清除全部幻影假目标、恢复专注、降低反刍。不是所有声音都要回应。";
+            huishou.description = "收心·万流归元：双后旋踢清场→幻影全灭→万流归元冲击波。恢复专注、降低反刍——不是所有声音都要回应。";
             huishou.staminaCost = 8;
             huishou.cooldown = 9;
-            huishou.castLockTime = 0.3f;
+            huishou.castLockTime = 1.9f;
             huishou.isAttentionRecall = true;
             exec.equippedSkills.Add(huishou);
         }
@@ -864,17 +867,28 @@ namespace AdversityRoad.Core
             var levelSelectPanel = LevelSelectPanel.Create(canvasGo.transform);
             var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
             var actionTrackerPanel = ActionTrackerPanel.Create(canvasGo.transform);
+            var quizPanel = QuizPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
-                levelSelectPanel, missionBoardPanel, actionTrackerPanel);
+                levelSelectPanel, missionBoardPanel, actionTrackerPanel, quizPanel);
             UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
                 new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
             // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口
             UiUtil.MakeButton(canvasGo.transform, "传送", new Vector2(1, 1), new Vector2(-945, -116),
                 new Vector2(150, 64), new Color(0.3f, 0.45f, 0.6f, 0.85f), levelSelectPanel.Toggle, 26);
+            // 答题练习：休养生息题库随时可练（战斗中能量失衡时会自动触发）
+            UiUtil.MakeButton(canvasGo.transform, "答题", new Vector2(1, 1), new Vector2(-605, -190),
+                new Vector2(150, 64), new Color(0.3f, 0.55f, 0.45f, 0.85f), quizPanel.OpenPractice, 26);
+            // AI 命题审核：开关 AI 自动命题、逐条定夺候选题能否长期入库
+            var quizReviewPanel = QuizReviewPanel.Create(canvasGo.transform);
+            UiUtil.MakeButton(canvasGo.transform, "命题审核", new Vector2(1, 1), new Vector2(-775, -190),
+                new Vector2(150, 64), new Color(0.5f, 0.4f, 0.3f, 0.85f), quizReviewPanel.Toggle, 24);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
+
+            // 能量分级警告：偏低/告急字幕 + 低生命红屏脉冲 + 生命垂危休整答题弹窗
+            VitalAlertController.Create(canvasGo.transform, quizPanel);
 
             // 第五阶段：画像驱动的个性化遭遇战
             var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();

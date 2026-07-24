@@ -140,6 +140,7 @@ namespace AdversityRoad.Combat
         public int Momentum => _momentum;
 
         StanceSystem _stance;
+        MentalDynamics _dynamics;
 
         void Awake()
         {
@@ -147,6 +148,13 @@ namespace AdversityRoad.Combat
             _fsm = GetComponent<CombatStateMachine>();
             _cc = GetComponent<CharacterController>();
             _stance = GetComponent<StanceSystem>();
+        }
+
+        /// <summary>心理能量动态钩子（组件在 Bootstrap 中后挂，惰性查找）。</summary>
+        MentalDynamics Dyn()
+        {
+            if (_dynamics == null) _dynamics = GetComponent<MentalDynamics>();
+            return _dynamics;
         }
 
         void Update()
@@ -379,6 +387,19 @@ namespace AdversityRoad.Combat
                 sb.Append(c == 'K' ? '剑' : '拳');
             }
             GameEvents.RaiseComboSeq(sb.ToString());
+        }
+
+        /// <summary>闪避取消（大作惯例：翻滚随时切断轻连段收招）：清空连段状态与序列，
+        /// 落地后下一次进攻从头起手——衔接干脆、不残留旧输入。</summary>
+        public void CancelComboForDodge()
+        {
+            _buffered = AttackBtn.None;
+            if (_hitboxRoutine != null)
+            {
+                StopCoroutine(_hitboxRoutine);
+                if (weaponHitbox != null) weaponHitbox.DisableHitbox();
+            }
+            EndCombo();
         }
 
         void EndCombo()
@@ -719,10 +740,24 @@ namespace AdversityRoad.Combat
                 transform.rotation = Quaternion.LookRotation(stick);
         }
 
-        /// <summary>摇杆磁吸选target：范围内的敌人按「距离+与摇杆方向的偏角」打分取最优；
+        Player.LockOnSystem _lockOn;
+
+        /// <summary>玩家手动锁定的目标（存活时优先于一切软吸附）。</summary>
+        Transform LockedTarget()
+        {
+            if (_lockOn == null) _lockOn = GetComponent<Player.LockOnSystem>();
+            return _lockOn != null ? _lockOn.CurrentTarget : null;
+        }
+
+        /// <summary>摇杆磁吸选target：手动锁定的目标绝对优先（大作惯例——锁谁打谁）；
+        /// 未锁定时按「距离+与摇杆方向的偏角」打分取最优；攻击吸附在设置中关闭后，
+        /// 未锁定的出招完全不吸附敌人（只朝摇杆方向）；
         /// 摇杆指向明显偏离某敌人（>100°）时不吸它——玩家想脱离目标打别处时不抢方向。</summary>
         Transform PickTarget(Vector3 preferDir)
         {
+            var locked = LockedTarget();
+            if (locked != null) return locked;
+            if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：完全手操
             var enemies = FindObjectsOfType<AI.EnemyController>();
             Transform best = null;
             float bestScore = float.MaxValue;
@@ -735,9 +770,10 @@ namespace AdversityRoad.Combat
                 float d = to.magnitude;
                 if (d > range || d < 0.01f) continue;
                 float ang = hasDir ? Vector3.Angle(preferDir, to)
-                                   : Vector3.Angle(transform.forward, to) * 0.5f;
+                                   : Vector3.Angle(transform.forward, to);
                 if (hasDir && ang > 100f) continue;   // 摇杆明确指向别处：不吸这个敌人
-                float score = d + ang * 0.045f;
+                if (!hasDir && ang > 90f) continue;   // 无输入只吸正面锥内：不转身咬背后的敌人
+                float score = d + ang * (hasDir ? 0.045f : 0.0225f);
                 if (score < bestScore) { bestScore = score; best = e.transform; }
             }
             return best;
@@ -785,7 +821,7 @@ namespace AdversityRoad.Combat
         /// 设计原则：招式越强范围越大——蓄力/绝招终结 > 连段末段 > 起手轻击；
         /// 形状对应轨迹——突刺长而窄（直线）、横斩横宽（横扫弧）、撩斩纵高（下→上弧）、
         /// 旋风斩/扫堂腿环身 360°、跳劈罩住落点、扫堂贴地。</summary>
-        static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
+        public static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
         {
             switch (p)
             {
@@ -834,6 +870,7 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = h =>
             {
                 if (buildMomentum) AddMomentum(1);
+                if (Dyn() != null) _dynamics.OnHitLanded(dmg >= heavyDamage);
                 // 打击感：命中顿帧（不晕）随伤害加重 + 打击音效；
                 // 只有重击/大伤害才震屏——普通连段不频繁震屏（防晕）。
                 bool heavy = dmg >= heavyDamage;
@@ -875,17 +912,26 @@ namespace AdversityRoad.Combat
             GameEvents.RaiseMomentumChanged(_momentum);
         }
 
-        /// <summary>最近的存活敌人（普攻转向与远程技能瞄准共用）。</summary>
+        /// <summary>瞄准目标（普攻转向、技能连招与远程瞄准共用，与普攻同一套吸附规则）：
+        /// ① 手动锁定的目标绝对优先（锁谁打谁）；
+        /// ② 「攻击吸附」在设置中关闭 → 返回 null，任何动作/技能都不自动转向敌人；
+        /// ③ 吸附开启且未锁定 → 只在正面 90° 锥内软吸附最近敌人（不会转身咬背后的敌人）。</summary>
         public Transform AutoAimTarget()
         {
+            var locked = LockedTarget();
+            if (locked != null) return locked;
+            if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：技能也完全手操
             var enemies = FindObjectsOfType<AI.EnemyController>();
             Transform best = null;
             float bestDist = Mathf.Max(autoAimRange, 14f);
             foreach (var e in enemies)
             {
                 if (e.State == AI.EnemyState.Dead) continue;
-                float d = Vector3.Distance(transform.position, e.transform.position);
-                if (d < bestDist) { bestDist = d; best = e.transform; }
+                Vector3 to = e.transform.position - transform.position; to.y = 0;
+                float d = to.magnitude;
+                if (d >= bestDist || d < 0.01f) continue;
+                if (Vector3.Angle(transform.forward, to) > 90f) continue;   // 正面锥限制
+                bestDist = d; best = e.transform;
             }
             return best;
         }
@@ -976,6 +1022,7 @@ namespace AdversityRoad.Combat
                     _lastPerfect = Time.time;
                     _critNext = true;
                     AddMomentum(1);
+                    if (Dyn() != null) _dynamics.OnPerfectDodge();
                     CombatFeedback.SlowMo(0.3f, 0.35f);
                     GameEvents.RaiseSubtitle("完美闪避！意势+1，下一击必暴击");
                 }
@@ -1032,7 +1079,14 @@ namespace AdversityRoad.Combat
                 // 蓄力气场=防御姿态：受物理伤害大减（敌人也几乎无法近身）
                 bool chargeGuard = _charging;
                 if (chargeGuard) phys *= 0.25f;
+                // 技能连招霸体（Finisher 施展中）：轻击不打断动作且伤害 ×0.6——
+                // 五大连招/超必杀开出来就能完整演完；击倒级重击仍会打断（有代价的豪赌）
+                bool skillArmor = _fsm.Current == CombatState.Finisher;
+                if (skillArmor) phys *= 0.6f;
                 _player.Stats.TakePhysicalDamage(phys);
+                // 心理能量动态：挨打的挫感落到意志/专注/反刍（格挡住的不算）
+                if (!blocked && Dyn() != null)
+                    _dynamics.OnHitTaken(phys, backstab, phys >= knockdownThreshold);
 
                 Core.GameAudio.Play(blocked ? Core.GameAudio.Sfx.Block
                     : phys >= knockdownThreshold ? Core.GameAudio.Sfx.HeavyHit
@@ -1083,7 +1137,7 @@ namespace AdversityRoad.Combat
                         Vector3 fly = transform.position - dmg.sourcePosition; fly.y = 0;
                         if (fly.sqrMagnitude > 0.01f) StartCoroutine(KnockFly(fly.normalized));
                     }
-                    else if (!chargeGuard)
+                    else if (!chargeGuard && !skillArmor)
                     {
                         _fsm.RequestState(CombatState.HitReaction, 0.4f);
                     }

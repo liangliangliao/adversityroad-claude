@@ -21,6 +21,7 @@ namespace AdversityRoad.Core
         public static event Action<int> OnComboCount;           // 连击计数（屏幕固定计数器）
         public static event Action<int, string, string> OnStanceChanged; // 战斗姿态切换（序号/名称/心法）
         public static event Action OnGoalChanged;               // 今日目标钉下/完成（目标板系统）
+        public static event Action OnLifeThreatened;            // 生命穿越垂危线/濒死守护触发（强制弹出垂危决策）
 
         public static void RaisePlayerHpChanged(float cur, float max) => OnPlayerHpChanged?.Invoke(cur, max);
         public static void RaiseMentalStatChanged(string stat, float cur, float max) => OnMentalStatChanged?.Invoke(stat, cur, max);
@@ -38,5 +39,6 @@ namespace AdversityRoad.Core
         public static void RaiseComboCount(int n) => OnComboCount?.Invoke(n);
         public static void RaiseStanceChanged(int index, string name, string mantra) => OnStanceChanged?.Invoke(index, name, mantra);
         public static void RaiseGoalChanged() => OnGoalChanged?.Invoke();
+        public static void RaiseLifeThreatened() => OnLifeThreatened?.Invoke();
     }
 }

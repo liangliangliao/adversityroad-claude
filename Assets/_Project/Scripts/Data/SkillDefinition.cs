@@ -48,6 +48,9 @@ namespace AdversityRoad.Data
         [Header("注意力回收：清除全部幻影假目标、恢复专注、降低反刍")]
         public bool isAttentionRecall = false;
 
+        [Header("定心护体：三重气环收束连招，恢复心理属性（mentalRestore 为恢复量）")]
+        public bool isSteadyHeartGuard = false;
+
         [Header("时序")]
         public float cooldown = 5f;
         public float castLockTime = 0.6f;

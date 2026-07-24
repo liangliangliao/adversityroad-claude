@@ -17,8 +17,8 @@ namespace AdversityRoad.Player
         public float runSpeed = 5.2f;
         public float acceleration = 18f;           // 起步加速度（防晕：速度不突变）
         public float deceleration = 26f;           // 停步减速度
-        public float rotateSpeed = 11f;
-        public float quickTurnMultiplier = 1.7f;   // 大角度转身加速倍率
+        public float rotateSpeed = 14f;            // 转身更跟手（大作级的方向响应）
+        public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率：掉头近乎即时
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -134,6 +134,9 @@ namespace AdversityRoad.Player
             if ((Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge")) && Stats.SpendStamina(dodgeStaminaCost))
             {
                 if (IsCrouched) ToggleCrouch();
+                // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
+                var pcc = GetComponent<Combat.PlayerCombatController>();
+                if (pcc != null) pcc.CancelComboForDodge();
                 _dodgeDir = moveDir.sqrMagnitude > 0.01f ? moveDir : transform.forward;
                 // 翻滚方向即刻转身
                 transform.rotation = Quaternion.LookRotation(_dodgeDir);
