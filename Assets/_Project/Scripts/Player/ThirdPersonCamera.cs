@@ -81,7 +81,8 @@ namespace AdversityRoad.Player
         Vector2 _focusAnchor;              // 焦点死区锚：小位移不推镜（电影三脚架感）
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
-        bool _combatReorient;              // 战斗回正进行中（迟滞开关防小幅摆镜）
+        bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
+        float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
         // 朝向防抖（魂系/战神跟随镜头的通行做法）：镜头永远追【低通滤波后的朝向】，
         // 并且只有玩家朝一个方向【持续稳定一小段时间】才开始回正——摇杆快速搓动、
         // 出招磁吸的瞬间换向都被滤在镜头之外，不再逐帧牵动镜头来回摆。
@@ -237,54 +238,41 @@ namespace AdversityRoad.Player
             {
                 bool moving = moveSpeed > 0.6f;
                 bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
-
-                // 战斗回正（未锁定）：玩家【持续】转向一个新交战方向（比如转身打背后
-                // 的敌人）时，镜头平稳转到其身后把新目标框进画面。三重防抖：
-                //   · 追踪目标是低通滤波后的 _headingAvg，不是瞬时朝向；
-                //   · 起步门槛 = 偏差 >55° 且该朝向已稳定 0.35s——摇杆搓动/连段
-                //     磁吸的瞬间换向不会触发；
-                //   · 迟滞开关：追到 <12° 停，中途方向又大幅变化则立即中止。
                 if (_playerFsm == null && player != null)
                     _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
                 bool fighting = _playerFsm != null && _playerFsm.InCombat;
-                if (fighting && !manualRecently)
+                // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
+                // 若只看 moveSpeed 会误判成静止而完全不回正——这正是"出招中转向后看不见前方"的缺口
+                bool steering = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
+                bool active = moving || steering;
+
+                // ===== 统一渐进回正（转向尺度 → 镜头同步幅度，连续映射，无分档断层）=====
+                // 此前战斗/探索是互斥的两条分支：战斗中只有 >55° 才回正，
+                // 12°—55° 的中等转向【完全没有跟随】——战斗中长期存在的部分盲区。
+                // 现在合并为一条：
+                //   · 中小幅转向（>10°）+ 有移动或推杆 → 温和跟随，越大越快；
+                //   · 大幅换向（战斗 >55° / 探索 >45°）→ 迟滞开关锁定追击，直到 <12° 才松开，
+                //     保证掉头/转身打背后敌人时迅速把新方向框进画面；
+                //   · 手动转镜期间一律让位给玩家。
+                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
+                float bigAngle = fighting ? 55f : 45f;
+                float holdNeed = fighting ? 0.24f : 0.15f;
+                if (err > bigAngle && _headingHoldT > holdNeed) _combatReorient = true;
+                else if (err < 12f || _headingHoldT < 0.1f) _combatReorient = false;
+
+                bool gentle = active && _headingHoldT > 0.15f && err > exploreReorientAngle;
+
+                if (!manualRecently && (_combatReorient || gentle))
                 {
-                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
-                    if (err > 55f && _headingHoldT > 0.24f) _combatReorient = true;
-                    else if (err < 12f || _headingHoldT < 0.1f) _combatReorient = false;
-                    if (_combatReorient)
-                    {
-                        // 同样渐进：转身打背后的敌人（≈180°）时迅速把新目标框进画面
-                        float t = Mathf.Clamp01((err - 55f) / 120f);
-                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            Mathf.Lerp(0.28f, 0.15f, t), Mathf.Lerp(180f, 340f, t), dt);
-                    }
+                    // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
+                    // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
+                    float t = Mathf.Clamp01((err - exploreReorientAngle) / 130f);
+                    _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
+                        Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t),
+                        Mathf.Lerp(70f, 340f, t), dt);
                 }
-                // 探索镜头：玩家朝一个方向稳定移动时，镜头转到其背后。
-                //   · 目标 = 低通滤波后的朝向（跑动中细碎的左右修正不牵动镜头）；
-                //   · 起步需朝向稳定 0.22s：快速搓摇杆变向不触发回正；
-                //   · 【渐进式回正】偏差越大追得越快——小幅修正依旧慢而稳（防抖），
-                //     大角度掉头则迅速跟上（防"转身后看不见前方"的盲区）。
-                //     固定 85°/s 时 180° 掉头要 2.1 秒，正是盲区的成因。
-                else if (moving && !manualRecently && _headingHoldT > 0.15f)
-                {
-                    _combatReorient = false;
-                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
-                    if (err > exploreReorientAngle)
-                    {
-                        // 0°→180° 映射：平滑时间 0.5s→0.16s、转速上限 70→300°/s
-                        float t = Mathf.Clamp01((err - exploreReorientAngle) / 120f);
-                        float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.16f, t);
-                        float maxSpd = Mathf.Lerp(70f, 300f, t);
-                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            smoothT, maxSpd, dt);
-                    }
-                }
-                else
-                {
-                    _combatReorient = false;
-                    _yawFollowVel = 0f;
-                }
+                else _yawFollowVel = 0f;
+                _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
 
@@ -381,7 +369,16 @@ namespace AdversityRoad.Player
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
                 wantFactor = Mathf.Clamp(0.8f + enemyDist * 0.05f, 0.92f, 1.28f);
             }
-            else wantFactor = 1f;   // 疾跑不再微调焦距：任何"呼吸式"变焦都读作不稳
+            else
+            {
+                // 视野开阔化（未锁定时）：疾跑与大幅转向各给一点点拉远，让"要去的方向"
+                // 有更多可见余量——转身/掉头的瞬间正是最需要看清周围的时刻。
+                // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
+                // 不会形成"呼吸式"变焦那种不稳感。
+                float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
+                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.06f;
+                wantFactor = 1f + runOut + turnOut;
+            }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
             // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
