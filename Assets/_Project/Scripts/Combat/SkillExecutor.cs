@@ -40,19 +40,42 @@ namespace AdversityRoad.Combat
             _cc = GetComponent<CharacterController>();
         }
 
+        // 技能输入缓冲（意图匹配）：在出招锁定/硬直期间按下的技能不再石沉大海，
+        // 而是排队等待——动作一结束立刻接上，读作"我按了它就会打出来"
+        const float SkillBufferWindow = 0.35f;
+        int _bufferedSkill = -1;
+        float _bufferedSkillAt = -99f;
+
         void Update()
         {
             var keys = new List<string>(_cooldowns.Keys);
             foreach (var k in keys) _cooldowns[k] = Mathf.Max(0, _cooldowns[k] - Time.deltaTime);
 
-            // 数字键 1-6 释放已装备技能
-            for (int i = 0; i < Mathf.Min(6, equippedSkills.Count); i++)
-                if (Input.GetKeyDown(KeyCode.Alpha1 + i)) TryCast(equippedSkills[i]);
+            int n = Mathf.Min(6, equippedSkills.Count);
+            int pressed = -1;
+            // 数字键 1-6 / 触屏技能按钮：定·气·还·火·盾·收
+            for (int i = 0; i < n; i++)
+                if (Input.GetKeyDown(KeyCode.Alpha1 + i) || MobileInput.GetDown("Skill" + (i + 1)))
+                    pressed = i;
 
-            // 触屏技能按钮：定（定心护体）/ 气（斩念气刃）/ 还（责任归还）/
-            // 火（五分钟火种）/ 盾（不读心盾）/ 收（注意力回收）
-            for (int i = 0; i < Mathf.Min(6, equippedSkills.Count); i++)
-                if (MobileInput.GetDown("Skill" + (i + 1))) TryCast(equippedSkills[i]);
+            if (pressed >= 0)
+            {
+                if (!TryCast(equippedSkills[pressed]))
+                {
+                    // 释放失败（多半是正处于出招锁定）→ 入缓冲，稍后自动兑现
+                    _bufferedSkill = pressed;
+                    _bufferedSkillAt = Time.unscaledTime;
+                }
+                return;
+            }
+
+            // 兑现排队中的技能：动作锁一解除立刻打出；超窗作废（防陈旧输入迟到触发）
+            if (_bufferedSkill >= 0)
+            {
+                if (Time.unscaledTime - _bufferedSkillAt > SkillBufferWindow) _bufferedSkill = -1;
+                else if (_bufferedSkill < equippedSkills.Count &&
+                         TryCast(equippedSkills[_bufferedSkill])) _bufferedSkill = -1;
+            }
         }
 
         public bool TryCast(Data.SkillDefinition skill)

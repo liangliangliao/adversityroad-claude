@@ -15,8 +15,11 @@ namespace AdversityRoad.Player
         [Header("移动（速度按真实体感收敛，防晕）")]
         public float walkSpeed = 2.6f;
         public float runSpeed = 5.2f;
-        public float acceleration = 18f;           // 起步加速度（防晕：速度不突变）
-        public float deceleration = 26f;           // 停步减速度
+        // 起步/刹车响应（大作级跟手）：0→全速 ≈0.12s、全速→停 ≈0.09s。
+        // 旧值 18/26 需要 0.29s 才提到全速，读作"人机之间隔了一层"。
+        // 防晕由镜头侧负责（软跟随 + 焦点死区），而不是靠拖慢角色本体。
+        public float acceleration = 45f;           // 起步加速度
+        public float deceleration = 58f;           // 停步减速度
         public float rotateSpeed = 14f;            // 转身更跟手（大作级的方向响应）
         public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率：掉头近乎即时
         public float jumpForce = 7f;
@@ -53,6 +56,16 @@ namespace AdversityRoad.Player
         /// 技能连招据此判断玩家是否正在主动引导方向，从而让出自动吸附。</summary>
         public Vector3 StickWorldDir { get; private set; }
 
+        // ---- 意图匹配：输入缓冲 + 土狼时间（大作通用）----
+        const float DodgeBufferWindow = 0.3f;   // 闪避缓冲窗（硬直中按下也能在恢复帧兑现）
+        const float JumpBufferWindow = 0.2f;    // 跳跃缓冲窗（落地前按下，落地即跳）
+        const float CoyoteTime = 0.12f;         // 土狼时间（离开边缘后仍可起跳）
+        readonly InputBuffer _inputBuf = new InputBuffer();
+
+        /// <summary>供其它战斗组件共用的输入缓冲（技能在动作锁期间的排队兑现）。</summary>
+        public InputBuffer Buffer => _inputBuf;
+        float _coyoteT;
+
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
@@ -83,17 +96,23 @@ namespace AdversityRoad.Player
 
             if (_iframeTimer > 0) _iframeTimer -= dt;
 
+            // 输入采集 → 缓冲（意图匹配）：必须在任何 early-return 之前，
+            // 否则翻滚中/硬直中按下的键会被整帧跳过而丢失（连续翻滚就是这样失效的）。
+            // 消费式输入（MobileInput.GetDown）每帧只在这里读一次，其余系统一律走缓冲。
+            if (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge"))
+                _inputBuf.Press("Dodge");
+            if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
+                _inputBuf.Press("Jump");
+
             if (_dodgeTimer > 0)
             {
                 _dodgeTimer -= dt;
                 _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
-                return;
+                return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次（连续翻滚）
             }
 
-            // 闪避输入只读一次：既用于「收招闪避取消」，也用于下方常规翻滚，避免消费式
-            // 输入（MobileInput.GetDown）被读两次而丢键
-            bool dodgePressed = Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge");
+            bool dodgePressed = _inputBuf.Has("Dodge", DodgeBufferWindow);
 
             // 摇杆世界方向提前求出：硬锁动作（技能/绝招/重击）期间也要读它做「出招转向」，
             // 所以不能等到下面移动逻辑才算
@@ -147,20 +166,23 @@ namespace AdversityRoad.Player
             // 由招式自身的 GlideMove 负责——动作与位移始终匹配。
             if (attacking) speed *= 0.1f;
 
-            if (_cc.isGrounded)
-            {
-                _vy = -1f;
-                if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
-                {
-                    if (IsCrouched) ToggleCrouch();
-                    _vy = jumpForce;
-                }
-            }
-            else _vy += gravity * dt;
+            // 土狼时间（coyote time）：离开地面边缘后仍有一小段时间可以起跳——
+            // 玩家的意图是"我在跳台边缘按了跳"，而不是"我晚了两帧所以活该掉下去"
+            if (_cc.isGrounded) { _vy = -1f; _coyoteT = CoyoteTime; }
+            else { _vy += gravity * dt; _coyoteT -= dt; }
 
-            // 翻滚闪避（Shift / 闪）——输入已在本帧开头统一读取
+            // 跳跃：缓冲 + 土狼时间——落地前一瞬按下也能在落地帧兑现
+            if (_coyoteT > 0f && _inputBuf.TryConsume("Jump", JumpBufferWindow))
+            {
+                if (IsCrouched) ToggleCrouch();
+                _vy = jumpForce;
+                _coyoteT = 0f;
+            }
+
+            // 翻滚闪避（Shift / 闪）——走缓冲：硬直/翻滚中按下的闪避会在此兑现
             if (dodgePressed && Stats.SpendStamina(dodgeStaminaCost))
             {
+                _inputBuf.Consume("Dodge");
                 if (IsCrouched) ToggleCrouch();
                 // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
                 var pcc = GetComponent<Combat.PlayerCombatController>();

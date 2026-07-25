@@ -174,9 +174,11 @@ namespace AdversityRoad.Combat
             if (_parryTimer > 0) _parryTimer -= dt;
             if (_specialCd > 0) _specialCd -= dt;
 
-            // 受身：被击倒瞬间按闪避快速翻身（KOF 受身）
+            // 受身：被击倒瞬间按闪避快速翻身（KOF 受身）。
+            // 走 PlayerController 的共享输入缓冲——消费式输入每帧只能被读一次，
+            // 各系统各读一遍会互相抢键（谁先执行谁拿到），倒地时按闪常常没反应就是这个原因
             if (_fsm.Current == CombatState.Knockdown &&
-                (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge")))
+                _player.Buffer.TryConsume("Dodge", 0.3f))
             {
                 _fsm.RequestState(CombatState.Locomotion);
                 _player.SetInvincible(0.6f);
