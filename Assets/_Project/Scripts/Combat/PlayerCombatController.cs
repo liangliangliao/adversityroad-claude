@@ -740,13 +740,17 @@ namespace AdversityRoad.Combat
                     GlideMove(to.normalized * move, 0.09f);
                 return;
             }
-            // 无目标（大作惯例）：只做小步身位前移，不做全额突进——
-            // 原地连打只轻微向前挪步，绝不一路平移；突进类指令技保留较大位移
-            float cap = lunge >= 2f ? 0.9f : 0.35f;
+            // 无目标时【几乎不前冲】——精准打击的关键：
+            // 打敌人有磁吸（精确停在贴身距离），但打柱子、木桶这类非敌人目标没有磁吸，
+            // 只剩一个固定前冲量。你明明对准了，一出招人却滑过去 0.35m，
+            // 于是"有时移动太多或太少、总是踢不准"。现在把普通招式的空挥前冲压到 0.12m 以内：
+            // **站位由玩家说了算，所见即所中**；只有突进类指令技（lunge≥2）保留大位移。
+            float cap = lunge >= 2f ? 0.9f : 0.12f;
             GlideMove(transform.forward * Mathf.Min(lunge * 0.35f, cap), 0.1f);
         }
 
         Transform _aimTarget;   // 本次出招锁定的目标（FaceAndLunge 磁吸共用）
+        Vector3 _aimLatch;      // 连段内锁存的瞄准世界方向（防镜头回正把瞄准带偏）
 
         /// <summary>出招朝向决策（摇杆磁吸锁敌，根治"朝着摇杆方向打空"）：
         /// ① 攻击范围内有敌人 → 直接面向敌人出招（摇杆此时只用来在多个敌人间
@@ -756,6 +760,19 @@ namespace AdversityRoad.Combat
         void ApplyAttackFacing()
         {
             Vector3 stick = WorldMoveDir();
+            // 瞄准锁存（精度关键）：摇杆方向是【相机相对】的，镜头一边回正、
+            // 你的"前"就一边漂移——连打过程中每一段的朝向都会偏一点，
+            // 于是"方向对不准、容易偏离"。连段进行中沿用起手那一刻锁存的世界方向，
+            // 除非玩家明显改推了别的方向（>35°）才更新，让瞄准基准在一套连招内保持稳定。
+            if (stick.sqrMagnitude > 0.02f)
+            {
+                if (_aimLatch.sqrMagnitude < 0.02f || _depth < 0 ||
+                    Vector3.Angle(_aimLatch, stick) > 35f)
+                    _aimLatch = stick;
+                stick = _aimLatch;
+            }
+            else _aimLatch = Vector3.zero;
+
             _aimTarget = PickTarget(stick);
             if (_aimTarget != null)
             {

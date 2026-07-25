@@ -93,8 +93,19 @@ namespace AdversityRoad.Player
         float _roomAround = 99f;           // 镜头四周可用空间（识别狭窄场地）
         bool _shotInit;
         /// <summary>朝镜头持续行进多久才认定"真要往那个方向去"，才允许绕镜。
-        /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。</summary>
-        const float TowardCameraHold = 0.9f;
+        /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。
+        /// 0.9→0.6：有了威胁感知兜底，这里不必再压那么久。</summary>
+        const float TowardCameraHold = 0.6f;
+        readonly System.Collections.Generic.List<float> _threatDirs =
+            new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
+
+        /// <summary>该方位角附近是否有敌人（威胁感知：决定镜头该不该赶紧转过去）。</summary>
+        bool ThreatNear(float yawDeg, float coneDeg)
+        {
+            for (int i = 0; i < _threatDirs.Count; i++)
+                if (Mathf.Abs(Mathf.DeltaAngle(_threatDirs[i], yawDeg)) < coneDeg) return true;
+            return false;
+        }
         // 朝向防抖（魂系/战神跟随镜头的通行做法）：镜头永远追【低通滤波后的朝向】，
         // 并且只有玩家朝一个方向【持续稳定一小段时间】才开始回正——摇杆快速搓动、
         // 出招磁吸的瞬间换向都被滤在镜头之外，不再逐帧牵动镜头来回摆。
@@ -230,10 +241,16 @@ namespace AdversityRoad.Player
             {
                 _nextShotScan = Time.unscaledTime + 0.3f;
                 _nearbyEnemies = 0;
+                _threatDirs.Clear();
                 foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
                 {
                     if (e.State == AI.EnemyState.Dead) continue;
-                    if ((e.transform.position - target.position).sqrMagnitude < 81f) _nearbyEnemies++;
+                    Vector3 to = e.transform.position - target.position; to.y = 0;
+                    float d2 = to.sqrMagnitude;
+                    if (d2 < 81f) _nearbyEnemies++;
+                    // 威胁方位缓存（14m 内）：供每帧判断"我正在转向的方向上有没有敌人"
+                    if (d2 < 196f && d2 > 0.01f)
+                        _threatDirs.Add(Quaternion.LookRotation(to.normalized).eulerAngles.y);
                 }
                 // 场地宽敞度：向镜头四周投射，取最短可用距离——识别走廊/贴墙等狭窄场地
                 _roomAround = ProbeRoom(target.position + Vector3.up * _pivotH);
@@ -301,13 +318,22 @@ namespace AdversityRoad.Player
                 //   · 真的一直朝镜头跑（要往那个方向去） → 累积够时间后镜头才缓缓绕过去，
                 //     避免角色跑出画面。
                 // 战斗中豁免（背后有敌人时必须迅速看到），仍走快速追击。
+                // 威胁优先：正在转向的方向上有敌人时，"看清那边"压倒"看正脸"。
+                // 这是上一版遗留的关键漏洞——为了让面壁看正脸不被绕镜，会把
+                // 「向前突然改为向后逃跑/迎击追兵」也一并抑制 0.9 秒，导致后方
+                // 跟随的敌人进入盲区。两者输入相同、意图相反，唯一可靠的区分
+                // 就是【那个方向上有没有威胁】。
+                bool threatAhead = ThreatNear(_headingAvg, 70f);
                 bool towardCamera = err > 130f;
                 if (towardCamera && moving && !fighting) _towardCamT += dt;
                 else _towardCamT = 0f;
-                bool backingIntent = towardCamera && !fighting && _towardCamT < TowardCameraHold;
+                bool backingIntent = towardCamera && !fighting && !threatAhead
+                                     && _towardCamT < TowardCameraHold;
 
                 float bigAngle = fighting ? 55f : 45f;
                 float holdNeed = fighting ? 0.24f : 0.15f;
+                // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）
+                if (threatAhead) { holdNeed = 0.06f; bigAngle = 35f; }
                 if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent) _combatReorient = true;
                 else if (err < 12f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
 
