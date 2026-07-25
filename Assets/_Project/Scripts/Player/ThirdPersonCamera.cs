@@ -203,8 +203,10 @@ namespace AdversityRoad.Player
             if (headingRate > 220f) _headingHoldT = 0f;
             else _headingHoldT += dt;
             _lastHeading = rawHeading;
-            // 低通滤波（≈0.2s 时间常数）：镜头追这个平滑值，瞬时抖动不进入镜头
-            _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-5f * dt));
+            // 自适应低通滤波：朝向还在乱动时收敛慢（滤掉摇杆抖动），
+            // 一旦朝向稳定下来就快速收敛——避免"转完身还要等滤波追上"的盲区延迟
+            float lpRate = Mathf.Lerp(5f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
+            _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-lpRate * dt));
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
@@ -233,7 +235,7 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                bool moving = moveSpeed > 1.4f;
+                bool moving = moveSpeed > 0.6f;
                 bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
 
                 // 战斗回正（未锁定）：玩家【持续】转向一个新交战方向（比如转身打背后
@@ -248,22 +250,35 @@ namespace AdversityRoad.Player
                 if (fighting && !manualRecently)
                 {
                     float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
-                    if (err > 55f && _headingHoldT > 0.35f) _combatReorient = true;
+                    if (err > 55f && _headingHoldT > 0.24f) _combatReorient = true;
                     else if (err < 12f || _headingHoldT < 0.1f) _combatReorient = false;
                     if (_combatReorient)
+                    {
+                        // 同样渐进：转身打背后的敌人（≈180°）时迅速把新目标框进画面
+                        float t = Mathf.Clamp01((err - 55f) / 120f);
                         _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            0.3f, 180f, dt);
+                            Mathf.Lerp(0.28f, 0.15f, t), Mathf.Lerp(180f, 340f, t), dt);
+                    }
                 }
-                // 探索镜头：玩家朝一个方向稳定移动时，镜头平稳缓慢地转到其背后。
+                // 探索镜头：玩家朝一个方向稳定移动时，镜头转到其背后。
                 //   · 目标 = 低通滤波后的朝向（跑动中细碎的左右修正不牵动镜头）；
                 //   · 起步需朝向稳定 0.22s：快速搓摇杆变向不触发回正；
-                //   · 大平滑时间的临界阻尼弹簧：大转向/掉头平稳归位，绝不猛甩。
-                else if (moving && !manualRecently && _headingHoldT > 0.22f)
+                //   · 【渐进式回正】偏差越大追得越快——小幅修正依旧慢而稳（防抖），
+                //     大角度掉头则迅速跟上（防"转身后看不见前方"的盲区）。
+                //     固定 85°/s 时 180° 掉头要 2.1 秒，正是盲区的成因。
+                else if (moving && !manualRecently && _headingHoldT > 0.15f)
                 {
                     _combatReorient = false;
-                    if (Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg)) > exploreReorientAngle)
+                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
+                    if (err > exploreReorientAngle)
+                    {
+                        // 0°→180° 映射：平滑时间 0.5s→0.16s、转速上限 70→300°/s
+                        float t = Mathf.Clamp01((err - exploreReorientAngle) / 120f);
+                        float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.16f, t);
+                        float maxSpd = Mathf.Lerp(70f, 300f, t);
                         _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            exploreTurnSmoothTime, exploreMaxSpeed, dt);
+                            smoothT, maxSpd, dt);
+                    }
                 }
                 else
                 {
@@ -380,8 +395,10 @@ namespace AdversityRoad.Player
             // 只对【环境】做遮挡回缩：忽略触发器（受击/攻击判定盒）、玩家与敌人的
             // 身体胶囊、飞散的物理碎屑——此前近身缠斗时敌人身体反复穿过吊杆，
             // 镜头被迫急缩急伸，这是"互击时镜头严重晃动"的最大来源。
+            // 探测球略缩小（0.25→0.18）：转身时吊杆扫过墙角/柱子不再因"擦边"就大幅回缩，
+            // 减少「一转身视野突然变窄」的误触发
             float wantDist = maxDist;
-            var occluders = Physics.SphereCastAll(pivot, 0.25f, boomDir, maxDist,
+            var occluders = Physics.SphereCastAll(pivot, 0.18f, boomDir, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
             foreach (var hit in occluders)
             {
@@ -393,9 +410,11 @@ namespace AdversityRoad.Player
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
                 // 回缩下限抬高：贴墙也绝不缩进角色身体里（缩得再近由
                 // CharacterCloseFade 把角色淡透，不出现"整屏白模糊脸"）
-                wantDist = Mathf.Min(wantDist, Mathf.Max(1.35f, hit.distance - 0.1f));
+                wantDist = Mathf.Min(wantDist, Mathf.Max(1.6f, hit.distance - 0.1f));
             }
-            float smooth = wantDist < _boomDist ? 0.03f : 0.3f;
+            // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
+            // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
+            float smooth = wantDist < _boomDist ? 0.03f : 0.14f;
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 
