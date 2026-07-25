@@ -252,6 +252,7 @@ namespace AdversityRoad.UI
             {
                 stats.ReduceRumination(999f);
                 stats.RestoreMental(25f);
+                stats.ReduceFairnessPain(999f);   // 复盘代替反刍：把公平刺痛整理成事实，不再占据
             }
 
             // 写入旧事档案（安全屋「档案」面板可回看）

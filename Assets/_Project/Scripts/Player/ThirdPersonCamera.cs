@@ -48,8 +48,10 @@ namespace AdversityRoad.Player
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
                 "时间】镜头才慢慢转到身后；小幅左右调整绝不转镜头。遇敌自动切战斗镜头。")]
         public bool autoFollow = true;
-        [Tooltip("停止手动转镜后隔多久才允许自动回正（避免与玩家转镜打架）")]
-        public float autoFollowDelay = 0.3f;
+        [Tooltip("停止手动转镜后隔多久才允许自动回正（避免与玩家转镜打架）。" +
+                 "0.3s 过短——玩家刚手动摆好角度，镜头立刻又自己转回去，读作'和我抢镜头'；" +
+                 "1.2s 让玩家的手动取景有足够的停留时间")]
+        public float autoFollowDelay = 1.2f;
         public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
 
         [Header("探索镜头：玩家一转向，镜头立刻开始平稳缓慢地转到其背后（面朝方向）")]
@@ -81,7 +83,29 @@ namespace AdversityRoad.Player
         Vector2 _focusAnchor;              // 焦点死区锚：小位移不推镜（电影三脚架感）
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
-        bool _combatReorient;              // 战斗回正进行中（迟滞开关防小幅摆镜）
+        bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
+        float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
+        float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
+        // ---- 镜头导演：景别选择与平滑过渡 ----
+        ShotProfile _shot;                 // 当前生效的景别（插值后的实时值）
+        float _nextShotScan;               // 敌情扫描节流
+        int _nearbyEnemies;
+        float _roomAround = 99f;           // 镜头四周可用空间（识别狭窄场地）
+        bool _shotInit;
+        /// <summary>朝镜头持续行进多久才认定"真要往那个方向去"，才允许绕镜。
+        /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。
+        /// 0.9→0.6：有了威胁感知兜底，这里不必再压那么久。</summary>
+        const float TowardCameraHold = 0.6f;
+        readonly System.Collections.Generic.List<float> _threatDirs =
+            new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
+
+        /// <summary>该方位角附近是否有敌人（威胁感知：决定镜头该不该赶紧转过去）。</summary>
+        bool ThreatNear(float yawDeg, float coneDeg)
+        {
+            for (int i = 0; i < _threatDirs.Count; i++)
+                if (Mathf.Abs(Mathf.DeltaAngle(_threatDirs[i], yawDeg)) < coneDeg) return true;
+            return false;
+        }
         // 朝向防抖（魂系/战神跟随镜头的通行做法）：镜头永远追【低通滤波后的朝向】，
         // 并且只有玩家朝一个方向【持续稳定一小段时间】才开始回正——摇杆快速搓动、
         // 出招磁吸的瞬间换向都被滤在镜头之外，不再逐帧牵动镜头来回摆。
@@ -203,11 +227,44 @@ namespace AdversityRoad.Player
             if (headingRate > 220f) _headingHoldT = 0f;
             else _headingHoldT += dt;
             _lastHeading = rawHeading;
-            // 低通滤波（≈0.2s 时间常数）：镜头追这个平滑值，瞬时抖动不进入镜头
-            _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-5f * dt));
+            // 自适应低通滤波：朝向还在乱动时收敛慢（滤掉摇杆抖动），
+            // 一旦朝向稳定下来就快速收敛——避免"转完身还要等滤波追上"的盲区延迟
+            float lpRate = Mathf.Lerp(5f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
+            _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-lpRate * dt));
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
+
+            // ===== 镜头导演：选景别 + 平滑推轨过渡 =====
+            // 敌情与场地扫描节流（0.3s 一次，避免每帧全场遍历）
+            if (Time.unscaledTime >= _nextShotScan)
+            {
+                _nextShotScan = Time.unscaledTime + 0.3f;
+                _nearbyEnemies = 0;
+                _threatDirs.Clear();
+                foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
+                {
+                    if (e.State == AI.EnemyState.Dead) continue;
+                    Vector3 to = e.transform.position - target.position; to.y = 0;
+                    float d2 = to.sqrMagnitude;
+                    if (d2 < 81f) _nearbyEnemies++;
+                    // 威胁方位缓存（14m 内）：供每帧判断"我正在转向的方向上有没有敌人"
+                    if (d2 < 196f && d2 > 0.01f)
+                        _threatDirs.Add(Quaternion.LookRotation(to.normalized).eulerAngles.y);
+                }
+                // 场地宽敞度：向镜头四周投射，取最短可用距离——识别走廊/贴墙等狭窄场地
+                _roomAround = ProbeRoom(target.position + Vector3.up * _pivotH);
+            }
+            var wantShot = CameraDirector.Pick(
+                _ultimateTimer > 0f, _nearbyEnemies,
+                lockOn != null && lockOn.CurrentTarget != null, _roomAround);
+            if (!_shotInit) { _shot = wantShot; _shotInit = true; }
+            else
+            {
+                // 参数级插值＝推轨，而不是切镜：这是"平稳、不适感为零"的关键
+                float rate = CameraDirector.BlendRate(_shot, wantShot);
+                _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
+            }
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
@@ -233,43 +290,84 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
-                bool moving = moveSpeed > 1.4f;
+                bool moving = moveSpeed > 0.6f;
                 bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
-
-                // 战斗回正（未锁定）：玩家【持续】转向一个新交战方向（比如转身打背后
-                // 的敌人）时，镜头平稳转到其身后把新目标框进画面。三重防抖：
-                //   · 追踪目标是低通滤波后的 _headingAvg，不是瞬时朝向；
-                //   · 起步门槛 = 偏差 >55° 且该朝向已稳定 0.35s——摇杆搓动/连段
-                //     磁吸的瞬间换向不会触发；
-                //   · 迟滞开关：追到 <12° 停，中途方向又大幅变化则立即中止。
                 if (_playerFsm == null && player != null)
                     _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
                 bool fighting = _playerFsm != null && _playerFsm.InCombat;
-                if (fighting && !manualRecently)
+                // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
+                // 若只看 moveSpeed 会误判成静止而完全不回正——这正是"出招中转向后看不见前方"的缺口
+                bool steering = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
+                bool active = moving || steering;
+
+                // ===== 统一渐进回正（转向尺度 → 镜头同步幅度，连续映射，无分档断层）=====
+                // 此前战斗/探索是互斥的两条分支：战斗中只有 >55° 才回正，
+                // 12°—55° 的中等转向【完全没有跟随】——战斗中长期存在的部分盲区。
+                // 现在合并为一条：
+                //   · 中小幅转向（>10°）+ 有移动或推杆 → 温和跟随，越大越快；
+                //   · 大幅换向（战斗 >55° / 探索 >45°）→ 迟滞开关锁定追击，直到 <12° 才松开，
+                //     保证掉头/转身打背后敌人时迅速把新方向框进画面；
+                //   · 手动转镜期间一律让位给玩家。
+                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
+
+                // ===== 意图识别 ①：「朝镜头走来」≠「要把镜头甩到背后」=====
+                // err≈180° 意味着角色正朝镜头方向来。此前一律读作"要换方向"，于是玩家
+                // 一转身想看正脸、或贴墙后退调整站位，镜头立刻绕到背后——完全违背意图。
+                // 大作的判据是【是否持续行进】而非【是否转了身】：
+                //   · 只是转身看一眼／短暂后退 → 不满足持续时间 → 镜头岿然不动，看得到正脸；
+                //   · 真的一直朝镜头跑（要往那个方向去） → 累积够时间后镜头才缓缓绕过去，
+                //     避免角色跑出画面。
+                // 战斗中豁免（背后有敌人时必须迅速看到），仍走快速追击。
+                // 威胁优先：正在转向的方向上有敌人时，"看清那边"压倒"看正脸"。
+                // 这是上一版遗留的关键漏洞——为了让面壁看正脸不被绕镜，会把
+                // 「向前突然改为向后逃跑/迎击追兵」也一并抑制 0.9 秒，导致后方
+                // 跟随的敌人进入盲区。两者输入相同、意图相反，唯一可靠的区分
+                // 就是【那个方向上有没有威胁】。
+                bool threatAhead = ThreatNear(_headingAvg, 70f);
+                bool towardCamera = err > 130f;
+                if (towardCamera && moving && !fighting) _towardCamT += dt;
+                else _towardCamT = 0f;
+                bool backingIntent = towardCamera && !fighting && !threatAhead
+                                     && _towardCamT < TowardCameraHold;
+
+                float bigAngle = fighting ? 55f : 45f;
+                float holdNeed = fighting ? 0.24f : 0.15f;
+                // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）
+                if (threatAhead) { holdNeed = 0.06f; bigAngle = 35f; }
+                if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent) _combatReorient = true;
+                else if (err < 12f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
+
+                bool gentle = active && _headingHoldT > 0.15f && err > exploreReorientAngle
+                              && !backingIntent;
+
+                if (!manualRecently && (_combatReorient || gentle))
                 {
-                    float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
-                    if (err > 55f && _headingHoldT > 0.35f) _combatReorient = true;
-                    else if (err < 12f || _headingHoldT < 0.1f) _combatReorient = false;
-                    if (_combatReorient)
-                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            0.3f, 180f, dt);
+                    // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
+                    // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
+                    float t = Mathf.Clamp01((err - exploreReorientAngle) / 130f);
+                    float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
+                    float maxSpd = Mathf.Lerp(70f, 340f, t);
+
+                    // ===== 意图识别 ②：不要把镜头甩进墙里 =====
+                    // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
+                    // 顶在墙上被迫贴脸，视野瞬间塌掉。大幅回正前先探一下目标方位是否够宽敞：
+                    // 越憋屈就转得越慢（最低降到 25%），把镜头留在看得见的地方。
+                    if (err > 45f)
+                    {
+                        Vector3 probePivot = target.position + Vector3.up * _pivotH;
+                        float freeAtTarget = FreeBoomDistance(probePivot, _headingAvg,
+                                                              offset.magnitude * _lenFactor);
+                        float room = Mathf.InverseLerp(1.8f, 3.2f, freeAtTarget);   // 0=贴墙 1=开阔
+                        float damp = Mathf.Lerp(0.25f, 1f, room);
+                        maxSpd *= damp;
+                        smoothT /= Mathf.Max(0.25f, damp);
+                    }
+
+                    _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
+                        smoothT, maxSpd, dt);
                 }
-                // 探索镜头：玩家朝一个方向稳定移动时，镜头平稳缓慢地转到其背后。
-                //   · 目标 = 低通滤波后的朝向（跑动中细碎的左右修正不牵动镜头）；
-                //   · 起步需朝向稳定 0.22s：快速搓摇杆变向不触发回正；
-                //   · 大平滑时间的临界阻尼弹簧：大转向/掉头平稳归位，绝不猛甩。
-                else if (moving && !manualRecently && _headingHoldT > 0.22f)
-                {
-                    _combatReorient = false;
-                    if (Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg)) > exploreReorientAngle)
-                        _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
-                            exploreTurnSmoothTime, exploreMaxSpeed, dt);
-                }
-                else
-                {
-                    _combatReorient = false;
-                    _yawFollowVel = 0f;
-                }
+                else _yawFollowVel = 0f;
+                _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
 
@@ -279,10 +377,11 @@ namespace AdversityRoad.Player
             // 俯仰：锁定时压低到战斗视角（更贴地、更有临场感）；未锁定时闲置回中
             if (!Presets[PresetIndex].fp && Time.unscaledTime - _lastManualLook > 0.4f)
             {
+                // 目标俯仰＝基准 + 当前景别的俯仰偏置（群战略俯看局势、特写略压低）
                 if (lockTarget != null)
-                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch, 14f * dt);
+                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch + _shot.pitchBias, 14f * dt);
                 else if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
-                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch + _shot.pitchBias, 10f * dt);
             }
 
             _lastTargetPos = target.position;
@@ -322,7 +421,7 @@ namespace AdversityRoad.Player
             // 取景点=胸口：target.position 是胶囊【中心】（已在脚底上方约 1m），
             // 只需再加小量到胸口。旧值 +1.55 把取景点抬到头顶之上，导致画面被
             // 压低、角色挤在屏幕下缘只见上半身——这是"镜头压太低"的根因。
-            float wantH = player != null && player.IsCrouched ? 0.05f : 0.42f;
+            float wantH = (player != null && player.IsCrouched ? 0.05f : 0.42f) + _shot.heightBias;
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
             // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）
@@ -330,7 +429,8 @@ namespace AdversityRoad.Player
             if (lockTarget != null)
             {
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
-                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f, lockCenterBias * _lockBlend);
+                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f,
+                    Mathf.Max(lockCenterBias, _shot.centerBias) * _lockBlend);
             }
             else if (moveSpeed > 1.5f)
             {
@@ -352,7 +452,7 @@ namespace AdversityRoad.Player
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
             // 战斗中位置阻尼加重（斯坦尼康式慢移），探索保持跟手
-            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend);
+            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend) * _shot.damping;
             _pivotXZ = Vector2.SmoothDamp(_pivotXZ, _focusAnchor, ref _pivotXZVel,
                 fst, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
@@ -366,9 +466,19 @@ namespace AdversityRoad.Player
                 float enemyDist = Vector3.Distance(target.position, lockTarget.position);
                 wantFactor = Mathf.Clamp(0.8f + enemyDist * 0.05f, 0.92f, 1.28f);
             }
-            else wantFactor = 1f;   // 疾跑不再微调焦距：任何"呼吸式"变焦都读作不稳
+            else
+            {
+                // 视野开阔化（未锁定时）：疾跑与大幅转向各给一点点拉远，让"要去的方向"
+                // 有更多可见余量——转身/掉头的瞬间正是最需要看清周围的时刻。
+                // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
+                // 不会形成"呼吸式"变焦那种不稳感。
+                float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
+                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.06f;
+                wantFactor = 1f + runOut + turnOut;
+            }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
+            wantFactor *= _shot.distanceMult;   // 景别决定景深：群战拉远、狭窄收紧、决胜推近
             // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
             // 不再造成镜头前后泵动
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.1f * dt);
@@ -380,8 +490,10 @@ namespace AdversityRoad.Player
             // 只对【环境】做遮挡回缩：忽略触发器（受击/攻击判定盒）、玩家与敌人的
             // 身体胶囊、飞散的物理碎屑——此前近身缠斗时敌人身体反复穿过吊杆，
             // 镜头被迫急缩急伸，这是"互击时镜头严重晃动"的最大来源。
+            // 探测球略缩小（0.25→0.18）：转身时吊杆扫过墙角/柱子不再因"擦边"就大幅回缩，
+            // 减少「一转身视野突然变窄」的误触发
             float wantDist = maxDist;
-            var occluders = Physics.SphereCastAll(pivot, 0.25f, boomDir, maxDist,
+            var occluders = Physics.SphereCastAll(pivot, 0.18f, boomDir, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
             foreach (var hit in occluders)
             {
@@ -393,9 +505,11 @@ namespace AdversityRoad.Player
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
                 // 回缩下限抬高：贴墙也绝不缩进角色身体里（缩得再近由
                 // CharacterCloseFade 把角色淡透，不出现"整屏白模糊脸"）
-                wantDist = Mathf.Min(wantDist, Mathf.Max(1.35f, hit.distance - 0.1f));
+                wantDist = Mathf.Min(wantDist, Mathf.Max(1.6f, hit.distance - 0.1f));
             }
-            float smooth = wantDist < _boomDist ? 0.03f : 0.3f;
+            // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
+            // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
+            float smooth = wantDist < _boomDist ? 0.03f : 0.14f;
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 
@@ -413,6 +527,60 @@ namespace AdversityRoad.Player
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
             float lookUp = 0.38f + 0.12f * _lockBlend;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
+
+            // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
+            // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
+            var camc = GetComponent<Camera>();
+            if (camc != null && !Presets[PresetIndex].fp)
+                camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
+                    fieldOfView + _shot.fovBias, 12f * dt);
+        }
+
+        /// <summary>
+        /// 场地宽敞度：向四周（含斜后方）投射，取最短可用距离。
+        /// 用于识别走廊/贴墙等狭窄场地，让导演切到「收紧贴身」景别，
+        /// 而不是傻乎乎地拉远把镜头顶进墙里。
+        /// </summary>
+        float ProbeRoom(Vector3 pivot)
+        {
+            float shortest = 99f;
+            for (int i = 0; i < 6; i++)
+            {
+                float a = i * 60f;
+                Vector3 dir = Quaternion.Euler(0, _yaw + 150f + a, 0) * Vector3.forward;
+                if (Physics.SphereCast(pivot, 0.2f, dir, out RaycastHit hit, 6f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                {
+                    var col = hit.collider;
+                    if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
+                    if (col.GetComponentInParent<PlayerController>() != null) continue;
+                    if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                    shortest = Mathf.Min(shortest, hit.distance);
+                }
+            }
+            return shortest;
+        }
+
+        /// <summary>
+        /// 探测「若把镜头转到该偏航角，吊杆能退到多远」——用于避免把镜头甩进墙里。
+        /// 与主碰撞回缩同一套过滤规则（忽略触发器、玩家/敌人身体、飞散碎屑）。
+        /// </summary>
+        float FreeBoomDistance(Vector3 pivot, float yawDeg, float maxDist)
+        {
+            Vector3 dir = (Quaternion.Euler(_curPitch, yawDeg, 0) * offset).normalized;
+            float best = maxDist;
+            var hits = Physics.SphereCastAll(pivot, 0.18f, dir, maxDist,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            foreach (var hit in hits)
+            {
+                if (hit.distance <= 0.001f) continue;
+                var col = hit.collider;
+                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
+                if (col.GetComponentInParent<PlayerController>() != null) continue;
+                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                best = Mathf.Min(best, Mathf.Max(1.6f, hit.distance - 0.1f));
+            }
+            return best;
         }
 
         void SetHeadVisible(bool visible)

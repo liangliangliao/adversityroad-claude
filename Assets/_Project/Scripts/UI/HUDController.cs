@@ -18,6 +18,7 @@ namespace AdversityRoad.UI
         public StatBar actionPowerBar;  // 行动力：抵抗拖延；过低移速下降
         public StatBar ruminationBar;   // 反刍值：越满越糟（与其它条相反）
         public StatBar drainBar;        // 关系消耗值：越满越糟（技能冷却变长）
+        public StatBar fairnessPainBar; // 公平刺痛值：越满越糟（三档规则，方案十七）
         public Text questText;
         public Text goalText;       // 今日目标常驻行（目标板系统）
         public Image vignette;      // 全屏暗角（raycastTarget 必须为 false）
@@ -187,6 +188,16 @@ namespace AdversityRoad.UI
                     if (cur > drainBar.LastRatio * max + 0.5f)
                         Pulse(new Color(0.45f, 0.2f, 0.05f), 0.25f);
                     drainBar.SetValue(cur, max);
+                }
+                return;
+            }
+            if (stat == "fairnessPain")
+            {
+                if (fairnessPainBar != null)
+                {
+                    if (cur > fairnessPainBar.LastRatio * max + 0.5f)
+                        Pulse(new Color(0.5f, 0.12f, 0.12f), 0.28f);
+                    fairnessPainBar.SetValue(cur, max);
                 }
                 return;
             }

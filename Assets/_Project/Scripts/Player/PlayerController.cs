@@ -15,8 +15,12 @@ namespace AdversityRoad.Player
         [Header("移动（速度按真实体感收敛，防晕）")]
         public float walkSpeed = 2.6f;
         public float runSpeed = 5.2f;
-        public float acceleration = 18f;           // 起步加速度（防晕：速度不突变）
-        public float deceleration = 26f;           // 停步减速度
+        // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
+        // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
+        // 起步 k=20：0.05s 到 63%、0.15s 到 95%；刹车 k=26 更利落。
+        // 防晕由镜头侧负责（软跟随 + 焦点死区 + 渐进回正），而不是靠拖慢角色本体。
+        public float accelRate = 20f;              // 起步逼近速率
+        public float decelRate = 26f;              // 停步逼近速率
         public float rotateSpeed = 14f;            // 转身更跟手（大作级的方向响应）
         public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率：掉头近乎即时
         public float jumpForce = 7f;
@@ -49,6 +53,21 @@ namespace AdversityRoad.Player
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         public float MoveSpeedMultiplier { get; set; } = 1f;
 
+        /// <summary>本帧摇杆的世界方向（相机相对，零向量=未推杆）。
+        /// 技能连招据此判断玩家是否正在主动引导方向，从而让出自动吸附。</summary>
+        public Vector3 StickWorldDir { get; private set; }
+
+        // ---- 意图匹配：输入缓冲 + 土狼时间（大作通用）----
+        const float DodgeBufferWindow = 0.3f;   // 闪避缓冲窗（硬直中按下也能在恢复帧兑现）
+        const float JumpBufferWindow = 0.2f;    // 跳跃缓冲窗（落地前按下，落地即跳）
+        const float CoyoteTime = 0.12f;         // 土狼时间（离开边缘后仍可起跳）
+        readonly InputBuffer _inputBuf = new InputBuffer();
+
+        /// <summary>供其它战斗组件共用的输入缓冲（技能在动作锁期间的排队兑现）。</summary>
+        public InputBuffer Buffer => _inputBuf;
+        float _coyoteT;
+        float _attackSpeedFactor = 1f;   // 出招定步倍率（平滑过渡，防连打时速度震荡）
+
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
@@ -79,16 +98,49 @@ namespace AdversityRoad.Player
 
             if (_iframeTimer > 0) _iframeTimer -= dt;
 
+            // 输入采集 → 缓冲（意图匹配）：必须在任何 early-return 之前，
+            // 否则翻滚中/硬直中按下的键会被整帧跳过而丢失（连续翻滚就是这样失效的）。
+            // 消费式输入（MobileInput.GetDown）每帧只在这里读一次，其余系统一律走缓冲。
+            if (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge"))
+                _inputBuf.Press("Dodge");
+            if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
+                _inputBuf.Press("Jump");
+
             if (_dodgeTimer > 0)
             {
                 _dodgeTimer -= dt;
                 _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
-                return;
+                return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次（连续翻滚）
             }
 
-            // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招
-            if (_combat != null && _combat.IsHardLocked) { ApplyGravityOnly(dt); return; }
+            bool dodgePressed = _inputBuf.Has("Dodge", DodgeBufferWindow);
+
+            // 摇杆世界方向提前求出：硬锁动作（技能/绝招/重击）期间也要读它做「出招转向」，
+            // 所以不能等到下面移动逻辑才算
+            Vector2 stickInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            stickInput += MobileInput.Move;
+            stickInput = Vector2.ClampMagnitude(stickInput, 1f);
+            Vector3 stickDir = CameraRelative(stickInput);
+            StickWorldDir = stickDir;   // 供技能连招判断"玩家是否正在主动引导方向"
+
+            // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招。
+            // 例外——收招闪避取消（大作手感）：技能/绝招打完主要段进入恢复相位后，
+            // 按闪避可立刻打断收招，不必干等动作播完。
+            if (_combat != null && _combat.IsHardLocked)
+            {
+                if (!(dodgePressed && _combat.CanDodgeCancel && Stats.stamina >= dodgeStaminaCost))
+                {
+                    // 出招转向影响（大作 attack steering / directional influence）：
+                    // 技能、绝招、重击期间【仍可用摇杆缓慢调整朝向】——此前这里直接 return，
+                    // 摇杆完全无响应、动作结束才突然弹到新朝向，正是"出招+转向不连贯"的主因。
+                    // 受击/倒地/硬直不给转向（挨打就该失控）。
+                    SteerDuringAction(stickDir, dt);
+                    ApplyGravityOnly(dt);
+                    return;
+                }
+                _combat.RequestState(CombatState.Locomotion);   // 解除收招锁，落入下方翻滚
+            }
             bool attacking = _combat != null && _combat.Current == CombatState.LightAttack;
 
             // 蹲伏切换（潜行/低姿态）
@@ -101,11 +153,8 @@ namespace AdversityRoad.Player
                 if (_appearance != null) _appearance.ToggleWeaponDrawn();
             }
 
-            Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-            input += MobileInput.Move;                       // 合并虚拟摇杆
-            input = Vector2.ClampMagnitude(input, 1f);
-            float inputMag = input.magnitude;
-            Vector3 moveDir = CameraRelative(input);
+            float inputMag = stickInput.magnitude;            // 摇杆已在本帧开头统一读取
+            Vector3 moveDir = stickDir;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
@@ -114,25 +163,32 @@ namespace AdversityRoad.Player
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
-            // 出招定步：攻击动画占据全身（含腿部），此时若照常位移就是"脚不动
-            // 人在滑"的漂移。出招期间移动近乎锁定（保留极小微调），突进位移
-            // 由招式自身的 GlideMove 负责——动作与位移始终匹配。
-            if (attacking) speed *= 0.1f;
+            // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
+            // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
+            // 从全速骤降到 10%、收招again骤升回全速，配合已提速的加减速就是一顿一顿的
+            // 抽搐感。改为对倍率本身做时间常数 ≈0.07s 的平滑过渡，并把下限抬到 0.3：
+            // 既保留定步的分量感，又让"边推杆边连打"是一条连续的速度曲线。
+            _attackSpeedFactor = Mathf.MoveTowards(_attackSpeedFactor,
+                attacking ? 0.3f : 1f, dt / 0.07f);
+            speed *= _attackSpeedFactor;
 
-            if (_cc.isGrounded)
+            // 土狼时间（coyote time）：离开地面边缘后仍有一小段时间可以起跳——
+            // 玩家的意图是"我在跳台边缘按了跳"，而不是"我晚了两帧所以活该掉下去"
+            if (_cc.isGrounded) { _vy = -1f; _coyoteT = CoyoteTime; }
+            else { _vy += gravity * dt; _coyoteT -= dt; }
+
+            // 跳跃：缓冲 + 土狼时间——落地前一瞬按下也能在落地帧兑现
+            if (_coyoteT > 0f && _inputBuf.TryConsume("Jump", JumpBufferWindow))
             {
-                _vy = -1f;
-                if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
-                {
-                    if (IsCrouched) ToggleCrouch();
-                    _vy = jumpForce;
-                }
+                if (IsCrouched) ToggleCrouch();
+                _vy = jumpForce;
+                _coyoteT = 0f;
             }
-            else _vy += gravity * dt;
 
-            // 翻滚闪避（Shift / 闪）
-            if ((Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge")) && Stats.SpendStamina(dodgeStaminaCost))
+            // 翻滚闪避（Shift / 闪）——走缓冲：硬直/翻滚中按下的闪避会在此兑现
+            if (dodgePressed && Stats.SpendStamina(dodgeStaminaCost))
             {
+                _inputBuf.Consume("Dodge");
                 if (IsCrouched) ToggleCrouch();
                 // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
                 var pcc = GetComponent<Combat.PlayerCombatController>();
@@ -160,22 +216,63 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // 加减速平滑：世界移动无速度突变（防晕关键之一）
+            // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
+            // ThirdPersonController 的做法（其注释原文：curved result rather than a
+            // linear one giving a more organic speed change）。
+            // 起步瞬间给足冲量（前几帧就到大半速度＝跟手），末段自然收敛（不突兀）。
+            // 用 1-e^(-k·dt) 而非 Lerp(a,b,k·dt)：帧率无关，高低帧手感一致。
             Vector3 targetVel = moveDir * speed;
-            float a = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? acceleration : deceleration;
-            _hVel = Vector3.MoveTowards(_hVel, targetVel, a * dt);
+            float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
+            _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
-            // 快速灵活转身：目标夹角越大转得越快；出招中保持攻击朝向仅缓慢修正
+            // 快速灵活转身：目标夹角越大转得越快
             if (moveDir.sqrMagnitude > 0.01f)
             {
                 Quaternion target = Quaternion.LookRotation(moveDir);
-                float ang = Quaternion.Angle(transform.rotation, target);
-                float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
-                // 出招中朝向基本锁定（配合锥形辅助瞄准）：摇杆推着连招不甩离目标
-                if (attacking) rs = 2.2f;
-                transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
+                if (attacking)
+                {
+                    // 轻击连段中的转向影响：用明确的角速度上限（度/秒）而非低倍率 Slerp——
+                    // 旧值 2.2 的 Slerp 每帧只挪动 3.7%，推杆几乎转不动，读作"出招就僵住"。
+                    // 150°/s 既能顺着摇杆把连招引向新方向，又不会一帧甩离当前目标。
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation,
+                        target, AttackSteerDegPerSec * dt);
+                }
+                else
+                {
+                    float ang = Quaternion.Angle(transform.rotation, target);
+                    float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
+                }
             }
+        }
+
+        // ---- 出招转向影响（大作 attack steering）速率表（度/秒）----
+        const float AttackSteerDegPerSec = 150f;   // 轻击连段：顺杆引导连招方向
+        const float SkillSteerDegPerSec = 110f;    // 技能/绝招：可调整但保持"已出招"的承诺感
+        const float HeavySteerDegPerSec = 85f;     // 重击/蓄力：最重，转向最慢
+
+        /// <summary>
+        /// 硬锁动作期间的摇杆转向（技能/绝招/重击）：按状态给不同角速度上限，
+        /// 让「出招 + 转向」是一个连贯动作，而不是无响应后突然弹向新朝向。
+        /// 受击/倒地/心理硬直/死亡不给转向——挨打就该失控，这是打击反馈的一部分。
+        /// </summary>
+        void SteerDuringAction(Vector3 dir, float dt)
+        {
+            if (_combat == null || dir.sqrMagnitude < 0.01f) return;
+            float rate;
+            switch (_combat.Current)
+            {
+                case CombatState.Finisher:
+                case CombatState.InnerPowerCast:
+                    rate = SkillSteerDegPerSec; break;
+                case CombatState.HeavyAttack:
+                    rate = HeavySteerDegPerSec; break;
+                default:
+                    return;   // HitReaction / Knockdown / MentalStagger / Death：不可转向
+            }
+            transform.rotation = Quaternion.RotateTowards(transform.rotation,
+                Quaternion.LookRotation(dir), rate * dt);
         }
 
         void LateUpdate()

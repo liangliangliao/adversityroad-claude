@@ -126,8 +126,8 @@ namespace AdversityRoad.AI
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo
                 {
-                    physicalDamage = _ec.profile.physicalDamage * 0.35f,
-                    mentalDamage = _ec.profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 话语弹幕：标签是"话"，只压心神不做远程物理削血
+                    mentalDamage = _ec.profile.mentalDamage * 0.6f,
                     mentalAxis = Personalization.WeaknessAxis.SelfDoubt,
                     knockback = 0.8f,
                     attackerId = _ec.profile.enemyId

@@ -341,10 +341,11 @@ namespace AdversityRoad.AI
                 {
                     _playerCombat.TakeHit(new DamageInfo
                     {
-                        physicalDamage = _ec.profile.physicalDamage * 0.7f,
-                        mentalDamage = _ec.profile.mentalDamage * 0.8f,
+                        // 索取冲击是「默认索取型」心理攻击：压边界+推高关系消耗，不扣 HP
+                        physicalDamage = 0f,
+                        mentalDamage = _ec.profile.mentalDamage * 0.9f,
                         mentalAxis = Personalization.WeaknessAxis.BoundaryConflict,
-                        knockback = 3f,
+                        isMentalOnly = true,
                         sourcePosition = transform.position,
                         attackerId = _ec.profile.enemyId
                     });
@@ -363,12 +364,13 @@ namespace AdversityRoad.AI
             for (int i = 0; i < 2 && _ec.State != EnemyState.Dead; i++)
             {
                 if (_player == null) break;
+                if (!EnemyRangedEnergy.TryFire(this, _player.position)) break;
                 Vector3 origin = transform.position + Vector3.up * 1.5f + transform.forward * 0.5f;
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo
                 {
-                    physicalDamage = _ec.profile.physicalDamage * 0.35f,
-                    mentalDamage = _ec.profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 账单弹幕是"就这一次"的话：只压心神不做远程物理削血
+                    mentalDamage = _ec.profile.mentalDamage * 0.6f,
                     mentalAxis = Personalization.WeaknessAxis.BoundaryConflict,
                     knockback = 0.6f,
                     attackerId = _ec.profile.enemyId

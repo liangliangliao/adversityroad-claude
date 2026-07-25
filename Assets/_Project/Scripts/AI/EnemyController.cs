@@ -51,6 +51,11 @@ namespace AdversityRoad.AI
         int _patrolIndex;
         TextMesh _alertMark;      // 前摇警示「！」
         GameObject _dangerRing;   // 前摇地面红圈
+        Material _dangerRingMat;  // 红圈材质（危险攻击时染更亮的橙红）
+        bool _perilous;           // 本次攻击为「危险攻击」：不可格挡，只能闪避（大作红光警示）
+
+        static readonly Color TeleNormal = new Color(0.9f, 0.15f, 0.1f);
+        static readonly Color TelePerilous = new Color(1f, 0.35f, 0f);
         bool _telegraphing;       // 是否处于前摇（脉冲放大红圈/警示，让读招更醒目）
         Vector3 _dangerRingBaseScale;
         float _telegraphT;
@@ -124,18 +129,32 @@ namespace AdversityRoad.AI
             m.color = new Color(0.9f, 0.15f, 0.1f);
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
             rr.sharedMaterial = m;
+            _dangerRingMat = m;
             _dangerRing.SetActive(false);
         }
 
-        void ShowTelegraph(bool on)
+        void ShowTelegraph(bool on, bool perilous = false)
         {
             _telegraphing = on;
             _telegraphT = 0f;
-            if (_alertMark != null) _alertMark.text = on ? "！" : "";
+            if (!on) _perilous = false;
+            // 危险攻击（红光）：警示改「危」、橙红大字；普通攻击「！」红字
+            if (_alertMark != null)
+            {
+                _alertMark.text = on ? (perilous ? "危" : "！") : "";
+                _alertMark.color = perilous ? TelePerilous : new Color(1f, 0.2f, 0.15f);
+            }
+            if (_dangerRingMat != null)
+            {
+                Color rc = perilous ? TelePerilous : TeleNormal;
+                _dangerRingMat.color = rc;
+                if (_dangerRingMat.HasProperty("_BaseColor")) _dangerRingMat.SetColor("_BaseColor", rc);
+            }
             if (_dangerRing != null)
             {
                 _dangerRing.SetActive(on);
-                if (on) _dangerRing.transform.localScale = _dangerRingBaseScale;
+                if (on) _dangerRing.transform.localScale =
+                    perilous ? _dangerRingBaseScale * 1.25f : _dangerRingBaseScale;
             }
         }
 
@@ -146,8 +165,8 @@ namespace AdversityRoad.AI
             _telegraphT += dt;
             if (_dangerRing != null)
             {
-                // 从 0.6 倍胀到 1.15 倍循环，越临近出手视觉张力越强
-                float pulse = 0.6f + Mathf.PingPong(_telegraphT * 2.4f, 0.55f);
+                // 从 0.6 倍胀到 1.15 倍循环，越临近出手视觉张力越强；危险攻击整体更大
+                float pulse = (0.6f + Mathf.PingPong(_telegraphT * 2.4f, 0.55f)) * (_perilous ? 1.25f : 1f);
                 _dangerRing.transform.localScale = new Vector3(
                     _dangerRingBaseScale.x * pulse, _dangerRingBaseScale.y,
                     _dangerRingBaseScale.z * pulse);
@@ -248,30 +267,52 @@ namespace AdversityRoad.AI
                     break;
 
                 case EnemyState.Chase:
+                {
                     UpdateEmotion("紧逼");
-                    MoveTowards(_player.position, dt);
-                    if (dist <= profile.attackRange) State = EnemyState.Attack;
-                    // 中距离远程：发射心念弹——距离硬上限 8m：禁止隔半张地图狙击玩家，
-                    // 超距只能继续追近（detectRange 只管"发现"，不管"够得着"）
-                    else if (profile.rangedAttack && _rangedCd <= 0 &&
-                             dist > profile.attackRange * 2f && dist < MaxRangedReach)
-                        DoRangedAttack();
-                    // 中距离释放心理攻击（内心敌人/混合敌人的主要输出）——同样限近距 7m：
-                    // 凝视与低语要贴近才有压迫力，不允许远远地隔空施压
-                    else if (dist < Mathf.Min(profile.detectRange * 0.7f, MaxMentalReach) &&
-                             _mentalCd <= 0 && profile.mentalDamage > 0)
+                    bool isBoss = profile.category == EnemyCategory.Boss;
+                    // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
+                    // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
+                    float standoff = profile.attackRange + 1.8f;
+                    if (dist > standoff)
+                    {
+                        MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
+                    }
+                    else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
+                    {
+                        MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
+                        if (dist <= profile.attackRange) State = EnemyState.Attack;
+                    }
+                    else
+                    {
+                        MaintainStandoff(standoff, dt);      // 没轮到：环上绕圈候场
+                    }
+                    // 中距离言语攻击（内心/混合敌人的主要远程手段——话语弹幕，非物理弹丸）
+                    if (dist < Mathf.Min(profile.detectRange * 0.7f, MaxMentalReach) &&
+                        _mentalCd <= 0 && profile.mentalDamage > 0)
                         DoMentalAttack();
-                    else if (dist > profile.detectRange * 1.5f) State = EnemyState.Patrol;
+                    else if (dist > profile.detectRange * 1.5f)
+                    {
+                        Combat.CombatDirector.Release(this);
+                        State = EnemyState.Patrol;
+                    }
                     break;
+                }
 
                 case EnemyState.Attack:
                     UpdateEmotion("狰狞");
                     StopMoving();
                     FaceTarget();
-                    if (dist > profile.attackRange * 1.2f) { State = EnemyState.Chase; break; }
+                    if (dist > profile.attackRange * 1.2f)
+                    {
+                        Combat.CombatDirector.Release(this);   // 脱离攻击态：归还攻击令牌
+                        State = EnemyState.Chase; break;
+                    }
                     // 受击眩晕：刚被打中 0.55s 内头脑发懵，没有能力立即反击——
-                    // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）
-                    if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f) { DoPhysicalAttack(); break; }
+                    // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）；
+                    // 攻击令牌（围攻礼让）：取到令牌才真正出手，否则只在下方走位伺机
+                    if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f &&
+                        Combat.CombatDirector.TryAcquire(this, profile.category == EnemyCategory.Boss))
+                    { DoPhysicalAttack(); break; }
                     // 出手间隙像人一样左右游走找角度（而非钉在原地干等）；
                     // 挥击动作进行中绝不游走——脚下滑动会毁掉出招画面（漂移感）
                     if (_attackCd > 0.45f && !_telegraphing && Time.time > _swingUntil && AgentReady)
@@ -309,6 +350,35 @@ namespace AdversityRoad.AI
 
         /// <summary>Agent 是否可用：未落在 NavMesh 上时调用 isStopped/SetDestination 会抛异常。</summary>
         bool AgentReady => _agent != null && _agent.enabled && _agent.isOnNavMesh;
+
+        /// <summary>
+        /// 待战环走位（围攻礼让）：没抢到攻击令牌的敌人保持在玩家周围一圈候场——
+        /// 太近则后撤、太远则贴到环上、在环上则绕圈游走，绝不堆挤进玩家身体。
+        /// 让群战像大作那样"一两个进攻、其余围而不攻"，而非一拥而上。
+        /// </summary>
+        void MaintainStandoff(float standoff, float dt)
+        {
+            FaceTarget();
+            if (_player == null) return;
+            Vector3 toP = _player.position - transform.position; toP.y = 0;
+            float d = toP.magnitude;
+            if (d < 0.01f) return;
+            Vector3 dir;
+            if (d < standoff - 0.4f) dir = -toP.normalized;          // 太近：后撤
+            else if (d > standoff + 0.9f) dir = toP.normalized;      // 太远：贴回环上
+            else
+            {
+                _strafeFlipT -= dt;
+                if (_strafeFlipT <= 0)
+                {
+                    _strafeFlipT = Random.Range(1.5f, 3f);
+                    _strafeDir = Random.value < 0.5f ? -1f : 1f;
+                }
+                dir = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;   // 环上绕圈
+            }
+            if (AgentReady) _agent.Move(dir * profile.moveSpeed * 0.5f * dt);
+            else transform.position += dir * profile.moveSpeed * 0.5f * dt;
+        }
 
         void MoveTowards(Vector3 target, float dt)
         {
@@ -405,11 +475,16 @@ namespace AdversityRoad.AI
             _comboLeft = profile.category == EnemyCategory.Boss ? Random.Range(1, 3)
                        : elite && Random.value < 0.4f ? 1 : 0;
 
-            // 前摇（等级越高越短，越难反应）：头顶「！」跳动 + 脚下红圈脉冲 + 警示音
+            // 危险攻击（大作红光警示）：精英重招/Boss 有概率使出【不可格挡】的危险一击——
+            // 头顶亮「危」、红圈更大更亮，只能闪避不能格挡，教玩家读招而非无脑格挡
+            _perilous = useElite && Random.value < (profile.category == EnemyCategory.Boss ? 0.5f : 0.35f);
+
+            // 前摇（等级越高越短，越难反应）：头顶「！/危」跳动 + 脚下红圈脉冲 + 警示音
             // = 明确读招/闪避窗口，蓄势姿态先行，判定框随后才开。
             float windup = Mathf.Lerp(0.7f, 0.42f, profile.aggression);
-            ShowTelegraph(true);
-            GameAudio.Play(GameAudio.Sfx.Alert, 0.5f);
+            if (_perilous) windup += 0.12f;   // 危险攻击前摇略长：给足闪避反应窗口
+            ShowTelegraph(true, _perilous);
+            GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.5f, _perilous ? 0.02f : 0.08f);
             if (poser != null) poser.SetPose(PoseState.Charge);
             Invoke(nameof(OpenAttackHitbox), windup);
         }
@@ -432,12 +507,14 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead || attackHitbox == null) return;
             MoveStats(_attackPose, out float dmgMul, out float knock);
+            // 危险攻击：不可格挡（须闪避）+ 伤害/击退加成，兑现红光警示的威胁
             attackHitbox.EnableHitbox(new DamageInfo
             {
-                physicalDamage = profile.physicalDamage * dmgMul,
+                physicalDamage = profile.physicalDamage * dmgMul * (_perilous ? 1.5f : 1f),
                 mentalDamage = profile.mentalDamage * 0.3f,
                 mentalAxis = profile.targetWeakness,
-                knockback = knock,
+                knockback = knock + (_perilous ? 3f : 0f),
+                unblockable = _perilous,
                 attackerId = profile.enemyId
             });
         }
@@ -455,11 +532,13 @@ namespace AdversityRoad.AI
                 FaceTarget();
                 Invoke(nameof(OpenAttackHitbox), 0.26f);
             }
-            // 攻防步法：一套连招收尾后有概率快速撤步拉开身位（进退有据的剑斗节奏），
-            // 位移驱动的步态让退步的脚下动作清晰可见
-            else if (State == EnemyState.Attack && Random.value < 0.4f && AgentReady)
+            // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
+            else
             {
-                StartCoroutine(DodgeSlide(-transform.forward * 1.3f));
+                Combat.CombatDirector.Release(this);
+                // 攻防步法：收尾后有概率快速撤步拉开身位（进退有据的剑斗节奏）
+                if (State == EnemyState.Attack && Random.value < 0.4f && AgentReady)
+                    StartCoroutine(DodgeSlide(-transform.forward * 1.3f));
             }
         }
 
@@ -501,10 +580,10 @@ namespace AdversityRoad.AI
             Projectile.Launch(transform, origin, targetPos - origin,
                 new DamageInfo
                 {
-                    physicalDamage = profile.physicalDamage * 0.7f,
-                    mentalDamage = profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 言语弹幕：只压心神，不做远程物理削血
+                    mentalDamage = profile.mentalDamage * 0.6f,
                     mentalAxis = profile.targetWeakness,
-                    knockback = 1f,
+                    knockback = 0f,
                     attackerId = profile.enemyId
                 }, 11f, themeColor, baseMaterial);
         }
@@ -571,6 +650,7 @@ namespace AdversityRoad.AI
             if (dialogue != null) dialogue.Show(ResponseLibrary.GetBrokenLine(), 2.2f);
 
             State = EnemyState.Stagger;
+            Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
             StopMoving();
             if (poser != null) poser.SetPose(PoseState.Stagger);
 
@@ -687,8 +767,20 @@ namespace AdversityRoad.AI
 
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense)
                 * sneakMult * partDmgMult;
-            // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法
-            if (State == EnemyState.Stagger) final *= 1.6f;
+            // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法。
+            // 处决（大作破韧终结）：破绽期用重击/大招命中 = 巨额增伤 + 横幅 + 强顿帧慢镜，
+            // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
+            bool execHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            bool execution = false;
+            if (State == EnemyState.Stagger)
+            {
+                if (execHeavy)
+                {
+                    final *= 2.8f;
+                    execution = true;
+                }
+                else final *= 1.6f;
+            }
             // 调试模式：敌人耐揍，大幅削减实际伤害（方便测试，不被秒杀）
             if (Core.GameDebug.TankyEnemies) final *= Core.GameDebug.TankyDamageScale;
             // Boss 护体倍率：血量与韧性同步受保护（破防要走机制，不能硬磨）
@@ -717,11 +809,20 @@ namespace AdversityRoad.AI
                 HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy);
             CombatFeedback.HitFlash(gameObject);
             _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
+            // 处决命中：仪式感反馈——横幅「处决」+ 强顿帧 + 短慢镜 + 能量爆发
+            if (execution)
+            {
+                CombatFeedback.HitStop(0.12f);
+                CombatFeedback.SlowMo(0.4f, 0.16f);
+                CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
+                GameEvents.RaiseSkillBanner("处决");
+            }
             // 头部会心的伤害数字更大更红（部位标签由 HitReactionOverlay 弹出，不重复）
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
-                headshot ? new Color(1f, 0.55f, 0.25f)
+                execution ? new Color(1f, 0.6f, 0.15f)
+                : headshot ? new Color(1f, 0.55f, 0.25f)
                 : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
-                headshot ? 1.45f : final >= 35f ? 1.6f : 1f);
+                execution ? 1.9f : headshot ? 1.45f : final >= 35f ? 1.6f : 1f);
             if (dmg.knockback > 0.1f && !fbHeavy)
             {
                 // 击退平滑化：瞬移是"打地鼠式漂移"的最大来源——改为 0.22s 快滑退，
@@ -759,6 +860,7 @@ namespace AdversityRoad.AI
                 ShowTelegraph(false);
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
                 State = EnemyState.Stagger;
+            Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
                 _staggerTimer = heavyHit ? 1.5f : 0.42f;
                 StopMoving();
                 // 重击=被撞飞重重倒地（受击状态可视化），恢复时播起身过程。
@@ -798,6 +900,7 @@ namespace AdversityRoad.AI
                 // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
+            Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
                 _staggerTimer = 2.4f;
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
@@ -836,6 +939,7 @@ namespace AdversityRoad.AI
             if (attackHitbox != null) attackHitbox.DisableHitbox();
             _posture = profile.posture;
             State = EnemyState.Stagger;
+            Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
             _staggerTimer = duration;
             StopMoving();
             if (poser != null) poser.SetPose(PoseState.Stagger);
@@ -916,6 +1020,7 @@ namespace AdversityRoad.AI
         void Die()
         {
             State = EnemyState.Dead;
+            Combat.CombatDirector.Release(this);   // 死亡：归还攻击令牌
             CancelInvoke();
             ShowTelegraph(false);
             StopMoving();

@@ -334,6 +334,7 @@ namespace AdversityRoad.Core
             var combat = root.AddComponent<PlayerCombatController>();
             root.AddComponent<LockOnSystem>();
             root.AddComponent<MentalDynamics>();   // 战斗驱动的心理能量动态（受击/被围/命中/击杀）
+            root.AddComponent<InnerVoiceSystem>(); // 内部言语攻击：高反刍/内心敌人在场引出脑内回声
             var skillExec = root.AddComponent<SkillExecutor>();
 
             var poser = root.AddComponent<HumanoidAnimator>();
@@ -390,7 +391,7 @@ namespace AdversityRoad.Core
             dingxin.willCost = 25;
             dingxin.mentalRestore = 45;
             dingxin.cooldown = 12;
-            dingxin.castLockTime = 2.0f;
+            dingxin.castLockTime = 1.3f;
             dingxin.isSteadyHeartGuard = true;
             exec.equippedSkills.Add(dingxin);
 
@@ -419,7 +420,7 @@ namespace AdversityRoad.Core
             guihuan.description = "还域·界返三连：撩斩挑飞→旋身反震（虚假责任球全数打回、好人墙整圈震破）→界域震地波并回补边界。";
             guihuan.staminaCost = 10;
             guihuan.cooldown = 6;
-            guihuan.castLockTime = 2.2f;
+            guihuan.castLockTime = 1.45f;
             guihuan.isResponsibilityReturn = true;
             exec.equippedSkills.Add(guihuan);
 
@@ -430,7 +431,7 @@ namespace AdversityRoad.Core
             huozhong.description = "燃火·三段突进斩：点火解冻→火色双突进斩→上撩火浪终结。恢复行动力、意势+1——动力是被行动召回的。";
             huozhong.staminaCost = 6;
             huozhong.cooldown = 10;
-            huozhong.castLockTime = 2.2f;
+            huozhong.castLockTime = 1.45f;
             huozhong.isFiveMinuteSpark = true;
             exec.equippedSkills.Add(huozhong);
 
@@ -441,7 +442,7 @@ namespace AdversityRoad.Core
             budu.description = "镜界·退身斩：镜环展开护心（抵消下一次心理攻击）→后空翻拉开身位→掷出镜界气刃。无法确认的事，不当成事实。";
             budu.staminaCost = 8;
             budu.cooldown = 14;
-            budu.castLockTime = 1.7f;
+            budu.castLockTime = 1.15f;
             budu.isMindShield = true;
             exec.equippedSkills.Add(budu);
 
@@ -452,7 +453,7 @@ namespace AdversityRoad.Core
             huishou.description = "收心·万流归元：双后旋踢清场→幻影全灭→万流归元冲击波。恢复专注、降低反刍——不是所有声音都要回应。";
             huishou.staminaCost = 8;
             huishou.cooldown = 9;
-            huishou.castLockTime = 1.9f;
+            huishou.castLockTime = 1.25f;
             huishou.isAttentionRecall = true;
             exec.equippedSkills.Add(huishou);
         }
@@ -761,15 +762,17 @@ namespace AdversityRoad.Core
             hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
             hud.drainBar      = CreateBar(canvasGo.transform, "消耗", 7, new Color(0.8f, 0.45f, 0.2f));
             hud.drainBar.SetValue(0, 100);      // 关系消耗从空开始（越满越糟）
+            hud.fairnessPainBar = CreateBar(canvasGo.transform, "刺痛", 8, new Color(0.85f, 0.25f, 0.25f));
+            hud.fairnessPainBar.SetValue(0, 100); // 公平刺痛从空开始（越满越糟，三档规则）
 
-            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点
+            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点（让位给新增的刺痛条，整体下移）
             hud.momentumPips = new Image[3];
             for (int i = 0; i < 3; i++)
             {
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -310), new Vector2(34, 34));
+                    new Vector2(40 + i * 46, -344), new Vector2(30, 30));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -783,7 +786,7 @@ namespace AdversityRoad.Core
             // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
             var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(210, -310), new Vector2(400, 40));
+            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(200, -344), new Vector2(400, 36));
             hud.comboText = comboText;
 
             // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）

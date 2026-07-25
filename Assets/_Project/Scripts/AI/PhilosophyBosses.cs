@@ -93,8 +93,8 @@ namespace AdversityRoad.AI
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo
                 {
-                    physicalDamage = _ec.profile.physicalDamage * 0.32f,
-                    mentalDamage = _ec.profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 引文弹幕是"话"：只压心神不做远程物理削血
+                    mentalDamage = _ec.profile.mentalDamage * 0.6f,
                     mentalAxis = Personalization.WeaknessAxis.SelfDoubt,
                     knockback = 0.5f,
                     attackerId = _ec.profile.enemyId
@@ -225,8 +225,8 @@ namespace AdversityRoad.AI
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo
                 {
-                    physicalDamage = _ec.profile.physicalDamage * 0.25f,
-                    mentalDamage = _ec.profile.mentalDamage * 0.4f,
+                    physicalDamage = 0f,   // 追问弹幕是"问题"：只压心神不做远程物理削血
+                    mentalDamage = _ec.profile.mentalDamage * 0.5f,
                     mentalAxis = Personalization.WeaknessAxis.SelfDoubt,
                     knockback = 0.4f,
                     attackerId = _ec.profile.enemyId
@@ -314,8 +314,8 @@ namespace AdversityRoad.AI
                 Vector3 target = _player.position + Vector3.up * 1.0f;
                 Projectile.Launch(transform, origin, target - origin, new DamageInfo
                 {
-                    physicalDamage = _ec.profile.physicalDamage * 0.32f,
-                    mentalDamage = _ec.profile.mentalDamage * 0.5f,
+                    physicalDamage = 0f,   // 追问者弹幕是"追问"：只压心神不做远程物理削血
+                    mentalDamage = _ec.profile.mentalDamage * 0.6f,
                     mentalAxis = Personalization.WeaknessAxis.WillpowerCollapse,
                     knockback = 0.6f,
                     attackerId = _ec.profile.enemyId
