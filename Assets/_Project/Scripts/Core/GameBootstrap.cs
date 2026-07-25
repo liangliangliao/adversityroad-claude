@@ -391,7 +391,7 @@ namespace AdversityRoad.Core
             dingxin.willCost = 25;
             dingxin.mentalRestore = 45;
             dingxin.cooldown = 12;
-            dingxin.castLockTime = 2.0f;
+            dingxin.castLockTime = 1.3f;
             dingxin.isSteadyHeartGuard = true;
             exec.equippedSkills.Add(dingxin);
 
@@ -420,7 +420,7 @@ namespace AdversityRoad.Core
             guihuan.description = "还域·界返三连：撩斩挑飞→旋身反震（虚假责任球全数打回、好人墙整圈震破）→界域震地波并回补边界。";
             guihuan.staminaCost = 10;
             guihuan.cooldown = 6;
-            guihuan.castLockTime = 2.2f;
+            guihuan.castLockTime = 1.45f;
             guihuan.isResponsibilityReturn = true;
             exec.equippedSkills.Add(guihuan);
 
@@ -431,7 +431,7 @@ namespace AdversityRoad.Core
             huozhong.description = "燃火·三段突进斩：点火解冻→火色双突进斩→上撩火浪终结。恢复行动力、意势+1——动力是被行动召回的。";
             huozhong.staminaCost = 6;
             huozhong.cooldown = 10;
-            huozhong.castLockTime = 2.2f;
+            huozhong.castLockTime = 1.45f;
             huozhong.isFiveMinuteSpark = true;
             exec.equippedSkills.Add(huozhong);
 
@@ -442,7 +442,7 @@ namespace AdversityRoad.Core
             budu.description = "镜界·退身斩：镜环展开护心（抵消下一次心理攻击）→后空翻拉开身位→掷出镜界气刃。无法确认的事，不当成事实。";
             budu.staminaCost = 8;
             budu.cooldown = 14;
-            budu.castLockTime = 1.7f;
+            budu.castLockTime = 1.15f;
             budu.isMindShield = true;
             exec.equippedSkills.Add(budu);
 
@@ -453,7 +453,7 @@ namespace AdversityRoad.Core
             huishou.description = "收心·万流归元：双后旋踢清场→幻影全灭→万流归元冲击波。恢复专注、降低反刍——不是所有声音都要回应。";
             huishou.staminaCost = 8;
             huishou.cooldown = 9;
-            huishou.castLockTime = 1.9f;
+            huishou.castLockTime = 1.25f;
             huishou.isAttentionRecall = true;
             exec.equippedSkills.Add(huishou);
         }

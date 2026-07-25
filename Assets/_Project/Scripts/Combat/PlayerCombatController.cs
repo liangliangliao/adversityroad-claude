@@ -33,7 +33,7 @@ namespace AdversityRoad.Combat
 
         [Header("重击 / 蓄力 / 指令技")]
         public float heavyDamage = 34f;
-        public float maxChargeTime = 1.2f;
+        public float maxChargeTime = 0.85f;
         public float chargeStaminaPerSec = 9f;
         public float tapThreshold = 0.18f;   // 轻点/长按分界
 
@@ -64,21 +64,25 @@ namespace AdversityRoad.Combat
         // 派生：跳+拳=飞踢  跳+剑=空袭跳劈  蹲+拳=扫堂腿  蹲+剑=低位突刺
         // 帧数：动画从发力相位起播 → windup 0.1s 上下按键当拍出手；
         // cancelAt 紧跟命中相位，连点无缝衔接。拳系帧数更短（轻攻击手感）。
+        // 帧数据按大作轻攻击标准收紧（起手 3-5 帧、命中后立刻可取消、收招不拖沓）：
+        // 拳系取消窗 ≈0.16s(10帧)、全长 ≈0.32s(19帧)——连点如打鼓，不再有"举手等一拍"的钝感。
         static readonly ComboStage[] PunchChain =
         {
-            new ComboStage { pose = PoseState.PunchJab,   dmg = 0.7f,  posture = 14, lunge = 0.4f, windup = 0.07f, open = 0.14f, length = 0.4f,  cancelAt = 0.2f },
-            new ComboStage { pose = PoseState.PunchCross, dmg = 0.8f,  posture = 16, lunge = 0.4f, windup = 0.08f, open = 0.14f, length = 0.4f,  cancelAt = 0.21f },
-            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 20, lunge = 0.5f, windup = 0.09f, open = 0.16f, length = 0.44f, cancelAt = 0.24f },
-            new ComboStage { pose = PoseState.SideKick,   dmg = 1.05f, posture = 24, lunge = 0.6f, windup = 0.09f, open = 0.16f, length = 0.44f, cancelAt = 0.24f },
+            new ComboStage { pose = PoseState.PunchJab,   dmg = 0.7f,  posture = 14, lunge = 0.4f, windup = 0.05f, open = 0.13f, length = 0.30f, cancelAt = 0.155f },
+            new ComboStage { pose = PoseState.PunchCross, dmg = 0.8f,  posture = 16, lunge = 0.4f, windup = 0.055f, open = 0.13f, length = 0.31f, cancelAt = 0.16f },
+            new ComboStage { pose = PoseState.AttackKick, dmg = 0.9f,  posture = 20, lunge = 0.5f, windup = 0.065f, open = 0.15f, length = 0.34f, cancelAt = 0.185f },
+            new ComboStage { pose = PoseState.SideKick,   dmg = 1.05f, posture = 24, lunge = 0.6f, windup = 0.065f, open = 0.15f, length = 0.34f, cancelAt = 0.185f },
         };
 
         // 剑系（重连段）：伤害高、击退大
+        // 剑系（重连段）：比拳系稍重以保留分量感，但同样收紧约 25%——
+        // 取消窗 ≈0.2s、全长 ≈0.36s；末段旋风斩保留最长演出但从 0.6s 压到 0.46s。
         static readonly ComboStage[] SwordChain =
         {
-            new ComboStage { pose = PoseState.Attack,      dmg = 1.1f,  posture = 10, lunge = 0.6f, windup = 0.10f, open = 0.16f, length = 0.46f, cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.25f, posture = 12, lunge = 0.6f, windup = 0.10f, open = 0.16f, length = 0.46f, cancelAt = 0.26f },
-            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.45f, posture = 14, lunge = 1.0f, windup = 0.09f, open = 0.16f, length = 0.44f, cancelAt = 0.25f },
-            new ComboStage { pose = PoseState.AttackSpin,  dmg = 2.0f,  posture = 28, lunge = 0.6f, windup = 0.14f, open = 0.24f, length = 0.6f,  cancelAt = 0.42f },
+            new ComboStage { pose = PoseState.Attack,      dmg = 1.1f,  posture = 10, lunge = 0.6f, windup = 0.07f, open = 0.15f, length = 0.35f, cancelAt = 0.195f },
+            new ComboStage { pose = PoseState.AttackUp,    dmg = 1.25f, posture = 12, lunge = 0.6f, windup = 0.07f, open = 0.15f, length = 0.35f, cancelAt = 0.195f },
+            new ComboStage { pose = PoseState.SwordThrust, dmg = 1.45f, posture = 14, lunge = 1.0f, windup = 0.065f, open = 0.15f, length = 0.34f, cancelAt = 0.19f },
+            new ComboStage { pose = PoseState.AttackSpin,  dmg = 2.0f,  posture = 28, lunge = 0.6f, windup = 0.10f, open = 0.22f, length = 0.46f, cancelAt = 0.32f },
         };
 
         enum AttackBtn { None, Punch, Kick }
@@ -356,10 +360,10 @@ namespace AdversityRoad.Combat
                     dmg *= r.mult;
                     recipeHit = true;
                     playPose = r.pose;   // 成招：改播该绝招的专属终结动作（动作库大招）
-                    // 终结动作给足施展窗口（比普通段稍长），且成招后序列清零重新起手
-                    _cur.length = 0.68f;
-                    _cur.cancelAt = 0.5f;
-                    _cur.open = Mathf.Max(_cur.open, 0.26f);
+                    // 终结动作给足施展窗口（比普通段稍长），但同样收紧到大作区间（≈0.5s）
+                    _cur.length = 0.5f;
+                    _cur.cancelAt = 0.36f;
+                    _cur.open = Mathf.Max(_cur.open, 0.24f);
                     _seq = "";
                     GameEvents.RaiseSkillBanner("绝招「" + r.name + "」");
                     CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
@@ -442,7 +446,7 @@ namespace AdversityRoad.Combat
                 float af = Mathf.Abs(_heavyDirFwd), asd = Mathf.Abs(_heavyDirSide);
                 if (Mathf.Max(af, asd) > 0.35f)
                 {
-                    _specialCd = 3.5f;
+                    _specialCd = 2.2f;
                     if (af >= asd)
                     {
                         if (_heavyDirFwd > 0) { DashStrike(); return; }
@@ -470,7 +474,7 @@ namespace AdversityRoad.Combat
         /// （长/宽/高与距离一起放大），2 势终结版两段更大更痛。</summary>
         IEnumerator HeavyCombo(float charge01, bool finisher)
         {
-            _fsm.RequestState(CombatState.HeavyAttack, finisher ? 1.3f : 1.15f);
+            _fsm.RequestState(CombatState.HeavyAttack, finisher ? 1.0f : 0.88f);
             _fsm.InCombat = true;
 
             // ---- 段1：蓄力·巨剑跳劈 ----
@@ -490,7 +494,7 @@ namespace AdversityRoad.Combat
             CombatFeedback.ShockRing(transform.position + transform.forward * 1.8f,
                 new Color(1f, 0.7f, 0.3f), 4.5f + 3f * charge01);
 
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(0.34f);
             if (_fsm.Current != CombatState.HeavyAttack) yield break;   // 被击倒等打断
 
             // ---- 段2：紧接巨剑旋风斩（环身大范围second hit）----
@@ -506,12 +510,13 @@ namespace AdversityRoad.Combat
                     new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.SlowMo(0.45f, 0.2f);
             }
+            _fsm.CanDodgeCancel = true;   // 蓄力二连收招：可闪避取消
         }
 
         /// <summary>前+重：疾影突刺（动作库 Stabbing）——高速突进直刺，双重剑气。</summary>
         void DashStrike()
         {
-            _fsm.RequestState(CombatState.HeavyAttack, 0.46f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.36f);
             PlayPose(PoseState.SwordThrust);
             FaceAndLunge(2.6f);
             float dmg = heavyDamage * 0.85f * CritMult();
@@ -527,7 +532,7 @@ namespace AdversityRoad.Combat
         /// <summary>后+重：旋身空翻踢（动作库 Spin Flip Kick）——大击退吹飞拉开身位。</summary>
         void BlowbackKick()
         {
-            _fsm.RequestState(CombatState.HeavyAttack, 0.5f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
             PlayPose(PoseState.SpinKick);
             FaceAndLunge(0.4f);
             float dmg = heavyDamage * 0.7f * CritMult();
@@ -539,7 +544,7 @@ namespace AdversityRoad.Combat
         /// <summary>左/右+重：旋风斩（动作库 High Spin Attack）——侧步位移接整身旋斩。</summary>
         void SideSpinStrike(bool right)
         {
-            _fsm.RequestState(CombatState.HeavyAttack, 0.5f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
             PlayPose(PoseState.AttackSpin);
             Vector3 lateral = (right ? transform.right : -transform.right) * 1.7f
                               + transform.forward * 0.4f;
@@ -555,7 +560,7 @@ namespace AdversityRoad.Combat
         /// <summary>跳+重：空袭跳劈（动作库 Great Sword Jump Attack）——凌空砸地。</summary>
         void AirLeapAttack()
         {
-            _fsm.RequestState(CombatState.HeavyAttack, 0.55f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.44f);
             _fsm.InCombat = true;
             PlayPose(PoseState.AttackLeap);
             ApplyAttackFacing();
@@ -572,7 +577,7 @@ namespace AdversityRoad.Combat
         void QiShou()
         {
             EndCombo();
-            _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.32f);
             PlayPose(PoseState.AttackUp);
             FaceAndLunge(0.5f);
             float dmg = heavyDamage * 0.85f * CritMult();
@@ -598,17 +603,17 @@ namespace AdversityRoad.Combat
         IEnumerator RanWu(float charge01)
         {
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
-            _fsm.RequestState(CombatState.Finisher, 2.2f);
-            _player.SetInvincible(2.3f);
-            CombatFeedback.UltimateShot(2.2f);   // 镜头拉近看清连段
+            _fsm.RequestState(CombatState.Finisher, 1.75f);
+            _player.SetInvincible(1.85f);
+            CombatFeedback.UltimateShot(1.75f);   // 镜头拉近看清连段
             // 大幅剑技串成连段：节奏留给动作本体，每击只配一道收敛的刀光，
             // 收招才一次中等能量爆发 + 短时缓——特效点到为止，不糊住招式。
             var seq = new (PoseState pose, float dmg, float posture, float knock, float wait, Color arc)[]
             {
-                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.4f,  new Color(0.6f, 0.85f, 1f)),
-                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.46f, new Color(0.7f, 0.9f, 1f)),
-                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.38f, new Color(0.8f, 0.92f, 1f)),
-                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.56f, new Color(0.55f, 0.8f, 1f)),
+                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.28f, new Color(0.6f, 0.85f, 1f)),
+                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.32f, new Color(0.7f, 0.9f, 1f)),
+                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.27f, new Color(0.8f, 0.92f, 1f)),
+                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.4f,  new Color(0.55f, 0.8f, 1f)),
             };
             float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
             for (int i = 0; i < seq.Length; i++)
@@ -629,6 +634,7 @@ namespace AdversityRoad.Combat
                     CombatFeedback.Debris(transform.position + transform.forward * 1.3f,
                         new Color(0.5f, 0.65f, 0.9f), 8);
                     CombatFeedback.SlowMo(0.35f, 0.3f);
+                    _fsm.CanDodgeCancel = true;   // 乱舞收招：可闪避取消，不必等演完
                 }
                 yield return new WaitForSeconds(s.wait);
             }

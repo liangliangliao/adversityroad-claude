@@ -87,8 +87,19 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招
-            if (_combat != null && _combat.IsHardLocked) { ApplyGravityOnly(dt); return; }
+            // 闪避输入只读一次：既用于「收招闪避取消」，也用于下方常规翻滚，避免消费式
+            // 输入（MobileInput.GetDown）被读两次而丢键
+            bool dodgePressed = Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge");
+
+            // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招。
+            // 例外——收招闪避取消（大作手感）：技能/绝招打完主要段进入恢复相位后，
+            // 按闪避可立刻打断收招，不必干等动作播完。
+            if (_combat != null && _combat.IsHardLocked)
+            {
+                if (!(dodgePressed && _combat.CanDodgeCancel && Stats.stamina >= dodgeStaminaCost))
+                { ApplyGravityOnly(dt); return; }
+                _combat.RequestState(CombatState.Locomotion);   // 解除收招锁，落入下方翻滚
+            }
             bool attacking = _combat != null && _combat.Current == CombatState.LightAttack;
 
             // 蹲伏切换（潜行/低姿态）
@@ -130,8 +141,8 @@ namespace AdversityRoad.Player
             }
             else _vy += gravity * dt;
 
-            // 翻滚闪避（Shift / 闪）
-            if ((Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge")) && Stats.SpendStamina(dodgeStaminaCost))
+            // 翻滚闪避（Shift / 闪）——输入已在本帧开头统一读取
+            if (dodgePressed && Stats.SpendStamina(dodgeStaminaCost))
             {
                 if (IsCrouched) ToggleCrouch();
                 // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
