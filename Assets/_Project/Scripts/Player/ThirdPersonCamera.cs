@@ -86,6 +86,12 @@ namespace AdversityRoad.Player
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
         float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
         float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
+        // ---- 镜头导演：景别选择与平滑过渡 ----
+        ShotProfile _shot;                 // 当前生效的景别（插值后的实时值）
+        float _nextShotScan;               // 敌情扫描节流
+        int _nearbyEnemies;
+        float _roomAround = 99f;           // 镜头四周可用空间（识别狭窄场地）
+        bool _shotInit;
         /// <summary>朝镜头持续行进多久才认定"真要往那个方向去"，才允许绕镜。
         /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。</summary>
         const float TowardCameraHold = 0.9f;
@@ -217,6 +223,31 @@ namespace AdversityRoad.Player
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
+
+            // ===== 镜头导演：选景别 + 平滑推轨过渡 =====
+            // 敌情与场地扫描节流（0.3s 一次，避免每帧全场遍历）
+            if (Time.unscaledTime >= _nextShotScan)
+            {
+                _nextShotScan = Time.unscaledTime + 0.3f;
+                _nearbyEnemies = 0;
+                foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
+                {
+                    if (e.State == AI.EnemyState.Dead) continue;
+                    if ((e.transform.position - target.position).sqrMagnitude < 81f) _nearbyEnemies++;
+                }
+                // 场地宽敞度：向镜头四周投射，取最短可用距离——识别走廊/贴墙等狭窄场地
+                _roomAround = ProbeRoom(target.position + Vector3.up * _pivotH);
+            }
+            var wantShot = CameraDirector.Pick(
+                _ultimateTimer > 0f, _nearbyEnemies,
+                lockOn != null && lockOn.CurrentTarget != null, _roomAround);
+            if (!_shotInit) { _shot = wantShot; _shotInit = true; }
+            else
+            {
+                // 参数级插值＝推轨，而不是切镜：这是"平稳、不适感为零"的关键
+                float rate = CameraDirector.BlendRate(_shot, wantShot);
+                _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
+            }
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
@@ -320,10 +351,11 @@ namespace AdversityRoad.Player
             // 俯仰：锁定时压低到战斗视角（更贴地、更有临场感）；未锁定时闲置回中
             if (!Presets[PresetIndex].fp && Time.unscaledTime - _lastManualLook > 0.4f)
             {
+                // 目标俯仰＝基准 + 当前景别的俯仰偏置（群战略俯看局势、特写略压低）
                 if (lockTarget != null)
-                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch, 14f * dt);
+                    _pitch = Mathf.MoveTowards(_pitch, combatLockPitch + _shot.pitchBias, 14f * dt);
                 else if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
-                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch, 10f * dt);
+                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch + _shot.pitchBias, 10f * dt);
             }
 
             _lastTargetPos = target.position;
@@ -363,7 +395,7 @@ namespace AdversityRoad.Player
             // 取景点=胸口：target.position 是胶囊【中心】（已在脚底上方约 1m），
             // 只需再加小量到胸口。旧值 +1.55 把取景点抬到头顶之上，导致画面被
             // 压低、角色挤在屏幕下缘只见上半身——这是"镜头压太低"的根因。
-            float wantH = player != null && player.IsCrouched ? 0.05f : 0.42f;
+            float wantH = (player != null && player.IsCrouched ? 0.05f : 0.42f) + _shot.heightBias;
             _pivotH = Mathf.Lerp(_pivotH, wantH, 6f * dt);
             float targetPivotY = target.position.y + _pivotH;
             // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）
@@ -371,7 +403,8 @@ namespace AdversityRoad.Player
             if (lockTarget != null)
             {
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
-                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f, lockCenterBias * _lockBlend);
+                focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f,
+                    Mathf.Max(lockCenterBias, _shot.centerBias) * _lockBlend);
             }
             else if (moveSpeed > 1.5f)
             {
@@ -393,7 +426,7 @@ namespace AdversityRoad.Player
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
             // 战斗中位置阻尼加重（斯坦尼康式慢移），探索保持跟手
-            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend);
+            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend) * _shot.damping;
             _pivotXZ = Vector2.SmoothDamp(_pivotXZ, _focusAnchor, ref _pivotXZVel,
                 fst, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);
@@ -419,6 +452,7 @@ namespace AdversityRoad.Player
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
+            wantFactor *= _shot.distanceMult;   // 景别决定景深：群战拉远、狭窄收紧、决胜推近
             // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
             // 不再造成镜头前后泵动
             _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.1f * dt);
@@ -467,6 +501,38 @@ namespace AdversityRoad.Player
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
             float lookUp = 0.38f + 0.12f * _lockBlend;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
+
+            // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
+            // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
+            var camc = GetComponent<Camera>();
+            if (camc != null && !Presets[PresetIndex].fp)
+                camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
+                    fieldOfView + _shot.fovBias, 12f * dt);
+        }
+
+        /// <summary>
+        /// 场地宽敞度：向四周（含斜后方）投射，取最短可用距离。
+        /// 用于识别走廊/贴墙等狭窄场地，让导演切到「收紧贴身」景别，
+        /// 而不是傻乎乎地拉远把镜头顶进墙里。
+        /// </summary>
+        float ProbeRoom(Vector3 pivot)
+        {
+            float shortest = 99f;
+            for (int i = 0; i < 6; i++)
+            {
+                float a = i * 60f;
+                Vector3 dir = Quaternion.Euler(0, _yaw + 150f + a, 0) * Vector3.forward;
+                if (Physics.SphereCast(pivot, 0.2f, dir, out RaycastHit hit, 6f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                {
+                    var col = hit.collider;
+                    if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
+                    if (col.GetComponentInParent<PlayerController>() != null) continue;
+                    if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                    shortest = Mathf.Min(shortest, hit.distance);
+                }
+            }
+            return shortest;
         }
 
         /// <summary>
