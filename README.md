@@ -309,6 +309,33 @@ Unity 第三人称动作冒险 RPG：把现实中的困境转译为可战斗、�
 - **操作手感**：闪避随时取消轻连段收招（清序列/收判定框，落地全新起手）；
   转身速度与大角度掉头加速上调——摇杆换向、攻防切换更灵敏跟手
 
+### 与官方/开源参考的参数核对（本次迭代）
+
+对照 [Unity 官方 ThirdPersonController](https://github.com/nrsharip/unity-third-person/blob/main/Assets/StarterAssets/ThirdPersonController/Scripts/ThirdPersonController.cs)
+与 [UE SpringArm 官方示例](https://dev.epicgames.com/documentation/unreal-engine/using-spring-arm-components?application_version=4.27)
+逐项归一化核对，结论是**本项目数值本就在标准区间内**：
+
+| 项目 | 本项目 | 官方参考 | 判定 |
+| --- | --- | --- | --- |
+| 跑速 | 5.2 m/s | Unity 5.335 m/s | 几乎一致 |
+| 走速 | 2.6 m/s | Unity 2.0 m/s | 同量级 |
+| 重力 | −20 | Unity −15 | 略重（动作向） |
+| 角色转向时间常数 | 0.071s | Unity RotationSmoothTime 0.12s | 更跟手（战斗向） |
+| 土狼时间 | 0.12s | Unity FallTimeout 0.15s | 同量级 |
+| 镜头吊杆长度 | 4.76 m | UE SpringArm 3–4 m | 更长＝视野更开阔 |
+| 镜头位置跟随 | 0.09s | UE CameraLagSpeed 3.0 → 0.33s | 远比 UE 跟手 |
+| 视野 | 垂直 56°（@16:9 ≈ 水平 87°） | UE 第三人称模板 水平 90° | 不算窄 |
+
+**这一核对本身就是结论**：此前所有卡顿/盲区/不连贯问题，根因都是**结构性缺陷**
+（体力静默中断连段、互斥分支漏掉中幅转向、消费式输入互抢、镜头意图模型错误），
+而不是数值不对——所以"照抄别家参数"解决不了，必须逐个定位逻辑。
+
+**唯一有实据可改进的一处已采纳**：Unity 官方用**指数逼近**做加减速
+（其注释原文：*curved result rather than a linear one giving a more organic speed change*），
+本项目原为线性匀加速（`MoveTowards`）。已改为 `1−e^(−k·dt)` 指数逼近（帧率无关）：
+起步 k=20（0.05s 到 63%、0.15s 到 95%）、刹车 k=26——起步瞬间给足冲量更跟手，
+末段自然收敛不突兀。
+
 ### 镜头意图识别（本次迭代 · 「面壁转身看正脸却被甩向墙面」）
 
 实测反馈：**面前是墙、用摇杆转身想看清角色的脸，镜头却立刻绕开去看墙面。**

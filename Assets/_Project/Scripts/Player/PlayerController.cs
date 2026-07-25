@@ -15,11 +15,12 @@ namespace AdversityRoad.Player
         [Header("移动（速度按真实体感收敛，防晕）")]
         public float walkSpeed = 2.6f;
         public float runSpeed = 5.2f;
-        // 起步/刹车响应（大作级跟手）：0→全速 ≈0.12s、全速→停 ≈0.09s。
-        // 旧值 18/26 需要 0.29s 才提到全速，读作"人机之间隔了一层"。
-        // 防晕由镜头侧负责（软跟随 + 焦点死区），而不是靠拖慢角色本体。
-        public float acceleration = 45f;           // 起步加速度
-        public float deceleration = 58f;           // 停步减速度
+        // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
+        // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
+        // 起步 k=20：0.05s 到 63%、0.15s 到 95%；刹车 k=26 更利落。
+        // 防晕由镜头侧负责（软跟随 + 焦点死区 + 渐进回正），而不是靠拖慢角色本体。
+        public float accelRate = 20f;              // 起步逼近速率
+        public float decelRate = 26f;              // 停步逼近速率
         public float rotateSpeed = 14f;            // 转身更跟手（大作级的方向响应）
         public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率：掉头近乎即时
         public float jumpForce = 7f;
@@ -215,10 +216,14 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // 加减速平滑：世界移动无速度突变（防晕关键之一）
+            // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
+            // ThirdPersonController 的做法（其注释原文：curved result rather than a
+            // linear one giving a more organic speed change）。
+            // 起步瞬间给足冲量（前几帧就到大半速度＝跟手），末段自然收敛（不突兀）。
+            // 用 1-e^(-k·dt) 而非 Lerp(a,b,k·dt)：帧率无关，高低帧手感一致。
             Vector3 targetVel = moveDir * speed;
-            float a = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? acceleration : deceleration;
-            _hVel = Vector3.MoveTowards(_hVel, targetVel, a * dt);
+            float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
+            _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
             // 快速灵活转身：目标夹角越大转得越快
