@@ -49,6 +49,10 @@ namespace AdversityRoad.Player
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         public float MoveSpeedMultiplier { get; set; } = 1f;
 
+        /// <summary>本帧摇杆的世界方向（相机相对，零向量=未推杆）。
+        /// 技能连招据此判断玩家是否正在主动引导方向，从而让出自动吸附。</summary>
+        public Vector3 StickWorldDir { get; private set; }
+
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
@@ -91,13 +95,29 @@ namespace AdversityRoad.Player
             // 输入（MobileInput.GetDown）被读两次而丢键
             bool dodgePressed = Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge");
 
+            // 摇杆世界方向提前求出：硬锁动作（技能/绝招/重击）期间也要读它做「出招转向」，
+            // 所以不能等到下面移动逻辑才算
+            Vector2 stickInput = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+            stickInput += MobileInput.Move;
+            stickInput = Vector2.ClampMagnitude(stickInput, 1f);
+            Vector3 stickDir = CameraRelative(stickInput);
+            StickWorldDir = stickDir;   // 供技能连招判断"玩家是否正在主动引导方向"
+
             // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招。
             // 例外——收招闪避取消（大作手感）：技能/绝招打完主要段进入恢复相位后，
             // 按闪避可立刻打断收招，不必干等动作播完。
             if (_combat != null && _combat.IsHardLocked)
             {
                 if (!(dodgePressed && _combat.CanDodgeCancel && Stats.stamina >= dodgeStaminaCost))
-                { ApplyGravityOnly(dt); return; }
+                {
+                    // 出招转向影响（大作 attack steering / directional influence）：
+                    // 技能、绝招、重击期间【仍可用摇杆缓慢调整朝向】——此前这里直接 return，
+                    // 摇杆完全无响应、动作结束才突然弹到新朝向，正是"出招+转向不连贯"的主因。
+                    // 受击/倒地/硬直不给转向（挨打就该失控）。
+                    SteerDuringAction(stickDir, dt);
+                    ApplyGravityOnly(dt);
+                    return;
+                }
                 _combat.RequestState(CombatState.Locomotion);   // 解除收招锁，落入下方翻滚
             }
             bool attacking = _combat != null && _combat.Current == CombatState.LightAttack;
@@ -112,11 +132,8 @@ namespace AdversityRoad.Player
                 if (_appearance != null) _appearance.ToggleWeaponDrawn();
             }
 
-            Vector2 input = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-            input += MobileInput.Move;                       // 合并虚拟摇杆
-            input = Vector2.ClampMagnitude(input, 1f);
-            float inputMag = input.magnitude;
-            Vector3 moveDir = CameraRelative(input);
+            float inputMag = stickInput.magnitude;            // 摇杆已在本帧开头统一读取
+            Vector3 moveDir = stickDir;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
@@ -177,16 +194,53 @@ namespace AdversityRoad.Player
             _hVel = Vector3.MoveTowards(_hVel, targetVel, a * dt);
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
-            // 快速灵活转身：目标夹角越大转得越快；出招中保持攻击朝向仅缓慢修正
+            // 快速灵活转身：目标夹角越大转得越快
             if (moveDir.sqrMagnitude > 0.01f)
             {
                 Quaternion target = Quaternion.LookRotation(moveDir);
-                float ang = Quaternion.Angle(transform.rotation, target);
-                float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
-                // 出招中朝向基本锁定（配合锥形辅助瞄准）：摇杆推着连招不甩离目标
-                if (attacking) rs = 2.2f;
-                transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
+                if (attacking)
+                {
+                    // 轻击连段中的转向影响：用明确的角速度上限（度/秒）而非低倍率 Slerp——
+                    // 旧值 2.2 的 Slerp 每帧只挪动 3.7%，推杆几乎转不动，读作"出招就僵住"。
+                    // 150°/s 既能顺着摇杆把连招引向新方向，又不会一帧甩离当前目标。
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation,
+                        target, AttackSteerDegPerSec * dt);
+                }
+                else
+                {
+                    float ang = Quaternion.Angle(transform.rotation, target);
+                    float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
+                    transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
+                }
             }
+        }
+
+        // ---- 出招转向影响（大作 attack steering）速率表（度/秒）----
+        const float AttackSteerDegPerSec = 150f;   // 轻击连段：顺杆引导连招方向
+        const float SkillSteerDegPerSec = 110f;    // 技能/绝招：可调整但保持"已出招"的承诺感
+        const float HeavySteerDegPerSec = 85f;     // 重击/蓄力：最重，转向最慢
+
+        /// <summary>
+        /// 硬锁动作期间的摇杆转向（技能/绝招/重击）：按状态给不同角速度上限，
+        /// 让「出招 + 转向」是一个连贯动作，而不是无响应后突然弹向新朝向。
+        /// 受击/倒地/心理硬直/死亡不给转向——挨打就该失控，这是打击反馈的一部分。
+        /// </summary>
+        void SteerDuringAction(Vector3 dir, float dt)
+        {
+            if (_combat == null || dir.sqrMagnitude < 0.01f) return;
+            float rate;
+            switch (_combat.Current)
+            {
+                case CombatState.Finisher:
+                case CombatState.InnerPowerCast:
+                    rate = SkillSteerDegPerSec; break;
+                case CombatState.HeavyAttack:
+                    rate = HeavySteerDegPerSec; break;
+                default:
+                    return;   // HitReaction / Knockdown / MentalStagger / Death：不可转向
+            }
+            transform.rotation = Quaternion.RotateTowards(transform.rotation,
+                Quaternion.LookRotation(dir), rate * dt);
         }
 
         void LateUpdate()

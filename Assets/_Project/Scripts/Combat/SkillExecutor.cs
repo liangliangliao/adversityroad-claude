@@ -161,14 +161,34 @@ namespace AdversityRoad.Combat
             if (_anim != null) _anim.PlayAttackPose(p);
         }
 
-        /// <summary>面向最近敌人（连招起手先咬住目标，无目标保持当前朝向）。</summary>
+        /// <summary>
+        /// 连招每段的朝向决策——玩家意图优先（大作 attack steering 的配套规则）：
+        /// · 玩家正明显推杆（幅度足够）且方向与自动目标偏差 &gt;45° → 顺着摇杆出招，
+        ///   连招跟着你走，不被自动吸附拽回去；
+        /// · 否则咬住自动瞄准目标（无目标则保持当前朝向，由摇杆转向接管）。
+        /// </summary>
         void FaceTarget()
         {
+            Vector3 stick = _player != null ? _player.StickWorldDir : Vector3.zero;
+            bool steering = stick.sqrMagnitude > 0.25f;   // 摇杆幅度 >0.5 视为主动引导
+
             var combat = Combat();
             Transform aim = combat != null ? combat.AutoAimTarget() : null;
-            if (aim == null) return;
-            Vector3 dir = aim.position - transform.position; dir.y = 0;
-            if (dir.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(dir.normalized);
+            if (aim != null)
+            {
+                Vector3 dir = aim.position - transform.position; dir.y = 0;
+                if (dir.sqrMagnitude > 0.01f)
+                {
+                    dir.Normalize();
+                    // 玩家推杆明显偏离目标：尊重玩家方向，不硬拽回目标
+                    if (steering && Vector3.Angle(stick, dir) > 45f)
+                        transform.rotation = Quaternion.LookRotation(stick.normalized);
+                    else
+                        transform.rotation = Quaternion.LookRotation(dir);
+                }
+                return;
+            }
+            if (steering) transform.rotation = Quaternion.LookRotation(stick.normalized);
         }
 
         /// <summary>短促滑行位移（同 PlayerCombatController.GlideMove：不瞬移防镜头抖）。</summary>
