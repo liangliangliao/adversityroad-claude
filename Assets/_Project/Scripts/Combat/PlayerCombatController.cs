@@ -28,7 +28,10 @@ namespace AdversityRoad.Combat
         [Header("连段")]
         public Hitbox weaponHitbox;
         public float baseDamage = 16f;
-        public float staminaPerHit = 8f;
+        // 轻击体力：连打约 5.8 段/秒，旧值 8 → 47/秒消耗 vs 15/秒回复，3 秒即见底。
+        // 降到 3 后连打消耗 ≈20/秒，配合回复提升后可长时间连打不断（体力只在
+        // 闪避/蓄力等"大动作"上形成真实取舍，而不是卡住普通连段）。
+        public float staminaPerHit = 3f;
         public float autoAimRange = 5f;
 
         [Header("重击 / 蓄力 / 指令技")]
@@ -335,7 +338,16 @@ namespace AdversityRoad.Combat
             if (nextDepth > 3) nextDepth = 0;
             var chain = btn == AttackBtn.Kick ? SwordChain : PunchChain;
             var s = chain[nextDepth];
-            if (!_player.Stats.SpendStamina(staminaPerHit)) { EndCombo(); return; }
+            // 体力不足【不再中断连段】——此前静默 EndCombo 是"连打时突然卡住"的主因：
+            // 满体力连打约 3 秒就见底，之后每次出招都失败，人站在原地不动。
+            // 大作的做法是"打得动但没力气"：照常出招，进入【疲惫】——伤害打折、不积意势。
+            // 连打的手感永远连续，体力只影响强度，不影响能否出招。
+            bool exhausted = !_player.Stats.SpendStamina(staminaPerHit);
+            if (exhausted && Time.time - _lastExhaustHint > 2.5f)
+            {
+                _lastExhaustHint = Time.time;
+                GameEvents.RaiseSubtitle("气力不济——攻击威力下降，稍缓一拍再打。");
+            }
 
             _depth = nextDepth;
             _cur = s;
@@ -344,7 +356,7 @@ namespace AdversityRoad.Combat
             RaiseSeq();
             _fsm.InCombat = true;
 
-            float dmg = baseDamage * s.dmg * CritMult();
+            float dmg = baseDamage * s.dmg * CritMult() * (exhausted ? 0.6f : 1f);
 
             // 组合技识别：打出配方即触发「招式」——冲击波+时缓+大增伤+击飞
             // 高级绝招（cost>0）需消耗意势能量；能量不足则退化为普通连段
@@ -385,9 +397,12 @@ namespace AdversityRoad.Combat
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，帧数更短、削韧更高）。
             float knock = (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f);
             if (btn == AttackBtn.Kick) knock += 3.5f;
-            OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, true,
+            // 疲惫时不积意势（体力的代价体现在这里，而不是"打不出招"）
+            OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, !exhausted,
                 playPose, recipeHit ? 1.3f : 1f);
         }
+
+        float _lastExhaustHint = -99f;   // 疲惫提示节流（不刷屏）
 
         void RaiseSeq()
         {

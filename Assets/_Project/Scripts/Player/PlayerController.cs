@@ -65,6 +65,7 @@ namespace AdversityRoad.Player
         /// <summary>供其它战斗组件共用的输入缓冲（技能在动作锁期间的排队兑现）。</summary>
         public InputBuffer Buffer => _inputBuf;
         float _coyoteT;
+        float _attackSpeedFactor = 1f;   // 出招定步倍率（平滑过渡，防连打时速度震荡）
 
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
@@ -161,10 +162,14 @@ namespace AdversityRoad.Player
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
-            // 出招定步：攻击动画占据全身（含腿部），此时若照常位移就是"脚不动
-            // 人在滑"的漂移。出招期间移动近乎锁定（保留极小微调），突进位移
-            // 由招式自身的 GlideMove 负责——动作与位移始终匹配。
-            if (attacking) speed *= 0.1f;
+            // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
+            // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
+            // 从全速骤降到 10%、收招again骤升回全速，配合已提速的加减速就是一顿一顿的
+            // 抽搐感。改为对倍率本身做时间常数 ≈0.07s 的平滑过渡，并把下限抬到 0.3：
+            // 既保留定步的分量感，又让"边推杆边连打"是一条连续的速度曲线。
+            _attackSpeedFactor = Mathf.MoveTowards(_attackSpeedFactor,
+                attacking ? 0.3f : 1f, dt / 0.07f);
+            speed *= _attackSpeedFactor;
 
             // 土狼时间（coyote time）：离开地面边缘后仍有一小段时间可以起跳——
             // 玩家的意图是"我在跳台边缘按了跳"，而不是"我晚了两帧所以活该掉下去"

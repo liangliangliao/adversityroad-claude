@@ -33,7 +33,7 @@ namespace AdversityRoad.Player
         // 71-100 愤怒失控风险、判断下降（更易吃心理伤害）。复盘/正确言语回应可回落。
         public float fairnessPain = 0, maxFairnessPain = 100;
 
-        public float staminaRegenPerSec = 15f;
+        public float staminaRegenPerSec = 22f;   // 连打可持续（大作轻攻击不该被体力卡死）
         public float mentalRegenPerSec = 2f;
         public float ruminationDecayPerSec = 1.5f;
         public float drainDecayPerSec = 1.2f;

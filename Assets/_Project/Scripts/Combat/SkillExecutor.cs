@@ -45,6 +45,7 @@ namespace AdversityRoad.Combat
         const float SkillBufferWindow = 0.35f;
         int _bufferedSkill = -1;
         float _bufferedSkillAt = -99f;
+        float _lastCdHint = -99f, _lastResourceHint = -99f;   // 提示节流（连点不刷屏）
 
         void Update()
         {
@@ -60,9 +61,11 @@ namespace AdversityRoad.Combat
 
             if (pressed >= 0)
             {
-                if (!TryCast(equippedSkills[pressed]))
+                // 只有「正处于出招锁定」才排队——这类失败马上就会好转。
+                // 冷却中/资源不足不入缓冲，否则会每帧重试并刷屏提示。
+                bool lockedNow = _fsm.IsActionLocked;
+                if (!TryCast(equippedSkills[pressed]) && lockedNow)
                 {
-                    // 释放失败（多半是正处于出招锁定）→ 入缓冲，稍后自动兑现
                     _bufferedSkill = pressed;
                     _bufferedSkillAt = Time.unscaledTime;
                 }
@@ -83,7 +86,12 @@ namespace AdversityRoad.Combat
             if (skill == null || _fsm.IsActionLocked) return false;
             if (_cooldowns.TryGetValue(skill.skillId, out float cd) && cd > 0)
             {
-                Core.GameEvents.RaiseSubtitle("「" + skill.displayName + "」调息中……");
+                // 连点冷却中的技能不刷屏（节流）
+                if (Time.time - _lastCdHint > 1.2f)
+                {
+                    _lastCdHint = Time.time;
+                    Core.GameEvents.RaiseSubtitle("「" + skill.displayName + "」调息中……");
+                }
                 return false;
             }
             // 能量门槛：大招需要消耗意势（能量积累才能释放）
@@ -97,8 +105,25 @@ namespace AdversityRoad.Combat
                     return false;
                 }
             }
-            if (!_player.Stats.SpendStamina(skill.staminaCost)) return false;
-            if (skill.willCost > 0 && !_player.Stats.SpendWill(skill.willCost)) return false;
+            // 资源不足要给明确反馈——静默失败会读作"我按了它却没反应"（节流防刷屏）
+            if (!_player.Stats.SpendStamina(skill.staminaCost))
+            {
+                if (Time.time - _lastResourceHint > 1.5f)
+                {
+                    _lastResourceHint = Time.time;
+                    Core.GameEvents.RaiseSubtitle("体力不足：「" + skill.displayName + "」施展不出来。");
+                }
+                return false;
+            }
+            if (skill.willCost > 0 && !_player.Stats.SpendWill(skill.willCost))
+            {
+                if (Time.time - _lastResourceHint > 1.5f)
+                {
+                    _lastResourceHint = Time.time;
+                    Core.GameEvents.RaiseSubtitle("意志不足：「" + skill.displayName + "」施展不出来。");
+                }
+                return false;
+            }
             if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
 
             // 逆伤崩拳气质：高伤害但额外消耗自尊/意志的技能由 selfCostAxisDamage 表达
