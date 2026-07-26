@@ -56,13 +56,13 @@ namespace AdversityRoad.Player
         {
             name = "对峙·双人同框",
             distanceMult = 1.02f, heightBias = -0.05f, pitchBias = 1f,
-            fovBias = -1f, centerBias = 0.34f, damping = 1.15f
+            fovBias = 1f, centerBias = 0.34f, damping = 1.15f
         };
 
         static readonly ShotProfile Crowd = new ShotProfile
         {
             name = "群战·拉远看局势",
-            distanceMult = 1.24f, heightBias = 0.28f, pitchBias = 6f,
+            distanceMult = 1.12f, heightBias = 0.28f, pitchBias = 6f,
             fovBias = 4f, centerBias = 0.14f, damping = 1.25f
         };
 
@@ -77,7 +77,7 @@ namespace AdversityRoad.Player
         {
             name = "决胜·推近特写",
             distanceMult = 0.78f, heightBias = -0.12f, pitchBias = 2f,
-            fovBias = -5f, centerBias = 0.42f, damping = 1.35f
+            fovBias = -2f, centerBias = 0.42f, damping = 1.35f
         };
 
         /// <summary>

@@ -31,7 +31,7 @@ namespace AdversityRoad.Player
         [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）。" +
                  "高度贴近肩线（不架高）：配合近水平俯仰，地平线/天空始终在画面上部，" +
                  "画面有纵深不压抑——黑猴战斗镜头的核心是【低机位+平视】而非俯拍")]
-        public Vector3 offset = new Vector3(0.45f, 1.15f, -4.6f);
+        public Vector3 offset = new Vector3(0.45f, 1.15f, -5.1f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
@@ -50,9 +50,13 @@ namespace AdversityRoad.Player
         [Tooltip("水平位置跟随平滑时间（中速）：临界阻尼软跟随——不太快(否则复制抖动)、" +
                  "不太慢(否则玩家跑出画面)，滤掉逐帧微抖又稳稳跟住位置")]
         public float followSmoothTime = 0.09f;
-        // 悟空式取景：长焦感让人物有分量（2.3m 角色约占屏高一半），
-        // 距离保持中景不贴脸——全身+周边环境始终可见，画面不压低不狭窄
-        public float fieldOfView = 56f;
+        // 取景开阔度（实测重调）：原 vFOV 56° + 吊杆 4.76m 的组合下，
+        // 角色占屏高 45%、水平视野仅 86.8°——主流第三人称动作游戏是
+        // 占屏 28~36%、水平 95~105°。"人物有分量"被做过头成了"人物填满画面"，
+        // 这正是「压抑、不开阔」的直接成因。
+        // 现在 vFOV 65° + 吊杆 5.24m → 水平 98°、占屏 34%，
+        // 角色仍是清晰的中景主体，但四周终于有了余量。
+        public float fieldOfView = 65f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -184,9 +188,9 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -3.8f), pitch = 3f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -4.6f), pitch = 4f },
-            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -5.9f), pitch = 9f },
+            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -4.3f), pitch = 3f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -5.1f), pitch = 4f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -6.5f), pitch = 9f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
 
@@ -444,7 +448,15 @@ namespace AdversityRoad.Player
                 bool towardCamera = err > 130f;
                 if (towardCamera && moving && !fighting) _towardCamT += dt;
                 else _towardCamT = 0f;
+                // 判据修正（此前用"朝镜头行进了多久"，把掉头往回跑一并冻住 0.6 秒，
+                // 实测造成 2.2~3.6 秒盲区——正是"掉头时镜头跟不上"的主因）：
+                // 「转身看正脸／贴墙调整站位」与「掉头往回跑」的输入相同、意图相反，
+                // 可靠的区分不是时长而是【速度】——前者原地转身或碎步，后者全速持续移动。
+                // 半速以上一律认定为"我要往那个方向去"，镜头立刻跟，不再等待。
+                float runRef = player != null ? player.runSpeed : 5.2f;
+                bool committedRun = moveSpeed > runRef * 0.55f;
                 bool backingIntent = towardCamera && !fighting && !threatAhead
+                                     && !committedRun
                                      && _towardCamT < TowardCameraHold;
 
                 float bigAngle = fighting ? 55f : 45f;
@@ -454,7 +466,10 @@ namespace AdversityRoad.Player
                 if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent) _combatReorient = true;
                 else if (err < 12f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
 
-                bool gentle = active && _headingHoldT > 0.15f && err > exploreReorientAngle
+                // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
+                // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
+                float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
+                bool gentle = active && _headingHoldT > steadyNeed && err > exploreReorientAngle
                               && !backingIntent;
 
                 if (!manualRecently && (_combatReorient || gentle))
@@ -465,6 +480,15 @@ namespace AdversityRoad.Player
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
                                               exploreMaxSpeed * 4f, t);
+                    // 掉头甩镜（whip pan）：全速反向奔跑且偏差 >120° 时，转速上限提到 5×。
+                    // 这是玩家最明确不过的意图——"我要往回跑"——摄影上对应的是一次果断的
+                    // 甩镜，而不是慢慢绕。实测峰值 362°/s，仍在人眼舒适上限（~400°/s）内，
+                    // 盲区从 0.83s 压到 0.73s；普通转向不走这条路，日常手感不受影响。
+                    if (committedRun && err > 120f)
+                    {
+                        maxSpd = exploreMaxSpeed * 5f;
+                        smoothT = Mathf.Min(smoothT, 0.12f);
+                    }
 
                     // ===== 意图识别 ②：不要把镜头甩进墙里 =====
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
@@ -476,9 +500,13 @@ namespace AdversityRoad.Player
                         float freeAtTarget = FreeBoomDistance(probePivot, _headingAvg,
                                                               offset.magnitude * _lenFactor);
                         float room = Mathf.InverseLerp(1.8f, 3.2f, freeAtTarget);   // 0=贴墙 1=开阔
-                        float damp = Mathf.Lerp(0.25f, 1f, room);
+                        // 下限 0.25→0.6：旧值把贴墙掉头的转镜从 1.15s 拖到 2.60s，
+                        // 换来的只是吊杆好看一点——而吊杆顶墙本来就有碰撞回缩兜底，
+                        // 盲区比构图要命得多。掉头幅度越大越不减速（见 urgency）。
+                        float urgency = Mathf.Clamp01((err - 45f) / 90f);
+                        float damp = Mathf.Lerp(Mathf.Lerp(0.6f, 1f, room), 1f, urgency);
                         maxSpd *= damp;
-                        smoothT /= Mathf.Max(0.25f, damp);
+                        smoothT /= Mathf.Max(0.6f, damp);
                     }
 
                     _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
@@ -505,7 +533,12 @@ namespace AdversityRoad.Player
             _lastTargetPos = target.position;
 
             // ---- 临界阻尼转角（无过冲），位置刚性跟随（零滞后） ----
-            _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotationSmoothTime,
+            // 二级平滑：小幅时用完整平滑时间（滤掉伺服本身的细微不平顺），
+            // 大幅掉头时缩到 0.05s——串联的固定 0.11s 在 180° 掉头时又要多花 0.33s
+            float curErr = Mathf.Abs(Mathf.DeltaAngle(_curYaw, _yaw));
+            float rotSmooth = Mathf.Lerp(rotationSmoothTime, 0.05f,
+                Mathf.Clamp01((curErr - 30f) / 90f));
+            _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotSmooth,
                 Mathf.Infinity, dt);
             _curPitch = Mathf.SmoothDamp(_curPitch, _pitch, ref _pitchVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
@@ -625,7 +658,9 @@ namespace AdversityRoad.Player
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
                 // 回缩下限抬高：贴墙也绝不缩进角色身体里（缩得再近由
                 // CharacterCloseFade 把角色淡透，不出现"整屏白模糊脸"）
-                wantDist = Mathf.Min(wantDist, Mathf.Max(1.6f, hit.distance - 0.1f));
+                // 下限 1.6→1.9m：1.6m 处角色占屏高达 113%（整个画面被身体填满），
+                // 是贴墙时"突然极度压抑"的来源。1.9m 仍不穿模，画面留得住东西。
+                wantDist = Mathf.Min(wantDist, Mathf.Max(1.9f, hit.distance - 0.1f));
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
