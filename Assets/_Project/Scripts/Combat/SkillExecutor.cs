@@ -54,7 +54,8 @@ namespace AdversityRoad.Combat
 
             int n = Mathf.Min(6, equippedSkills.Count);
             int pressed = -1;
-            // 数字键 1-6 / 触屏技能按钮：定·气·还·火·盾·收
+            // 桌面：数字键 1-6。触屏：技能没有独立按钮，由修饰键「术」+核心键路由产生
+            //（术+拳=Skill1 … 术+挡=Skill6，见 MobileInput.SkillMap），此处读到的名字不变。
             for (int i = 0; i < n; i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i) || MobileInput.GetDown("Skill" + (i + 1)))
                     pressed = i;
