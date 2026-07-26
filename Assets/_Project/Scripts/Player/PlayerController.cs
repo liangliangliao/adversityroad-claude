@@ -103,10 +103,15 @@ namespace AdversityRoad.Player
             // 输入采集 → 缓冲（意图匹配）：必须在任何 early-return 之前，
             // 否则翻滚中/硬直中按下的键会被整帧跳过而丢失（连续翻滚就是这样失效的）。
             // 消费式输入（MobileInput.GetDown）每帧只在这里读一次，其余系统一律走缓冲。
+            // 按下时角色是否正处在"做不了别的事"的状态——动作锁 或 翻滚中。
+            // 这一位决定该输入是【排队意图】还是【即时意图】：排队的活到动作结束，
+            // 即时的用短窗口。此前不分意图，闪避窗 0.30s 连翻滚自身(0.42~0.7s)都撑不过，
+            // 连续翻滚与"技能收招接闪避"必然丢键。
+            bool busyNow = (_combat != null && _combat.IsActionLocked) || _dodgeTimer > 0;
             if (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge"))
-                _inputBuf.Press("Dodge");
+                _inputBuf.Press("Dodge", busyNow);
             if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
-                _inputBuf.Press("Jump");
+                _inputBuf.Press("Jump", busyNow);
 
             if (_dodgeTimer > 0)
             {
@@ -131,7 +136,7 @@ namespace AdversityRoad.Player
             // 按闪避可立刻打断收招，不必干等动作播完。
             if (_combat != null && _combat.IsHardLocked)
             {
-                if (!(dodgePressed && _combat.CanDodgeCancel && Stats.stamina >= dodgeStaminaCost))
+                if (!(dodgePressed && _combat.CanCancelRecovery && Stats.stamina >= dodgeStaminaCost))
                 {
                     // 出招转向影响（大作 attack steering / directional influence）：
                     // 技能、绝招、重击期间【仍可用摇杆缓慢调整朝向】——此前这里直接 return，

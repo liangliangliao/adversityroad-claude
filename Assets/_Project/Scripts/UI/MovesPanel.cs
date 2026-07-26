@@ -26,8 +26,9 @@ namespace AdversityRoad.UI
             "    六个按钮承载十二种功能，且全部在拇指够得着的地方\n" +
             "  换角色/换武器＝右上「角色」面板（角色与武器分离，重选即替换手中武器）\n" +
             "  ※ 连点任意攻击键即无缝连段，拳剑可自由混接；出招自动咬住身边敌人\n" +
-            "    （摇杆在多个敌人间选目标）；无敌人时只小步前移，原地连打不会一路平移\n" +
-            "\n" +
+            "    （摇杆在多个敌人间选目标）；无敌人时只小步前移，原地连打不会一路平移";
+
+        const string DerivedText =
             "◤ 派生动作（跳/蹲 + 攻击键） ◢\n" +
             "  跳+拳＝飞踢   跳+剑＝空袭跳劈   跳+重＝空袭·裂地跳劈   蹲+拳＝扫堂腿   蹲+剑＝低位突刺\n" +
             "  空中连段：一次滞空可打两段——第二段剑向＝空中回旋绝斩（滞空续航·横扫），\n" +
@@ -69,6 +70,24 @@ namespace AdversityRoad.UI
             "  术→剑＝能量斩·斩念气刃（需2势）  术→拳＝定心护体  术→重＝责任归还（法院关卡）\n" +
             "  敌人出手瞬间翻滚＝完美闪避（时缓+意势+1+下一击必暴击）\n" +
             "  被击倒瞬间按闪＝受身快速起身（无敌帧）";
+
+        const string ArbitrationText =
+            "◤ 连按不同键会怎样（输入仲裁规则） ◢\n" +
+            "  · 先按的先出，后按的排队——两个都会发动，绝不会互相覆盖或凭空消失\n" +
+            "  · 动作进行中按下的键【不会过期】，一直等到那个动作能被接续为止\n" +
+            "  · 长动作（技能/蓄力二连/超必杀）打完主要判定后进入【收招取消窗】：\n" +
+            "    此时攻击、技能、闪避都能立刻打断收招接上，不必等动作播完\n" +
+            "    ——但终结一击的判定一定会打完，连打不会把自己的终结段取消掉\n" +
+            "  · 站着不动时按下、却因为冷却/资源不够没打出来的键，0.6 秒后作废\n" +
+            "    （避免松手几秒后角色自己突然动起来）\n" +
+            "\n" +
+            "  ◇ 实例：点「重」，0.1 秒后立刻点「拳」\n" +
+            "     重＝蓄力二连（跳劈→旋风斩），整套锁定 0.88 秒；\n" +
+            "     拳在按下时被标记为【排队】，不会过期；\n" +
+            "     二连的第二击判定走完（0.78 秒）即开放收招取消，拳当场接上。\n" +
+            "     → 两招都完整打出，衔接点在 0.78 秒，而不是干等 0.88 秒、更不会丢。\n" +
+            "\n" +
+            "  ◇ 想只出后按的那一招？松开重键前别按，或用闪避取消掉前一招再出手。";
 
         /// <summary>
         /// 招式数据表：直接从 MoveTable 生成——面板与战斗判定共用同一份规格，
@@ -145,13 +164,26 @@ namespace AdversityRoad.UI
         }
 
         Text _body, _title;
-        int _page;   // 0=基础规则 1=自由融合 2=玩家数据表 3=敌人数据表
+        int _page;
 
         static readonly string[] PageTitles =
         {
-            "招 式 表 · 基础规则  (1/4)", "招 式 表 · 自由融合  (2/4)",
-            "招 式 表 · 玩家数据  (3/4)", "招 式 表 · 敌人数据  (4/4)",
+            "招 式 表 · 基本键", "招 式 表 · 派生与组合", "招 式 表 · 自由融合",
+            "招 式 表 · 输入仲裁", "招 式 表 · 玩家数据", "招 式 表 · 敌人数据",
         };
+
+        static string PageText(int page)
+        {
+            switch (page)
+            {
+                case 0: return MovesText;
+                case 1: return DerivedText;
+                case 2: return FusionText;
+                case 3: return ArbitrationText;
+                case 4: return BuildPlayerSpecText();
+                default: return BuildEnemySpecText();
+            }
+        }
 
         void SwitchPage()
         {
@@ -159,17 +191,26 @@ namespace AdversityRoad.UI
             ApplyPage();
         }
 
+        // 正文区高度与行高换算：Unity 内置字体行高 ≈ fontSize × 1.28，再乘 lineSpacing 1.12。
+        const float BodyHeight = 860f;
+        const float LineHeightFactor = 1.12f * 1.28f;
+
+        /// <summary>
+        /// 字号按实际行数自动定，而不是每页手写一个魔数——
+        /// Unity Text 的垂直溢出默认是【截断】，页面一旦写长就静默吃掉末尾几行，
+        /// 而这种缺失在编辑器里不报错、只在真机上看不见。自动定档后，
+        /// 以后往任何一页加内容都不会再溢出（代价只是字略小）。
+        /// </summary>
         void ApplyPage()
         {
-            // 字号按各页行数选定，确保整页都在 780px 的正文区内显示完整（不被截断）
-            switch (_page)
-            {
-                case 0: _body.text = MovesText; _body.fontSize = 21; break;
-                case 1: _body.text = FusionText; _body.fontSize = 24; break;
-                case 2: _body.text = BuildPlayerSpecText(); _body.fontSize = 21; break;
-                default: _body.text = BuildEnemySpecText(); _body.fontSize = 21; break;
-            }
-            if (_title != null) _title.text = PageTitles[_page];
+            string txt = PageText(_page);
+            int lines = 1;
+            foreach (char c in txt) if (c == '\n') lines++;
+            _body.text = txt;
+            _body.fontSize = Mathf.Clamp(
+                Mathf.FloorToInt(BodyHeight / (lines * LineHeightFactor)), 15, 25);
+            if (_title != null)
+                _title.text = PageTitles[_page] + "  (" + (_page + 1) + "/" + PageTitles.Length + ")";
         }
 
         void Build(Transform canvas)

@@ -59,13 +59,13 @@ namespace AdversityRoad.Combat
         /// 进入恢复相位后置真，玩家可用闪避立刻打断收招接管操作——不必干等动作播完。
         /// 任何状态切换都会复位，避免误放行。
         /// </summary>
-        public bool CanDodgeCancel { get; set; }
+        public bool CanCancelRecovery { get; set; }
 
         public bool RequestState(CombatState next, float autoExitAfter = 0)
         {
             if (Current == CombatState.Death) return false;
             Current = next;
-            CanDodgeCancel = false;
+            CanCancelRecovery = false;
             _stateTimer = autoExitAfter;
             if (_anim != null && _anim.runtimeAnimatorController != null &&
                 next != CombatState.Locomotion && next != CombatState.Idle)

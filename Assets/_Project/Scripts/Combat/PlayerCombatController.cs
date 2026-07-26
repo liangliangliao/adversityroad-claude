@@ -162,7 +162,32 @@ namespace AdversityRoad.Combat
         ComboStage _cur;
         string _seq = "";             // 本次连段的拳腿序列（组合技识别）
         AttackBtn _buffered = AttackBtn.None;
-        float _bufferedAt;            // 输入缓冲时间戳（过期作废，防陈旧输入迟到触发）
+        float _bufferedAt;            // 输入缓冲时间戳
+        bool _bufferedQueued;         // 按下时是否正处于动作锁（排队意图 vs 即时意图）
+
+        // ===== 缓冲寿命：两种意图两种算法（大作通用）=====
+        // 旧实现只有一个 0.6s 固定窗，而动作锁时长是任意的：蓄力二连 0.88/1.0s、
+        // 五个技能 1.15~1.45s、超必杀 1.75s、蓄力气场最长 2.05s——统统超过 0.6s。
+        // 结果就是「点重→立刻点拳」时，拳在锁解除前就过期，被静默吞掉（实测确认）。
+        // 现在：锁定中按下＝明确要接下一招 → 活到动作结束；自由时按下 → 短窗口。
+        const float BufferFreeWindow = 0.6f;    // 自由状态下按的键
+        const float BufferQueuedLife = 2.5f;    // 锁定中排队的上限（覆盖最长动作 2.05s）
+
+        /// <summary>缓冲中的攻击是否仍然有效。</summary>
+        bool BufferAlive()
+        {
+            if (_buffered == AttackBtn.None) return false;
+            float age = Time.time - _bufferedAt;
+            return age <= (_bufferedQueued ? BufferQueuedLife : BufferFreeWindow);
+        }
+
+        /// <summary>记录一次攻击缓冲，并标记它是排队意图还是即时意图。</summary>
+        void BufferAttack(AttackBtn btn)
+        {
+            _buffered = btn;
+            _bufferedAt = Time.time;
+            _bufferedQueued = _fsm.IsActionLocked || _charging || _depth >= 0;
+        }
         Coroutine _hitboxRoutine;
         Coroutine _ranwuRoutine;
 
@@ -234,7 +259,11 @@ namespace AdversityRoad.Combat
             {
                 _stageT += dt;
                 if (_buffered != AttackBtn.None && _stageT >= _cur.cancelAt)
-                    NextStage(_buffered);
+                {
+                    // 连段推进此前不校验有效期，陈旧输入能在连段内迟到触发
+                    if (BufferAlive()) NextStage(_buffered);
+                    else _buffered = AttackBtn.None;
+                }
                 else if (_stageT >= _cur.length) EndCombo();
             }
 
@@ -296,7 +325,7 @@ namespace AdversityRoad.Combat
                 // 蓄力中按下拳/腿：进缓冲排队（重击一出手立刻接连段，输入不丢）
                 AttackBtn queued = punchDown ? AttackBtn.Punch
                     : kickDown ? AttackBtn.Kick : AttackBtn.None;
-                if (queued != AttackBtn.None) { _buffered = queued; _bufferedAt = Time.time; }
+                if (queued != AttackBtn.None) BufferAttack(queued);
                 return;
             }
 
@@ -319,20 +348,27 @@ namespace AdversityRoad.Combat
             AttackBtn pressed = punchDown ? AttackBtn.Punch : kickDown ? AttackBtn.Kick : AttackBtn.None;
             if (pressed != AttackBtn.None)
             {
-                if (_depth >= 0) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                if (_depth >= 0) { BufferAttack(pressed); return; }
                 // 动作锁期间（受击硬直/重击收招等）不再吞掉输入：进缓冲排队，
                 // 锁一解除立即出招——连点第二下绝不丢（"连续性差/有延迟"的根因）
-                if (_fsm.IsActionLocked) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                if (_fsm.IsActionLocked) { BufferAttack(pressed); return; }
                 StartAttack(pressed);
                 return;
             }
 
             // 缓冲兑现：锁解除后立刻打出排队的那一下（0.6s 内有效，过期作废）
-            if (_depth < 0 && _buffered != AttackBtn.None && !_fsm.IsActionLocked)
+            // 收招取消（大作核心手感）：长动作打完主要判定进入恢复相位后，
+            // **攻击**同样可以立刻打断收招——此前只有闪避享有这个特权，
+            // 攻击必须干等整个锁走完（技能 1.45s、超必杀 1.75s），
+            // 于是"排队的那一下"虽然不再丢，却要等一秒多才出来，照样读作卡顿。
+            bool cancelWindow = _fsm.IsActionLocked && _fsm.CanCancelRecovery;
+            if (_depth < 0 && _buffered != AttackBtn.None && (!_fsm.IsActionLocked || cancelWindow))
             {
-                if (Time.time - _bufferedAt > 0.6f) { _buffered = AttackBtn.None; return; }
+                // 长动作（技能/蓄力二连/超必杀）刚结束时走的就是这里：排队意图不再被时钟吃掉
+                if (!BufferAlive()) { _buffered = AttackBtn.None; return; }
                 var b = _buffered;
                 _buffered = AttackBtn.None;
+                if (cancelWindow) _fsm.RequestState(CombatState.Locomotion);   // 切断收招
                 StartAttack(b);
             }
         }
@@ -647,7 +683,10 @@ namespace AdversityRoad.Combat
                     new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.SlowMo(0.45f, 0.2f);
             }
-            _fsm.CanDodgeCancel = true;   // 蓄力二连收招：可闪避取消
+            // 段2 判定窗（windup 0.12 + open 0.32）走完才开放取消：
+            // 否则玩家连打会把自己的第二段旋风斩取消掉，读作"第二下没打出来"
+            yield return new WaitForSeconds(0.44f);
+            _fsm.CanCancelRecovery = true;   // 蓄力二连收招：闪避或攻击均可取消
         }
 
         /// <summary>前+重：疾影突刺（动作库 Stabbing）——高速突进直刺，双重剑气。</summary>
@@ -775,10 +814,13 @@ namespace AdversityRoad.Combat
                     CombatFeedback.Debris(transform.position + transform.forward * 1.3f,
                         new Color(0.5f, 0.65f, 0.9f), 8);
                     CombatFeedback.SlowMo(0.35f, 0.3f);
-                    _fsm.CanDodgeCancel = true;   // 乱舞收招：可闪避取消，不必等演完
                 }
                 yield return new WaitForSeconds(s.wait);
             }
+            // 取消窗开在整套演完之后：此前设在终结一击的判定还没走完时（windup0.16+open0.2=0.36s
+            // 对上仅 0.4s 的收尾等待），玩家连打会把乱舞最后一击自己取消掉。
+            // 收尾等待 0.4s 已覆盖判定窗，故此处直接开窗，锁定 1.75s 仍余 0.48s 可省。
+            _fsm.CanCancelRecovery = true;   // 乱舞收招：闪避或攻击均可取消，不必等演完
         }
 
         // ================= 空中 / 蹲伏攻击 =================
