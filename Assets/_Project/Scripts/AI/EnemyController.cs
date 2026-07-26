@@ -814,6 +814,7 @@ namespace AdversityRoad.AI
                 CombatFeedback.HitStop(0.12f);
                 CombatFeedback.SlowMo(0.4f, 0.16f);
                 CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
+                CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近
                 GameEvents.RaiseSkillBanner("处决");
             }
             // 头部会心的伤害数字更大更红（部位标签由 HitReactionOverlay 弹出，不重复）
@@ -1031,7 +1032,9 @@ namespace AdversityRoad.AI
             CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 6);
             // 击杀落幕（电影语言）：短促时缓 + 镜头缓推特写，看清敌人倒下的瞬间
             CombatFeedback.SlowMo(0.45f, 0.28f);
-            CombatFeedback.UltimateShot(1.1f);
+            // 击杀是【轻推】而非大招级满推，且交由镜头节流/群战抑制裁决——
+            // 群战里每杀一个就贴脸一次，会让镜头长期焊死在特写位
+            CombatFeedback.CloseUp(0.9f, 0.55f);
             GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;

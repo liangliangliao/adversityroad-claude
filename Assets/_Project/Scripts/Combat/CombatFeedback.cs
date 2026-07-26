@@ -565,6 +565,15 @@ namespace AdversityRoad.Combat
         public static void Shake(float strength = 0.6f) { }
 
         /// <summary>大招镜头：短暂拉近取景（仅大招调用，普通攻击/移动不触发）。</summary>
+        /// <summary>推近特写（分级）：strength 1=大招满推，0.5~0.6=击杀/处决轻推。
+        /// 节流与群战抑制由镜头侧统一裁决——调用方只负责"这一刻值不值得一个特写"。</summary>
+        public static void CloseUp(float duration, float strength)
+        {
+            var cam = Camera.main != null
+                ? Camera.main.GetComponent<Player.ThirdPersonCamera>() : null;
+            if (cam != null) cam.CloseUp(duration, strength);
+        }
+
         public static void UltimateShot(float duration)
         {
             var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();

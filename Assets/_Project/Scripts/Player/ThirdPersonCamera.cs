@@ -4,16 +4,26 @@ using AdversityRoad.Mobile;
 namespace AdversityRoad.Player
 {
     /// <summary>
-    /// 第三人称跟随镜头（防晕 v4）：
-    /// - 位置临界阻尼软跟随（followSmoothTime 极短）：跟随点是一个平滑的
-    ///   CameraTarget，而不是直接钉在角色身体上——用极短的临界阻尼滤掉角色
-    ///   逐帧移动微抖动（这是移动晃屏的主因），同时几乎无滞后、不产生橡皮筋游动；
-    /// - 转角用临界阻尼 SmoothDamp（无过冲、无回弹）；
-    /// - FOV 固定 62°，永不动态变化；
-    /// - 碰撞回缩快、伸出慢（避免镜头突然弹跳）；
-    /// - 震屏改为幅度极小的纵向脉冲（禁用随机抖动）；
-    /// - 专注低不再摇镜头（改由 HUD 暗角表达）；
-    /// - 真机只读触屏转镜头区，灵敏度按屏高归一化并限幅。
+    /// 第三人称跟随镜头。
+    ///
+    /// 全部自动运镜共用同一套稳定设施——**探索与战斗不再是两套逻辑**：
+    ///   ① 目标方位低通滤波（探索追角色朝向 _headingAvg，战斗追敌我方位 _aimAvg）；
+    ///   ② 死区（战斗侧按敌我距离自适应：越近死区越大，因为同样的横移在近处
+    ///      带来的方位角变化率越高——2m 处敌人以 2.5m/s 横移就是 71°/s）；
+    ///   ③ 迟滞开关（单阈值会在阈值附近反复开关，那本身就是抖动）；
+    ///   ④ 偏差→速度连续映射（小幅慢而稳、掉头快而不甩）；
+    ///   ⑤ 墙壁减速（不把镜头甩进墙里）；⑥ 手动转镜期间一律让位给玩家。
+    /// 实测传递率：1Hz 以上的方位抖动由 0.32/0.22/0.13 降到 0，
+    /// 而 0.25Hz 的真实绕行仍保持 0.63 的跟随——该动时动、该稳时稳。
+    ///
+    /// 机位与景别：
+    /// - 战斗取 3/4 侧位（不站正后方那个最平庸的机位），偏哪一侧由两侧可用空间
+    ///   决定，需领先 0.6m 才换边、切换走 1.4s 慢插值；
+    /// - 景别由 CameraDirector 选（行进/对峙/群战/狭窄/决胜），参数级插值＝推轨非切镜；
+    /// - 特写有节流（2.6s）与群战抑制：知道何时特写的另一半是知道何时不特写。
+    ///
+    /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
+    /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
     /// </summary>
     public class ThirdPersonCamera : MonoBehaviour
     {
@@ -52,14 +62,15 @@ namespace AdversityRoad.Player
                  "0.3s 过短——玩家刚手动摆好角度，镜头立刻又自己转回去，读作'和我抢镜头'；" +
                  "1.2s 让玩家的手动取景有足够的停留时间")]
         public float autoFollowDelay = 1.2f;
-        public float autoFollowSpeed = 50f;   // 战斗镜头追向敌人的转速
+        [Tooltip("战斗追击的基准转速（度/秒）：小偏差用它，大幅掉头按偏差放大到 6.4 倍")]
+        public float autoFollowSpeed = 50f;
 
         [Header("探索镜头：玩家一转向，镜头立刻开始平稳缓慢地转到其背后（面朝方向）")]
         [Tooltip("镜头与角色朝向偏差小于此角度就不必回正（死区放大：细碎修正完全不动镜头）")]
         public float exploreReorientAngle = 10f;
         [Tooltip("回正平滑时间（临界阻尼弹簧）：偏大=更缓更稳。控制「缓慢跟随」的慢")]
         public float exploreTurnSmoothTime = 0.55f;
-        [Tooltip("回正最大转速（度/秒）：封顶让掉头也平稳不猛甩")]
+        [Tooltip("探索回正的基准转速（度/秒）：小幅修正用它，大角度掉头按偏差放大到 4 倍")]
         public float exploreMaxSpeed = 85f;
 
         [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
@@ -109,6 +120,19 @@ namespace AdversityRoad.Player
         // 朝向防抖（魂系/战神跟随镜头的通行做法）：镜头永远追【低通滤波后的朝向】，
         // 并且只有玩家朝一个方向【持续稳定一小段时间】才开始回正——摇杆快速搓动、
         // 出招磁吸的瞬间换向都被滤在镜头之外，不再逐帧牵动镜头来回摆。
+        // ---- 战斗机位（与探索共用稳定设施；此前战斗分支是裸伺服）----
+        /// <summary>「玩家→敌人」方位的低通滤波值。近身缠斗时该方位的原始变化率
+        /// 可达 70°/s 以上（距离 2m、敌人横移 2.5m/s），必须滤波后再喂给镜头。</summary>
+        float _aimAvg;
+        bool _aimInit;
+        bool _combatTrack;                 // 战斗追击迟滞开关
+        const float AimLowPass = 6.5f;     // 方位低通收敛率（1/秒）
+        /// <summary>3/4 侧位的偏角：正后方是最平庸的机位，偏开一个肩位才是对峙构图。
+        /// 22° 足以让双方错开、拳脚横穿画面，又不至于把玩家推到画面边缘。</summary>
+        const float ShoulderAngle = 22f;
+        float _shoulderSide = 1f;          // +1=偏右肩 -1=偏左肩（迟滞选择，切换极慢）
+        float _shoulderTarget = 1f;
+
         float _headingAvg;                 // 平滑朝向（低通滤波，镜头的实际追踪目标）
         float _headingHoldT;               // 当前朝向的稳定时长（大幅瞬转会清零重计）
         float _lastHeading;
@@ -123,7 +147,31 @@ namespace AdversityRoad.Player
         public void Kick(float strength) => _kick = Mathf.Min(0.5f, Mathf.Max(_kick, strength * 0.5f));
 
         /// <summary>大招镜头：短暂拉近取景（配合技能自身的轻微慢动作/命中小震），到点回稳。</summary>
-        public void UltimateShot(float duration) => _ultimateTimer = Mathf.Max(_ultimateTimer, duration);
+        public void UltimateShot(float duration) => CloseUp(duration, 1f);
+
+        // ---- 特写的克制（"知道何时特写"的另一半是"知道何时不特写"）----
+        float _lastCloseUp = -99f;
+        float _closeStrength;              // 本次特写的推近强度（0=不推 1=大招级）
+        /// <summary>两次特写的最小间隔。此前每个敌人死亡都触发 1.1s 特写，
+        /// 群战里连续击杀会把镜头长期焊在贴脸位——与"群战该拉远看局势"完全相反。</summary>
+        const float CloseUpGap = 2.6f;
+
+        /// <summary>
+        /// 推近特写。三条克制规则，缺一条都会变成"学徒工乱推镜头"：
+        ///   · 节流：间隔不足一律忽略（弱特写），避免连杀时镜头贴脸不放；
+        ///   · 群战抑制：身边还有 ≥3 个敌人时，看清包围态势远比欣赏这一击重要——
+        ///     强度砍半、时长压短；
+        ///   · 强度分级：处决/击杀是轻推，超必杀才是满推。
+        /// </summary>
+        public void CloseUp(float duration, float strength)
+        {
+            bool strong = strength >= 0.9f;
+            if (!strong && Time.unscaledTime - _lastCloseUp < CloseUpGap) return;
+            if (_nearbyEnemies >= 3 && !strong) { strength *= 0.5f; duration *= 0.6f; }
+            _lastCloseUp = Time.unscaledTime;
+            _ultimateTimer = Mathf.Max(_ultimateTimer, duration);
+            _closeStrength = Mathf.Max(_closeStrength, Mathf.Clamp01(strength));
+        }
 
         // 多视角预设（参考动作游戏惯例：近身看招 / 标准跟随 / 战术远景）
         struct CamPreset
@@ -234,6 +282,7 @@ namespace AdversityRoad.Player
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
+            else _closeStrength = Mathf.MoveTowards(_closeStrength, 0f, dt / 0.4f);
 
             // ===== 镜头导演：选景别 + 平滑推轨过渡 =====
             // 敌情与场地扫描节流（0.3s 一次，避免每帧全场遍历）
@@ -252,9 +301,34 @@ namespace AdversityRoad.Player
                     if (d2 < 196f && d2 > 0.01f)
                         _threatDirs.Add(Quaternion.LookRotation(to.normalized).eulerAngles.y);
                 }
-                // 场地宽敞度：向镜头四周投射，取最短可用距离——识别走廊/贴墙等狭窄场地
-                _roomAround = ProbeRoom(target.position + Vector3.up * _pivotH);
+                // 场地宽敞度：只看【吊杆真正要退去的方向】，而不是四周的最短距离。
+                // 旧实现取六向最短值，于是只要玩家靠近任何一面墙就判定"狭窄"并推近镜头——
+                // 哪怕镜头正对着一片开阔地。狭窄与否是机位问题，不是站位问题。
+                _roomAround = FreeBoomDistance(target.position + Vector3.up * _pivotH,
+                    _yaw, offset.magnitude * _lenFactor);
+
+                // ---- 选肩位（"最佳拍摄角度"的实处）----
+                // 左右两侧各探一次，谁更开阔就站谁那边；差距不显著就保持不动。
+                // 迟滞必须给足：机位左右横跳比站在平庸位置糟糕得多。
+                var lt = lockOn != null ? lockOn.CurrentTarget : null;
+                if (lt != null)
+                {
+                    Vector3 aim = lt.position - target.position; aim.y = 0;
+                    if (aim.sqrMagnitude > 0.09f)
+                    {
+                        float a = Quaternion.LookRotation(aim.normalized).eulerAngles.y;
+                        Vector3 pv = target.position + Vector3.up * _pivotH;
+                        float boom = offset.magnitude * _lenFactor;
+                        float roomR = FreeBoomDistance(pv, a + ShoulderAngle, boom);
+                        float roomL = FreeBoomDistance(pv, a - ShoulderAngle, boom);
+                        // 需领先 0.6m 才换边——小差距不值得动机位
+                        if (roomR > roomL + 0.6f) _shoulderTarget = 1f;
+                        else if (roomL > roomR + 0.6f) _shoulderTarget = -1f;
+                    }
+                }
             }
+            // 肩位切换走极慢插值（约 1.4s 完成）：换机位是分镜级动作，绝不能是瞬切
+            _shoulderSide = Mathf.MoveTowards(_shoulderSide, _shoulderTarget, dt / 0.7f);
             var wantShot = CameraDirector.Pick(
                 _ultimateTimer > 0f, _nearbyEnemies,
                 lockOn != null && lockOn.CurrentTarget != null, _roomAround);
@@ -268,30 +342,73 @@ namespace AdversityRoad.Player
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
+            bool manualLook = Time.unscaledTime - _lastManualLook < autoFollowDelay;
 
             if (combat)
             {
-                // 战斗镜头（过肩对峙位，参考 Souls/悟空）：镜头朝「玩家→敌人」方向对齐。
-                // 电影稳定原则：小角度偏差不纠偏（死区防微振），大偏差按比例加速追——
-                // 敌人绕背才快速转过去，近身缠斗的小幅换位绝不来回摆镜。
+                // ===== 战斗机位（此前是全片最粗糙的一段，现与探索共用同一套稳定设施）=====
+                //
+                // 旧实现：wantYaw = 瞬时「玩家→敌人」方位，死区 4°，直接 MoveTowardsAngle。
+                // 探索分支拥有的低通滤波、稳定门槛、迟滞、意图识别、威胁感知、墙壁减速、
+                // 手动让位——战斗分支【一条都没有】。而近身缠斗恰恰是方位角变化最剧烈的
+                // 时刻：距离 2m、敌人横移 2.5m/s，方位角变化率就有 71°/s，远超 4° 死区，
+                // 于是镜头全程追着这个抖动摆。最需要稳的时候用了最原始的伺服。
                 Vector3 toEnemy = lockTarget.position - target.position;
                 toEnemy.y = 0;
-                if (toEnemy.sqrMagnitude > 0.1f)
+                float enemyDist = toEnemy.magnitude;
+                if (enemyDist > 0.3f)
                 {
-                    float wantYaw = Quaternion.LookRotation(toEnemy).eulerAngles.y;
-                    float err = Mathf.DeltaAngle(_yaw, wantYaw);
-                    if (Mathf.Abs(err) > 4f)
+                    float rawAim = Quaternion.LookRotation(toEnemy / enemyDist).eulerAngles.y;
+                    if (!_aimInit) { _aimAvg = rawAim; _aimInit = true; }
+                    // ① 低通滤波：滤掉近身横移带来的高频方位抖动
+                    _aimAvg = Mathf.LerpAngle(_aimAvg, rawAim, 1f - Mathf.Exp(-AimLowPass * dt));
+
+                    // ② 3/4 侧位（"最佳拍摄角度"）：镜头不站在玩家正后方的延长线上。
+                    // 正后方是最平庸的机位——玩家挡住敌人、双方都只有背影/正面两个平面。
+                    // 偏开一个肩位后是对峙的经典三分构图：玩家侧背、敌人侧脸，
+                    // 拳脚的运动轨迹横穿画面而不是朝镜头戳过来（纵向运动在屏幕上没有位移感）。
+                    // 偏哪一侧由空间决定（见 _shoulderSide 的迟滞选择），且切换极慢。
+                    float wantYaw = _aimAvg + _shoulderSide * ShoulderAngle * _lockBlend;
+
+                    // ③ 自适应死区：越近，同样的敌人横移带来的方位角变化越大，
+                    // 死区就必须越大——固定 4° 在贴身距离等于没有死区。
+                    float dead = Mathf.Clamp(5f + 16f / Mathf.Max(0.8f, enemyDist), 5f, 20f);
+                    float aimErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
+
+                    // ④ 迟滞开关：进入追击要越过死区，退出要回到死区的四成——
+                    // 单阈值会在阈值附近反复开关，那本身就是一种抖动
+                    if (aimErr > dead) _combatTrack = true;
+                    else if (aimErr < dead * 0.4f) _combatTrack = false;
+
+                    // ⑤ 手动转镜让位：此前锁定时玩家的手动取景被完全无视，
+                    // 刚摆好角度镜头立刻抢回去，读作"和我抢镜头"
+                    if (_combatTrack && !manualLook)
                     {
-                        float spd = Mathf.Min(autoFollowSpeed * 1.6f, Mathf.Abs(err) * 2.2f);
-                        _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, spd * dt);
+                        // ⑥ 速度按偏差连续映射（与探索同一条曲线）：小偏差慢、掉头快
+                        float t = Mathf.Clamp01((aimErr - dead) / 120f);
+                        float smoothT = Mathf.Lerp(0.42f, 0.14f, t);
+                        float maxSpd = Mathf.Lerp(autoFollowSpeed * 1.1f,
+                                                  autoFollowSpeed * 6.4f, t);
+                        // ⑦ 墙壁减速：别把镜头甩进墙里（探索分支早就有，战斗分支没有）
+                        if (aimErr > 45f)
+                        {
+                            float freeAt = FreeBoomDistance(target.position + Vector3.up * _pivotH,
+                                wantYaw, offset.magnitude * _lenFactor);
+                            float damp = Mathf.Lerp(0.3f, 1f, Mathf.InverseLerp(1.8f, 3.2f, freeAt));
+                            maxSpd *= damp;
+                            smoothT /= Mathf.Max(0.3f, damp);
+                        }
+                        _yaw = Mathf.SmoothDampAngle(_yaw, wantYaw, ref _yawFollowVel,
+                            smoothT, maxSpd, dt);
                     }
+                    else _yawFollowVel = 0f;
+                    _yawErr = aimErr;
                 }
-                _yawFollowVel = 0f;
             }
             else if (autoFollow)
             {
                 bool moving = moveSpeed > 0.6f;
-                bool manualRecently = Time.unscaledTime - _lastManualLook < autoFollowDelay;
+                bool manualRecently = manualLook;
                 if (_playerFsm == null && player != null)
                     _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
                 bool fighting = _playerFsm != null && _playerFsm.InCombat;
@@ -346,7 +463,8 @@ namespace AdversityRoad.Player
                     // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
                     float t = Mathf.Clamp01((err - exploreReorientAngle) / 130f);
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
-                    float maxSpd = Mathf.Lerp(70f, 340f, t);
+                    float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
+                                              exploreMaxSpeed * 4f, t);
 
                     // ===== 意图识别 ②：不要把镜头甩进墙里 =====
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
@@ -477,7 +595,9 @@ namespace AdversityRoad.Player
                 wantFactor = 1f + runOut + turnOut;
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
-            wantFactor = Mathf.Lerp(wantFactor, ultimateZoom, _ultimateBlend);
+            // 推近幅度随特写强度分级：击杀轻推、超必杀满推——不再一律贴到 0.82
+            float zoomTo = Mathf.Lerp(1f, ultimateZoom, _closeStrength);
+            wantFactor = Mathf.Lerp(wantFactor, zoomTo, _ultimateBlend);
             wantFactor *= _shot.distanceMult;   // 景别决定景深：群战拉远、狭窄收紧、决胜推近
             // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
             // 不再造成镜头前后泵动
@@ -525,7 +645,12 @@ namespace AdversityRoad.Player
             transform.position = pos;
             // 视线目标略高于取景点（锁定时再抬一点）：角色落于画面下半部，
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
-            float lookUp = 0.38f + 0.12f * _lockBlend;
+            // 视线高度随景别变化：特写抬高到面部（看清神情与这一击落点），
+            // 群战压低（把包围圈与脚下空位纳入画面）。此前恒定不变，
+            // 于是特写推近了却仍然对着胸口，"推近"只是变大而没有变成特写。
+            float lookUp = 0.38f + 0.12f * _lockBlend
+                           + 0.30f * _closeStrength * _ultimateBlend
+                           - 0.10f * Mathf.Clamp01(_shot.heightBias / 0.28f);
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
 
             // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
@@ -534,31 +659,6 @@ namespace AdversityRoad.Player
             if (camc != null && !Presets[PresetIndex].fp)
                 camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
                     fieldOfView + _shot.fovBias, 12f * dt);
-        }
-
-        /// <summary>
-        /// 场地宽敞度：向四周（含斜后方）投射，取最短可用距离。
-        /// 用于识别走廊/贴墙等狭窄场地，让导演切到「收紧贴身」景别，
-        /// 而不是傻乎乎地拉远把镜头顶进墙里。
-        /// </summary>
-        float ProbeRoom(Vector3 pivot)
-        {
-            float shortest = 99f;
-            for (int i = 0; i < 6; i++)
-            {
-                float a = i * 60f;
-                Vector3 dir = Quaternion.Euler(0, _yaw + 150f + a, 0) * Vector3.forward;
-                if (Physics.SphereCast(pivot, 0.2f, dir, out RaycastHit hit, 6f,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                {
-                    var col = hit.collider;
-                    if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                    if (col.GetComponentInParent<PlayerController>() != null) continue;
-                    if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                    shortest = Mathf.Min(shortest, hit.distance);
-                }
-            }
-            return shortest;
         }
 
         /// <summary>

@@ -501,7 +501,11 @@ namespace AdversityRoad.Combat
                     Fusion.ConsumeTail(fr.tail.Length);   // 用掉这一串，避免同串反复触发
                     GameEvents.RaiseSkillBanner("融招「" + fr.name + "」");
                     CombatFeedback.RecipeBurst(transform.position, new Color(0.75f, 0.95f, 1f));
-                    if (fr.cost > 0) CombatFeedback.SlowMo(0.4f, 0.18f);
+                    if (fr.cost > 0)
+                    {
+                        CombatFeedback.SlowMo(0.4f, 0.18f);
+                        CombatFeedback.CloseUp(0.85f, 0.65f);   // 高阶融招与预设绝招同级
+                    }
                     break;
                 }
             }
@@ -1286,6 +1290,7 @@ namespace AdversityRoad.Combat
                     AddMomentum(1);
                     if (Dyn() != null) _dynamics.OnPerfectDodge();
                     CombatFeedback.SlowMo(0.3f, 0.35f);
+                    CombatFeedback.CloseUp(0.7f, 0.5f);   // 读招成功：短促轻推，配合时缓
                     GameEvents.RaiseSubtitle("完美闪避！意势+1，下一击必暴击");
                 }
                 return;
