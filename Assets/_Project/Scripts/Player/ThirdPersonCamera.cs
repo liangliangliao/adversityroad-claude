@@ -376,20 +376,20 @@ namespace AdversityRoad.Player
 
                     // ③ 自适应死区：越近，同样的敌人横移带来的方位角变化越大，
                     // 死区就必须越大——固定 4° 在贴身距离等于没有死区。
-                    float dead = Mathf.Clamp(5f + 16f / Mathf.Max(0.8f, enemyDist), 5f, 20f);
+                    float aimDead = Mathf.Clamp(5f + 16f / Mathf.Max(0.8f, enemyDist), 5f, 20f);
                     float aimErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
 
                     // ④ 迟滞开关：进入追击要越过死区，退出要回到死区的四成——
                     // 单阈值会在阈值附近反复开关，那本身就是一种抖动
-                    if (aimErr > dead) _combatTrack = true;
-                    else if (aimErr < dead * 0.4f) _combatTrack = false;
+                    if (aimErr > aimDead) _combatTrack = true;
+                    else if (aimErr < aimDead * 0.4f) _combatTrack = false;
 
                     // ⑤ 手动转镜让位：此前锁定时玩家的手动取景被完全无视，
                     // 刚摆好角度镜头立刻抢回去，读作"和我抢镜头"
                     if (_combatTrack && !manualLook)
                     {
                         // ⑥ 速度按偏差连续映射（与探索同一条曲线）：小偏差慢、掉头快
-                        float t = Mathf.Clamp01((aimErr - dead) / 120f);
+                        float t = Mathf.Clamp01((aimErr - aimDead) / 120f);
                         float smoothT = Mathf.Lerp(0.42f, 0.14f, t);
                         float maxSpd = Mathf.Lerp(autoFollowSpeed * 1.1f,
                                                   autoFollowSpeed * 6.4f, t);
