@@ -126,6 +126,14 @@ namespace AdversityRoad.Combat
             }
             if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
 
+            // 技能同样是连招元素：成功施展即入融合链，于是「术→剑」「跃→术→剑」
+            // 这类跨系统串法能接成融招（术后追斩 / 踏云术斩）。
+            // 技能不再是一段自成一体的独立演出，而是可被前后动作接住的一环。
+            {
+                var cf = Combat();
+                if (cf != null) cf.Fusion.Push(MoveToken.Skill);
+            }
+
             // 逆伤崩拳气质：高伤害但额外消耗自尊/意志的技能由 selfCostAxisDamage 表达
             if (skill.selfCostAxisDamage > 0)
                 _player.Stats.TakeMentalDamage(skill.selfCostAxis, skill.selfCostAxisDamage);
@@ -152,9 +160,13 @@ namespace AdversityRoad.Combat
 
             if (skill.physicalDamage > 0)
             {
+                // 技能也吃融合加成：从连招串进来的技能比冷启动单放更狠——
+                // 「技能是连招的一环」这句话必须在伤害上兑现，否则玩家没有理由去串。
+                var cfd = Combat();
+                float fusionMult = cfd != null ? cfd.Fusion.FusionMult : 1f;
                 var dmg = new DamageInfo
                 {
-                    physicalDamage = skill.physicalDamage,
+                    physicalDamage = skill.physicalDamage * fusionMult,
                     postureDamage = skill.postureDamage,
                     knockback = skill.knockback,
                     attackerId = "player_skill_" + skill.skillId
@@ -266,6 +278,9 @@ namespace AdversityRoad.Combat
             PlayerCombatController.PoseHitShape(pose, out Vector3 size, out Vector3 center);
             if (!Mathf.Approximately(scale, 1f)) { size *= scale; center.z *= scale; }
             weaponHitbox.SetShape(size, center);
+            // 绝招连段的每一段同样吃融合加成（技能是连招的一环，不是独立的孤岛）
+            var cf = Combat();
+            if (cf != null) dmg *= cf.Fusion.FusionMult;
             StartCoroutine(StrikeWindow(windup, open, dmg, posture, knockback, tag));
         }
 

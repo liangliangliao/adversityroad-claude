@@ -43,6 +43,7 @@ namespace AdversityRoad.Player
         HumanoidAnimator _anim;
         LockOnSystem _lockOn;
         PlayerAppearance _appearance;
+        Combat.PlayerCombatController _pcc;
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
@@ -91,6 +92,7 @@ namespace AdversityRoad.Player
         {
             // 运行时组装顺序下 Awake 期间兄弟组件可能尚未挂载，惰性补齐
             if (_combat == null) _combat = GetComponent<CombatStateMachine>();
+            if (_pcc == null) _pcc = GetComponent<Combat.PlayerCombatController>();
 
             float dt = Time.deltaTime;
             Stats.TickRegen(dt, _combat != null && _combat.InCombat);
@@ -183,6 +185,9 @@ namespace AdversityRoad.Player
                 if (IsCrouched) ToggleCrouch();
                 _vy = jumpForce;
                 _coyoteT = 0f;
+                // 跳跃是连招元素，不是移动的附属品：起跳即入融合链，
+                // 于是「跳→剑」「跳→重→剑」这些串法能被识别成招（踏空斩/踏空三叠）。
+                if (_pcc != null) _pcc.Fusion.Push(Combat.MoveToken.Jump);
             }
 
             // 翻滚闪避（Shift / 闪）——走缓冲：硬直/翻滚中按下的闪避会在此兑现
@@ -190,9 +195,15 @@ namespace AdversityRoad.Player
             {
                 _inputBuf.Consume("Dodge");
                 if (IsCrouched) ToggleCrouch();
-                // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
-                var pcc = GetComponent<Combat.PlayerCombatController>();
-                if (pcc != null) pcc.CancelComboForDodge();
+                // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手。
+                // 注意——切断的是拳剑序列，**融合链不断**：闪避本身作为元素留在链上，
+                // 所以「闪→剑」能接成闪身突刺，而不是把整段努力清零。
+                var pcc = _pcc != null ? _pcc : GetComponent<Combat.PlayerCombatController>();
+                if (pcc != null)
+                {
+                    pcc.CancelComboForDodge();
+                    pcc.Fusion.Push(Combat.MoveToken.Dodge);
+                }
                 _dodgeDir = moveDir.sqrMagnitude > 0.01f ? moveDir : transform.forward;
                 // 翻滚方向即刻转身
                 transform.rotation = Quaternion.LookRotation(_dodgeDir);
