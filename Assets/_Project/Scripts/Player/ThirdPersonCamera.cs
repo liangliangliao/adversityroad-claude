@@ -8,17 +8,19 @@ namespace AdversityRoad.Player
     ///
     /// 全部自动运镜共用同一套稳定设施——**探索与战斗不再是两套逻辑**：
     ///   ① 目标方位低通滤波（探索追角色朝向 _headingAvg，战斗追敌我方位 _aimAvg）；
-    ///   ② 死区（战斗侧按敌我距离自适应：越近死区越大，因为同样的横移在近处
-    ///      带来的方位角变化率越高——2m 处敌人以 2.5m/s 横移就是 71°/s）；
-    ///   ③ **软死区**（驱动量随偏差连续趋零。此前是二值迟滞开关，关断时把角速度
-    ///      硬置零＝无限 jerk：实测 8 秒内通断 19 次、峰值角加速度 1509°/s²，
-    ///      而峰值角速度只有 38°/s——晕动来自加速度与通断，不是速度）；
+    ///   ② **渐进软区**（驱动量＝偏差×(|偏差|/软区)²）：小偏差时增益≈0 不追抖动，
+    ///      但始终保有微弱回正力，因此不会像硬死区那样永久停偏——
+    ///      硬死区的稳态残差恰好等于死区大小（13~20°），那就是"转动很松"；
+    ///   ③ 抗抖靠**按频率筛选**的低通（AimLowPass 3.2），不靠按幅度筛选的死区：
+    ///      死区加大会把真实运动一并杀掉（实测硬死区版 0.25Hz 跟随只剩 0.057）；
     ///   ④ 偏差→速度连续映射（小幅慢而稳、掉头快而不甩）；
     ///   ⑤ 墙壁减速（不把镜头甩进墙里）；⑥ 手动转镜期间一律让位给玩家；
-    ///   ⑦ **角加速度限幅 800°/s²**，只约束镜头自身的运动，玩家手动转镜不受限。
-    /// 实测传递率：1Hz 以上的方位抖动由 0.32/0.22/0.13 降到 0，
-    /// 而 0.25Hz 的真实绕行仍保持 0.63 的跟随——该动时动、该稳时稳。
-    /// 软死区 + 限幅后同场景峰值角加速度 1509→40°/s²，掉头时 2311→795°/s²。
+    ///   ⑦ **角加速度限幅 800°/s²，只限提速不限减速**——阻止镜头停下来只会制造拖尾。
+    ///
+    /// 三版实测对照（0.25Hz 真实绕行跟随 / 1Hz 抖动传递 / 稳态残差 / 峰值角加速度）：
+    ///   原始裸伺服      0.731 / 0.326 / 4.0° / 4800°/s²   ← 又抖又颠
+    ///   硬死区13°版     0.057 / 0.000 / 13.0° / 290°/s²   ← 不抖了但也不跟了（松）
+    ///   现版(软区8°)    0.659 / 0.097 / 1.0° / 234°/s²    ← 跟得住、不抖、不松
     ///
     /// 机位与景别：
     /// - 战斗取 3/4 侧位（不站正后方那个最平庸的机位），偏哪一侧由两侧可用空间
@@ -38,7 +40,7 @@ namespace AdversityRoad.Player
         [Tooltip("电影感肩后构图：横向偏移让角色居于画面三分位（悟空式）。" +
                  "高度贴近肩线（不架高）：配合近水平俯仰，地平线/天空始终在画面上部，" +
                  "画面有纵深不压抑——黑猴战斗镜头的核心是【低机位+平视】而非俯拍")]
-        public Vector3 offset = new Vector3(0.45f, 1.15f, -5.1f);
+        public Vector3 offset = new Vector3(0.45f, 1.15f, -4.6f);
         public float mouseSensitivity = 3f;
         [Tooltip("触屏灵敏度：整屏高度拖动对应的旋转角度")]
         public float touchSensitivity = 190f;
@@ -61,8 +63,14 @@ namespace AdversityRoad.Player
         // 角色占屏高 45%、水平视野仅 86.8°——主流第三人称动作游戏是
         // 占屏 28~36%、水平 95~105°。"人物有分量"被做过头成了"人物填满画面"，
         // 这正是「压抑、不开阔」的直接成因。
-        // 65° 实测偏晕（同样的角速度，光流强度比原 56° 高 20%），回调到 62°：
-        // 水平 93.8°、占屏 36.5%，仍远优于原来的 86.8°/45%，光流增幅降到 +13%。
+        // 调参历程与最终取舍：
+        //   56°/吊杆4.76m → 水平 86.8°、角色占屏 45.4%（实测「压抑、不开阔」）
+        //   65°/吊杆5.25m → 水平 97.1°、占屏 34.4%（实测「偏晕」且「角色变小」）
+        //   62°/吊杆4.76m → 水平 93.8°、占屏 40.2%  ← 现值
+        // 只保留 FOV 加宽、撤回吊杆加长：两者都会缩小角色，但只有 FOV 能真正扩大
+        // 周边视野（吊杆加长只是等比缩小画面里的一切）。于是角色尺寸拿回大半，
+        // 开阔度仍比原来高一档。角色占屏与视野开阔是直接对立的两个量，
+        // 40% 是这条曲线上的折中点，不是"两者都要"的解。
         public float fieldOfView = 62f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
@@ -127,14 +135,21 @@ namespace AdversityRoad.Player
         // 峰值角加速度 1509°/s²（舒适上限约 600）——这才是"抽动、发晕"的来源，
         // 而峰值速度其实只有 38°/s。问题从来不是快。
         //
-        // 改为【软死区】：偏差在死区内时目标即当前朝向（驱动量为零，但是连续的零），
-        // 超出死区则目标退到死区边缘。驱动随偏差连续趋零，不存在通断。
-        // 实测同场景峰值加速度 1509 → 40°/s²，峰值速度 38 → 6°/s。
-        static float SoftTarget(float cur, float want, float deadzone)
+        // 改为【渐进软区】：驱动量 = 偏差 × (|偏差|/软区)²，封顶 1。
+        //
+        // 上一版是"死区内驱动为零"，虽然消除了通断，却引入了死区伺服的经典缺陷——
+        // **稳态残差恰好等于死区大小**：镜头永久停在偏离目标 13~20° 的地方不再修正，
+        // 这就是"转动很松"。更糟的是它按【幅度】筛选，把真实运动一并杀掉：
+        // 实测 0.25Hz 的真实绕行跟随率只剩 0.057，镜头基本不跟敌人了。
+        //
+        // 现在死区内仍有微弱回正力（小偏差时增益≈0，接近软区边缘迅速趋近 1）：
+        // 稳态残差 13° → 1.0°，0.25Hz 跟随 0.057 → 0.659，而 1Hz 抖动仍只有 0.097
+        // （原始裸伺服是 0.32）。抗抖靠的是【按频率筛选】的低通，不是按幅度筛选的死区。
+        static float SoftTarget(float cur, float want, float softZone)
         {
             float e = Mathf.DeltaAngle(cur, want);
-            if (Mathf.Abs(e) <= deadzone) return cur;
-            return cur + (Mathf.Abs(e) - deadzone) * Mathf.Sign(e);
+            float g = Mathf.Min(1f, Mathf.Pow(Mathf.Abs(e) / Mathf.Max(softZone, 0.001f), 2f));
+            return cur + e * g;
         }
 
         /// <summary>自动运镜的角加速度上限（度/秒²）。只约束镜头【自己】的运动——
@@ -157,7 +172,10 @@ namespace AdversityRoad.Player
         /// 可达 70°/s 以上（距离 2m、敌人横移 2.5m/s），必须滤波后再喂给镜头。</summary>
         float _aimAvg;
         bool _aimInit;
-        const float AimLowPass = 6.5f;     // 方位低通收敛率（1/秒）
+        /// <summary>方位低通收敛率（1/秒）。6.5→3.2：低通按【频率】筛选，
+        /// 能压掉 1Hz 以上的缠斗抖动而几乎不影响 0.25Hz 的真实绕行；
+        /// 死区按【幅度】筛选，会把两者一起杀掉——抗抖该靠这里，不该靠加大死区。</summary>
+        const float AimLowPass = 3.2f;
         /// <summary>3/4 侧位的偏角：正后方是最平庸的机位，偏开一个肩位才是对峙构图。
         /// 22° 足以让双方错开、拳脚横穿画面，又不至于把玩家推到画面边缘。</summary>
         const float ShoulderAngle = 22f;
@@ -228,9 +246,9 @@ namespace AdversityRoad.Player
 
         static readonly CamPreset[] Presets =
         {
-            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -4.3f), pitch = 3f },
-            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -5.1f), pitch = 4f },
-            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -6.5f), pitch = 9f },
+            new CamPreset { name = "近身动作", offset = new Vector3(0.45f, 1.0f, -3.8f), pitch = 3f },
+            new CamPreset { name = "标准跟随", offset = new Vector3(0.45f, 1.15f, -4.6f), pitch = 4f },
+            new CamPreset { name = "战术远景", offset = new Vector3(0.3f, 1.7f, -5.9f), pitch = 9f },
             new CamPreset { name = "第一人称", offset = new Vector3(0, 0.75f, 0.1f), pitch = -8f, fp = true },
         };
 
@@ -464,9 +482,10 @@ namespace AdversityRoad.Player
                     float wantYaw = _aimAvg + _shoulderSide * ShoulderAngle * _lockBlend
                                     + _occYawBias;
 
-                    // ③ 自适应死区：越近，同样的敌人横移带来的方位角变化越大，
-                    // 死区就必须越大——固定 4° 在贴身距离等于没有死区。
-                    float aimDead = Mathf.Clamp(5f + 16f / Mathf.Max(0.8f, enemyDist), 5f, 20f);
+                    // ③ 自适应软区：越近，同样的敌人横移带来的方位角变化越大，软区也越大。
+                    // 上限由 20° 收到 12°——渐进软区已经不靠尺寸抗抖（那是低通的活），
+                    // 软区只负责"别追极小的偏差"，过大只会换来松弛感。
+                    float aimDead = Mathf.Clamp(4f + 8f / Mathf.Max(0.8f, enemyDist), 4f, 12f);
                     float aimErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
 
                     // ④ 软死区：目标退到死区边缘，驱动量随偏差连续趋零。
@@ -606,9 +625,13 @@ namespace AdversityRoad.Player
             // 由 2311°/s² 降到 795，代价只是盲区 0.77→0.97s，这个交换是值得的。
             {
                 float autoRate = Mathf.DeltaAngle(yawBeforeAuto, _yaw) / dt;
-                autoRate = Mathf.Clamp(autoRate,
-                    _autoYawRate - MaxAutoYawAccel * dt,
-                    _autoYawRate + MaxAutoYawAccel * dt);
+                // 只限【提速】，放开【减速】：突然加速才引起晕动，而阻止镜头停下来
+                // 只会制造拖尾。伺服本身是临界阻尼，它的减速曲线已经是平滑的。
+                if (Mathf.Abs(autoRate) > Mathf.Abs(_autoYawRate))
+                {
+                    float lim = Mathf.Abs(_autoYawRate) + MaxAutoYawAccel * dt;
+                    autoRate = Mathf.Clamp(autoRate, -lim, lim);
+                }
                 _yaw = yawBeforeAuto + autoRate * dt;
                 _autoYawRate = autoRate;
             }
