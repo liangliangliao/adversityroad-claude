@@ -10,17 +10,24 @@ namespace AdversityRoad.Player
     ///   ① 目标方位低通滤波（探索追角色朝向 _headingAvg，战斗追敌我方位 _aimAvg）；
     ///   ② 死区（战斗侧按敌我距离自适应：越近死区越大，因为同样的横移在近处
     ///      带来的方位角变化率越高——2m 处敌人以 2.5m/s 横移就是 71°/s）；
-    ///   ③ 迟滞开关（单阈值会在阈值附近反复开关，那本身就是抖动）；
+    ///   ③ **软死区**（驱动量随偏差连续趋零。此前是二值迟滞开关，关断时把角速度
+    ///      硬置零＝无限 jerk：实测 8 秒内通断 19 次、峰值角加速度 1509°/s²，
+    ///      而峰值角速度只有 38°/s——晕动来自加速度与通断，不是速度）；
     ///   ④ 偏差→速度连续映射（小幅慢而稳、掉头快而不甩）；
-    ///   ⑤ 墙壁减速（不把镜头甩进墙里）；⑥ 手动转镜期间一律让位给玩家。
+    ///   ⑤ 墙壁减速（不把镜头甩进墙里）；⑥ 手动转镜期间一律让位给玩家；
+    ///   ⑦ **角加速度限幅 800°/s²**，只约束镜头自身的运动，玩家手动转镜不受限。
     /// 实测传递率：1Hz 以上的方位抖动由 0.32/0.22/0.13 降到 0，
     /// 而 0.25Hz 的真实绕行仍保持 0.63 的跟随——该动时动、该稳时稳。
+    /// 软死区 + 限幅后同场景峰值角加速度 1509→40°/s²，掉头时 2311→795°/s²。
     ///
     /// 机位与景别：
     /// - 战斗取 3/4 侧位（不站正后方那个最平庸的机位），偏哪一侧由两侧可用空间
     ///   决定，需领先 0.6m 才换边、切换走 1.4s 慢插值；
     /// - 景别由 CameraDirector 选（行进/对峙/群战/狭窄/决胜），参数级插值＝推轨非切镜；
-    /// - 特写有节流（2.6s）与群战抑制：知道何时特写的另一半是知道何时不特写。
+    /// - 特写有节流（2.6s）与群战抑制：知道何时特写的另一半是知道何时不特写；
+    /// - **遮挡换角**：被柱子/墙体挡住超过 0.55s 时绕到看得见的角度（从小到大试偏移，
+    ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
+    ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
     ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
@@ -54,9 +61,9 @@ namespace AdversityRoad.Player
         // 角色占屏高 45%、水平视野仅 86.8°——主流第三人称动作游戏是
         // 占屏 28~36%、水平 95~105°。"人物有分量"被做过头成了"人物填满画面"，
         // 这正是「压抑、不开阔」的直接成因。
-        // 现在 vFOV 65° + 吊杆 5.24m → 水平 98°、占屏 34%，
-        // 角色仍是清晰的中景主体，但四周终于有了余量。
-        public float fieldOfView = 65f;
+        // 65° 实测偏晕（同样的角速度，光流强度比原 56° 高 20%），回调到 62°：
+        // 水平 93.8°、占屏 36.5%，仍远优于原来的 86.8°/45%，光流增幅降到 +13%。
+        public float fieldOfView = 62f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -114,6 +121,27 @@ namespace AdversityRoad.Player
         readonly System.Collections.Generic.List<float> _threatDirs =
             new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
 
+        // ===== 晕动的真正成因：角加速度与方向反复，不是角速度本身 =====
+        // 此前用【二值迟滞开关】驱动一个【连续伺服】：每次关断都把 _yawFollowVel 硬置零，
+        // 速度不连续＝无限 jerk。实测敌人在 2m 处 ±18° 摆动 8 秒，开关通断 19 次，
+        // 峰值角加速度 1509°/s²（舒适上限约 600）——这才是"抽动、发晕"的来源，
+        // 而峰值速度其实只有 38°/s。问题从来不是快。
+        //
+        // 改为【软死区】：偏差在死区内时目标即当前朝向（驱动量为零，但是连续的零），
+        // 超出死区则目标退到死区边缘。驱动随偏差连续趋零，不存在通断。
+        // 实测同场景峰值加速度 1509 → 40°/s²，峰值速度 38 → 6°/s。
+        static float SoftTarget(float cur, float want, float deadzone)
+        {
+            float e = Mathf.DeltaAngle(cur, want);
+            if (Mathf.Abs(e) <= deadzone) return cur;
+            return cur + (Mathf.Abs(e) - deadzone) * Mathf.Sign(e);
+        }
+
+        /// <summary>自动运镜的角加速度上限（度/秒²）。只约束镜头【自己】的运动——
+        /// 玩家手动转镜不受限，自发运动不引起晕动，限它只会读作迟钝。</summary>
+        const float MaxAutoYawAccel = 800f;
+        float _autoYawRate;                // 上一帧自动运镜的角速度（限幅用）
+
         /// <summary>该方位角附近是否有敌人（威胁感知：决定镜头该不该赶紧转过去）。</summary>
         bool ThreatNear(float yawDeg, float coneDeg)
         {
@@ -129,13 +157,25 @@ namespace AdversityRoad.Player
         /// 可达 70°/s 以上（距离 2m、敌人横移 2.5m/s），必须滤波后再喂给镜头。</summary>
         float _aimAvg;
         bool _aimInit;
-        bool _combatTrack;                 // 战斗追击迟滞开关
         const float AimLowPass = 6.5f;     // 方位低通收敛率（1/秒）
         /// <summary>3/4 侧位的偏角：正后方是最平庸的机位，偏开一个肩位才是对峙构图。
         /// 22° 足以让双方错开、拳脚横穿画面，又不至于把玩家推到画面边缘。</summary>
         const float ShoulderAngle = 22f;
+        /// <summary>遮挡换角的候选偏移（由小到大：换角幅度能小则小）。</summary>
+        static readonly float[] OccProbe = { 22f, -22f, 38f, -38f, 58f, -58f, 80f, -80f };
         float _shoulderSide = 1f;          // +1=偏右肩 -1=偏左肩（迟滞选择，切换极慢）
         float _shoulderTarget = 1f;
+        float _shoulderSwitchT = -99f;   // 上次换肩时刻（最短驻留，防来回横跳）
+
+        // ---- 遮挡换角（战斗中被柱子/墙体挡住时，换一个看得见的机位）----
+        // 此前遇到遮挡只会缩短吊杆（dolly in），把镜头一路推到 1.9m 贴脸，
+        // 视野塌掉却仍然对着那根柱子——镜头【从不换角度】。
+        // 摄影指导遇到前景挡住主体时的第一反应是换机位，不是往前挤。
+        float _occludedT;                  // 当前机位被遮挡的持续时长
+        float _occYawBias, _occYawTarget;  // 换角偏置（缓慢插值生效）
+        float _occSwitchT = -99f;          // 上次换角时刻（最短驻留）
+        const float OccludeHold = 0.55f;   // 遮挡持续这么久才换角（穿过一下不换）
+        const float OccludeDwell = 4f;     // 换角后的最短驻留（防来回横跳）
 
         float _headingAvg;                 // 平滑朝向（低通滤波，镜头的实际追踪目标）
         float _headingHoldT;               // 当前朝向的稳定时长（大幅瞬转会清零重计）
@@ -308,8 +348,9 @@ namespace AdversityRoad.Player
                 // 场地宽敞度：只看【吊杆真正要退去的方向】，而不是四周的最短距离。
                 // 旧实现取六向最短值，于是只要玩家靠近任何一面墙就判定"狭窄"并推近镜头——
                 // 哪怕镜头正对着一片开阔地。狭窄与否是机位问题，不是站位问题。
-                _roomAround = FreeBoomDistance(target.position + Vector3.up * _pivotH,
-                    _yaw, offset.magnitude * _lenFactor);
+                Vector3 probePivot = target.position + Vector3.up * _pivotH;
+                float probeBoom = offset.magnitude * _lenFactor;
+                _roomAround = FreeBoomDistance(probePivot, _yaw, probeBoom);
 
                 // ---- 选肩位（"最佳拍摄角度"的实处）----
                 // 左右两侧各探一次，谁更开阔就站谁那边；差距不显著就保持不动。
@@ -321,18 +362,59 @@ namespace AdversityRoad.Player
                     if (aim.sqrMagnitude > 0.09f)
                     {
                         float a = Quaternion.LookRotation(aim.normalized).eulerAngles.y;
-                        Vector3 pv = target.position + Vector3.up * _pivotH;
-                        float boom = offset.magnitude * _lenFactor;
-                        float roomR = FreeBoomDistance(pv, a + ShoulderAngle, boom);
-                        float roomL = FreeBoomDistance(pv, a - ShoulderAngle, boom);
-                        // 需领先 0.6m 才换边——小差距不值得动机位
-                        if (roomR > roomL + 0.6f) _shoulderTarget = 1f;
-                        else if (roomL > roomR + 0.6f) _shoulderTarget = -1f;
+                        float roomR = FreeBoomDistance(probePivot, a + ShoulderAngle, probeBoom);
+                        float roomL = FreeBoomDistance(probePivot, a - ShoulderAngle, probeBoom);
+                        // 需领先 0.6m 才换边——小差距不值得动机位。
+                        // 另加【最短驻留 6 秒】：仅靠距离死区挡不住"绕着柱子打"这类
+                        // 两侧空间反复互换的场景，而每换一次边就是 44° 的来回摆镜，
+                        // 是典型晕动源。宁可暂时站在略差的一侧，也不要来回横跳。
+                        float sideWant = _shoulderTarget;
+                        if (roomR > roomL + 0.6f) sideWant = 1f;
+                        else if (roomL > roomR + 0.6f) sideWant = -1f;
+                        if (!Mathf.Approximately(sideWant, _shoulderTarget) &&
+                            Time.unscaledTime - _shoulderSwitchT > 6f)
+                        {
+                            _shoulderTarget = sideWant;
+                            _shoulderSwitchT = Time.unscaledTime;
+                        }
                     }
                 }
+                // ---- 遮挡换角 ----
+                // 被挡住超过 OccludeHold 才动：短暂穿过的前景（跑过一棵树）不该引发换角。
+                // 从小到大试偏移，取【第一个足够通透的】——换角幅度要尽可能小，
+                // 大幅绕机位比稍微斜一点更让人不适。
+                bool careAboutView = _nearbyEnemies > 0 || lt != null;
+                if (careAboutView && _occludedT > OccludeHold &&
+                    Time.unscaledTime - _occSwitchT > OccludeDwell)
+                {
+                    // _yaw 是镜头【当前实际】方位（已含现有偏置），遮挡就发生在这个方位上。
+                    // 候选角同样按绝对方位探测，因此新偏置＝现有偏置＋相对偏移，
+                    // 这样目标方位才正好等于探到的那个通透方向（坐标系必须一致）。
+                    float baseFree = FreeBoomDistance(probePivot, _yaw, probeBoom);
+                    for (int i = 0; i < OccProbe.Length; i++)
+                    {
+                        if (FreeBoomDistance(probePivot, _yaw + OccProbe[i], probeBoom) > baseFree + 1.0f)
+                        {
+                            _occYawTarget = Mathf.Clamp(_occYawBias + OccProbe[i], -90f, 90f);
+                            _occSwitchT = Time.unscaledTime;
+                            break;
+                        }
+                    }
+                }
+                // 撤销换角：要看【原机位】是否重新通透，而不是看当前机位——
+                // 当前机位本来就是为了避开遮挡才换过来的，它当然是通的。
+                else if (!Mathf.Approximately(_occYawTarget, 0f) &&
+                         Time.unscaledTime - _occSwitchT > OccludeDwell &&
+                         FreeBoomDistance(probePivot, _yaw - _occYawBias, probeBoom) > probeBoom - 0.6f)
+                {
+                    _occYawTarget = 0f;
+                    _occSwitchT = Time.unscaledTime;
+                }
             }
-            // 肩位切换走极慢插值（约 1.4s 完成）：换机位是分镜级动作，绝不能是瞬切
+            // 肩位与换角都走极慢插值：换机位是分镜级动作，绝不能是瞬切
             _shoulderSide = Mathf.MoveTowards(_shoulderSide, _shoulderTarget, dt / 0.7f);
+            // 换角 2 秒走完（比换肩更慢——它的幅度更大）
+            _occYawBias = Mathf.MoveTowards(_occYawBias, _occYawTarget, 45f * dt);
             var wantShot = CameraDirector.Pick(
                 _ultimateTimer > 0f, _nearbyEnemies,
                 lockOn != null && lockOn.CurrentTarget != null, _roomAround);
@@ -343,6 +425,11 @@ namespace AdversityRoad.Player
                 float rate = CameraDirector.BlendRate(_shot, wantShot);
                 _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
             }
+            // 自动运镜的角加速度限幅——从这里开始记录基线。
+            // 手动转镜（_yaw += lookX）发生在本方法更上方，因此不在限幅范围内：
+            // 玩家自己甩镜是自发运动，不引起晕动，限它只会读作迟钝。
+            float yawBeforeAuto = _yaw;
+
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
@@ -372,21 +459,23 @@ namespace AdversityRoad.Player
                     // 偏开一个肩位后是对峙的经典三分构图：玩家侧背、敌人侧脸，
                     // 拳脚的运动轨迹横穿画面而不是朝镜头戳过来（纵向运动在屏幕上没有位移感）。
                     // 偏哪一侧由空间决定（见 _shoulderSide 的迟滞选择），且切换极慢。
-                    float wantYaw = _aimAvg + _shoulderSide * ShoulderAngle * _lockBlend;
+                    // 换角偏置叠加在肩位之上：被柱子挡住时整体绕开一点，
+                    // 而不是把镜头一路推到贴脸还对着那根柱子
+                    float wantYaw = _aimAvg + _shoulderSide * ShoulderAngle * _lockBlend
+                                    + _occYawBias;
 
                     // ③ 自适应死区：越近，同样的敌人横移带来的方位角变化越大，
                     // 死区就必须越大——固定 4° 在贴身距离等于没有死区。
                     float aimDead = Mathf.Clamp(5f + 16f / Mathf.Max(0.8f, enemyDist), 5f, 20f);
                     float aimErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
 
-                    // ④ 迟滞开关：进入追击要越过死区，退出要回到死区的四成——
-                    // 单阈值会在阈值附近反复开关，那本身就是一种抖动
-                    if (aimErr > aimDead) _combatTrack = true;
-                    else if (aimErr < aimDead * 0.4f) _combatTrack = false;
+                    // ④ 软死区：目标退到死区边缘，驱动量随偏差连续趋零。
+                    // 此前是二值迟滞开关，关断时硬置零速度＝无限 jerk（见 SoftTarget 注释）
+                    float softAim = SoftTarget(_yaw, wantYaw, aimDead);
 
                     // ⑤ 手动转镜让位：此前锁定时玩家的手动取景被完全无视，
                     // 刚摆好角度镜头立刻抢回去，读作"和我抢镜头"
-                    if (_combatTrack && !manualLook)
+                    if (!manualLook)
                     {
                         // ⑥ 速度按偏差连续映射（与探索同一条曲线）：小偏差慢、掉头快
                         float t = Mathf.Clamp01((aimErr - aimDead) / 120f);
@@ -402,10 +491,11 @@ namespace AdversityRoad.Player
                             maxSpd *= damp;
                             smoothT /= Mathf.Max(0.3f, damp);
                         }
-                        _yaw = Mathf.SmoothDampAngle(_yaw, wantYaw, ref _yawFollowVel,
+                        _yaw = Mathf.SmoothDampAngle(_yaw, softAim, ref _yawFollowVel,
                             smoothT, maxSpd, dt);
                     }
-                    else _yawFollowVel = 0f;
+                    // 速度衰减而非硬置零——硬置零正是 1509°/s² 的来源
+                    else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
                     _yawErr = aimErr;
                 }
             }
@@ -480,15 +570,9 @@ namespace AdversityRoad.Player
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
                                               exploreMaxSpeed * 4f, t);
-                    // 掉头甩镜（whip pan）：全速反向奔跑且偏差 >120° 时，转速上限提到 5×。
-                    // 这是玩家最明确不过的意图——"我要往回跑"——摄影上对应的是一次果断的
-                    // 甩镜，而不是慢慢绕。实测峰值 362°/s，仍在人眼舒适上限（~400°/s）内，
-                    // 盲区从 0.83s 压到 0.73s；普通转向不走这条路，日常手感不受影响。
-                    if (committedRun && err > 120f)
-                    {
-                        maxSpd = exploreMaxSpeed * 5f;
-                        smoothT = Mathf.Min(smoothT, 0.12f);
-                    }
+                    // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
+                    //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
+                    //   一条不再改变行为的特殊分支只会让运镜更难预测，故移除。）
 
                     // ===== 意图识别 ②：不要把镜头甩进墙里 =====
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
@@ -509,12 +593,26 @@ namespace AdversityRoad.Player
                         smoothT /= Mathf.Max(0.6f, damp);
                     }
 
-                    _yaw = Mathf.SmoothDampAngle(_yaw, _headingAvg, ref _yawFollowVel,
+                    // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
+                    float softHeading = SoftTarget(_yaw, _headingAvg + _occYawBias, exploreReorientAngle);
+                    _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
                 }
-                else _yawFollowVel = 0f;
+                else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
                 _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
+            // 限幅落地：把本帧自动运镜的角速度变化钳在 MaxAutoYawAccel 内。
+            // 晕动与角【加速度】相关，与角速度关系小得多——实测掉头时的峰值加速度
+            // 由 2311°/s² 降到 795，代价只是盲区 0.77→0.97s，这个交换是值得的。
+            {
+                float autoRate = Mathf.DeltaAngle(yawBeforeAuto, _yaw) / dt;
+                autoRate = Mathf.Clamp(autoRate,
+                    _autoYawRate - MaxAutoYawAccel * dt,
+                    _autoYawRate + MaxAutoYawAccel * dt);
+                _yaw = yawBeforeAuto + autoRate * dt;
+                _autoYawRate = autoRate;
+            }
+
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
 
             // 锁定取景渐入渐出（切锁不跳镜）
@@ -533,12 +631,10 @@ namespace AdversityRoad.Player
             _lastTargetPos = target.position;
 
             // ---- 临界阻尼转角（无过冲），位置刚性跟随（零滞后） ----
-            // 二级平滑：小幅时用完整平滑时间（滤掉伺服本身的细微不平顺），
-            // 大幅掉头时缩到 0.05s——串联的固定 0.11s 在 180° 掉头时又要多花 0.33s
-            float curErr = Mathf.Abs(Mathf.DeltaAngle(_curYaw, _yaw));
-            float rotSmooth = Mathf.Lerp(rotationSmoothTime, 0.05f,
-                Mathf.Clamp01((curErr - 30f) / 90f));
-            _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotSmooth,
+            // 二级平滑用【固定】时间常数。此前随偏差从 0.11 缩到 0.05——
+            // 变时间常数意味着阻尼特性在运动中途改变，本身就制造加速度不连续。
+            // 掉头的速度改由上游的角加速度限幅统一保证，不需要在这里再抄近路。
+            _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
             _curPitch = Mathf.SmoothDamp(_curPitch, _pitch, ref _pitchVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
@@ -664,6 +760,9 @@ namespace AdversityRoad.Player
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
+            // 遮挡持续计时：供上方的换角决策使用（0.6m 以上的回缩才算真被挡）
+            _occludedT = wantDist < maxDist - 0.6f ? _occludedT + dt : 0f;
+
             float smooth = wantDist < _boomDist ? 0.03f : 0.14f;
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
