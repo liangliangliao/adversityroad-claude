@@ -31,9 +31,12 @@ namespace AdversityRoad.Player
     ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
     ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
     ///
-    /// 与角色的解耦：角色的移动参考系只跟随本类的 ManualYaw（手动转镜），
-    /// 不跟随自动绕行——否则 角色朝向←镜头+摇杆角、镜头←追角色朝向 构成代数环，
-    /// 摇杆推向左/右/后时角色会持续自转（实测 207~322°/s）。见 PlayerController.CameraRelative。
+    /// 与角色的代数环：摇杆是镜头相对的（moveDir = 镜头偏航 + 摇杆角），
+    /// 而镜头又要绕到角色背后，构成闭环——解 H=C+θ 且 C=H 只有 θ=0 有不动点，
+    /// 摇杆持续推向左/右/后时角色必然沿弧线行进，**弧的角速度＝镜头绕行速率**。
+    /// 曾试过锁存移动参考系来断环，但那会让摇杆与画面对不上（手指按左、画面向前），
+    /// 代价不可接受。现改为保住"摇杆↔画面一致"，把持续绕行速率压到 SustainedOrbitCap
+    /// (30°/s，半径 9.9m)——大作同样是这个取舍，缺陷从来不是"会画弧"而是弧太紧。
     ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
@@ -103,15 +106,6 @@ namespace AdversityRoad.Player
         public PlayerController player;
         public LockOnSystem lockOn;
 
-        /// <summary>
-        /// 累计的【手动】转镜角度（不含任何自动绕行）。
-        /// 角色的移动参考系只跟随这一项——这是切断"镜头↔角色"代数环的关键：
-        /// 若参考系跟随镜头的实际偏航，则 角色朝向←镜头+摇杆角、镜头←追角色朝向
-        /// 构成闭环，解 H=C+θ 且 C=H 只有 θ=0 有不动点，
-        /// 摇杆推向左/右/后时必然进入极限环（实测自转 221~358°/s）。
-        /// </summary>
-        public float ManualYaw { get; private set; }
-
         float _yaw, _pitch = 10f;
         float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
@@ -139,6 +133,29 @@ namespace AdversityRoad.Player
         /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。
         /// 0.9→0.6：有了威胁感知兜底，这里不必再压那么久。</summary>
         const float TowardCameraHold = 0.6f;
+
+        /// <summary>
+        /// 【持续推非正前方向时】镜头绕行速率的上限（度/秒）。
+        ///
+        /// 摇杆是镜头相对的，于是 moveDir = 镜头偏航 + 摇杆角，而镜头又要绕到角色背后——
+        /// 这是一个代数环，解 H=C+θ 且 C=H 只有 θ=0（正前）存在不动点。
+        /// 摇杆持续推向左/右/后时方程无解，角色必然沿弧线行进，**弧的角速度就等于
+        /// 镜头的绕行速率**。三条性质里最多只能同时满足两条：
+        ///   (a) 摇杆↔画面一致  (b) 镜头绕到背后  (c) 角色不画弧
+        /// 主流第三人称动作游戏一律取 (a)+(b)、放弃 (c)。缺陷从来不是"会画弧"，
+        /// 而是弧的松紧：本作曾以 207~322°/s 绕行，半径只有 0.9~1.4m，读作原地转圈；
+        /// 压到 30°/s 后半径 9.9m、绕一圈 12 秒，就是大作里那种几乎察觉不到的缓弧。
+        ///
+        /// 只在【推着非正前方向】时生效：摇杆回正或松开后，环即消失，
+        /// 镜头恢复全速追平（掉头后想尽快看清前方，松一下杆就行）。
+        /// </summary>
+        const float SustainedOrbitCap = 30f;
+        /// <summary>摇杆偏离画面正前多少度起算限速，以及渐变过渡的宽度。
+        /// 12°/30°：正前小幅修正完全不限速（那正是"边跑边微调、镜头跟着走"该有的样子），
+        /// 45° 以上进入满限速。实测弧线半径 正前=直线 / 30°=5.6m / 45°=10.1m /
+        /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
+        const float OrbitGateAngle = 12f;
+        const float OrbitGateWidth = 30f;
         readonly System.Collections.Generic.List<float> _threatDirs =
             new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
 
@@ -327,7 +344,6 @@ namespace AdversityRoad.Player
                 _lastManualLook = Time.unscaledTime;
 
             _yaw += lookX;
-            ManualYaw += lookX;   // 只累计【手动】转镜——移动参考系据此跟随，见 PlayerController
             // 第一人称放开俯仰范围：低头能看见自己的手/脚/剑，抬头能看见天空
             bool fpNow = Presets[PresetIndex].fp;
             _pitch = Mathf.Clamp(_pitch - lookY, fpNow ? -72f : minPitch, fpNow ? 80f : maxPitch);
@@ -614,6 +630,22 @@ namespace AdversityRoad.Player
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
                     // 顶在墙上被迫贴脸，视野瞬间塌掉。大幅回正前先探一下目标方位是否够宽敞：
                     // 越憋屈就转得越慢（最低降到 25%），把镜头留在看得见的地方。
+                    // 代数环限速：玩家正推着一个非正前方向时，镜头绕行会拖着角色画弧，
+                    // 弧的角速度＝绕行速率。压到 SustainedOrbitCap 让它成为缓弧而非转圈。
+                    // 摇杆回正/松开后不限速——那时环不存在，镜头可全速追平。
+                    if (player != null)
+                    {
+                        Vector3 sw = player.StickWorldDir;
+                        if (sw.sqrMagnitude > 0.04f)
+                        {
+                            float stickYaw = Quaternion.LookRotation(sw.normalized).eulerAngles.y;
+                            float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _yaw));
+                            float gate = Mathf.Clamp01((off - OrbitGateAngle) / OrbitGateWidth);
+                            if (gate > 0f)
+                                maxSpd = Mathf.Lerp(maxSpd, SustainedOrbitCap, gate);
+                        }
+                    }
+
                     if (err > 45f)
                     {
                         Vector3 probePivot = target.position + Vector3.up * _pivotH;
