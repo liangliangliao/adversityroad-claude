@@ -59,11 +59,24 @@ namespace AdversityRoad.Player
     ///   · **方位角要从镜头量、且要能表示"在镜头背后"**：用 Vector3.SignedAngle
     ///     相对镜头当前朝向求，|角|&gt;90° 自然表示已经转到镜头后方。
     ///
-    /// 在这之上，<see cref="ShouldAutoRecenter"/> 把玩家的「一键回正」接进自动运镜：
-    /// **取景窗保证"看得见"（底线），自动回正负责"看得正"（整理）**——
-    /// 松杆时做一次 0.4~0.8s 的动作把敌人摆回画面中央；另有一条**无条件兜底**：
-    /// 敌人彻底出画超过 0.5s 就强制回正，不等松杆也不等冷却。
-    /// 原一键回正照常保留。探索分支原样保留（有绕行限速与实测调参兜底）。
+    /// **什么时候回正、什么时候绝不回正**（判据只有一条，战斗与探索共用）：
+    ///     **你接下来要面对的东西，现在看得见吗？**
+    ///     战斗看正在打的敌人；探索看角色前方 6m 的「视察点」；都用同一个取景窗量。
+    /// 用"视察点在不在窗内"而不是"朝向转了多少度"，是因为前者自动把镜头在身后 4.6m
+    /// 造成的向心压缩算进去了。代入几何得到的实际阈值——
+    ///     转向 15°→屏幕角 8.5° · 30°→17.0° · 45°→25.6°（都在窗内，**不动镜**）
+    ///     转向 55°→31.4° · 90°→52.5° · 180°→180°（出窗，**需要回正**）
+    /// 即：**±50° 以内的转向、走位、闪避、出招转向一律不动镜；超过约 55° 才回正。**
+    ///
+    /// 「想回正」与「能回正」分开：想＝出窗持续 0.2s；能＝摇杆松开（或已推回接近画面
+    /// 正前）。"能"是几何硬要求——推着离轴 θ 时把镜头转到行进方向背后无解，
+    /// 转多快都只是让角色画更紧的圈，而且回正结束、参考系解冻的一刻会把玩家
+    /// "掉头回去"。只想不能时由探索伺服走 30°/s 缓弧 + 引导留白撑住，
+    /// 玩家松杆的那一瞬间立刻兑现（阈值 0.07s，掉头时拇指过中心很快，抓得紧）。
+    ///
+    /// 另有一条**无条件兜底**：敌人彻底出画超过 0.5s 就强制回正，不等松杆也不等冷却。
+    /// 原一键回正照常保留，与自动回正共用同一条 <see cref="StartRecenter"/>。
+    /// 探索分支原样保留（有绕行限速与实测调参兜底）。
     ///
     /// 与角色的代数环（两个推论，都是几何决定的，不是参数没调好）：
     /// 摇杆是镜头相对的 ⇒ 角色朝向 H = 镜头偏航 C + 摇杆角 θ ⇒ **H - C ≡ θ 恒成立**。
@@ -261,6 +274,28 @@ namespace AdversityRoad.Player
         bool _focusActive;                 // 本帧是否该框住聚焦敌人（撤离中为假）
         Camera _cam;                       // 取水平视野用
 
+        /// <summary>
+        /// 「前方视察点」的距离：角色朝向前方这么远的一个点。
+        /// 判断"玩家看不看得见自己要去的地方"就看这个点在不在取景窗内——
+        /// 比直接比朝向角靠谱得多，因为它自动把【镜头在身后 4.6m】的向心压缩算进去了。
+        /// 6m 约等于全速跑 1.2 秒的距离：够远，能代表"前方"；不至于远到永远出窗。
+        /// </summary>
+        const float LookAheadDist = 6f;
+
+        /// <summary>某个世界点的有符号屏幕水平角（度）。
+        /// 用镜头【真实的 forward】量：肩后构图的横向偏移让实际视线偏离 _curYaw 约 5.6°，
+        /// 从 _curYaw 反推会让取景窗左右不对称。|角|&gt;90° 天然表示"在镜头背后"。</summary>
+        float ScreenAngleTo(Vector3 worldPoint)
+        {
+            Vector3 camFwd = transform.forward; camFwd.y = 0f;
+            if (camFwd.sqrMagnitude < 1e-4f)
+                camFwd = Quaternion.Euler(0f, _curYaw, 0f) * Vector3.forward;
+            camFwd.Normalize();
+            Vector3 to = worldPoint - transform.position; to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f) return 0f;
+            return Vector3.SignedAngle(camFwd, to.normalized, Vector3.up);
+        }
+
         /// <summary>水平半视野（度）——由垂直 FOV 与画面宽高比精确解出。</summary>
         float HalfHorizontalFov()
         {
@@ -288,27 +323,45 @@ namespace AdversityRoad.Player
         // 镜头要么纹丝不动，要么在做一个明确的运镜，没有"一直在轻微动"的中间态。
         // 那个中间态正是"很敏感、频繁抖动"的本体。
         //
-        // 它与取景窗分工明确：**取景窗保证"看得见"（底线），回正负责"看得正"（整理）**。
-        // 上一版把条件卡得过死（松杆 0.3s + 朝向安定 0.6s），而战斗中出招磁吸每一击都会
-        // 把朝向拧动 >12°、摇杆也几乎没停过——两条同时满足的窗口几乎不存在，
-        // 于是自动回正实际从未触发。现已放宽，并把目标改成【正在打的敌人】。
+        // ===== 什么时候需要回正、什么时候绝不回正 =====
         //
-        // 触发条件：
-        //   · 交战中且未锁定（锁定有自己的取景伺服，不需要）；
-        //   · **摇杆已松开**——几何硬要求，不是保守：恒等式 H = C + θ 说明推着杆时
-        //     "镜头对准角色朝向"要求 θ=0，推着非正前方向时回正无解；而且回正结束、
-        //     参考系解冻的那一刻会把玩家正在跑的方向掰弯 θ 度。
-        //     **有聚焦敌人时这一条放宽**——那时目标是敌人方位而非 C+θ，环不存在；
-        //   · 偏差 > 35°；距上次回正结束 ≥ 2s；不在手动转镜让位期内；目标不是一堵墙。
-        const float AutoRecenterAngle = 35f;    // 偏差门槛
-        const float AutoRecenterGap = 1.5f;     // 两次自动回正的最小间隔
-        const float AutoRecenterSettle = 0.3f;  // 朝向需安定多久（无聚焦目标时才要求）
-        const float AutoRecenterStickIdle = 0.12f;  // 摇杆需松开多久（战斗中松杆很短促）
+        // 判据只有一条，并且对战斗与探索是同一条：
+        //     **你接下来要面对的东西，现在看得见吗？**
+        //         战斗 → 正在打的敌人；   探索 → 角色前方 6m 的「视察点」。
+        //     看得见（在取景窗内）→ 镜头一动不动。看不见 → 需要回正。
+        //
+        // 用"视察点在不在窗内"而不是"朝向转了多少度"，是因为前者自动把
+        // 【镜头在身后 4.6m 造成的向心压缩】算进去了。代入几何得到的实际阈值：
+        //     转向  15° → 视察点屏幕角  8.5°   窗内 → 不动镜
+        //     转向  30° →              17.0°   窗内 → 不动镜
+        //     转向  45° →              25.6°   窗内 → 不动镜
+        //     转向  55° →              31.4°   出窗 → 需要回正
+        //     转向  90° →              52.5°   出窗
+        //     转向 180° →             180.0°   出窗（用户说的"从前转朝后"）
+        // 也就是说 **±50° 以内的转向、走位、闪避、出招转向一律不动镜**——
+        // 那些方向你本来就看得见；**超过约 55° 才回正**——那时你确实什么都看不到。
+        // 阈值是从几何解出来的，不是拍的。
+        //
+        // 「想回正」与「能回正」是分开的两件事：
+        //   · **想**：视察点/敌人出窗持续 0.2s（滤掉一闪而过）→ 置起 _wantRecenterT；
+        //   · **能**：摇杆松开，或摇杆已推回接近画面正前（离轴 <35°）。
+        //     这一条是几何硬要求：移动是镜头相对的 ⇒ 行进方向 = 镜头偏航 + 摇杆角 θ。
+        //     推着离轴 θ 时把镜头转到行进方向背后【无解】——转多快都一样，
+        //     只会让角色画更紧的圈（实测提到 340°/s，偏离角只从 87.9° 缩到 75.2°，
+        //     自转却涨到 207°/s）。更糟的是回正一结束、参考系解冻的那一刻，
+        //     摇杆的世界方向会整体旋转 θ 度，玩家会被"掉头回去"。
+        //     松杆时环消失，回正既收敛又无副作用——所以要等那一刻，并且抓得很紧。
+        // 两者同时满足才执行；只"想"不"能"时，由探索伺服以 30°/s 走缓弧、
+        // 配合引导留白与转向拉远撑住视野，等玩家松杆的那一瞬间立刻兑现。
+        const float AutoRecenterGap = 1.5f;         // 两次自动回正的最小间隔
+        const float AutoRecenterWantHold = 0.2f;    // 出窗需持续多久才算"想回正"
+        const float AutoRecenterStickIdle = 0.07f;  // 摇杆松开多久即可兑现（掉头时拇指过中心很快，抓得紧一点）
+        const float AutoRecenterStickAligned = 35f; // 摇杆离画面正前小于此角也可兑现（环很弱）
+        const float AutoRecenterMinAmount = 25f;    // 摆不到这个幅度就不值得动镜
         const float AutoRecenterMinTime = 0.4f;
         const float AutoRecenterMaxTime = 0.8f;
         float _stickIdleT;                 // 摇杆松开时长
-        float _headingAnchor, _headingSettleT;   // 朝向安定检测（锚点法）
-        const float HeadingSettleBand = 12f;
+        float _wantRecenterT;              // 「看不见要去/要打的地方」已持续多久
 
         /// <summary>
         /// 回正目标方位，按"最能说明此刻该看哪"的顺序取：
@@ -337,9 +390,10 @@ namespace AdversityRoad.Player
             _recenterFrom = _yaw;
             _recenterTo = targetYaw;
             _lastRecenter = Time.unscaledTime;
-            // 必须清零：出画计时只在取景窗那条分支里累加，而回正期间那条分支被跳过。
-            // 不清零就会"回正结束 → 计时仍 >0.5s → 立刻又触发"，卡成死循环。
+            // 两个计时都必须清零，否则"回正结束 → 计时仍超阈值 → 立刻又触发"，
+            // 卡成死循环（出画计时只在取景窗那条分支里累加，而回正期间那条分支被跳过）。
             _focusOutT = 0f;
+            _wantRecenterT = 0f;
         }
 
         /// <summary>本帧是否该自动触发一次回正（条件见上方注释）。</summary>
@@ -352,19 +406,28 @@ namespace AdversityRoad.Player
 
             // ===== 硬兜底：敌人已经彻底出画 =====
             // "看不见正在打的人"是不可接受的失败模式，必须有一条【无条件】生效的通路：
-            // 不等松杆、不等冷却、不管偏差门槛，一律把镜头摆回敌人身上。
-            // 取景窗调得再准也可能有漏网情形（贴墙、被挤到角落、敌人瞬移式突进），
-            // 这条保证那些情形最多只持续 0.5 秒。
+            // 不等松杆、不等冷却，一律把镜头摆回敌人身上。取景窗调得再准也可能有漏网
+            // 情形（贴墙、被挤到角落、敌人瞬移式突进），这条保证最多只持续 0.5 秒。
             if (_focusOutT > FocusLostForce) return true;
 
-            if (!fighting && !_focusActive) return false;
+            // ---- 「想」：看不见要去/要打的地方，且已持续够久 ----
+            if (_wantRecenterT < AutoRecenterWantHold) return false;
             if (Time.unscaledTime - _lastRecenter < AutoRecenterGap) return false;
-            if (_stickIdleT < AutoRecenterStickIdle) return false;
-            // 朝向安定只在【没有聚焦敌人】时才要求：那时目标是角色朝向（＝C+θ），
-            // 必须等它定下来才有意义。有敌人时目标是敌人方位，与摇杆无关，不必等。
-            if (!_focusActive && _headingSettleT < AutoRecenterSettle) return false;
+
+            // ---- 「能」：摇杆松开，或已推回接近画面正前（此时代数环很弱）----
+            bool stickFree = _stickIdleT >= AutoRecenterStickIdle;
+            if (!stickFree && player != null)
+            {
+                Vector3 sw = player.StickWorldDir;
+                stickFree = sw.sqrMagnitude > 0.04f &&
+                            Mathf.Abs(ScreenAngleTo(target.position + sw.normalized * 4f))
+                                < AutoRecenterStickAligned;
+            }
+            if (!stickFree) return false;
+
             float want = RecenterTargetYaw(lockTarget);
-            if (Mathf.Abs(Mathf.DeltaAngle(_yaw, want)) < AutoRecenterAngle) return false;
+            // 摆不到一定幅度就不值得动镜（避免"为了 5° 也来一次运镜"）
+            if (Mathf.Abs(Mathf.DeltaAngle(_yaw, want)) < AutoRecenterMinAmount) return false;
             // 别把镜头摆进墙里：目标方位退不开吊杆就放弃这次回正（下次再说）
             float free = FreeBoomDistance(target.position + Vector3.up * _pivotH, want,
                 offset.magnitude * _lenFactor);
@@ -780,16 +843,17 @@ namespace AdversityRoad.Player
             }
             _focusActive = _focusEnemy != null && !disengaging;
 
-            // ---- 朝向"安定"检测（自动回正的触发条件之一）----
-            // 不能用 _headingHoldT：它只在单帧瞬转 >220°/s 时清零，缓慢持续转向会
-            // 一直累计，读作"很安定"。这里用锚点法：朝向偏离锚点 >12° 就重新计时，
-            // 于是"绕着敌人慢慢转"也不会被误判为安定。
-            if (Mathf.Abs(Mathf.DeltaAngle(_headingAnchor, _headingAvg)) > HeadingSettleBand)
-            {
-                _headingAnchor = _headingAvg;
-                _headingSettleT = 0f;
-            }
-            else _headingSettleT += dt;
+            // ---- 「需不需要回正」的统一判据：要面对的东西现在看得见吗 ----
+            // 战斗看敌人，探索看角色前方 6m 的视察点；都用同一个取景窗来量。
+            // 0.8 倍窗宽：敌人被取景窗推到窗沿后仍算"该整理一下构图"，
+            // 于是松杆时会把它摆回画面中央，而不是长期停在画面边上。
+            Vector3 aimPoint = _focusActive
+                ? _focusEnemy.position
+                : target.position + Quaternion.Euler(0f, _headingAvg, 0f) *
+                                    Vector3.forward * LookAheadDist;
+            if (Mathf.Abs(ScreenAngleTo(aimPoint)) > HalfHorizontalFov() * FocusWindowRatio * 0.8f)
+                _wantRecenterT += dt;
+            else _wantRecenterT = 0f;
 
             // ---- 一键回正（玩家显式触发）：触屏双击转镜区 / 桌面 V 键 ----
             if (MobileInput.ConsumeRecenter() ||
@@ -913,24 +977,13 @@ namespace AdversityRoad.Player
                 float halfH = HalfHorizontalFov();
                 float window = halfH * FocusWindowRatio;
 
-                // 直接在【屏幕角】空间里工作：用镜头【真实的 forward】量有符号水平角。
-                // 不用 _curYaw 反推——肩后构图的横向偏移(offset.x=0.45)让镜头的实际
-                // 视线偏离 _curYaw 约 5.6°，反推会让取景窗左右不对称（24° vs 36°）。
-                // SignedAngle 还天然表示"敌人跑到镜头背后"（|角|>90°）。
-                Vector3 camFwd = transform.forward; camFwd.y = 0f;
-                if (camFwd.sqrMagnitude < 1e-4f)
-                    camFwd = Quaternion.Euler(0f, _curYaw, 0f) * Vector3.forward;
-                camFwd.Normalize();
                 // 低通要滤【敌人的位置】，不能滤屏幕角——屏幕角同时含有镜头自身的转动，
                 // 滤它等于把本回路的反馈也一起延迟 τ≈0.31s，与伺服时间常数同量级，
                 // 必然过冲振荡。滤位置则镜头一转、屏幕角立刻如实反映，回路是稳的。
                 if (!_focusInit) { _focusPos = _focusEnemy.position; _focusInit = true; }
                 _focusPos = Vector3.Lerp(_focusPos, _focusEnemy.position,
                     1f - Mathf.Exp(-AimLowPass * dt));
-                Vector3 toFocus = _focusPos - transform.position;
-                toFocus.y = 0f;
-                float screenAng = toFocus.sqrMagnitude > 0.04f
-                    ? Vector3.SignedAngle(camFwd, toFocus.normalized, Vector3.up) : 0f;
+                float screenAng = ScreenAngleTo(_focusPos);
 
                 float outside = Mathf.Abs(screenAng) - window;
                 // 出画计时：完全出了画面（而不只是出了取景窗）才累计，
