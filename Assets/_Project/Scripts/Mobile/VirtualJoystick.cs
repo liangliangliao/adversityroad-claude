@@ -5,10 +5,14 @@ namespace AdversityRoad.Mobile
 {
     /// <summary>
     /// 左下角虚拟摇杆：拖动写入 MobileInput.Move。
-    /// 为「平稳 + 精准」做了三件事：
+    /// 为「平稳 + 精准」做了四件事：
     ///   ① 径向死区（滤中心静止噪声，保持全向 360°）；
     ///   ② 响应曲线（小幅推动更细腻，慢走/微调更精准）；
-    ///   ③ 逐帧临界阻尼平滑（滤掉手指微抖，输出平稳不跳变）。
+    ///   ③ **极坐标平滑**——力度与方向【分开】平滑。二维向量做 SmoothDamp 会把两者
+    ///      绑在同一个时间常数上，而手感要求恰恰相反：力度糊了读作"起步/收步发肉"，
+    ///      方向抖了读作"角色/镜头细碎乱动"。故力度保持跟手、方向另给更长的时间常数；
+    ///   ④ **轻推时方向平滑加重 + 角速率限幅**：同样幅度的手指横向抖动，在轻推
+    ///      （半径小）时对应的角度误差最大——那正是"稍微一动方向就变"的输入端来源。
     /// </summary>
     public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
     {
@@ -16,15 +20,23 @@ namespace AdversityRoad.Mobile
         public float radius = 100f;
         [Tooltip("死区：仅滤掉贴近中心的静止噪声，保持全向 360° 全量程手感；设 0 即无死区")]
         [Range(0f, 0.4f)] public float deadZone = 0.06f;
-        [Tooltip("响应平滑时间（秒）：越大越稳（滤手指抖动），越小越跟手")]
+        [Tooltip("力度平滑时间（秒）：越大越稳，越小越跟手")]
         public float smoothTime = 0.06f;
+        [Tooltip("方向平滑时间（秒·满推时）：比力度更稳一点，滤掉手指的横向微抖")]
+        public float dirSmoothTime = 0.075f;
+        [Tooltip("轻推时的方向平滑倍率：轻推时同样的手指抖动对应更大的角度误差，故加重")]
+        public float lightPushDirMult = 2.6f;
+        [Tooltip("方向变化速率上限（度/秒）：封顶噪声引起的瞬时换向；正常搓杆远达不到")]
+        public float maxDirRate = 900f;
         [Tooltip("响应曲线指数（>1 让小幅推动更精细，利于慢走与微调对准）")]
         public float responseExp = 1.3f;
 
         RectTransform _rt;
         Vector2 _target;   // 本帧目标（已去死区+曲线）
         Vector2 _value;    // 平滑后的实际输出
-        Vector2 _vel;
+        float _mag, _magVel;      // 力度（极坐标）
+        float _angle, _angleVel;  // 方向角（极坐标，度）
+        bool _angleInit;
         bool _held;
 
         void Awake() => _rt = GetComponent<RectTransform>();
@@ -49,11 +61,31 @@ namespace AdversityRoad.Mobile
 
         void Update()
         {
-            // 逐帧临界阻尼平滑：手指的高频微抖被滤掉，方向/力度输出平稳；
-            // 松手时用更短的时间快速归零，避免"松手还在走"。
-            _value = Vector2.SmoothDamp(_value, _target, ref _vel,
-                _held ? smoothTime : smoothTime * 0.5f);
-            if (!_held && _value.sqrMagnitude < 1e-5f) _value = Vector2.zero;
+            float dt = Time.unscaledDeltaTime;
+            if (dt <= 0f) return;
+
+            // ---- 力度：保持跟手（松手时更短，避免"松手还在走"）----
+            float targetMag = _target.magnitude;
+            _mag = Mathf.SmoothDamp(_mag, targetMag, ref _magVel,
+                _held ? smoothTime : smoothTime * 0.5f, Mathf.Infinity, dt);
+
+            // ---- 方向：更稳，且推得越轻越稳 ----
+            if (targetMag > 1e-4f)
+            {
+                float targetAngle = Mathf.Atan2(_target.x, _target.y) * Mathf.Rad2Deg;
+                if (!_angleInit) { _angleInit = true; _angle = targetAngle; _angleVel = 0f; }
+                _angle = Mathf.SmoothDampAngle(_angle, targetAngle, ref _angleVel,
+                    dirSmoothTime * Mathf.Lerp(lightPushDirMult, 1f, Mathf.Clamp01(targetMag)),
+                    maxDirRate, dt);
+            }
+            else _angleInit = false;   // 归零/松手后重推：立刻按新方向起手，不带旧角度
+
+            if (_mag < 1e-4f) { _value = Vector2.zero; _magVel = 0f; }
+            else
+            {
+                float rad = _angle * Mathf.Deg2Rad;
+                _value = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad)) * Mathf.Min(_mag, 1f);
+            }
             MobileInput.Move = _value;
         }
 

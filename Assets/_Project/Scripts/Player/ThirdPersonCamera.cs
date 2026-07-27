@@ -3,11 +3,23 @@ using AdversityRoad.Mobile;
 
 namespace AdversityRoad.Player
 {
+    /// <summary>镜头自动跟随的档位（设置面板切换，本地持久化）。</summary>
+    public enum CameraFollowMode
+    {
+        /// <summary>关闭：镜头只由手动转镜、锁定与一键回正驱动。</summary>
+        Off = 0,
+        /// <summary>仅探索：交战中完全不转镜（黑神话悟空式的彻底分离）。</summary>
+        ExploreOnly = 1,
+        /// <summary>智能（默认）：交战中只跟随【真实走位】，不跟朝向。</summary>
+        Smart = 2,
+    }
+
     /// <summary>
     /// 第三人称跟随镜头。
     ///
     /// 全部自动运镜共用同一套稳定设施——**探索与战斗不再是两套逻辑**：
-    ///   ① 目标方位低通滤波（探索追角色朝向 _headingAvg，战斗追敌我方位 _aimAvg）；
+    ///   ① 目标方位低通滤波（探索追朝向 _headingAvg，未锁定的战斗追行进方向 _travelAvg，
+    ///      锁定时追敌我方位 _aimAvg）；
     ///   ② **渐进软区**（驱动量＝偏差×(|偏差|/软区)²）：小偏差时增益≈0 不追抖动，
     ///      但始终保有微弱回正力，因此不会像硬死区那样永久停偏——
     ///      硬死区的稳态残差恰好等于死区大小（13~20°），那就是"转动很松"；
@@ -30,6 +42,16 @@ namespace AdversityRoad.Player
     /// - **遮挡换角**：被柱子/墙体挡住超过 0.55s 时绕到看得见的角度（从小到大试偏移，
     ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
     ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
+    ///
+    /// **跟随信号的选择（本轮）**：稳定设施再好，喂错信号也白搭。
+    /// 未锁定时的战斗走的是探索分支，而探索分支追的是【角色朝向 _headingAvg】——
+    /// 战斗中角色朝向恰恰是全场最跳的量：出招磁吸每一击瞬转向敌人、翻滚起手硬转、
+    /// 推杆出招转向 150°/s（都低于 220°/s 的稳定计时清零阈值，因此一路畅通），
+    /// 而 threatAhead 在交战中几乎恒真，又把门槛压到 0.06s / 35°。
+    /// 于是"摇杆稍一动镜头就抖"。
+    /// 现在：**交战中改追【真实行进方向】**（低通后的水平速度方向）——
+    /// 站着出招/转身完全不产生跟随信号，只有真正走位才移镜；探索时朝向≡行进方向，
+    /// 一切既有调参不受影响。
     ///
     /// 与角色的代数环（两个推论，都是几何决定的，不是参数没调好）：
     /// 摇杆是镜头相对的 ⇒ 角色朝向 H = 镜头偏航 C + 摇杆角 θ ⇒ **H - C ≡ θ 恒成立**。
@@ -110,6 +132,30 @@ namespace AdversityRoad.Player
 
         public PlayerController player;
         public LockOnSystem lockOn;
+
+        const string FollowModeKey = "cam_follow_mode";
+
+        /// <summary>
+        /// 镜头自动跟随档位（设置面板切换，本地持久化）。默认「智能」：
+        /// 交战中只跟随真实走位，不跟角色朝向——出招/转身不动镜。
+        /// </summary>
+        public static CameraFollowMode FollowMode
+        {
+            get => (CameraFollowMode)Mathf.Clamp(
+                PlayerPrefs.GetInt(FollowModeKey, (int)CameraFollowMode.Smart), 0, 2);
+            set { PlayerPrefs.SetInt(FollowModeKey, (int)value); PlayerPrefs.Save(); }
+        }
+
+        /// <summary>档位的中文名（设置面板按钮文案）。</summary>
+        public static string FollowModeLabel(CameraFollowMode m)
+        {
+            switch (m)
+            {
+                case CameraFollowMode.Off: return "关闭（全手动）";
+                case CameraFollowMode.ExploreOnly: return "仅探索（战斗中不转镜）";
+                default: return "智能（战斗中只跟走位）";
+            }
+        }
 
         float _yaw, _pitch = 10f;
         float _curYaw, _curPitch = 10f;
@@ -248,10 +294,33 @@ namespace AdversityRoad.Player
         const float OccludeHold = 0.55f;   // 遮挡持续这么久才换角（穿过一下不换）
         const float OccludeDwell = 4f;     // 换角后的最短驻留（防来回横跳）
 
-        float _headingAvg;                 // 平滑朝向（低通滤波，镜头的实际追踪目标）
+        float _headingAvg;                 // 平滑朝向（低通滤波；探索时即镜头的追踪目标）
         float _headingHoldT;               // 当前朝向的稳定时长（大幅瞬转会清零重计）
         float _lastHeading;
         bool _headingInit;
+
+        // ---- 行进方向（战斗中的跟随信号）----
+        // 战斗中角色朝向与行进方向会解耦：出招磁吸把朝向瞬间拧向敌人、推杆出招转向、
+        // 翻滚起手硬转——这些都只动朝向，不动位移。镜头若追朝向就会复制这些跳变；
+        // 追【真实位移方向】则天然免疫：站着挥拳时它根本不存在。
+        float _travelAvg;                  // 低通后的行进方向（世界偏航）
+        float _travelHoldT;                // 行进方向的稳定时长
+        float _lastTravelYaw;
+        bool _travelInit;
+        /// <summary>低于此速度视为"没在走位"——战斗中此时完全不提供跟随信号。
+        /// 取 runSpeed 的 ~23%：碎步调整站位够不着它，真正的走位/拉开距离才算。</summary>
+        const float TravelMinSpeed = 1.2f;
+        /// <summary>行进方向的角速度超过此值＝"方向还没定下来"，稳定计时清零。</summary>
+        const float TravelSwingRate = 200f;
+        /// <summary>行进方向的低通收敛率（1/秒）：与 AimLowPass 同量级，
+        /// 压掉 1Hz 以上的走位抖动而不影响真实的转向绕行。</summary>
+        const float TravelLowPass = 4.5f;
+        /// <summary>交战中的跟随软区（度）。远大于探索的 10°——战斗中没有需要精确
+        /// 追踪的目标（真要盯人就该按「锁」），松一点正是"稳如三脚架"的要求；
+        /// 而 SoftTarget 是渐进软区，不像硬死区那样留下等于区宽的稳态残差。</summary>
+        const float CombatSoftZone = 30f;
+        int _engagedEnemies;               // 9m 内【真的在交战】的敌人数（追击/攻击/硬直）
+        float _combatBlend;                // 交战程度 0→1：位置阻尼与焦点死区随之加重
         float _pivotH = 0.42f;
         float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
         float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
@@ -395,6 +464,32 @@ namespace AdversityRoad.Player
             float lpRate = Mathf.Lerp(5f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
             _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-lpRate * dt));
 
+            // ---- 行进方向滤波（战斗跟随的信号源）----
+            // 与朝向滤波同构，但信号取自【真实位移】：站着出招/转身时它压根不存在，
+            // 因此出招磁吸、推杆转向、翻滚硬转都不会传导成镜头运动。
+            float travelSpeed = _planarVel.magnitude;
+            bool travelValid = travelSpeed > TravelMinSpeed;
+            if (!travelValid) { _travelHoldT = 0f; _travelInit = false; }
+            else
+            {
+                float rawTravel = Quaternion.LookRotation(_planarVel / travelSpeed).eulerAngles.y;
+                if (!_travelInit)
+                {
+                    _travelInit = true;
+                    _travelAvg = rawTravel;
+                    _lastTravelYaw = rawTravel;
+                    _travelHoldT = 0f;
+                }
+                else
+                {
+                    float rate = Mathf.Abs(Mathf.DeltaAngle(_lastTravelYaw, rawTravel)) / dt;
+                    _travelHoldT = rate > TravelSwingRate ? 0f : _travelHoldT + dt;
+                    _lastTravelYaw = rawTravel;
+                }
+                _travelAvg = Mathf.LerpAngle(_travelAvg, rawTravel,
+                    1f - Mathf.Exp(-TravelLowPass * dt));
+            }
+
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
             else _closeStrength = Mathf.MoveTowards(_closeStrength, 0f, dt / 0.4f);
@@ -405,6 +500,7 @@ namespace AdversityRoad.Player
             {
                 _nextShotScan = Time.unscaledTime + 0.3f;
                 _nearbyEnemies = 0;
+                _engagedEnemies = 0;
                 _threatDirs.Clear();
                 foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
                 {
@@ -412,6 +508,10 @@ namespace AdversityRoad.Player
                     Vector3 to = e.transform.position - target.position; to.y = 0;
                     float d2 = to.sqrMagnitude;
                     if (d2 < 81f) _nearbyEnemies++;
+                    // 「真的在打」才算交战：待机/巡逻的敌人只影响景别——路过一个
+                    // 没搭理你的敌人不该把镜头切成战斗模式
+                    if (d2 < 81f && e.State != AI.EnemyState.Idle &&
+                        e.State != AI.EnemyState.Patrol) _engagedEnemies++;
                     // 威胁方位缓存（14m 内）：供每帧判断"我正在转向的方向上有没有敌人"
                     if (d2 < 196f && d2 > 0.01f)
                         _threatDirs.Add(Quaternion.LookRotation(to.normalized).eulerAngles.y);
@@ -533,6 +633,14 @@ namespace AdversityRoad.Player
             bool ultimate = _ultimateTimer > 0f;
             bool manualLook = Time.unscaledTime - _lastManualLook < autoFollowDelay;
 
+            // ---- 交战程度：锁定 / 出招中 / 身边有敌人在打 ----
+            // 未锁定的近身互殴同样是"战斗"，位置侧的稳镜与跟随信号的选择都要认它。
+            if (_playerFsm == null && player != null)
+                _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
+            bool fightingNow = lockTarget != null || _engagedEnemies > 0 ||
+                               (_playerFsm != null && _playerFsm.InCombat);
+            _combatBlend = Mathf.MoveTowards(_combatBlend, fightingNow ? 1f : 0f, dt / 0.6f);
+
             if (_recenterT > 0f) { /* 回正接管本帧的偏航，跳过常规自动运镜 */ }
             else if (combat)
             {
@@ -603,13 +711,32 @@ namespace AdversityRoad.Player
             {
                 bool moving = moveSpeed > 0.6f;
                 bool manualRecently = manualLook;
-                if (_playerFsm == null && player != null)
-                    _playerFsm = player.GetComponent<Combat.CombatStateMachine>();
-                bool fighting = _playerFsm != null && _playerFsm.InCombat;
+                bool fighting = fightingNow;
+
+                // ===== 跟随信号的选择（本轮的核心修复）=====
+                // 探索：追【朝向】——此时朝向≡行进方向，既有调参完全不受影响。
+                // 交战：只追【真实行进方向】。战斗中朝向被出招磁吸（每一击瞬转向敌人）、
+                //   推杆出招转向（150°/s）、翻滚起手（硬转）搅得剧烈跳变，而这些都
+                //   低于 220°/s 的清零阈值，于是一路畅通地传到镜头上——这就是
+                //   "摇杆稍一动镜头就抖"。位移方向没有这个毛病：站着挥拳时它不存在。
+                // 「仅探索」档更进一步，交战中彻底不转镜（悟空式的完全分离）。
+                bool followHold = FollowMode == CameraFollowMode.Off ||
+                    (fighting && (FollowMode == CameraFollowMode.ExploreOnly || !travelValid));
+                // 不跟随时把目标设成镜头自身：偏差恒为 0，既不驱动镜头，
+                // 也不会让下游的「大幅转向拉远视野」被一个陈旧的行进方向长期撑开。
+                // 分支本身照常走完，末尾的 _yawFollowVel 衰减才不会被跳过
+                //（硬置零速度＝无限 jerk，正是本文件反复强调要避免的）
+                float followYaw = followHold ? _yaw : (fighting ? _travelAvg : _headingAvg);
+                float followHoldT = fighting ? _travelHoldT : _headingHoldT;
+                float softZone = fighting ? CombatSoftZone : exploreReorientAngle;
+
                 // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
-                // 若只看 moveSpeed 会误判成静止而完全不回正——这正是"出招中转向后看不见前方"的缺口
-                bool steering = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
-                bool active = moving || steering;
+                // 若只看 moveSpeed 会误判成静止而完全不回正。
+                // 但这一条只对【探索】成立——交战中信号本就取自位移，推杆不该单独驱动镜头，
+                // 否则"站着推杆调整出招朝向"又会把镜头带起来（正是本轮要治的症状）。
+                bool steering = !fighting && player != null &&
+                                player.StickWorldDir.sqrMagnitude > 0.04f;
+                bool active = (moving || steering) && !followHold;
 
                 // ===== 统一渐进回正（转向尺度 → 镜头同步幅度，连续映射，无分档断层）=====
                 // 此前战斗/探索是互斥的两条分支：战斗中只有 >55° 才回正，
@@ -619,7 +746,7 @@ namespace AdversityRoad.Player
                 //   · 大幅换向（战斗 >55° / 探索 >45°）→ 迟滞开关锁定追击，直到 <12° 才松开，
                 //     保证掉头/转身打背后敌人时迅速把新方向框进画面；
                 //   · 手动转镜期间一律让位给玩家。
-                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg));
+                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, followYaw));
 
                 // ===== 意图识别 ①：「朝镜头走来」≠「要把镜头甩到背后」=====
                 // err≈180° 意味着角色正朝镜头方向来。此前一律读作"要换方向"，于是玩家
@@ -634,7 +761,12 @@ namespace AdversityRoad.Player
                 // 「向前突然改为向后逃跑/迎击追兵」也一并抑制 0.9 秒，导致后方
                 // 跟随的敌人进入盲区。两者输入相同、意图相反，唯一可靠的区分
                 // 就是【那个方向上有没有威胁】。
-                bool threatAhead = ThreatNear(_headingAvg, 70f);
+                // 威胁判据必须挂在【行进方向】上，而不是朝向。
+                // 旧写法 ThreatNear(_headingAvg, 70°) 在交战中几乎恒真——只要你面朝
+                // 正在打的敌人就成立——于是 holdNeed 被压到 0.06s、bigAngle 压到 35°，
+                // 迟滞开关几乎全程锁死，镜头一路追着朝向抖。改为"确实在朝那个方向走"：
+                // 迎击追兵/换目标照样成立（那时你真在跑过去），原地对拳则完全不成立。
+                bool threatAhead = travelValid && ThreatNear(_travelAvg, 55f);
                 bool towardCamera = err > 130f;
                 if (towardCamera && moving && !fighting) _towardCamT += dt;
                 else _towardCamT = 0f;
@@ -651,25 +783,33 @@ namespace AdversityRoad.Player
 
                 float bigAngle = fighting ? 55f : 45f;
                 float holdNeed = fighting ? 0.24f : 0.15f;
-                // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）
+                // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）。
+                // 现在它要求【真的在朝那边跑】，所以这条快车道只服务于迎击/追击，
+                // 不再被原地对拳蹭到。
                 if (threatAhead) { holdNeed = 0.06f; bigAngle = 35f; }
-                if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent) _combatReorient = true;
-                else if (err < 12f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
+                if (!followHold && err > bigAngle && followHoldT > holdNeed && !backingIntent)
+                    _combatReorient = true;
+                else if (followHold || err < 12f || followHoldT < 0.1f || backingIntent)
+                    _combatReorient = false;
 
                 // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
                 // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
-                bool gentle = active && _headingHoldT > steadyNeed && err > exploreReorientAngle
+                bool gentle = active && followHoldT > steadyNeed && err > softZone
                               && !backingIntent;
 
                 if (!manualRecently && (_combatReorient || gentle))
                 {
                     // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
                     // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
-                    float t = Mathf.Clamp01((err - exploreReorientAngle) / 130f);
+                    float t = Mathf.Clamp01((err - softZone) / 130f);
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
                                               exploreMaxSpeed * 4f, t);
+                    // 交战中的走位跟随再压一档慢：即使真在走位，战斗镜头也该像
+                    // 斯坦尼康那样缓缓平移，而不是随每一次侧闪就荡过去。
+                    // 大幅掉头（迎击背后追兵）不受此限——那正是需要快的时候。
+                    if (fighting) maxSpd *= Mathf.Lerp(0.5f, 1f, t);
                     // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
                     //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
                     //   一条不再改变行为的特殊分支只会让运镜更难预测，故移除。）
@@ -697,7 +837,7 @@ namespace AdversityRoad.Player
                     if (err > 45f)
                     {
                         Vector3 probePivot = target.position + Vector3.up * _pivotH;
-                        float freeAtTarget = FreeBoomDistance(probePivot, _headingAvg,
+                        float freeAtTarget = FreeBoomDistance(probePivot, followYaw,
                                                               offset.magnitude * _lenFactor);
                         float room = Mathf.InverseLerp(1.8f, 3.2f, freeAtTarget);   // 0=贴墙 1=开阔
                         // 下限 0.25→0.6：旧值把贴墙掉头的转镜从 1.15s 拖到 2.60s，
@@ -710,7 +850,7 @@ namespace AdversityRoad.Player
                     }
 
                     // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
-                    float softHeading = SoftTarget(_yaw, _headingAvg + _occYawBias, exploreReorientAngle);
+                    float softHeading = SoftTarget(_yaw, followYaw + _occYawBias, softZone);
                     _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
                 }
@@ -836,14 +976,18 @@ namespace AdversityRoad.Player
             // 电影三脚架感·焦点死区：小于死区的焦点位移完全不推镜——近身互殴时
             // 拳脚带来的细碎换位（突进/击退/侧闪的残余）不再传导成镜头晃动；
             // 只有真正的走位才移镜。战斗死区大（稳如三脚架），探索死区小（跟手）。
-            float dead = Mathf.Lerp(0.03f, 0.15f, _lockBlend);
+            // 判据用【交战程度】而不是【是否锁定】：锁定默认是关的（手动锁），
+            // 于是绝大多数近身互殴一直吃着"探索档"的跟手参数——
+            // 这是"打起来镜头抖"里属于【位置】的那一半（另一半是偏航，见上方跟随信号）。
+            float steady = Mathf.Max(_lockBlend, _combatBlend);
+            float dead = Mathf.Lerp(0.03f, 0.15f, steady);
             Vector2 drift = focusXZ - _focusAnchor;
             if (drift.magnitude > dead) _focusAnchor = focusXZ - drift.normalized * dead;
 
             _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
             // 战斗中位置阻尼加重（斯坦尼康式慢移），探索保持跟手
-            float fst = Mathf.Lerp(followSmoothTime, 0.24f, _lockBlend) * _shot.damping;
+            float fst = Mathf.Lerp(followSmoothTime, 0.24f, steady) * _shot.damping;
             _pivotXZ = Vector2.SmoothDamp(_pivotXZ, _focusAnchor, ref _pivotXZVel,
                 fst, Mathf.Infinity, dt);
             Vector3 pivot = new Vector3(_pivotXZ.x, _pivotY, _pivotXZ.y);

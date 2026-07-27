@@ -78,10 +78,12 @@ namespace AdversityRoad.UI
                 }
                 Refresh();
             });
-            _followBtn = MakeToggle("镜头自动跟随", -470, () =>
+            // 镜头自动跟随：三档循环。默认「智能」——交战中只跟随真实走位，
+            // 不跟角色朝向（出招/原地转身不动镜）；想要彻底的"方向与镜头分离"就选「仅探索」。
+            _followBtn = MakeToggle("", -470, () =>
             {
-                var cam = FindObjectOfType<ThirdPersonCamera>();
-                if (cam != null) cam.autoFollow = !cam.autoFollow;
+                ThirdPersonCamera.FollowMode =
+                    (CameraFollowMode)(((int)ThirdPersonCamera.FollowMode + 1) % 3);
                 Refresh();
             });
             _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -560, () =>
@@ -194,9 +196,14 @@ namespace AdversityRoad.UI
                 _softenBtn.GetComponent<Image>().color = s != null && s.softenDialogue ? On : Off;
             if (_recoveryBtn != null)
                 _recoveryBtn.GetComponent<Image>().color = s != null && s.recoveryMode ? On : Off;
-            var cam = FindObjectOfType<ThirdPersonCamera>();
             if (_followBtn != null)
-                _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
+            {
+                var mode = ThirdPersonCamera.FollowMode;
+                _followBtn.GetComponentInChildren<Text>().text =
+                    "镜头自动跟随：" + ThirdPersonCamera.FollowModeLabel(mode);
+                _followBtn.GetComponent<Image>().color =
+                    mode == CameraFollowMode.Off ? Off : On;
+            }
             if (_debugBtn != null)
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
             if (_lockModeBtn != null)
