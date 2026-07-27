@@ -163,6 +163,19 @@ namespace AdversityRoad.Player
         /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
         const float OrbitGateAngle = 12f;
         const float OrbitGateWidth = 30f;
+
+        // ---- 一键回正（业界通行的"逃生口"）----
+        // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
+        // 即：只要摇杆推在非正前方向，镜头在几何上就不可能对着角色正前方——
+        // 与转速、聚焦点都无关。大作对此的解法不是让镜头去追一个无解的目标，
+        // 而是给玩家一个显式动作，一次性把镜头拉到行进方向背后。
+        // 回正期间【锁存移动参考系】：否则镜头快速绕行会把角色一起拖着转，
+        // 0.35s 内可拖出 90°，回正反而把人转晕。
+        const float RecenterTime = 0.35f;
+        float _recenterT;
+        float _recenterFrom, _recenterTo;
+        /// <summary>回正进行中——PlayerController 据此冻结移动参考系。</summary>
+        public bool RecenterActive => _recenterT > 0f;
         readonly System.Collections.Generic.List<float> _threatDirs =
             new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
 
@@ -483,6 +496,33 @@ namespace AdversityRoad.Player
                 float rate = CameraDirector.BlendRate(_shot, wantShot);
                 _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
             }
+            // ---- 一键回正：触屏双击转镜区 / 桌面 V 键 ----
+            if (MobileInput.ConsumeRecenter() ||
+                (!Application.isMobilePlatform && Input.GetKeyDown(KeyCode.V)))
+            {
+                _recenterT = RecenterTime;
+                _recenterFrom = _yaw;
+                // 目标＝角色当前行进方向（有锁定目标时改取敌我方位，仍是"看向要打的人"）
+                Transform lk = lockOn != null ? lockOn.CurrentTarget : null;
+                if (lk != null)
+                {
+                    Vector3 toE = lk.position - target.position; toE.y = 0;
+                    _recenterTo = toE.sqrMagnitude > 0.09f
+                        ? Quaternion.LookRotation(toE.normalized).eulerAngles.y : _headingAvg;
+                }
+                else _recenterTo = target.eulerAngles.y;
+            }
+            if (_recenterT > 0f)
+            {
+                _recenterT -= dt;
+                // 平滑收尾曲线（SmoothStep）：起止都无速度突变，不违反限幅精神
+                float u = 1f - Mathf.Clamp01(_recenterT / RecenterTime);
+                _yaw = Mathf.LerpAngle(_recenterFrom, _recenterTo, Mathf.SmoothStep(0f, 1f, u));
+                _yawFollowVel = 0f;
+                _autoYawRate = 0f;
+                _lastManualLook = -99f;   // 回正后立刻允许自动跟随接管，不留 1.2s 空窗
+            }
+
             // 自动运镜的角加速度限幅——从这里开始记录基线。
             // 手动转镜（_yaw += lookX）发生在本方法更上方，因此不在限幅范围内：
             // 玩家自己甩镜是自发运动，不引起晕动，限它只会读作迟钝。
@@ -493,7 +533,8 @@ namespace AdversityRoad.Player
             bool ultimate = _ultimateTimer > 0f;
             bool manualLook = Time.unscaledTime - _lastManualLook < autoFollowDelay;
 
-            if (combat)
+            if (_recenterT > 0f) { /* 回正接管本帧的偏航，跳过常规自动运镜 */ }
+            else if (combat)
             {
                 // ===== 战斗机位（此前是全片最粗糙的一段，现与探索共用同一套稳定设施）=====
                 //

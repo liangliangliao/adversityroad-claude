@@ -348,12 +348,38 @@ namespace AdversityRoad.Player
         /// </summary>
         Vector3 CameraRelative(Vector2 input)
         {
-            if (input.sqrMagnitude < 0.0001f) return Vector3.zero;
+            if (input.sqrMagnitude < 0.0001f) { _recenterFrameInit = false; return Vector3.zero; }
             if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
-            Vector3 fwd = cameraTransform.forward; fwd.y = 0; fwd.Normalize();
-            Vector3 right = cameraTransform.right; right.y = 0; right.Normalize();
+
+            // 一键回正期间【冻结参考系】：回正会在 0.35s 内快速绕行，
+            // 若参考系跟着转，镜头会把角色一起拖着转（0.35s 可拖出 90°），
+            // 回正反而把人转晕。冻结是有界的、玩家自己触发的，与常态无关。
+            if (_cam == null) _cam = cameraTransform.GetComponent<ThirdPersonCamera>();
+            float frameYaw;
+            if (_cam != null && _cam.RecenterActive)
+            {
+                if (!_recenterFrameInit)
+                {
+                    _recenterFrameYaw = cameraTransform.eulerAngles.y;
+                    _recenterFrameInit = true;
+                }
+                frameYaw = _recenterFrameYaw;
+            }
+            else
+            {
+                _recenterFrameInit = false;
+                frameYaw = cameraTransform.eulerAngles.y;
+            }
+
+            Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
+            Vector3 fwd = frame * Vector3.forward;
+            Vector3 right = frame * Vector3.right;
             return (fwd * input.y + right * input.x).normalized;
         }
+
+        ThirdPersonCamera _cam;
+        float _recenterFrameYaw;
+        bool _recenterFrameInit;
 
         void ApplyGravityOnly(float dt)
         {

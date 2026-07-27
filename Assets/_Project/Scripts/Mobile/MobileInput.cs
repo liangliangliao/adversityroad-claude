@@ -118,6 +118,13 @@ namespace AdversityRoad.Mobile
 
         public static bool GetHeld(string btn) => _held.Contains(btn);
 
+        // ---- 镜头回正（一次性把镜头拉到角色行进方向背后）----
+        static bool _recenter;
+        /// <summary>请求一次镜头回正（触屏双击转镜区 / 桌面 V 键）。</summary>
+        public static void RequestRecenter() => _recenter = true;
+        /// <summary>消费式读取：镜头每帧读一次，读到即清除。</summary>
+        public static bool ConsumeRecenter() { bool r = _recenter; _recenter = false; return r; }
+
         /// <summary>镜头消费转镜头增量：读取后清零，避免与清帧顺序赛跑。</summary>
         public static Vector2 ConsumeLook()
         {
