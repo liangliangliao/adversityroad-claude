@@ -31,12 +31,17 @@ namespace AdversityRoad.Player
     ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
     ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
     ///
-    /// 与角色的代数环：摇杆是镜头相对的（moveDir = 镜头偏航 + 摇杆角），
-    /// 而镜头又要绕到角色背后，构成闭环——解 H=C+θ 且 C=H 只有 θ=0 有不动点，
-    /// 摇杆持续推向左/右/后时角色必然沿弧线行进，**弧的角速度＝镜头绕行速率**。
-    /// 曾试过锁存移动参考系来断环，但那会让摇杆与画面对不上（手指按左、画面向前），
-    /// 代价不可接受。现改为保住"摇杆↔画面一致"，把持续绕行速率压到 SustainedOrbitCap
-    /// (30°/s，半径 9.9m)——大作同样是这个取舍，缺陷从来不是"会画弧"而是弧太紧。
+    /// 与角色的代数环（两个推论，都是几何决定的，不是参数没调好）：
+    /// 摇杆是镜头相对的 ⇒ 角色朝向 H = 镜头偏航 C + 摇杆角 θ ⇒ **H - C ≡ θ 恒成立**。
+    ///  ① 镜头要绕到角色背后需 H-C=0，故【摇杆持续推在离轴 θ 时，镜头在几何上
+    ///     不可能转到角色行进方向背后】。实测持续推左 90°，绕行上限由 30°/s 提到
+    ///     340°/s，偏离角只由 87.9° 缩到 75.2°，自转却从 29°/s 涨到 207°/s——
+    ///     提速换不来视野，只换来转圈。横向/后向奔跑的盲区必须靠**取景**解决
+    ///     （见引导留白：横跑的"看前时间"由 1.06s 提到 1.52s）。
+    ///  ② 镜头一转 moveDir 就跟着转，角色必沿弧线行进，**弧的角速度＝绕行速率**。
+    ///     曾试过锁存移动参考系来断环，但那会让摇杆与画面对不上（手指按左、画面向前），
+    ///     代价不可接受。现保住"摇杆↔画面一致"，把持续绕行压到 SustainedOrbitCap
+    ///     (30°/s，半径 9.9m)——缺陷从来不是"会画弧"，而是弧太紧。
     ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
@@ -122,6 +127,8 @@ namespace AdversityRoad.Player
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
         float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
+        /// <summary>离轴奔跑强度（0~1，平滑）：横向/后向跑时拉远取景，进一步扩大可见前方。</summary>
+        float _offAxisRun;
         float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
         // ---- 镜头导演：景别选择与平滑过渡 ----
         ShotProfile _shot;                 // 当前生效的景别（插值后的实时值）
@@ -750,15 +757,39 @@ namespace AdversityRoad.Player
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
                 focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f,
                     Mathf.Max(lockCenterBias, _shot.centerBias) * _lockBlend);
+                _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
             }
             else if (moveSpeed > 1.5f)
             {
-                // 移动构图·引导留白（电影 lead room）：奔跑时焦点向移动方向前移，
-                // 角色让出前方画面空间——观众能看见"要去哪"，构图更有方向感。
-                float lead = Mathf.Clamp01(moveSpeed / 5.2f) * 0.45f;
+                // ===== 引导留白（lead room）：离轴奔跑时唯一有效的开阔视野手段 =====
+                //
+                // 摇杆是镜头相对的 ⇒ 角色朝向 H = 镜头偏航 C + 摇杆角 θ ⇒ H - C ≡ θ 恒成立。
+                // 即【摇杆推在离轴 θ 时，镜头在几何上不可能转到角色行进方向的背后】，
+                // 与镜头转多快毫无关系：实测持续推左 90°，绕行上限由 30°/s 提到 340°/s，
+                // 偏离角只从 87.9° 缩到 75.2°，而角色自转从 29°/s 暴涨到 207°/s——
+                // 提速换不来视野，只换来转圈。横向/后向奔跑的盲区必须靠取景解决。
+                //
+                // 做法：焦点朝移动方向前移，把角色让到画面后侧、前方空间纳入画面。
+                // 留白量随【离轴角】增大——正前奔跑视锥纵深本就足够，横向/后向最需要。
+                // 上限 2.2m：角色偏离画面中心 43%，仍属三分位构图；2.6m(51%) 就贴边了。
                 Vector2 vdir = new Vector2(_planarVel.x, _planarVel.z);
-                if (vdir.sqrMagnitude > 0.04f) focusXZ += vdir.normalized * lead;
+                if (vdir.sqrMagnitude > 0.04f)
+                {
+                    // 留白量【本身】必须走平滑：offAxis 随摇杆瞬变，若直接用，
+                    // 焦点会在 0.09s 的跟随时间内平移 1.75m（≈19m/s 的镜头平移），
+                    // 那是比原盲区更糟的晕动源。0.5s 过渡把它压到 ≈3.5m/s。
+                    Vector3 vn = new Vector3(vdir.x, 0, vdir.y).normalized;
+                    Vector3 camFwd = Quaternion.Euler(0, _curYaw, 0) * Vector3.forward;
+                    float offAxis = Mathf.Clamp01(Vector3.Angle(vn, camFwd) / 90f);
+                    _offAxisRun = Mathf.MoveTowards(_offAxisRun,
+                        offAxis * Mathf.Clamp01(moveSpeed / 5.2f), dt / 0.5f);
+                    float lead = Mathf.Clamp01(moveSpeed / 5.2f)
+                                 * Mathf.Lerp(0.45f, 2.2f, _offAxisRun);
+                    focusXZ += vdir.normalized * lead;
+                }
+                else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
             }
+            else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
             if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _focusAnchor = focusXZ; _pivotInit = true; }
 
             // 电影三脚架感·焦点死区：小于死区的焦点位移完全不推镜——近身互殴时
@@ -793,7 +824,8 @@ namespace AdversityRoad.Player
                 // 不会形成"呼吸式"变焦那种不稳感。
                 float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
                 float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.06f;
-                wantFactor = 1f + runOut + turnOut;
+                // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 7.9m
+                wantFactor = 1f + runOut + turnOut + _offAxisRun * 0.12f;
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             // 推近幅度随特写强度分级：击杀轻推、超必杀满推——不再一律贴到 0.82
