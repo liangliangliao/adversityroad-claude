@@ -823,8 +823,12 @@ namespace AdversityRoad.Player
                 // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
                 // 不会形成"呼吸式"变焦那种不稳感。
                 float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
-                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.06f;
-                // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 7.9m
+                // 转向开阔（0.06→0.15）：转向瞬间恰是最需要看清周围的时刻。
+                // 用【拉远吊杆】而不是【放大 FOV】——变焦会显著加剧晕动，
+                // 而纯位移只是把画面推开，是这几个杠杆里唯一还有余量且无副作用的。
+                // 转完即回（_lenFactor 的慢插值负责），角色占屏只在转向瞬间由 40%→35%。
+                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.15f;
+                // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 8.1m
                 wantFactor = 1f + runOut + turnOut + _offAxisRun * 0.12f;
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
