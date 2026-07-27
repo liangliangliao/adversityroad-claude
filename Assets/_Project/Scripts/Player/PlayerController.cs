@@ -329,12 +329,58 @@ namespace AdversityRoad.Player
             }
         }
 
+        // ===== 移动参考系：与镜头的【自动绕行】解耦 =====
+        //
+        // 直接用镜头当前偏航换算摇杆方向，会构成一个代数环：
+        //   角色朝向 ← 镜头偏航 + 摇杆角        （摇杆是镜头相对的）
+        //   镜头偏航 ← 追角色朝向                （自动绕到背后）
+        // 解 H = C + θ 且 C = H，只有 θ=0（正前）存在不动点；摇杆推向左/右/后时
+        // 方程无解，系统必然进入极限环——实测角色持续自转：左右 221°/s、向后 358°/s。
+        // 这就是"摇杆拉到底部角色一直转圈"的成因，不是设计，是缺陷。
+        //
+        // 解法：参考系只跟随【手动转镜】，不跟随自动绕行，环就断了。
+        // 摇杆方向明显改变时（或松杆后重推）重新对齐当前镜头——那一刻玩家看到的
+        // 就是镜头当前画面，对齐它才符合直觉。
+        const float MoveFrameResync = 30f;   // 摇杆方向偏离锁存值这么多度即重新对齐
+
+        float _moveFrameYaw;
+        Vector2 _moveFrameStick;
+        float _lastCamManualYaw;
+        bool _moveFrameInit;
+        ThirdPersonCamera _cam;
+
         Vector3 CameraRelative(Vector2 input)
         {
-            if (input.sqrMagnitude < 0.0001f) return Vector3.zero;
-            if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
-            Vector3 fwd = cameraTransform.forward; fwd.y = 0; fwd.Normalize();
-            Vector3 right = cameraTransform.right; right.y = 0; right.Normalize();
+            if (cameraTransform == null)
+                return input.sqrMagnitude < 0.0001f
+                    ? Vector3.zero : new Vector3(input.x, 0, input.y).normalized;
+
+            if (_cam == null) _cam = cameraTransform.GetComponent<ThirdPersonCamera>();
+            float camYaw = cameraTransform.eulerAngles.y;
+            // 手动转镜累计量：镜头没挂脚本时退化为直接跟随镜头（行为同旧版）
+            float manualYaw = _cam != null ? _cam.ManualYaw : camYaw;
+            float manualDelta = Mathf.DeltaAngle(_lastCamManualYaw, manualYaw);
+            _lastCamManualYaw = manualYaw;   // 必须每帧更新，松杆期间也不能漏，否则会攒出跳变
+
+            if (input.sqrMagnitude < 0.0001f) { _moveFrameInit = false; return Vector3.zero; }
+
+            Vector2 sn = input.normalized;
+            if (!_moveFrameInit || Vector2.Angle(sn, _moveFrameStick) > MoveFrameResync)
+            {
+                // 重新对齐：以玩家此刻【看到的】镜头为准
+                _moveFrameYaw = camYaw;
+                _moveFrameStick = sn;
+                _moveFrameInit = true;
+            }
+            else
+            {
+                // 保持期间只跟手动转镜——自动绕行不再拖着角色转
+                _moveFrameYaw += manualDelta;
+            }
+
+            Quaternion frame = Quaternion.Euler(0, _moveFrameYaw, 0);
+            Vector3 fwd = frame * Vector3.forward;
+            Vector3 right = frame * Vector3.right;
             return (fwd * input.y + right * input.x).normalized;
         }
 

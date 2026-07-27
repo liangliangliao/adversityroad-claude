@@ -15,7 +15,7 @@ namespace AdversityRoad.Player
     ///      死区加大会把真实运动一并杀掉（实测硬死区版 0.25Hz 跟随只剩 0.057）；
     ///   ④ 偏差→速度连续映射（小幅慢而稳、掉头快而不甩）；
     ///   ⑤ 墙壁减速（不把镜头甩进墙里）；⑥ 手动转镜期间一律让位给玩家；
-    ///   ⑦ **角加速度限幅 800°/s²，只限提速不限减速**——阻止镜头停下来只会制造拖尾。
+    ///   ⑦ **角加速度限幅 1100°/s²，只限提速不限减速**——阻止镜头停下来只会制造拖尾。
     ///
     /// 三版实测对照（0.25Hz 真实绕行跟随 / 1Hz 抖动传递 / 稳态残差 / 峰值角加速度）：
     ///   原始裸伺服      0.731 / 0.326 / 4.0° / 4800°/s²   ← 又抖又颠
@@ -30,6 +30,10 @@ namespace AdversityRoad.Player
     /// - **遮挡换角**：被柱子/墙体挡住超过 0.55s 时绕到看得见的角度（从小到大试偏移，
     ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
     ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
+    ///
+    /// 与角色的解耦：角色的移动参考系只跟随本类的 ManualYaw（手动转镜），
+    /// 不跟随自动绕行——否则 角色朝向←镜头+摇杆角、镜头←追角色朝向 构成代数环，
+    /// 摇杆推向左/右/后时角色会持续自转（实测 207~322°/s）。见 PlayerController.CameraRelative。
     ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
@@ -99,6 +103,15 @@ namespace AdversityRoad.Player
         public PlayerController player;
         public LockOnSystem lockOn;
 
+        /// <summary>
+        /// 累计的【手动】转镜角度（不含任何自动绕行）。
+        /// 角色的移动参考系只跟随这一项——这是切断"镜头↔角色"代数环的关键：
+        /// 若参考系跟随镜头的实际偏航，则 角色朝向←镜头+摇杆角、镜头←追角色朝向
+        /// 构成闭环，解 H=C+θ 且 C=H 只有 θ=0 有不动点，
+        /// 摇杆推向左/右/后时必然进入极限环（实测自转 221~358°/s）。
+        /// </summary>
+        public float ManualYaw { get; private set; }
+
         float _yaw, _pitch = 10f;
         float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
@@ -153,8 +166,11 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>自动运镜的角加速度上限（度/秒²）。只约束镜头【自己】的运动——
-        /// 玩家手动转镜不受限，自发运动不引起晕动，限它只会读作迟钝。</summary>
-        const float MaxAutoYawAccel = 800f;
+        /// 玩家手动转镜不受限，自发运动不引起晕动，限它只会读作迟钝。
+        /// 800→1100：实测掉头仍偏慢，盲区 1.00→0.86s；
+        /// 因为只限提速不限减速，且渐进软区已把稳态抖动压到 234°/s²，
+        /// 抬高上限只影响"大幅掉头"这一种情形，日常运镜的实际加速度远低于它。</summary>
+        const float MaxAutoYawAccel = 1100f;
         float _autoYawRate;                // 上一帧自动运镜的角速度（限幅用）
 
         /// <summary>该方位角附近是否有敌人（威胁感知：决定镜头该不该赶紧转过去）。</summary>
@@ -311,6 +327,7 @@ namespace AdversityRoad.Player
                 _lastManualLook = Time.unscaledTime;
 
             _yaw += lookX;
+            ManualYaw += lookX;   // 只累计【手动】转镜——移动参考系据此跟随，见 PlayerController
             // 第一人称放开俯仰范围：低头能看见自己的手/脚/剑，抬头能看见天空
             bool fpNow = Presets[PresetIndex].fp;
             _pitch = Mathf.Clamp(_pitch - lookY, fpNow ? -72f : minPitch, fpNow ? 80f : maxPitch);
