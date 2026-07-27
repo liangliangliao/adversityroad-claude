@@ -217,6 +217,17 @@ namespace AdversityRoad.Player
         /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
         const float OrbitGateAngle = 12f;
         const float OrbitGateWidth = 30f;
+        /// <summary>方向突变后允许快速绕行的【角度预算】与其速度上限。
+        /// 只钉死 30°/s 的代价是"跑着突然改方向，镜头好几秒才反应过来"；
+        /// 一味提速又只会让角色画更紧的圈（环还在）。给一份有限预算：
+        /// 突变后先快转 70°（约 0.55s），花完落回 30°/s 缓弧——
+        /// "突然改方向"立刻有反应，"一直推着离轴不放"仍不转圈，
+        /// 而被诱导的弧的上限就是这 70°，是个能算清的量。</summary>
+        const float OrbitBurstBudget = 70f;
+        const float OrbitBurstCap = 130f;
+        float _orbitBudget = OrbitBurstBudget;
+        float _lastStickOff;               // 上一帧的摇杆离轴角（＝拇指角，检测方向突变）
+        bool _stickOffInit;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -272,6 +283,9 @@ namespace AdversityRoad.Player
         bool _focusInit;
         float _focusOutT;                  // 聚焦敌人已出画多久
         bool _focusActive;                 // 本帧是否该框住聚焦敌人（撤离中为假）
+        float _focusScreenAng;             // 聚焦敌人的有符号屏幕水平角
+        bool _aheadOut;                    // 「前方视察点」已出取景窗＝看不见要去的地方
+        bool _turnFollow;                  // 战斗中的大幅转向跟随已点火（<12° 熄火）
         Camera _cam;                       // 取水平视野用
 
         /// <summary>
@@ -828,6 +842,26 @@ namespace AdversityRoad.Player
             bool stickHeld = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
             _stickIdleT = stickHeld ? 0f : _stickIdleT + dt;
 
+            // ---- 方向突变检测：补满绕行预算 ----
+            // 量的是【拇指角】θ＝摇杆世界方向与镜头偏航之差。它的好处是：玩家把拇指
+            // 按住不动时 θ 恒定（镜头再怎么转都不变），只有玩家真的改推方向才会跳变。
+            if (stickHeld)
+            {
+                // 必须用【有符号】拇指角：取绝对值的话"从左推到右"是 |−90|→|+90|、
+                // 差值为 0，完全检测不到——而那恰恰是最典型的一次方向突变。
+                float stickOffNow = Mathf.DeltaAngle(_yaw,
+                    Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
+                if (!_stickOffInit) { _stickOffInit = true; _lastStickOff = stickOffNow; }
+                if (Mathf.Abs(Mathf.DeltaAngle(_lastStickOff, stickOffNow)) > 25f)
+                    _orbitBudget = OrbitBurstBudget;   // 改推了别的方向 → 重新给预算
+                _lastStickOff = stickOffNow;
+            }
+            else
+            {
+                _stickOffInit = false;
+                _orbitBudget = OrbitBurstBudget;   // 松杆时环消失，下次推杆即可用满预算
+            }
+
             // ---- 脱战撤离判定：持续朝【背离敌人】的方向全速跑 ----
             // 这时玩家的意图是"走"，不是"打"。框敌若照旧生效，镜头会扭回去盯着
             // 你正在逃离的那个敌人，你就变成对着屏幕底部往里跑——完全违背意图。
@@ -843,16 +877,43 @@ namespace AdversityRoad.Player
             }
             _focusActive = _focusEnemy != null && !disengaging;
 
-            // ---- 「需不需要回正」的统一判据：要面对的东西现在看得见吗 ----
-            // 战斗看敌人，探索看角色前方 6m 的视察点；都用同一个取景窗来量。
+            // ---- 「看不看得见」的统一度量（每帧都算，不藏在某条分支里）----
+            // 藏在分支里会出事：上一版把敌人的屏幕角算在框敌分支内，于是"只要 12m 内
+            // 有敌人"就整条分支接管，探索跟随被完全吞掉——玩家跑着突然改方向，
+            // 镜头一点反应都没有。度量与决策必须分开。
+            float halfHFov = HalfHorizontalFov();
+            float focusWindow = halfHFov * FocusWindowRatio;
+
+            // ① 敌人的屏幕角（低通滤【位置】而不是屏幕角——后者含镜头自身转动，
+            //    滤它等于把回路反馈也延迟 τ≈0.31s，与伺服时间常数同量级，必然振荡）
+            _focusScreenAng = 0f;
+            if (_focusActive)
+            {
+                if (!_focusInit) { _focusPos = _focusEnemy.position; _focusInit = true; }
+                _focusPos = Vector3.Lerp(_focusPos, _focusEnemy.position,
+                    1f - Mathf.Exp(-AimLowPass * dt));
+                _focusScreenAng = ScreenAngleTo(_focusPos);
+                if (Mathf.Abs(_focusScreenAng) > halfHFov * 0.95f) _focusOutT += dt;
+                else _focusOutT = 0f;
+            }
+            else _focusOutT = 0f;
+
+            // ② 前方视察点的屏幕角：看得见"要去的地方"吗。移动时用行进方向
+            //    （战斗中朝向被出招磁吸拧得乱跳，位移方向才是真意图），静止时用朝向。
+            float aheadYaw = travelValid ? _travelAvg : _headingAvg;
+            float aheadAng = Mathf.Abs(ScreenAngleTo(
+                target.position + Quaternion.Euler(0f, aheadYaw, 0f) *
+                Vector3.forward * LookAheadDist));
+            // 迟滞：出窗才算"看不见"，回到 0.7 倍窗宽才算"看见了"——
+            // 免得在窗沿上反复开合
+            if (aheadAng > focusWindow) _aheadOut = true;
+            else if (aheadAng < focusWindow * 0.7f) _aheadOut = false;
+
+            // ---- 「想不想回正」：要面对的东西出窗了 ----
             // 0.8 倍窗宽：敌人被取景窗推到窗沿后仍算"该整理一下构图"，
             // 于是松杆时会把它摆回画面中央，而不是长期停在画面边上。
-            Vector3 aimPoint = _focusActive
-                ? _focusEnemy.position
-                : target.position + Quaternion.Euler(0f, _headingAvg, 0f) *
-                                    Vector3.forward * LookAheadDist;
-            if (Mathf.Abs(ScreenAngleTo(aimPoint)) > HalfHorizontalFov() * FocusWindowRatio * 0.8f)
-                _wantRecenterT += dt;
+            float wantAng = _focusActive ? Mathf.Abs(_focusScreenAng) : aheadAng;
+            if (wantAng > focusWindow * 0.8f) _wantRecenterT += dt;
             else _wantRecenterT = 0f;
 
             // ---- 一键回正（玩家显式触发）：触屏双击转镜区 / 桌面 V 键 ----
@@ -960,7 +1021,8 @@ namespace AdversityRoad.Player
                     _yawErr = aimErr;
                 }
             }
-            else if (autoFollow && !fpNow && _focusActive)
+            else if (autoFollow && !fpNow && _focusActive && !manualLook &&
+                     Mathf.Abs(_focusScreenAng) > focusWindow)
             {
                 // ===== 战斗自动聚焦（未锁定）：取景窗 =====
                 // 镜头的首要职责是【让你看得见正在打的人】。曾为了不抖把交战中的自动
@@ -969,55 +1031,32 @@ namespace AdversityRoad.Player
                 // 正解是追【敌人方位】——它不是镜头偏航的函数，没有代数环，天然收敛；
                 // 并且用**取景窗**而不是追到画面中央：窗内完全不动，出窗才推回窗沿。
                 //
-                // 触发条件里刻意【不带】fightingNow：_focusEnemy 非空本身就意味着
-                // 12m 内有一个已经咬上你的敌人（Chase/Attack/…），那就是战斗。
-                // 旧写法还要求 _engagedEnemies>0（9m 内）或 InCombat（末次出招后 4s），
-                // 于是"敌人在 10m 外追你、你已 4s 没出手"时框敌会整个失效——
-                // 恰恰是最容易跟丢的那一档距离。
-                float halfH = HalfHorizontalFov();
-                float window = halfH * FocusWindowRatio;
-
-                // 低通要滤【敌人的位置】，不能滤屏幕角——屏幕角同时含有镜头自身的转动，
-                // 滤它等于把本回路的反馈也一起延迟 τ≈0.31s，与伺服时间常数同量级，
-                // 必然过冲振荡。滤位置则镜头一转、屏幕角立刻如实反映，回路是稳的。
-                if (!_focusInit) { _focusPos = _focusEnemy.position; _focusInit = true; }
-                _focusPos = Vector3.Lerp(_focusPos, _focusEnemy.position,
-                    1f - Mathf.Exp(-AimLowPass * dt));
-                float screenAng = ScreenAngleTo(_focusPos);
-
-                float outside = Mathf.Abs(screenAng) - window;
-                // 出画计时：完全出了画面（而不只是出了取景窗）才累计，
-                // 到点由 ShouldAutoRecenter 无条件强制回正
-                if (Mathf.Abs(screenAng) > halfH * 0.95f) _focusOutT += dt;
-                else _focusOutT = 0f;
-
-                if (outside > 0f && !manualLook)
+                // 这条分支只在【敌人真的要出窗】时才接管。上一版写成"只要有聚焦敌人
+                // 就走这条"，于是 12m 内有敌人时探索跟随被整条吞掉——玩家跑着突然
+                // 改方向，镜头一点反应都没有。**框敌是一条约束，不是一种模式。**
+                float outside = Mathf.Abs(_focusScreenAng) - focusWindow;
+                // 只推回【窗沿】，不推到中央——推到中央意味着镜头得跟着敌人的
+                // 每一步走，那正是"永远在轻微动"。推回窗沿则一到位就停。
+                // 屏幕角超出多少，镜头就朝那一侧转多少，不多不少。
+                float wantYaw = _yaw + Mathf.Sign(_focusScreenAng) * outside;
+                float ft = Mathf.Clamp01(outside / 90f);
+                float fSmoothT = Mathf.Lerp(0.45f, 0.16f, ft);
+                float fMaxSpd = Mathf.Lerp(autoFollowSpeed * 0.9f, autoFollowSpeed * 5f, ft);
+                // 墙壁减速：别为了框住敌人把镜头甩进墙里
+                if (outside > 25f)
                 {
-                    // 只推回【窗沿】，不推到中央——推到中央意味着镜头得跟着敌人的
-                    // 每一步走，那正是"永远在轻微动"。推回窗沿则一到位就停。
-                    // 屏幕角超出多少，镜头就朝那一侧转多少，不多不少。
-                    float wantYaw = _yaw + Mathf.Sign(screenAng) * outside;
-                    float t = Mathf.Clamp01(outside / 90f);
-                    float smoothT = Mathf.Lerp(0.45f, 0.16f, t);
-                    float maxSpd = Mathf.Lerp(autoFollowSpeed * 0.9f, autoFollowSpeed * 5f, t);
-                    // 墙壁减速：别为了框住敌人把镜头甩进墙里
-                    if (outside > 25f)
-                    {
-                        float freeAt = FreeBoomDistance(target.position + Vector3.up * _pivotH,
-                            wantYaw, offset.magnitude * _lenFactor);
-                        float damp = Mathf.Lerp(0.45f, 1f, Mathf.InverseLerp(1.8f, 3.2f, freeAt));
-                        maxSpd *= damp;
-                        smoothT /= Mathf.Max(0.45f, damp);
-                    }
-                    // 软区：驱动量在窗沿附近连续趋零，不在边界上硬启停（无限 jerk）
-                    // 不叠 _occYawBias：那是遮挡换角的绝对偏置，与"把敌人框回画面"
-                    // 是两套目标，叠上去会互相拉扯（换角把敌人又推出窗外）
-                    float softFocus = SoftTarget(_yaw, wantYaw, FocusEdgeSoft);
-                    _yaw = Mathf.SmoothDampAngle(_yaw, softFocus, ref _yawFollowVel,
-                        smoothT, maxSpd, dt);
+                    float freeAt = FreeBoomDistance(target.position + Vector3.up * _pivotH,
+                        wantYaw, offset.magnitude * _lenFactor);
+                    float damp = Mathf.Lerp(0.45f, 1f, Mathf.InverseLerp(1.8f, 3.2f, freeAt));
+                    fMaxSpd *= damp;
+                    fSmoothT /= Mathf.Max(0.45f, damp);
                 }
-                else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
-                _yawErr = Mathf.Max(0f, outside);
+                // 软区：驱动量在窗沿附近连续趋零，不在边界上硬启停（无限 jerk）
+                // 不叠 _occYawBias：那是遮挡换角的绝对偏置，与"把敌人框回画面"
+                // 是两套目标，叠上去会互相拉扯（换角把敌人又推出窗外）
+                _yaw = Mathf.SmoothDampAngle(_yaw, SoftTarget(_yaw, wantYaw, FocusEdgeSoft),
+                    ref _yawFollowVel, fSmoothT, fMaxSpd, dt);
+                _yawErr = outside;
             }
             else if (autoFollow)
             {
@@ -1025,11 +1064,19 @@ namespace AdversityRoad.Player
                 bool manualRecently = manualLook;
                 bool fighting = fightingNow;
 
-                // 交战中不在这条分支上做连续伺服：追【角色朝向】既抖又不收敛
-                //（偏差恒等于摇杆离轴角 θ，见类注释）。战斗的偏航由上一条分支的
-                // 【取景窗·追敌人】负责，配合自动回正；两者都不适用时镜头保持静止。
-                // 撤离中不锁死：此时该看清「要去的方向」，交给探索跟随
-                bool followHold = fighting && !disengaging;
+                // ===== 交战中是否要静止：看【看不看得见要去的地方】，而不是"在不在战斗" =====
+                // 上一版一刀切成 followHold = fighting，于是战斗中连 180° 掉头都不动镜，
+                // 读作"镜头反应很慢、延迟很久"。但也不能全放开——小幅走位/出招转向
+                // 追朝向正是最初那个抖动源。
+                // 判据仍是同一条：前方视察点出了取景窗（≈转向 >55°）才跟，否则静止。
+                // 撤离中同样放开：那时该看清要去的方向。
+                bool followHold = fighting && !disengaging && !_aheadOut;
+
+                // 战斗中的起步latch：必须先由"看不见前方"点着火（>55° 的大幅转向），
+                // 才允许后续按常规的 10° 软区一路跟到位；跟到 <12° 就熄火。
+                // 没有这道 latch，战斗中每一次出招磁吸拧动朝向都会重新点火 → 抖。
+                if (_aheadOut) _turnFollow = true;
+                else if (Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg)) < 12f) _turnFollow = false;
                 // 不跟随时把目标设成镜头自身：偏差恒为 0，既不驱动镜头，
                 // 也不会让下游的「大幅转向拉远视野」被一个陈旧的方位长期撑开。
                 // 分支本身照常走完，末尾的 _yawFollowVel 衰减才不会被跳过
@@ -1094,8 +1141,10 @@ namespace AdversityRoad.Player
                 // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
                 // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
+                // 战斗中要先由 _turnFollow 点火（>55° 的大幅转向）才允许温和跟随；
+                // 探索中沿用原判据（小幅转向也缓缓跟到身后，是已调好的手感）
                 bool gentle = active && followHoldT > steadyNeed && err > softZone
-                              && !backingIntent;
+                              && !backingIntent && (!fighting || _turnFollow);
 
                 if (!manualRecently && (_combatReorient || gentle))
                 {
@@ -1129,7 +1178,19 @@ namespace AdversityRoad.Player
                             float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _yaw));
                             float gate = Mathf.Clamp01((off - OrbitGateAngle) / OrbitGateWidth);
                             if (gate > 0f)
-                                maxSpd = Mathf.Lerp(maxSpd, SustainedOrbitCap, gate);
+                            {
+                                // 【突变预算】：把 30°/s 死钉在离轴上，代价是"跑着突然
+                                // 改方向，镜头要好几秒才反应过来"。但一味提速也不行——
+                                // 环在那里，提速只换来角色画更紧的圈（实测 340°/s 时
+                                // 自转 207°/s，偏离角只从 87.9° 缩到 75.2°）。
+                                // 折中：方向突变后给一份【有限的角度预算】允许快转，
+                                // 花完就落回 30°/s 的缓弧。于是"突然改方向"立刻有反应，
+                                // 而"一直推着离轴不放"仍然不会转圈——被诱导的弧
+                                // 上限就是这份预算（70°），是个可算清的量。
+                                float cap = _orbitBudget > 0f
+                                    ? OrbitBurstCap : SustainedOrbitCap;
+                                maxSpd = Mathf.Lerp(maxSpd, cap, gate);
+                            }
                         }
                     }
 
@@ -1170,6 +1231,10 @@ namespace AdversityRoad.Player
                 }
                 _yaw = yawBeforeAuto + autoRate * dt;
                 _autoYawRate = autoRate;
+                // 绕行预算按【实际转过的角度】扣减：只有推着摇杆（环存在）时才扣，
+                // 松杆时的收敛不占预算——那时本来就该全速追平
+                if (stickHeld) _orbitBudget = Mathf.Max(0f,
+                    _orbitBudget - Mathf.Abs(autoRate) * dt);
             }
 
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
