@@ -177,15 +177,25 @@ namespace AdversityRoad.Player
         float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
         float _boomDist, _boomVel;
+        float _boomWant = 99f, _boomClearT;   // 吊杆目标的抗颤保持（见碰撞回缩处）
+        /// <summary>吊杆"空出来了"要持续这么久才承认，用来滤掉球投射逐帧漏检造成的
+        /// 锯齿式伸缩。变近不受此限——不能拿穿墙冒险。</summary>
+        const float BoomClearHold = 0.18f;
         float _kick;
         float _yawFollowVel;               // 回正弹簧速度（SmoothDampAngle 用）
         float _ultimateTimer, _ultimateBlend;   // 大招镜头计时与渐入渐出
         float _lastManualLook;
         Vector3 _lastTargetPos;
         float _pivotY, _pivotYVel;         // 纵向软化：跳跃落地不硬拽镜头
+        float _pivotYAnchor;               // 纵向死区锚（滤台阶/斜坡的逐帧高度跳动）
+        /// <summary>纵向死区（米）：小于这个高度变化完全不推镜。
+        /// 胶囊贴地与台阶造成的逐帧跳动都在几厘米量级，真实的落地/跳跃远超它。</summary>
+        const float PivotYDeadZone = 0.06f;
         Vector2 _pivotXZ, _pivotXZVel;     // 水平软跟随：消除刚性同步放大的逐帧抖动
         Vector2 _focusAnchor;              // 焦点死区锚：小位移不推镜（电影三脚架感）
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
+        float _speedAvg;                   // 低通后的水平速率：一切取景决策都读它，
+                                           // 不读逐帧原始值（顿帧会让原始值每拳塌一次）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
         float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
@@ -646,8 +656,20 @@ namespace AdversityRoad.Player
         void LateUpdate()
         {
             if (target == null) return;
-            float dt = Time.unscaledDeltaTime;
-            if (dt <= 0) return;
+            // ===== 镜头必须和世界同一把时钟（本轮的关键修复）=====
+            // 原先整套用 Time.unscaledDeltaTime。而每一次命中都会触发顿帧
+            //（CombatFeedback.HitStop：timeScale=0.08，0.035~0.12s），连打时每秒好几次。
+            // 于是顿帧期间【世界冻住、镜头照常全速跑】：
+            //   · 位置/偏航平滑在这 0.1 秒里照样收敛，等于每挨一拳镜头就抢跑一段，
+            //     世界恢复后再被拽回来——这就是与出招同频的"画面频繁抖动"；
+            //   · 所有由位移推出来的量（速度、行进方向、留白）也一起失真。
+            // 顿帧的本意是【整帧定住】以强调打击，镜头当然也该定住。改用缩放时间后
+            // 三件事一起对齐：镜头随世界一起顿、速度估计自洽、暂停面板时镜头不再漂。
+            float dt = Time.deltaTime;
+            // 暂停（timeScale=0）时必须把累积的转镜增量丢掉再退出：
+            // 否则面板开着的这几秒里 LookDelta 一直在累加，恢复的瞬间会被一次性
+            // 灌进 _yaw，镜头猛甩一下。
+            if (dt <= 0f) { MobileInput.ConsumeLook(); return; }
 
             // ---- 输入 ----
             Vector2 touch = MobileInput.ConsumeLook();
@@ -674,9 +696,25 @@ namespace AdversityRoad.Player
             //（首帧尚未初始化跟踪点时视为静止，避免出生瞬间的伪速度触发运镜）
             Vector3 frameDelta = _pivotInit ? target.position - _lastTargetPos : Vector3.zero;
             frameDelta.y = 0;
-            float moveSpeed = frameDelta.magnitude / dt;
-            // 平滑后的水平速度向量（供移动构图的"引导留白"使用，滤掉逐帧抖动）
+            // ===== 速度必须用【和角色位移同一把尺子】量：世界时间，不是无缩放时间 =====
+            //
+            // 这是"出招时画面频繁抖动"的主因，而且藏得很深：
+            // 每一次命中都会触发顿帧（CombatFeedback.HitStop：timeScale=0.08，
+            // 持续 0.035~0.12s），连打时每秒好几次。角色在 Update 里按【缩放】时间位移，
+            // 而镜头整套跑在【无缩放】时间上，于是
+            //     moveSpeed = 位移(8%) / dt(100%) ≈ 真实速度的 8%
+            // 每次命中都瞬间塌一次。后果全都挂在这个数上，且全部同步于你的每一拳：
+            //   · 引导留白 lead ∝ Clamp01(moveSpeed/5.2)（这一项没有任何平滑！）
+            //     → 焦点在一帧内前后跳最多 0.45m，命中一次跳一次；
+            //   · moveSpeed>1.5 的留白闸、>1.2 的俯仰回中闸反复开合；
+            //   · 疾跑拉远 runOut 反复缩放。
+            // 用世界时间量就自洽了：顿帧时位移 8%、dt 也 8%，商不变。
+            // （上面已把 dt 统一成缩放时间，这里天然成立；再加一道低通做保险——
+            //   引导留白的 Clamp01(moveSpeed/5.2) 这一项原本没有任何平滑，
+            //   任何单帧速度突变都会被它一比一地放大成焦点位移。）
             _planarVel = Vector3.Lerp(_planarVel, frameDelta / dt, 5f * dt);
+            _speedAvg = Mathf.Lerp(_speedAvg, frameDelta.magnitude / dt, 8f * dt);
+            float moveSpeed = _speedAvg;
 
             // ---- 朝向防抖滤波（所有自动回正共用）----
             float rawHeading = target.eulerAngles.y;
@@ -1365,7 +1403,7 @@ namespace AdversityRoad.Player
                 else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
             }
             else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
-            if (!_pivotInit) { _pivotY = targetPivotY; _pivotXZ = focusXZ; _focusAnchor = focusXZ; _pivotInit = true; }
+            if (!_pivotInit) { _pivotY = _pivotYAnchor = targetPivotY; _pivotXZ = focusXZ; _focusAnchor = focusXZ; _pivotInit = true; }
 
             // 电影三脚架感·焦点死区：小于死区的焦点位移完全不推镜——近身互殴时
             // 拳脚带来的细碎换位（突进/击退/侧闪的残余）不再传导成镜头晃动；
@@ -1378,7 +1416,13 @@ namespace AdversityRoad.Player
             Vector2 drift = focusXZ - _focusAnchor;
             if (drift.magnitude > dead) _focusAnchor = focusXZ - drift.normalized * dead;
 
-            _pivotY = Mathf.SmoothDamp(_pivotY, targetPivotY, ref _pivotYVel, 0.13f,
+            // 纵向死区（与水平的焦点死区同理）：CharacterController 贴地/上下台阶/
+            // 斜坡行走会让 y 每帧小幅跳动，0.13s 的平滑挡不住这种高频输入，
+            // 表现为画面持续轻微上下浮动。落地/跳跃这类真实高度变化远超死区，照常跟。
+            float dyErr = targetPivotY - _pivotYAnchor;
+            if (Mathf.Abs(dyErr) > PivotYDeadZone)
+                _pivotYAnchor = targetPivotY - Mathf.Sign(dyErr) * PivotYDeadZone;
+            _pivotY = Mathf.SmoothDamp(_pivotY, _pivotYAnchor, ref _pivotYVel, 0.13f,
                 Mathf.Infinity, dt);
             // 战斗中位置阻尼加重（斯坦尼康式慢移），探索保持跟手
             float fst = Mathf.Lerp(followSmoothTime, 0.24f, steady) * _shot.damping;
@@ -1445,13 +1489,25 @@ namespace AdversityRoad.Player
                 // 是贴墙时"突然极度压抑"的来源。1.9m 仍不穿模，画面留得住东西。
                 wantDist = Mathf.Min(wantDist, Mathf.Max(1.9f, hit.distance - 0.1f));
             }
-            // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
-            // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
             // 遮挡持续计时：供上方的换角决策使用（0.6m 以上的回缩才算真被挡）
             _occludedT = wantDist < maxDist - 0.6f ? _occludedT + dt : 0f;
 
-            float smooth = wantDist < _boomDist ? 0.03f : 0.14f;
-            _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
+            // ===== 吊杆抗颤：取最近一小段时间内的【最短值】 =====
+            // 球投射的命中是二值的，而战斗中吊杆常常在擦着地面/矮台/柱角扫来扫去，
+            // 于是 wantDist 在"打到"与"没打到"之间逐帧翻转。配上"回缩 0.03s（几乎瞬时）、
+            // 伸出 0.14s"的非对称平滑，就是一条锯齿——镜头以帧率级的频率前后弹，
+            // 这是画面抖动里与偏航完全无关的一路，光调转镜永远治不好。
+            // 做法：变近立刻采纳（不能穿墙），变远则要求"确实空出来了"持续
+            // BoomClearHold 才承认。一两帧的漏检再也推不动吊杆。
+            if (wantDist <= _boomWant) { _boomWant = wantDist; _boomClearT = 0f; }
+            else
+            {
+                _boomClearT += dt;
+                if (_boomClearT > BoomClearHold) _boomWant = wantDist;
+            }
+            // 回缩仍然快（避免穿墙）但不再是瞬时（0.03→0.06）；伸出保持 0.14s
+            float smooth = _boomWant < _boomDist ? 0.06f : 0.14f;
+            _boomDist = Mathf.SmoothDamp(_boomDist, _boomWant, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 
             Vector3 pos = pivot + boomDir * _boomDist;
