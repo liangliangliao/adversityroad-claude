@@ -105,6 +105,18 @@ namespace AdversityRoad.Player
     ///     不是位置。加大平滑、加限幅都治不了根（只要速率由误差决定，噪声就进得来）。
     ///     故行进跟随改成**分档恒速转台**：速率与误差解耦，拇指再抖也调制不了它。
     ///
+    /// **电影级的第一原则：拍得到，就不动。**
+    /// 机位调整是有代价的动作，只该为【画面里缺了必须看到的东西】而付。
+    /// 于是所有会改变画面的杠杆都统一挂到同一个判据上——「要看的东西在不在取景窗内」：
+    ///   · 偏航跟随：窗内 → 一动不动（连"缓缓转到身后"的慢漂也取消了：那是画面
+    ///     本来就合格时仍在运镜，是"不平稳"的底噪，也让跑动持续画弧）；
+    ///   · 吊杆拉远、引导留白：窗内不给，出窗才给，且是两档不是连续量——
+    ///     它们原本随偏差连续变，而偏差恒等于拇指角 θ，
+    ///     等于把拇指的抖动直接接到了【纵深】与【焦点位移】上；
+    ///   · 景别切换：群战/狭窄判定都加迟滞，且换景别有 3s 最短驻留——
+    ///     换景别是分镜级的决定（距离/取景点/俯仰/FOV 一起变），不该每秒发生一次。
+    /// 剩下的运镜就只有两类：**玩家自己转的**，和**一次有始有终的回正**。
+    ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
     /// </summary>
@@ -162,9 +174,6 @@ namespace AdversityRoad.Player
                 "这是「跑步时镜头晃」的根治点——见类注释推论③")]
         [Tooltip("慢漂死区（度）：镜头与角色朝向的偏差小于它完全不动镜")]
         public float settleDeadZone = 9f;
-        [Tooltip("慢漂速率（度/秒·恒定）：看得见前方时把镜头一点点带到身后。" +
-                 "恒定是关键；14°/s 诱导的行进弧半径 21m，几乎看不出弯")]
-        public float settleRate = 14f;
         [Tooltip("看不见前方（前方视察点出取景窗）时的速率上限（度/秒）。" +
                  "环还在，转多快都不收敛，快只换更紧的弧，封顶即可——90°/s 对应弧半径 3.3m")]
         public float blindMaxRate = 90f;
@@ -207,7 +216,6 @@ namespace AdversityRoad.Player
                                            // 不读逐帧原始值（顿帧会让原始值每拳塌一次）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
-        float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
         /// <summary>离轴奔跑强度（0~1，平滑）：横向/后向跑时拉远取景，进一步扩大可见前方。</summary>
         float _offAxisRun;
         float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
@@ -217,6 +225,12 @@ namespace AdversityRoad.Player
         int _nearbyEnemies;
         float _roomAround = 99f;           // 吊杆方位的可用空间（识别狭窄场地）
         bool _tightLatch;                  // 「狭窄」景别的迟滞锁存（2.6m 进 / 3.4m 出）
+        bool _crowdLatch;                  // 「群战」景别的迟滞锁存（≥3 进 / ≤1 退）
+        ShotProfile _shotTarget;           // 已【承诺】的景别（_shot 朝它推轨）
+        float _shotSwitchT = -99f;         // 上次换景别的时刻（最短驻留）
+        /// <summary>换景别的最短间隔。换景别＝一次实打实的推轨（距离/取景点/俯仰/FOV
+        /// 一起变），是分镜级的决定，不该每秒发生一次。大招特写豁免。</summary>
+        const float ShotDwell = 3f;
         bool _shotInit;
         /// <summary>朝镜头持续行进多久才认定"真要往那个方向去"，才允许绕镜。
         /// 低于此值一律视为玩家在看正脸/调整站位，镜头保持不动。
@@ -224,7 +238,7 @@ namespace AdversityRoad.Player
         const float TowardCameraHold = 0.6f;
 
         // （曾在此处用 SustainedOrbitCap/OrbitGate 给"推着离轴方向时的绕行"限速。
-        //   现在行进跟随本身已改成分档恒速（见 settleRate / blindMaxRate），
+        //   现在行进跟随只在【看不见前方】时才动，速率也是分档恒定的（见 blindMaxRate），
         //   速率不再由误差决定，也就不需要再在外面套一层限速门了。）
 
         // ===== 行进跟随的三档【恒定】速率 =====
@@ -233,7 +247,7 @@ namespace AdversityRoad.Player
         // 分档恒定后，拇指怎么小幅游走都调制不了镜头的转速。
         /// <summary>摇杆松开时的收敛速率上限。此时代数环消失、误差真的会收敛，
         /// 可以放开跑（实测松杆后 0.68~0.70s 对准新行进方向）。
-        /// 其余两档（慢漂 settleRate / 盲区封顶 blindMaxRate）在上方 Inspector 里。</summary>
+        /// 另一档（盲区封顶 blindMaxRate）在上方 Inspector 里。</summary>
         const float FreeConvergeMaxRate = 300f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
@@ -855,16 +869,30 @@ namespace AdversityRoad.Player
             // 这是位置/景别侧仅次于引导留白的一处晃动源。
             if (_roomAround < 2.6f) _tightLatch = true;
             else if (_roomAround > 3.4f) _tightLatch = false;
+            // 群战判定也要迟滞（进 ≥3 / 退 ≤1）：敌人在 9m 边界上进进出出会让
+            // 「对峙」与「群战」反复互换，而两者相差 距离×1.12、取景点 +0.28m、
+            // 俯仰 +6°、FOV +4——那是一次实打实的推轨，反复发生就是画面持续起伏。
+            if (_nearbyEnemies >= 3) _crowdLatch = true;
+            else if (_nearbyEnemies <= 1) _crowdLatch = false;
             var wantShot = CameraDirector.Pick(
-                _ultimateTimer > 0f, _nearbyEnemies,
+                _ultimateTimer > 0f, _crowdLatch ? 3 : Mathf.Min(_nearbyEnemies, 1),
                 lockOn != null && lockOn.CurrentTarget != null,
                 _tightLatch ? 0f : 99f);
-            if (!_shotInit) { _shot = wantShot; _shotInit = true; }
+            if (!_shotInit) { _shot = _shotTarget = wantShot; _shotInit = true; }
             else
             {
+                // 最短驻留：换景别是分镜级的决定，不该每秒发生一次。
+                // 大招/处决的推近特写是刻意的戏剧节拍，豁免。
+                bool urgent = _ultimateTimer > 0f;
+                if (wantShot.name != _shotTarget.name &&
+                    (urgent || Time.unscaledTime - _shotSwitchT > ShotDwell))
+                {
+                    _shotTarget = wantShot;
+                    _shotSwitchT = Time.unscaledTime;
+                }
                 // 参数级插值＝推轨，而不是切镜：这是"平稳、不适感为零"的关键
-                float rate = CameraDirector.BlendRate(_shot, wantShot);
-                _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
+                float rate = CameraDirector.BlendRate(_shot, _shotTarget);
+                _shot = ShotProfile.Lerp(_shot, _shotTarget, 1f - Mathf.Exp(-rate * dt));
             }
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
@@ -1046,7 +1074,6 @@ namespace AdversityRoad.Player
                     }
                     // 速度衰减而非硬置零——硬置零正是 1509°/s² 的来源
                     else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
-                    _yawErr = aimErr;
                 }
             }
             else if (autoFollow && !fpNow && _focusActive && !manualLook &&
@@ -1084,7 +1111,6 @@ namespace AdversityRoad.Player
                 // 是两套目标，叠上去会互相拉扯（换角把敌人又推出窗外）
                 _yaw = Mathf.SmoothDampAngle(_yaw, SoftTarget(_yaw, wantYaw, FocusEdgeSoft),
                     ref _yawFollowVel, fSmoothT, fMaxSpd, dt);
-                _yawErr = outside;
             }
             else if (autoFollow)
             {
@@ -1098,8 +1124,7 @@ namespace AdversityRoad.Player
                 // 加大平滑/限幅都治不了根：只要速率由误差决定，误差的噪声就会进到速率里。
                 //
                 // 改法：**速率与误差解耦，只分几档恒定值**。拇指的抖动便无从调制它。
-                //   · 看得见前方（视察点在取景窗内）→ 恒速慢漂 settleRate，把镜头一点点
-                //     带到身后。恒速 ⇒ 零速率噪声；14°/s 诱导的弧半径 21m，几乎看不出弯。
+                //   · 看得见前方（视察点在取景窗内）→ **完全不动**（电影级第一原则）。
                 //   · 看不见前方（视察点出窗，≈转向 >55°）→ 按超出量映射但封顶 blindMaxRate。
                 //     环还在，转多快都不收敛，快只换来更紧的弧，所以封顶就够。
                 //   · 摇杆松开 → 环消失，误差真的会收敛，此时才用比例伺服全速追平。
@@ -1126,24 +1151,26 @@ namespace AdversityRoad.Player
                 bool backingIntent = towardCamera && !fighting && !threatAhead
                                      && !committedRun && _towardCamT < TowardCameraHold;
 
+                // ===== 电影级的第一原则：拍得到，就不动 =====
+                // 机位调整是有代价的动作，只该为【画面里缺了必须看到的东西】而付。
+                // 视察点还在取景窗内 ⇒ 你已经看得见要去的地方 ⇒ **镜头一动不动**。
+                // 此前这里还留了一档 14°/s 的"恒速慢漂"，想把镜头一点点带到身后；
+                // 但那是在画面本来就合格的时候仍然持续运镜——它既让跑动持续画弧，
+                // 也让画面永远在缓慢移动，正是"不平稳"的底噪。构图偏一点不是缺陷，
+                // 是引导留白；真要摆正，松杆时的自动回正会一次做完。
                 float rate = 0f;
-                if (active && !backingIntent && err > settleDeadZone)
+                if (active && !backingIntent && _aheadOut && err > settleDeadZone)
                 {
                     if (stickFree)
                     {
                         // 松杆：无环，比例伺服可以全速收敛（实测 0.68~0.70s 对准新方向）
                         rate = Mathf.Min(FreeConvergeMaxRate, err * 3.2f);
                     }
-                    else if (_aheadOut)
+                    else
                     {
                         // 推着杆且看不见要去的方向：必须转过去，但封顶
                         rate = Mathf.Min(blindMaxRate, (err - settleDeadZone) * 1.2f);
                         if (threatAhead) rate = Mathf.Min(blindMaxRate * 1.6f, rate * 1.6f);
-                    }
-                    else
-                    {
-                        // 看得见前方：恒速慢漂。末端 6° 内线性收尾，避免硬停造成的 jerk
-                        rate = settleRate * Mathf.Clamp01((err - settleDeadZone) / 6f);
                     }
                     // 墙壁减速：别把镜头甩进墙里（幅度越大越不减速——盲区比构图要命）
                     if (err > 45f)
@@ -1160,7 +1187,6 @@ namespace AdversityRoad.Player
                 // 收尾靠上面那 6° 的线性带，两端都没有速度突变
                 _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, rate * dt);
                 _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
-                _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
             // 限幅落地：把本帧自动运镜的角速度变化钳在 MaxAutoYawAccel 内。
             // 晕动与角【加速度】相关，与角速度关系小得多——实测掉头时的峰值加速度
@@ -1264,11 +1290,13 @@ namespace AdversityRoad.Player
                     // 留白量【本身】必须走平滑：offAxis 随摇杆瞬变，若直接用，
                     // 焦点会在 0.09s 的跟随时间内平移 1.75m（≈19m/s 的镜头平移），
                     // 那是比原盲区更糟的晕动源。0.5s 过渡把它压到 ≈3.5m/s。
-                    Vector3 vn = new Vector3(vdir.x, 0, vdir.y).normalized;
-                    Vector3 camFwd = Quaternion.Euler(0, _curYaw, 0) * Vector3.forward;
-                    float offAxis = Mathf.Clamp01(Vector3.Angle(vn, camFwd) / 90f);
+                    // 额外留白【只在看不见前方时给】，而且是两档不是连续量。
+                    // 原写法按离轴角连续取值，而离轴角恒等于拇指角 θ ⇒
+                    // **拇指的抖动被直接接到了焦点位移上**，画面持续左右微微游移。
+                    // 按"拍得到就不动"：窗内只保留跑动的基础留白（恒定，不晃），
+                    // 出窗才把额外留白摇上来——那时确实需要它把前方纳入画面。
                     _offAxisRun = Mathf.MoveTowards(_offAxisRun,
-                        offAxis * Mathf.Clamp01(moveSpeed / 5.2f), dt / 0.5f);
+                        _aheadOut ? Mathf.Clamp01(moveSpeed / 5.2f) : 0f, dt / 0.5f);
                     // 交战中大幅收敛引导留白（2.2m → 0.5m）：留白是为【长距离奔跑】
                     // 看清前方而设的，而近身缠斗的走位是短促往复——每一次侧闪/后撤
                     // 都会让焦点前后甩动最多 2.2m，那是位置侧最大的一处晃动源，
@@ -1325,12 +1353,12 @@ namespace AdversityRoad.Player
                 // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
                 // 不会形成"呼吸式"变焦那种不稳感。
                 float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
-                // 转向开阔（0.06→0.15）：转向瞬间恰是最需要看清周围的时刻。
-                // 用【拉远吊杆】而不是【放大 FOV】——变焦会显著加剧晕动，
-                // 而纯位移只是把画面推开，是这几个杠杆里唯一还有余量且无副作用的。
-                // 转完即回（_lenFactor 的慢插值负责），角色占屏只在转向瞬间由 40%→35%。
-                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.15f;
-                // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 8.1m
+                // 拉远【只在看不见前方时给】，而且是两档不是连续量。
+                // 原写法 turnOut 随偏差连续变，
+                // 而偏差恒等于拇指角 θ ⇒ **拇指的抖动被直接接到了吊杆长度上**，
+                // 画面持续前后微微推拉——这是"不平稳"里属于纵深的一路。
+                // 按"拍得到就不动"的原则：窗内不给拉远，出窗才给，转完即回。
+                float turnOut = _aheadOut ? 0.15f : 0f;
                 wantFactor = 1f + runOut + turnOut + _offAxisRun * 0.12f;
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
