@@ -4,6 +4,38 @@ using AdversityRoad.Mobile;
 namespace AdversityRoad.Player
 {
     /// <summary>
+    /// 镜头每帧读出的【玩家意图】。这是"何时该动、何时绝不动"的唯一分派点——
+    /// 一套规则套所有情景必然顾此失彼，成熟动作游戏（魂系/悟空/战神/对马）
+    /// 的骨架都是先分情景、再给每个情景配一套行为。
+    ///
+    /// 分情景的关键在于：**同样的几何可以对应完全相反的意图**。
+    /// 「玩家转身面对镜头站着」与「玩家转身朝镜头方向跑」——镜头相对角色的位置
+    /// 一模一样，但前者绝不能动（那是玩家特意摆的机位），后者必须动
+    /// （否则前方成为盲区，跟开车看不见路一样）。
+    /// 区分它们的不是角度，是**有没有行进意图**：
+    /// **站着不动的时候，「前方」这个概念根本不存在。**
+    /// </summary>
+    public enum CamIntent
+    {
+        /// <summary>演出中：大招/处决特写、一键回正进行中。镜头由那段演出全权接管。</summary>
+        Cinematic,
+        /// <summary>玩家刚手动拨过镜头：这是他要的构图，让位。</summary>
+        ManualFraming,
+        /// <summary>锁定交战：镜头对齐敌我方位（玩家按「锁」表达的显式意图）。</summary>
+        LockOn,
+        /// <summary>近身交战（未锁定）：镜头不跟方向，只负责别让敌人跑出画面。</summary>
+        Melee,
+        /// <summary>站定观察：没有任何行进意图。**镜头绝不自作主张**——
+        /// 玩家特意让镜头面对角色的脸站着，就该一直是那样。</summary>
+        Idle,
+        /// <summary>行进中，前方看得见：拍得到就不动。</summary>
+        Cruising,
+        /// <summary>行进中，前方看不见：**唯一"必须回正"的常态情景**。
+        /// 不转过去就等于开车看不见路，前方成为盲区。</summary>
+        Blind,
+    }
+
+    /// <summary>
     /// 第三人称跟随镜头。
     ///
     /// 全部自动运镜共用同一套稳定设施——**探索与战斗不再是两套逻辑**：
@@ -104,6 +136,19 @@ namespace AdversityRoad.Player
     ///     跑起来便是持续的角速度噪声——而人感受到的"晃"正是角速度与角加速度，
     ///     不是位置。加大平滑、加限幅都治不了根（只要速率由误差决定，噪声就进得来）。
     ///     故行进跟随改成**分档恒速转台**：速率与误差解耦，拇指再抖也调制不了它。
+    ///
+    /// **运镜先分情景，再配行为**（见 <see cref="CamIntent"/>）。一套规则套所有情景
+    /// 必然顾此失彼——这套镜头前后返工多轮，根因大多是"拿一条判据去管所有场合"。
+    ///   | 情景 | 判定 | 镜头 |
+    ///   | 演出 Cinematic | 回正/大招进行中 | 由那段演出接管 |
+    ///   | 取景 ManualFraming | 玩家刚拨过镜头 | 让位，不动 |
+    ///   | 锁定 LockOn | 有锁定目标 | 敌我方位伺服 |
+    ///   | 近身 Melee | 聚焦敌人 8m 内 | 不跟方向，只保证敌人在画面里 |
+    ///   | **站定 Idle** | 无行进意图 0.25s | **不动，且绝不回正** |
+    ///   | 巡航 Cruising | 在跑，前方看得见 | 不动 |
+    ///   | **盲区 Blind** | 在跑，前方看不见 | **必须转过去**（≤90°/s） |
+    /// 其中 Idle 与 Blind 这一对是整套设计的枢纽：**它们的几何一模一样**
+    /// （镜头都不在角色背后），意图却完全相反。区分它们的不是角度，是有没有在往某处去。
     ///
     /// **电影级的第一原则：拍得到，就不动。**
     /// 机位调整是有代价的动作，只该为【画面里缺了必须看到的东西】而付。
@@ -336,6 +381,11 @@ namespace AdversityRoad.Player
         float _focusScreenAng;             // 聚焦敌人的有符号屏幕水平角
         float _focusDist = 99f;            // 与聚焦敌人的距离
         bool _aheadOut;                    // 【方向已确认】且视察点出取景窗＝看不见要去的地方
+        CamIntent _intent = CamIntent.Idle;   // 本帧读出的玩家意图（运镜的唯一分派点）
+        float _idleT;                      // 无行进意图已持续多久
+        /// <summary>没有任何行进意图持续这么久就进入「站定观察」——此后镜头绝不
+        /// 自作主张。0.25s 足以滤掉碎步/落地的间隙，又不至于让站定的判定发木。</summary>
+        const float IdleHold = 0.25f;
         float _dirAnchor, _dirSettleT;     // 方向确认检测（锚点法，量拇指角）
         bool _thumbInit;
         /// <summary>拇指角偏离锚点超过这个角度就重新计时。转摇杆一圈时拇指一直在扫，
@@ -657,6 +707,9 @@ namespace AdversityRoad.Player
         };
 
         public int PresetIndex { get; private set; } = 1;
+
+        /// <summary>本帧读出的玩家意图（调试/回归用：直接告诉你镜头为什么动或不动）。</summary>
+        public CamIntent IntentNow => _intent;
 
         /// <summary>当前是否第一人称（近镜角色淡出要跳过玩家本体）。</summary>
         public bool FirstPerson => Presets[PresetIndex].fp;
@@ -995,10 +1048,22 @@ namespace AdversityRoad.Player
             if (!_focusActive || _focusDist > CombatFollowReleaseRange) _meleeHold = false;
             else if (_focusDist < CombatFollowHoldRange) _meleeHold = true;
 
-            // ② 前方视察点的屏幕角：看得见"要去的地方"吗。移动时用行进方向
-            //    （战斗中朝向被出招磁吸拧得乱跳，位移方向才是真意图），静止时用朝向。
+            // ===== 有没有【行进意图】——这是"该不该回正"的真正分界 =====
+            // 用户举的两个例子几何完全一样（镜头都不在角色背后），意图却相反：
+            //   · 转身面对镜头【站着】→ 那是玩家特意摆的机位，镜头绝不能动；
+            //   · 转身朝那个方向【跑】→ 不转过去就是开车看不见路，必须动。
+            // 区分它们的不是角度，是有没有在往某处去。
+            // **站着不动的时候，「前方」这个概念根本不存在**——而此前的代码在站定时
+            // 仍用角色朝向虚构了一个"前方视察点"，于是"面对镜头站着"被读成
+            // "前方 180° 全是盲区"，自动回正随即把镜头绕走。这就是那个 bug 的全貌。
+            bool locomotion = moveSpeed > 0.6f || stickHeld;
+            _idleT = locomotion ? 0f : _idleT + dt;
+            bool idleNow = _idleT > IdleHold;
+
+            // ② 前方视察点的屏幕角：看得见"要去的地方"吗。
+            //    只在【有行进意图】时才成立；站定时不存在"前方"，一律视为看得见。
             float aheadYaw = travelValid ? _travelAvg : _headingAvg;
-            float aheadAng = Mathf.Abs(ScreenAngleTo(
+            float aheadAng = idleNow ? 0f : Mathf.Abs(ScreenAngleTo(
                 target.position + Quaternion.Euler(0f, aheadYaw, 0f) *
                 Vector3.forward * LookAheadDist));
 
@@ -1043,12 +1108,25 @@ namespace AdversityRoad.Player
             if (aheadAng > focusWindow && dirCommitted) _aheadOut = true;
             else if (aheadAng < focusWindow * 0.7f || !dirCommitted) _aheadOut = false;
 
+            // ===== 情景判定：每帧读出一个玩家意图，后面所有运镜都按它分派 =====
+            // 顺序＝优先级，从最特殊到最一般。一套规则套所有情景必然顾此失彼，
+            // 成熟动作游戏的骨架都是先分情景再配行为（见 CamIntent 的说明）。
+            if (_recenterT > 0f || _ultimateTimer > 0f) _intent = CamIntent.Cinematic;
+            else if (manualLook) _intent = CamIntent.ManualFraming;
+            else if (lockTarget != null) _intent = CamIntent.LockOn;
+            else if (_meleeHold) _intent = CamIntent.Melee;
+            else if (idleNow) _intent = CamIntent.Idle;
+            else if (_aheadOut) _intent = CamIntent.Blind;
+            else _intent = CamIntent.Cruising;
+
             // ---- 「想不想回正」：要面对的东西出窗了 ----
-            // 0.8 倍窗宽：敌人被取景窗推到窗沿后仍算"该整理一下构图"，
-            // 于是松杆时会把它摆回画面中央，而不是长期停在画面边上。
-            // 同样要求方向已确认——否则转圈时"想回正"会一直挂着，一松杆就摆一下。
+            // **站定观察时永不回正**——这是本轮的核心：玩家特意让镜头面对角色的脸
+            // 站着，就该一直是那样；那时也根本没有"前方"需要看清。
+            // 反过来，一旦开始朝某个方向跑而前方看不见（Blind），回正就是必须的，
+            // 否则等于开车看不见路。
             float wantAng = _focusActive ? Mathf.Abs(_focusScreenAng) : aheadAng;
-            if (wantAng > focusWindow * 0.8f && (_focusActive || dirCommitted))
+            bool mayRecenter = _intent != CamIntent.Idle && _intent != CamIntent.ManualFraming;
+            if (mayRecenter && wantAng > focusWindow * 0.8f && (_focusActive || dirCommitted))
                 _wantRecenterT += dt;
             else _wantRecenterT = 0f;
 
@@ -1222,10 +1300,11 @@ namespace AdversityRoad.Player
                 //   · 近身交战 / 手动转镜期 / 静止 → 完全不动。
                 bool moving = moveSpeed > 0.6f;
                 bool fighting = fightingNow;
-                bool followHold = _meleeHold;   // 近身交战：镜头不跟方向（悟空式分工）
-                bool steering = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
                 bool stickFree = _stickIdleT > 0.05f;
-                bool active = (moving || steering) && !followHold && !manualLook;
+                // 方向跟随【只服务于 Blind 这一个情景】：在跑、而且前方看不见。
+                // 站定观察(Idle)、看得见前方(Cruising)、近身交战(Melee)、
+                // 玩家正在取景(ManualFraming)一律不动——这才是"分情景"而不是"一套规则"。
+                bool active = _intent == CamIntent.Blind;
 
                 float wantYaw = _headingAvg + _occYawBias;
                 float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
@@ -1250,7 +1329,7 @@ namespace AdversityRoad.Player
                 // 也让画面永远在缓慢移动，正是"不平稳"的底噪。构图偏一点不是缺陷，
                 // 是引导留白；真要摆正，松杆时的自动回正会一次做完。
                 float rate = 0f;
-                if (active && !backingIntent && _aheadOut && err > settleDeadZone)
+                if (active && !backingIntent && err > settleDeadZone)
                 {
                     if (stickFree)
                     {
