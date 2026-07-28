@@ -32,7 +32,16 @@ namespace AdversityRoad.Player
     ///   取第一个够通透的），2 秒慢速走位、换角后最短驻留 4 秒。
     ///   此前遇遮挡只会缩短吊杆一路推到贴脸，视野塌掉却仍对着那根柱子。
     ///
-    /// **未锁定战斗的偏航：追【敌人】，用取景窗（本轮定案）**
+    /// **镜头与方向的分工（对齐黑神话悟空）**
+    ///   · **近身交战**（聚焦敌人 8m 内）→ **镜头不跟方向**。战斗镜头归玩家（转镜区）
+    ///     与锁定管；"看得见敌人"由取景窗保底，"看得正"由松杆自动回正负责。
+    ///     战斗中角色朝向被出招磁吸每一击瞬间拧向敌人、推杆出招转向 150°/s 搅动，
+    ///     跟它就是抖——所以干脆不跟。
+    ///   · **其他一切情况**（无敌人／敌人在 8m 外／正在撤离）→ **实时同步**：
+    ///     走连续伺服（10° 软区、70~340°/s）+ 方向突变预算，一转就跟。
+    ///   （8m 进 / 9.5m 出，带迟滞——在阈值上反复开合＝跟随时有时无，比两者都糟。）
+    ///
+    /// **未锁定战斗的偏航：追【敌人】，用取景窗**
     ///
     /// 这里走过两次弯路，都源于**追错了东西**：
     ///   · 先追【角色朝向】——战斗中它是全场最跳的量（出招磁吸每一击瞬转向敌人、
@@ -284,8 +293,15 @@ namespace AdversityRoad.Player
         float _focusOutT;                  // 聚焦敌人已出画多久
         bool _focusActive;                 // 本帧是否该框住聚焦敌人（撤离中为假）
         float _focusScreenAng;             // 聚焦敌人的有符号屏幕水平角
+        float _focusDist = 99f;            // 与聚焦敌人的距离
         bool _aheadOut;                    // 「前方视察点」已出取景窗＝看不见要去的地方
-        bool _turnFollow;                  // 战斗中的大幅转向跟随已点火（<12° 熄火）
+        /// <summary>聚焦敌人近到这个距离以内就算「近身交战」——此时镜头不再跟方向
+        /// （悟空式：战斗镜头归玩家与锁定管）。8m 大于所有近战招式的距离，
+        /// 又明显小于聚焦目标的取用范围 12m，于是"正在打"与"在接近/在脱离"分得开。
+        /// 退出用 9.5m（迟滞）：在阈值上反复开合＝跟随时有时无，比两者都糟。</summary>
+        const float CombatFollowHoldRange = 8f;
+        const float CombatFollowReleaseRange = 9.5f;
+        bool _meleeHold;                   // 「近身交战·镜头不跟方向」的迟滞锁存
         Camera _cam;                       // 取水平视野用
 
         /// <summary>
@@ -887,16 +903,22 @@ namespace AdversityRoad.Player
             // ① 敌人的屏幕角（低通滤【位置】而不是屏幕角——后者含镜头自身转动，
             //    滤它等于把回路反馈也延迟 τ≈0.31s，与伺服时间常数同量级，必然振荡）
             _focusScreenAng = 0f;
+            _focusDist = 99f;
             if (_focusActive)
             {
                 if (!_focusInit) { _focusPos = _focusEnemy.position; _focusInit = true; }
                 _focusPos = Vector3.Lerp(_focusPos, _focusEnemy.position,
                     1f - Mathf.Exp(-AimLowPass * dt));
                 _focusScreenAng = ScreenAngleTo(_focusPos);
+                Vector3 flat = _focusEnemy.position - target.position; flat.y = 0f;
+                _focusDist = flat.magnitude;
                 if (Mathf.Abs(_focusScreenAng) > halfHFov * 0.95f) _focusOutT += dt;
                 else _focusOutT = 0f;
             }
             else _focusOutT = 0f;
+            // 近身交战锁存（8m 进 / 9.5m 出）：进则镜头不跟方向，出则恢复实时同步
+            if (!_focusActive || _focusDist > CombatFollowReleaseRange) _meleeHold = false;
+            else if (_focusDist < CombatFollowHoldRange) _meleeHold = true;
 
             // ② 前方视察点的屏幕角：看得见"要去的地方"吗。移动时用行进方向
             //    （战斗中朝向被出招磁吸拧得乱跳，位移方向才是真意图），静止时用朝向。
@@ -1064,19 +1086,24 @@ namespace AdversityRoad.Player
                 bool manualRecently = manualLook;
                 bool fighting = fightingNow;
 
-                // ===== 交战中是否要静止：看【看不看得见要去的地方】，而不是"在不在战斗" =====
-                // 上一版一刀切成 followHold = fighting，于是战斗中连 180° 掉头都不动镜，
-                // 读作"镜头反应很慢、延迟很久"。但也不能全放开——小幅走位/出招转向
-                // 追朝向正是最初那个抖动源。
-                // 判据仍是同一条：前方视察点出了取景窗（≈转向 >55°）才跟，否则静止。
-                // 撤离中同样放开：那时该看清要去的方向。
-                bool followHold = fighting && !disengaging && !_aheadOut;
-
-                // 战斗中的起步latch：必须先由"看不见前方"点着火（>55° 的大幅转向），
-                // 才允许后续按常规的 10° 软区一路跟到位；跟到 <12° 就熄火。
-                // 没有这道 latch，战斗中每一次出招磁吸拧动朝向都会重新点火 → 抖。
-                if (_aheadOut) _turnFollow = true;
-                else if (Mathf.Abs(Mathf.DeltaAngle(_yaw, _headingAvg)) < 12f) _turnFollow = false;
+                // ===== 方向跟随的开关：交战中关，其他实时同步（黑神话悟空式的分工）=====
+                //
+                // 悟空的镜头与方向是这样分的：**野外行进时镜头跟着你走**，
+                // 而**战斗中镜头归玩家（右摇杆）与锁定管**，不会被你的走位牵着转。
+                // 本作照此分：
+                //   · 近身交战（聚焦敌人在 8m 内）→ **不做方向跟随**。
+                //     战斗中角色朝向被出招磁吸每一击瞬间拧向敌人、推杆出招转向 150°/s
+                //     搅动，跟它就是抖；而"看得见敌人"由取景窗保底、"看得正"由松杆
+                //     自动回正负责，都不需要连续伺服。
+                //   · 其他一切情况（无敌人／敌人在 8m 外／正在撤离）→ **实时同步**，
+                //     走上游调好的连续伺服（10° 软区、70~340°/s）+ 突变预算。
+                //
+                // 曾经试过的两种写法都不对：
+                //   · followHold = fighting —— 连"敌人已死但 InCombat 还剩 3 秒"
+                //     也一并冻住，且战斗中 180° 掉头毫无反应；
+                //   · followHold = fighting && !_aheadOut —— 转向 >55° 就放开，
+                //     可放开之后追的仍是【朝向】这个最跳的量，敏感就是这么回来的。
+                bool followHold = _meleeHold;
                 // 不跟随时把目标设成镜头自身：偏差恒为 0，既不驱动镜头，
                 // 也不会让下游的「大幅转向拉远视野」被一个陈旧的方位长期撑开。
                 // 分支本身照常走完，末尾的 _yawFollowVel 衰减才不会被跳过
@@ -1141,10 +1168,8 @@ namespace AdversityRoad.Player
                 // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
                 // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
-                // 战斗中要先由 _turnFollow 点火（>55° 的大幅转向）才允许温和跟随；
-                // 探索中沿用原判据（小幅转向也缓缓跟到身后，是已调好的手感）
                 bool gentle = active && followHoldT > steadyNeed && err > softZone
-                              && !backingIntent && (!fighting || _turnFollow);
+                              && !backingIntent;
 
                 if (!manualRecently && (_combatReorient || gentle))
                 {
@@ -1154,10 +1179,9 @@ namespace AdversityRoad.Player
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
                                               exploreMaxSpeed * 4f, t);
-                    // 交战中的走位跟随再压一档慢：即使真在走位，战斗镜头也该像
-                    // 斯坦尼康那样缓缓平移，而不是随每一次侧闪就荡过去。
-                    // 大幅掉头（迎击背后追兵）不受此限——那正是需要快的时候。
-                    if (fighting) maxSpd *= Mathf.Lerp(0.5f, 1f, t);
+                    // （曾在此处按 fighting 把转速再砍半。现在近身交战整条不跟随了，
+                    //   还能走到这里的"战斗"只剩【敌人在 8m 外，你正在接近或脱离】，
+                    //   那时要的恰恰是实时同步——砍半只会读作"反应慢"。已移除。）
                     // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
                     //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
                     //   一条不再改变行为的特殊分支只会让运镜更难预测，故移除。）
