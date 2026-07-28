@@ -117,6 +117,15 @@ namespace AdversityRoad.Player
     ///     换景别是分镜级的决定（距离/取景点/俯仰/FOV 一起变），不该每秒发生一次。
     /// 剩下的运镜就只有两类：**玩家自己转的**，和**一次有始有终的回正**。
     ///
+    /// 而且这一切还要先过**意图确认**这一关：只有【已确认的方向】才配让机位动。
+    /// 判据量的是**拇指角 θ**（锚点法）——它是玩家的真实意图，且与镜头无关：
+    ///   · 搓杆/转圈 → θ 一直在扫 → 永不确认 → **镜头一动不动**，角色自己绕圈跑
+    ///     （这才是大作的表现；否则摇杆转一圈屏幕就跟着转一圈）；
+    ///   · 按住某个方向不放 → θ 恒定 → 立即确认 → 镜头平滑连续地转。
+    /// 注意不能拿【世界方向】做这个判据：镜头一转，世界方向就被环带着转，
+    /// 锚点被镜头自己不断打断，结果是"转 0.3s→判未确认→停→又确认→再转"的
+    /// 脉冲式起停，比一直转还难受。
+    ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
     /// </summary>
@@ -303,10 +312,22 @@ namespace AdversityRoad.Player
         Vector3 _focusPos;                 // 其世界位置的低通（滤位置而不是滤屏幕角）
         bool _focusInit;
         float _focusOutT;                  // 聚焦敌人已出画多久
+        float _focusFrameT;                // 聚焦敌人已出取景窗多久
+        /// <summary>敌人出取景窗要持续这么久才动机位，滤掉绕圈跑时自身位移
+        /// 造成的一帧越界。彻底出画另有 FocusLostForce 那条无条件兜底。</summary>
+        const float FocusFrameHold = 0.12f;
         bool _focusActive;                 // 本帧是否该框住聚焦敌人（撤离中为假）
         float _focusScreenAng;             // 聚焦敌人的有符号屏幕水平角
         float _focusDist = 99f;            // 与聚焦敌人的距离
-        bool _aheadOut;                    // 「前方视察点」已出取景窗＝看不见要去的地方
+        bool _aheadOut;                    // 【方向已确认】且视察点出取景窗＝看不见要去的地方
+        float _dirAnchor, _dirSettleT;     // 方向确认检测（锚点法，量拇指角）
+        bool _thumbInit;
+        /// <summary>拇指角偏离锚点超过这个角度就重新计时。转摇杆一圈时拇指一直在扫，
+        /// 计时永远起不来 ⇒ 镜头一动不动（大作的表现），角色自己绕圈跑。</summary>
+        const float DirSettleBand = 20f;
+        /// <summary>方向要稳住这么久才算"确认要去那儿"。转向途中的扫掠不算数，
+        /// 转完停住才算——0.3s 既滤得掉搓杆，又不至于让真实转向读作迟钝。</summary>
+        const float DirCommitTime = 0.3f;
         /// <summary>聚焦敌人近到这个距离以内就算「近身交战」——此时镜头不再跟方向
         /// （悟空式：战斗镜头归玩家与锁定管）。8m 大于所有近战招式的距离，
         /// 又明显小于聚焦目标的取用范围 12m，于是"正在打"与"在接近/在脱离"分得开。
@@ -948,8 +969,12 @@ namespace AdversityRoad.Player
                 _focusDist = flat.magnitude;
                 if (Mathf.Abs(_focusScreenAng) > halfHFov * 0.95f) _focusOutT += dt;
                 else _focusOutT = 0f;
+                // 出窗需持续一小会儿才动机位：玩家绕圈跑时，是【自己的位移】把敌人
+                // 在画面里推来推去，一帧的越界不值得动镜
+                if (Mathf.Abs(_focusScreenAng) > focusWindow) _focusFrameT += dt;
+                else _focusFrameT = 0f;
             }
-            else _focusOutT = 0f;
+            else { _focusOutT = 0f; _focusFrameT = 0f; }
             // 近身交战锁存（8m 进 / 9.5m 出）：进则镜头不跟方向，出则恢复实时同步
             if (!_focusActive || _focusDist > CombatFollowReleaseRange) _meleeHold = false;
             else if (_focusDist < CombatFollowHoldRange) _meleeHold = true;
@@ -960,16 +985,55 @@ namespace AdversityRoad.Player
             float aheadAng = Mathf.Abs(ScreenAngleTo(
                 target.position + Quaternion.Euler(0f, aheadYaw, 0f) *
                 Vector3.forward * LookAheadDist));
+
+            // ===== 方向必须【已确认】才算数（锚点法，量的是拇指角）=====
+            // 这是"摇杆转一圈，屏幕跟着一直转"的正解。转圈时方位每时每刻都在变，
+            // 它从来不是一个"要去的方向"，而是一串没定下来的意图——大作对此的
+            // 处理是镜头压根不理它，角色自己绕圈跑。
+            // 判据不能用低通后的方位：低通只加相位滞后，去不掉【持续的旋转速率】，
+            // 镜头照样会跟着转一圈。
+            //
+            // 更要命的是**也不能量世界方向**：镜头一转，世界方向就被环带着转
+            //（行进方向 = 镜头偏航 + 拇指角），锚点于是被镜头自己不断打断，
+            // 结果是"转 0.3s → 判定未确认 → 停 → 又确认 → 再转"的脉冲式起停，
+            // 比一直转还难受。
+            // 必须量【拇指角 θ】：它是玩家的真实意图，且**与镜头无关**——
+            // 镜头怎么转，按住不动的拇指其 θ 恒定。于是：
+            //   · 搓杆/转圈 → θ 一直在扫 → 永不确认 → 镜头一动不动；
+            //   · 按住某个方向不放 → θ 恒定 → 立即确认 → 镜头平滑连续地转，不会起停。
+            if (stickHeld)
+            {
+                float thumb = Mathf.DeltaAngle(_yaw,
+                    Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
+                if (!_thumbInit) { _thumbInit = true; _dirAnchor = thumb; _dirSettleT = 0f; }
+                else if (Mathf.Abs(Mathf.DeltaAngle(_dirAnchor, thumb)) > DirSettleBand)
+                {
+                    _dirAnchor = thumb;
+                    _dirSettleT = 0f;
+                }
+                else _dirSettleT += dt;
+            }
+            else
+            {
+                // 松杆：环消失，方向不会再被镜头带跑，直接视为已确认
+                _thumbInit = false;
+                _dirSettleT += dt;
+            }
+            bool dirCommitted = _dirSettleT > DirCommitTime;
+
             // 迟滞：出窗才算"看不见"，回到 0.7 倍窗宽才算"看见了"——
-            // 免得在窗沿上反复开合
-            if (aheadAng > focusWindow) _aheadOut = true;
-            else if (aheadAng < focusWindow * 0.7f) _aheadOut = false;
+            // 免得在窗沿上反复开合。再叠加"方向已确认"：只有【确认了要去哪、
+            // 而且那个方向看不见】才值得动机位。
+            if (aheadAng > focusWindow && dirCommitted) _aheadOut = true;
+            else if (aheadAng < focusWindow * 0.7f || !dirCommitted) _aheadOut = false;
 
             // ---- 「想不想回正」：要面对的东西出窗了 ----
             // 0.8 倍窗宽：敌人被取景窗推到窗沿后仍算"该整理一下构图"，
             // 于是松杆时会把它摆回画面中央，而不是长期停在画面边上。
+            // 同样要求方向已确认——否则转圈时"想回正"会一直挂着，一松杆就摆一下。
             float wantAng = _focusActive ? Mathf.Abs(_focusScreenAng) : aheadAng;
-            if (wantAng > focusWindow * 0.8f) _wantRecenterT += dt;
+            if (wantAng > focusWindow * 0.8f && (_focusActive || dirCommitted))
+                _wantRecenterT += dt;
             else _wantRecenterT = 0f;
 
             // ---- 一键回正（玩家显式触发）：触屏双击转镜区 / 桌面 V 键 ----
@@ -1077,7 +1141,7 @@ namespace AdversityRoad.Player
                 }
             }
             else if (autoFollow && !fpNow && _focusActive && !manualLook &&
-                     Mathf.Abs(_focusScreenAng) > focusWindow)
+                     _focusFrameT > FocusFrameHold)
             {
                 // ===== 战斗自动聚焦（未锁定）：取景窗 =====
                 // 镜头的首要职责是【让你看得见正在打的人】。曾为了不抖把交战中的自动
