@@ -96,8 +96,14 @@ namespace AdversityRoad.Player
     ///     （见引导留白：横跑的"看前时间"由 1.06s 提到 1.52s）。
     ///  ② 镜头一转 moveDir 就跟着转，角色必沿弧线行进，**弧的角速度＝绕行速率**。
     ///     曾试过锁存移动参考系来断环，但那会让摇杆与画面对不上（手指按左、画面向前），
-    ///     代价不可接受。现保住"摇杆↔画面一致"，把持续绕行压到 SustainedOrbitCap
-    ///     (30°/s，半径 9.9m)——缺陷从来不是"会画弧"，而是弧太紧。
+    ///     代价不可接受。现保住"摇杆↔画面一致"，把绕行速率压到分档恒值
+    ///     （慢漂 14°/s＝弧半径 21m；看不见前方时封顶 90°/s＝3.3m）——
+    ///     缺陷从来不是"会画弧"，而是弧太紧。
+    ///  ③ 由 ① 还能推出一条更要紧的：**偏差 ≡ θ**，所以比例伺服的转速 = 增益 × θ，
+    ///     **θ 的抖动会原样变成角速度的抖动**。虚拟摇杆上拇指本就在 ±10~20° 游走，
+    ///     跑起来便是持续的角速度噪声——而人感受到的"晃"正是角速度与角加速度，
+    ///     不是位置。加大平滑、加限幅都治不了根（只要速率由误差决定，噪声就进得来）。
+    ///     故行进跟随改成**分档恒速转台**：速率与误差解耦，拇指再抖也调制不了它。
     ///
     /// 防晕基线：位置与转角均为临界阻尼（无过冲无回弹）；碰撞回缩快、伸出慢；
     /// 震屏只做幅度极小的纵向脉冲（无随机抖动）；真机触屏灵敏度按屏高归一化并限幅。
@@ -152,13 +158,16 @@ namespace AdversityRoad.Player
         [Tooltip("战斗追击的基准转速（度/秒）：小偏差用它，大幅掉头按偏差放大到 6.4 倍")]
         public float autoFollowSpeed = 50f;
 
-        [Header("探索镜头：玩家一转向，镜头立刻开始平稳缓慢地转到其背后（面朝方向）")]
-        [Tooltip("镜头与角色朝向偏差小于此角度就不必回正（死区放大：细碎修正完全不动镜头）")]
-        public float exploreReorientAngle = 10f;
-        [Tooltip("回正平滑时间（临界阻尼弹簧）：偏大=更缓更稳。控制「缓慢跟随」的慢")]
-        public float exploreTurnSmoothTime = 0.55f;
-        [Tooltip("探索回正的基准转速（度/秒）：小幅修正用它，大角度掉头按偏差放大到 4 倍")]
-        public float exploreMaxSpeed = 85f;
+        [Header("行进跟随（分档恒速转台）：速率不由误差决定，拇指的抖动便调制不了它。" +
+                "这是「跑步时镜头晃」的根治点——见类注释推论③")]
+        [Tooltip("慢漂死区（度）：镜头与角色朝向的偏差小于它完全不动镜")]
+        public float settleDeadZone = 9f;
+        [Tooltip("慢漂速率（度/秒·恒定）：看得见前方时把镜头一点点带到身后。" +
+                 "恒定是关键；14°/s 诱导的行进弧半径 21m，几乎看不出弯")]
+        public float settleRate = 14f;
+        [Tooltip("看不见前方（前方视察点出取景窗）时的速率上限（度/秒）。" +
+                 "环还在，转多快都不收敛，快只换更紧的弧，封顶即可——90°/s 对应弧半径 3.3m")]
+        public float blindMaxRate = 90f;
 
         [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
         [Tooltip("大招时的取景距离系数（<1 拉近；幅度克制，不掉转/不猛切镜头）")]
@@ -214,39 +223,18 @@ namespace AdversityRoad.Player
         /// 0.9→0.6：有了威胁感知兜底，这里不必再压那么久。</summary>
         const float TowardCameraHold = 0.6f;
 
-        /// <summary>
-        /// 【持续推非正前方向时】镜头绕行速率的上限（度/秒）。
-        ///
-        /// 摇杆是镜头相对的，于是 moveDir = 镜头偏航 + 摇杆角，而镜头又要绕到角色背后——
-        /// 这是一个代数环，解 H=C+θ 且 C=H 只有 θ=0（正前）存在不动点。
-        /// 摇杆持续推向左/右/后时方程无解，角色必然沿弧线行进，**弧的角速度就等于
-        /// 镜头的绕行速率**。三条性质里最多只能同时满足两条：
-        ///   (a) 摇杆↔画面一致  (b) 镜头绕到背后  (c) 角色不画弧
-        /// 主流第三人称动作游戏一律取 (a)+(b)、放弃 (c)。缺陷从来不是"会画弧"，
-        /// 而是弧的松紧：本作曾以 207~322°/s 绕行，半径只有 0.9~1.4m，读作原地转圈；
-        /// 压到 30°/s 后半径 9.9m、绕一圈 12 秒，就是大作里那种几乎察觉不到的缓弧。
-        ///
-        /// 只在【推着非正前方向】时生效：摇杆回正或松开后，环即消失，
-        /// 镜头恢复全速追平（掉头后想尽快看清前方，松一下杆就行）。
-        /// </summary>
-        const float SustainedOrbitCap = 30f;
-        /// <summary>摇杆偏离画面正前多少度起算限速，以及渐变过渡的宽度。
-        /// 12°/30°：正前小幅修正完全不限速（那正是"边跑边微调、镜头跟着走"该有的样子），
-        /// 45° 以上进入满限速。实测弧线半径 正前=直线 / 30°=5.6m / 45°=10.1m /
-        /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
-        const float OrbitGateAngle = 12f;
-        const float OrbitGateWidth = 30f;
-        /// <summary>方向突变后允许快速绕行的【角度预算】与其速度上限。
-        /// 只钉死 30°/s 的代价是"跑着突然改方向，镜头好几秒才反应过来"；
-        /// 一味提速又只会让角色画更紧的圈（环还在）。给一份有限预算：
-        /// 突变后先快转 70°（约 0.55s），花完落回 30°/s 缓弧——
-        /// "突然改方向"立刻有反应，"一直推着离轴不放"仍不转圈，
-        /// 而被诱导的弧的上限就是这 70°，是个能算清的量。</summary>
-        const float OrbitBurstBudget = 70f;
-        const float OrbitBurstCap = 130f;
-        float _orbitBudget = OrbitBurstBudget;
-        float _lastStickOff;               // 上一帧的摇杆离轴角（＝拇指角，检测方向突变）
-        bool _stickOffInit;
+        // （曾在此处用 SustainedOrbitCap/OrbitGate 给"推着离轴方向时的绕行"限速。
+        //   现在行进跟随本身已改成分档恒速（见 settleRate / blindMaxRate），
+        //   速率不再由误差决定，也就不需要再在外面套一层限速门了。）
+
+        // ===== 行进跟随的三档【恒定】速率 =====
+        // 关键不在数值大小，而在**速率不由误差决定**：误差恒等于摇杆离轴角 θ，
+        // 让速率正比于它，θ 的抖动就会原封不动变成角速度的抖动——那正是"晃"。
+        // 分档恒定后，拇指怎么小幅游走都调制不了镜头的转速。
+        /// <summary>摇杆松开时的收敛速率上限。此时代数环消失、误差真的会收敛，
+        /// 可以放开跑（实测松杆后 0.68~0.70s 对准新行进方向）。
+        /// 其余两档（慢漂 settleRate / 盲区封顶 blindMaxRate）在上方 Inspector 里。</summary>
+        const float FreeConvergeMaxRate = 300f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -896,26 +884,6 @@ namespace AdversityRoad.Player
             bool stickHeld = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
             _stickIdleT = stickHeld ? 0f : _stickIdleT + dt;
 
-            // ---- 方向突变检测：补满绕行预算 ----
-            // 量的是【拇指角】θ＝摇杆世界方向与镜头偏航之差。它的好处是：玩家把拇指
-            // 按住不动时 θ 恒定（镜头再怎么转都不变），只有玩家真的改推方向才会跳变。
-            if (stickHeld)
-            {
-                // 必须用【有符号】拇指角：取绝对值的话"从左推到右"是 |−90|→|+90|、
-                // 差值为 0，完全检测不到——而那恰恰是最典型的一次方向突变。
-                float stickOffNow = Mathf.DeltaAngle(_yaw,
-                    Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
-                if (!_stickOffInit) { _stickOffInit = true; _lastStickOff = stickOffNow; }
-                if (Mathf.Abs(Mathf.DeltaAngle(_lastStickOff, stickOffNow)) > 25f)
-                    _orbitBudget = OrbitBurstBudget;   // 改推了别的方向 → 重新给预算
-                _lastStickOff = stickOffNow;
-            }
-            else
-            {
-                _stickOffInit = false;
-                _orbitBudget = OrbitBurstBudget;   // 松杆时环消失，下次推杆即可用满预算
-            }
-
             // ---- 脱战撤离判定：持续朝【背离敌人】的方向全速跑 ----
             // 这时玩家的意图是"走"，不是"打"。框敌若照旧生效，镜头会扭回去盯着
             // 你正在逃离的那个敌人，你就变成对着屏幕底部往里跑——完全违背意图。
@@ -1120,163 +1088,78 @@ namespace AdversityRoad.Player
             }
             else if (autoFollow)
             {
+                // ===== 行进跟随：改成【恒速转台】，不再是比例伺服 =====
+                //
+                // 为什么必须改：伺服的转速 = 增益 × 偏差，而这里的偏差**恒等于摇杆离轴角 θ**
+                // （移动是镜头相对的 ⇒ 角色朝向 H = 镜头偏航 C + θ ⇒ H − C ≡ θ）。
+                // 于是 **θ 一抖，镜头的角速度就跟着抖**。而人感受到的"晃"正是角速度与
+                // 角加速度，不是位置——虚拟摇杆上拇指本来就在 ±10~20° 内游走，
+                // 跑起来就成了持续的角速度噪声，这就是"跑步时镜头快速晃动的厉害"。
+                // 加大平滑/限幅都治不了根：只要速率由误差决定，误差的噪声就会进到速率里。
+                //
+                // 改法：**速率与误差解耦，只分几档恒定值**。拇指的抖动便无从调制它。
+                //   · 看得见前方（视察点在取景窗内）→ 恒速慢漂 settleRate，把镜头一点点
+                //     带到身后。恒速 ⇒ 零速率噪声；14°/s 诱导的弧半径 21m，几乎看不出弯。
+                //   · 看不见前方（视察点出窗，≈转向 >55°）→ 按超出量映射但封顶 blindMaxRate。
+                //     环还在，转多快都不收敛，快只换来更紧的弧，所以封顶就够。
+                //   · 摇杆松开 → 环消失，误差真的会收敛，此时才用比例伺服全速追平。
+                //   · 近身交战 / 手动转镜期 / 静止 → 完全不动。
                 bool moving = moveSpeed > 0.6f;
-                bool manualRecently = manualLook;
                 bool fighting = fightingNow;
-
-                // ===== 方向跟随的开关：交战中关，其他实时同步（黑神话悟空式的分工）=====
-                //
-                // 悟空的镜头与方向是这样分的：**野外行进时镜头跟着你走**，
-                // 而**战斗中镜头归玩家（右摇杆）与锁定管**，不会被你的走位牵着转。
-                // 本作照此分：
-                //   · 近身交战（聚焦敌人在 8m 内）→ **不做方向跟随**。
-                //     战斗中角色朝向被出招磁吸每一击瞬间拧向敌人、推杆出招转向 150°/s
-                //     搅动，跟它就是抖；而"看得见敌人"由取景窗保底、"看得正"由松杆
-                //     自动回正负责，都不需要连续伺服。
-                //   · 其他一切情况（无敌人／敌人在 8m 外／正在撤离）→ **实时同步**，
-                //     走上游调好的连续伺服（10° 软区、70~340°/s）+ 突变预算。
-                //
-                // 曾经试过的两种写法都不对：
-                //   · followHold = fighting —— 连"敌人已死但 InCombat 还剩 3 秒"
-                //     也一并冻住，且战斗中 180° 掉头毫无反应；
-                //   · followHold = fighting && !_aheadOut —— 转向 >55° 就放开，
-                //     可放开之后追的仍是【朝向】这个最跳的量，敏感就是这么回来的。
-                bool followHold = _meleeHold;
-                // 不跟随时把目标设成镜头自身：偏差恒为 0，既不驱动镜头，
-                // 也不会让下游的「大幅转向拉远视野」被一个陈旧的方位长期撑开。
-                // 分支本身照常走完，末尾的 _yawFollowVel 衰减才不会被跳过
-                //（硬置零速度＝无限 jerk，正是本文件反复强调要避免的）
-                float followYaw = followHold ? _yaw : _headingAvg;
-                float followHoldT = _headingHoldT;
-                float softZone = exploreReorientAngle;
-
-                // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
-                // 若只看 moveSpeed 会误判成静止而完全不回正。
+                bool followHold = _meleeHold;   // 近身交战：镜头不跟方向（悟空式分工）
                 bool steering = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
-                bool active = (moving || steering) && !followHold;
+                bool stickFree = _stickIdleT > 0.05f;
+                bool active = (moving || steering) && !followHold && !manualLook;
 
-                // ===== 统一渐进回正（转向尺度 → 镜头同步幅度，连续映射，无分档断层）=====
-                // 此前战斗/探索是互斥的两条分支：战斗中只有 >55° 才回正，
-                // 12°—55° 的中等转向【完全没有跟随】——战斗中长期存在的部分盲区。
-                // 现在合并为一条：
-                //   · 中小幅转向（>10°）+ 有移动或推杆 → 温和跟随，越大越快；
-                //   · 大幅换向（战斗 >55° / 探索 >45°）→ 迟滞开关锁定追击，直到 <12° 才松开，
-                //     保证掉头/转身打背后敌人时迅速把新方向框进画面；
-                //   · 手动转镜期间一律让位给玩家。
-                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, followYaw));
+                float wantYaw = _headingAvg + _occYawBias;
+                float err = Mathf.Abs(Mathf.DeltaAngle(_yaw, wantYaw));
 
-                // ===== 意图识别 ①：「朝镜头走来」≠「要把镜头甩到背后」=====
-                // err≈180° 意味着角色正朝镜头方向来。此前一律读作"要换方向"，于是玩家
-                // 一转身想看正脸、或贴墙后退调整站位，镜头立刻绕到背后——完全违背意图。
-                // 大作的判据是【是否持续行进】而非【是否转了身】：
-                //   · 只是转身看一眼／短暂后退 → 不满足持续时间 → 镜头岿然不动，看得到正脸；
-                //   · 真的一直朝镜头跑（要往那个方向去） → 累积够时间后镜头才缓缓绕过去，
-                //     避免角色跑出画面。
-                // 威胁优先：正在去的方向上有敌人时，"看清那边"压倒"看正脸"——
-                // 否则迎击追兵会落进盲区。判据挂在【行进方向】上而不是朝向：
-                // 朝向版（ThreatNear(_headingAvg, 70°)）只要你面朝敌人就成立，
-                // 会把 holdNeed 压到 0.06s、bigAngle 压到 35° 而几乎全程锁死；
-                // 行进方向版只在"确实在朝那边跑"时成立，原地对峙完全不触发。
+                // 「朝镜头走来」≠「要把镜头甩到背后」：转身看正脸／短暂后退时不该绕镜。
+                // 判据是【是否持续全速行进】而不是【是否转了身】；那个方向上有威胁时
+                // 一律放行（迎击追兵不能落进盲区）。
                 bool threatAhead = travelValid && ThreatNear(_travelAvg, 55f);
                 bool towardCamera = err > 130f;
                 if (towardCamera && moving && !fighting) _towardCamT += dt;
                 else _towardCamT = 0f;
-                // 判据修正（此前用"朝镜头行进了多久"，把掉头往回跑一并冻住 0.6 秒，
-                // 实测造成 2.2~3.6 秒盲区——正是"掉头时镜头跟不上"的主因）：
-                // 「转身看正脸／贴墙调整站位」与「掉头往回跑」的输入相同、意图相反，
-                // 可靠的区分不是时长而是【速度】——前者原地转身或碎步，后者全速持续移动。
-                // 半速以上一律认定为"我要往那个方向去"，镜头立刻跟，不再等待。
                 float runRef = player != null ? player.runSpeed : 5.2f;
                 bool committedRun = moveSpeed > runRef * 0.55f;
                 bool backingIntent = towardCamera && !fighting && !threatAhead
-                                     && !committedRun
-                                     && _towardCamT < TowardCameraHold;
+                                     && !committedRun && _towardCamT < TowardCameraHold;
 
-                float bigAngle = fighting ? 55f : 45f;
-                float holdNeed = fighting ? 0.24f : 0.15f;
-                // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）。
-                // 现在它要求【真的在朝那边跑】，所以这条快车道只服务于迎击/追击，
-                // 不再被原地对拳蹭到。
-                if (threatAhead) { holdNeed = 0.06f; bigAngle = 35f; }
-                if (!followHold && err > bigAngle && followHoldT > holdNeed && !backingIntent)
-                    _combatReorient = true;
-                else if (followHold || err < 12f || followHoldT < 0.1f || backingIntent)
-                    _combatReorient = false;
-
-                // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
-                // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
-                float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
-                bool gentle = active && followHoldT > steadyNeed && err > softZone
-                              && !backingIntent;
-
-                if (!manualRecently && (_combatReorient || gentle))
+                float rate = 0f;
+                if (active && !backingIntent && err > settleDeadZone)
                 {
-                    // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
-                    // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
-                    float t = Mathf.Clamp01((err - softZone) / 130f);
-                    float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t);
-                    float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
-                                              exploreMaxSpeed * 4f, t);
-                    // （曾在此处按 fighting 把转速再砍半。现在近身交战整条不跟随了，
-                    //   还能走到这里的"战斗"只剩【敌人在 8m 外，你正在接近或脱离】，
-                    //   那时要的恰恰是实时同步——砍半只会读作"反应慢"。已移除。）
-                    // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
-                    //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
-                    //   一条不再改变行为的特殊分支只会让运镜更难预测，故移除。）
-
-                    // ===== 意图识别 ②：不要把镜头甩进墙里 =====
-                    // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
-                    // 顶在墙上被迫贴脸，视野瞬间塌掉。大幅回正前先探一下目标方位是否够宽敞：
-                    // 越憋屈就转得越慢（最低降到 25%），把镜头留在看得见的地方。
-                    // 代数环限速：玩家正推着一个非正前方向时，镜头绕行会拖着角色画弧，
-                    // 弧的角速度＝绕行速率。压到 SustainedOrbitCap 让它成为缓弧而非转圈。
-                    // 摇杆回正/松开后不限速——那时环不存在，镜头可全速追平。
-                    if (player != null)
+                    if (stickFree)
                     {
-                        Vector3 sw = player.StickWorldDir;
-                        if (sw.sqrMagnitude > 0.04f)
-                        {
-                            float stickYaw = Quaternion.LookRotation(sw.normalized).eulerAngles.y;
-                            float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _yaw));
-                            float gate = Mathf.Clamp01((off - OrbitGateAngle) / OrbitGateWidth);
-                            if (gate > 0f)
-                            {
-                                // 【突变预算】：把 30°/s 死钉在离轴上，代价是"跑着突然
-                                // 改方向，镜头要好几秒才反应过来"。但一味提速也不行——
-                                // 环在那里，提速只换来角色画更紧的圈（实测 340°/s 时
-                                // 自转 207°/s，偏离角只从 87.9° 缩到 75.2°）。
-                                // 折中：方向突变后给一份【有限的角度预算】允许快转，
-                                // 花完就落回 30°/s 的缓弧。于是"突然改方向"立刻有反应，
-                                // 而"一直推着离轴不放"仍然不会转圈——被诱导的弧
-                                // 上限就是这份预算（70°），是个可算清的量。
-                                float cap = _orbitBudget > 0f
-                                    ? OrbitBurstCap : SustainedOrbitCap;
-                                maxSpd = Mathf.Lerp(maxSpd, cap, gate);
-                            }
-                        }
+                        // 松杆：无环，比例伺服可以全速收敛（实测 0.68~0.70s 对准新方向）
+                        rate = Mathf.Min(FreeConvergeMaxRate, err * 3.2f);
                     }
-
+                    else if (_aheadOut)
+                    {
+                        // 推着杆且看不见要去的方向：必须转过去，但封顶
+                        rate = Mathf.Min(blindMaxRate, (err - settleDeadZone) * 1.2f);
+                        if (threatAhead) rate = Mathf.Min(blindMaxRate * 1.6f, rate * 1.6f);
+                    }
+                    else
+                    {
+                        // 看得见前方：恒速慢漂。末端 6° 内线性收尾，避免硬停造成的 jerk
+                        rate = settleRate * Mathf.Clamp01((err - settleDeadZone) / 6f);
+                    }
+                    // 墙壁减速：别把镜头甩进墙里（幅度越大越不减速——盲区比构图要命）
                     if (err > 45f)
                     {
-                        Vector3 probePivot = target.position + Vector3.up * _pivotH;
-                        float freeAtTarget = FreeBoomDistance(probePivot, followYaw,
-                                                              offset.magnitude * _lenFactor);
-                        float room = Mathf.InverseLerp(1.8f, 3.2f, freeAtTarget);   // 0=贴墙 1=开阔
-                        // 下限 0.25→0.6：旧值把贴墙掉头的转镜从 1.15s 拖到 2.60s，
-                        // 换来的只是吊杆好看一点——而吊杆顶墙本来就有碰撞回缩兜底，
-                        // 盲区比构图要命得多。掉头幅度越大越不减速（见 urgency）。
+                        float freeAtTarget = FreeBoomDistance(
+                            target.position + Vector3.up * _pivotH, wantYaw,
+                            offset.magnitude * _lenFactor);
+                        float room = Mathf.InverseLerp(1.8f, 3.2f, freeAtTarget);
                         float urgency = Mathf.Clamp01((err - 45f) / 90f);
-                        float damp = Mathf.Lerp(Mathf.Lerp(0.6f, 1f, room), 1f, urgency);
-                        maxSpd *= damp;
-                        smoothT /= Mathf.Max(0.6f, damp);
+                        rate *= Mathf.Lerp(Mathf.Lerp(0.6f, 1f, room), 1f, urgency);
                     }
-
-                    // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
-                    float softHeading = SoftTarget(_yaw, followYaw + _occYawBias, softZone);
-                    _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
-                        smoothT, maxSpd, dt);
                 }
-                else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
+                // 速率恒定不代表可以瞬间起停：起步交给下游的角加速度限幅，
+                // 收尾靠上面那 6° 的线性带，两端都没有速度突变
+                _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, rate * dt);
+                _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
                 _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
             // 限幅落地：把本帧自动运镜的角速度变化钳在 MaxAutoYawAccel 内。
@@ -1293,10 +1176,6 @@ namespace AdversityRoad.Player
                 }
                 _yaw = yawBeforeAuto + autoRate * dt;
                 _autoYawRate = autoRate;
-                // 绕行预算按【实际转过的角度】扣减：只有推着摇杆（环存在）时才扣，
-                // 松杆时的收敛不占预算——那时本来就该全速追平
-                if (stickHeld) _orbitBudget = Mathf.Max(0f,
-                    _orbitBudget - Mathf.Abs(autoRate) * dt);
             }
 
             _ultimateBlend = Mathf.MoveTowards(_ultimateBlend, ultimate ? 1f : 0f, dt / 0.25f);
