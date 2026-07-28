@@ -117,6 +117,17 @@ namespace AdversityRoad.Player
     ///     换景别是分镜级的决定（距离/取景点/俯仰/FOV 一起变），不该每秒发生一次。
     /// 剩下的运镜就只有两类：**玩家自己转的**，和**一次有始有终的回正**。
     ///
+    /// 但"该不该动"判对了还不够，**"怎么开始、怎么停下"同样要管**。
+    /// 门限式的判据天然给出阶跃的目标速率（门一开就从 0 变成六十几度每秒，
+    /// 门一关又变回 0），直接拿去转镜就是"静止→猛地开始转→猛地停住"，
+    /// 读作抑扬顿挫、像卡死后突然恢复，比一直缓慢转还晕。
+    /// 所以**速率本身也走临界阻尼**：目标速率仍是分档恒定的（拇指抖动调制不了它），
+    /// 而实际速率平滑地涨上去、平滑地落下来——无速率噪声，且无速度台阶。
+    /// 峰值角加速度由 1100°/s²（限幅值，实际等于没限）降到 114~169°/s²。
+    /// 同理，引导留白与吊杆变焦也从 MoveTowards/Lerp 改为临界阻尼——
+    /// 前者是线性斜坡（两端各有一次加速度台阶），后者面对阶跃目标会在第一帧
+    /// 就给出最大推拉速度。
+    ///
     /// 而且这一切还要先过**意图确认**这一关：只有【已确认的方向】才配让机位动。
     /// 判据量的是**拇指角 θ**（锚点法）——它是玩家的真实意图，且与镜头无关：
     ///   · 搓杆/转圈 → θ 一直在扫 → 永不确认 → **镜头一动不动**，角色自己绕圈跑
@@ -203,6 +214,11 @@ namespace AdversityRoad.Player
         float _yaw, _pitch = 10f;
         float _curYaw, _curPitch = 10f;
         float _yawVel, _pitchVel;
+        float _followRate, _followRateVel;   // 行进跟随的【实际】角速度（对目标速率做临界阻尼）
+        /// <summary>速率的平滑时间。目标速率是分档恒定的（拇指抖动调制不了它），
+        /// 而实际速率经此平滑地涨上去、落下来——无速率噪声，且无速度台阶。
+        /// 0.32s 下 61°/s 的目标对应峰值角加速度 ≈190°/s²，远在舒适区（≈600）内。</summary>
+        const float FollowRateSmooth = 0.32f;
         float _boomDist, _boomVel;
         float _boomWant = 99f, _boomClearT;   // 吊杆目标的抗颤保持（见碰撞回缩处）
         /// <summary>吊杆"空出来了"要持续这么久才承认，用来滤掉球投射逐帧漏检造成的
@@ -226,7 +242,7 @@ namespace AdversityRoad.Player
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
         /// <summary>离轴奔跑强度（0~1，平滑）：横向/后向跑时拉远取景，进一步扩大可见前方。</summary>
-        float _offAxisRun;
+        float _offAxisRun, _offAxisVel;
         float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
         // ---- 镜头导演：景别选择与平滑过渡 ----
         ShotProfile _shot;                 // 当前生效的景别（插值后的实时值）
@@ -588,7 +604,7 @@ namespace AdversityRoad.Player
         int _engagedEnemies;               // 9m 内【真的在交战】的敌人数（追击/攻击/硬直）
         float _combatBlend;                // 交战程度 0→1：位置阻尼与焦点死区随之加重
         float _pivotH = 0.42f;
-        float _lenFactor = 1f;             // 动态构图：战斗拉近/疾跑拉远
+        float _lenFactor = 1f; float _lenFactorVel;             // 动态构图：战斗拉近/疾跑拉远
         float _lockBlend;                  // 锁定取景渐入渐出，避免切锁瞬间跳镜
         bool _pivotInit;
         Transform _head;                    // 第一人称时隐藏头部（显露手臂与兵器）
@@ -1075,7 +1091,14 @@ namespace AdversityRoad.Player
             // 玩家自己甩镜是自发运动，不引起晕动，限它只会读作迟钝。
             float yawBeforeAuto = _yaw;
 
-            if (_recenterT > 0f) { /* 回正接管本帧的偏航，跳过常规自动运镜 */ }
+            // 其余分支接管偏航时，让行进跟随的速率平滑归零——
+            // 切回来时才不会带着一段旧速度突然起步
+            if (_recenterT > 0f)
+            {
+                // 回正接管本帧的偏航，跳过常规自动运镜
+                _followRate = Mathf.SmoothDamp(_followRate, 0f, ref _followRateVel,
+                    FollowRateSmooth, Mathf.Infinity, dt);
+            }
             else if (combat)
             {
                 // ===== 战斗机位（此前是全片最粗糙的一段，现与探索共用同一套稳定设施）=====
@@ -1139,6 +1162,8 @@ namespace AdversityRoad.Player
                     // 速度衰减而非硬置零——硬置零正是 1509°/s² 的来源
                     else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
                 }
+                _followRate = Mathf.SmoothDamp(_followRate, 0f, ref _followRateVel,
+                    FollowRateSmooth, Mathf.Infinity, dt);
             }
             else if (autoFollow && !fpNow && _focusActive && !manualLook &&
                      _focusFrameT > FocusFrameHold)
@@ -1175,6 +1200,8 @@ namespace AdversityRoad.Player
                 // 是两套目标，叠上去会互相拉扯（换角把敌人又推出窗外）
                 _yaw = Mathf.SmoothDampAngle(_yaw, SoftTarget(_yaw, wantYaw, FocusEdgeSoft),
                     ref _yawFollowVel, fSmoothT, fMaxSpd, dt);
+                _followRate = Mathf.SmoothDamp(_followRate, 0f, ref _followRateVel,
+                    FollowRateSmooth, Mathf.Infinity, dt);
             }
             else if (autoFollow)
             {
@@ -1247,9 +1274,20 @@ namespace AdversityRoad.Player
                         rate *= Mathf.Lerp(Mathf.Lerp(0.6f, 1f, room), 1f, urgency);
                     }
                 }
-                // 速率恒定不代表可以瞬间起停：起步交给下游的角加速度限幅，
-                // 收尾靠上面那 6° 的线性带，两端都没有速度突变
-                _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, rate * dt);
+                // ===== 速率本身必须临界阻尼，不能阶跃 =====
+                // 上面算出的 rate 是【目标速率】，它天然是阶跃的：门一开就从 0 变成
+                // 六十几度每秒，门一关又变回 0。直接拿它转镜就是"静止→猛地开始转→
+                // 猛地停住"——读作抑扬顿挫、像卡死后突然恢复，比一直缓慢转还晕。
+                // 原先只靠下游的角加速度限幅（1100°/s²）兜底，而 61°/s 在 0.055s 内
+                // 就能到位，等于没限；何况它"只限提速不限减速"，停的那一下是无限 jerk。
+                //
+                // 这里对速率做临界阻尼平滑：目标速率仍是分档恒定的（拇指抖动
+                // 调制不了它），而**实际速率**平滑地涨上去、平滑地落下来。
+                // 两个性质同时拿到——无速率噪声，且无速度台阶。
+                // 0.32s：61°/s 的目标对应峰值角加速度 ≈190°/s²，远在舒适区（≈600）内。
+                _followRate = Mathf.SmoothDamp(_followRate, rate, ref _followRateVel,
+                    FollowRateSmooth, Mathf.Infinity, dt);
+                _yaw = Mathf.MoveTowardsAngle(_yaw, wantYaw, _followRate * dt);
                 _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
             }
             // 限幅落地：把本帧自动运镜的角速度变化钳在 MaxAutoYawAccel 内。
@@ -1333,7 +1371,7 @@ namespace AdversityRoad.Player
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);
                 focusXZ = Vector2.Lerp(focusXZ, (focusXZ + enemyXZ) * 0.5f,
                     Mathf.Max(lockCenterBias, _shot.centerBias) * _lockBlend);
-                _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
+                _offAxisRun = Mathf.SmoothDamp(_offAxisRun, 0f, ref _offAxisVel, 0.45f, Mathf.Infinity, dt);
             }
             else if (moveSpeed > 1.5f)
             {
@@ -1359,8 +1397,11 @@ namespace AdversityRoad.Player
                     // **拇指的抖动被直接接到了焦点位移上**，画面持续左右微微游移。
                     // 按"拍得到就不动"：窗内只保留跑动的基础留白（恒定，不晃），
                     // 出窗才把额外留白摇上来——那时确实需要它把前方纳入画面。
-                    _offAxisRun = Mathf.MoveTowards(_offAxisRun,
-                        _aheadOut ? Mathf.Clamp01(moveSpeed / 5.2f) : 0f, dt / 0.5f);
+                    // 临界阻尼而非 MoveTowards：线性斜坡在起止两端各有一次加速度台阶，
+                    // 焦点会"猛地开始平移、猛地停住"，与偏航的阶跃是同一个毛病
+                    _offAxisRun = Mathf.SmoothDamp(_offAxisRun,
+                        _aheadOut ? Mathf.Clamp01(moveSpeed / 5.2f) : 0f,
+                        ref _offAxisVel, 0.45f, Mathf.Infinity, dt);
                     // 交战中大幅收敛引导留白（2.2m → 0.5m）：留白是为【长距离奔跑】
                     // 看清前方而设的，而近身缠斗的走位是短促往复——每一次侧闪/后撤
                     // 都会让焦点前后甩动最多 2.2m，那是位置侧最大的一处晃动源，
@@ -1371,9 +1412,9 @@ namespace AdversityRoad.Player
                                               leadCap, _offAxisRun);
                     focusXZ += vdir.normalized * lead;
                 }
-                else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
+                else _offAxisRun = Mathf.SmoothDamp(_offAxisRun, 0f, ref _offAxisVel, 0.45f, Mathf.Infinity, dt);
             }
-            else _offAxisRun = Mathf.MoveTowards(_offAxisRun, 0f, dt / 0.5f);
+            else _offAxisRun = Mathf.SmoothDamp(_offAxisRun, 0f, ref _offAxisVel, 0.45f, Mathf.Infinity, dt);
             if (!_pivotInit) { _pivotY = _pivotYAnchor = targetPivotY; _pivotXZ = focusXZ; _focusAnchor = focusXZ; _pivotInit = true; }
 
             // 电影三脚架感·焦点死区：小于死区的焦点位移完全不推镜——近身互殴时
@@ -1432,7 +1473,10 @@ namespace AdversityRoad.Player
             wantFactor *= _shot.distanceMult;   // 景别决定景深：群战拉远、狭窄收紧、决胜推近
             // 变焦极慢（电影推轨是分镜级动作，不是逐帧伺服）：缠斗中距离忽近忽远
             // 不再造成镜头前后泵动
-            _lenFactor = Mathf.Lerp(_lenFactor, wantFactor, 1.1f * dt);
+            // 临界阻尼而非 Lerp：Lerp 面对阶跃目标会在第一帧就给出最大速度
+            //（0.78 m/s 的推拉），临界阻尼则从 0 平滑加速再平滑停下
+            _lenFactor = Mathf.SmoothDamp(_lenFactor, wantFactor, ref _lenFactorVel,
+                0.75f, Mathf.Infinity, dt);
 
             Vector3 boomDir = (rot * offset).normalized;
             float maxDist = offset.magnitude * _lenFactor;
