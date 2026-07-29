@@ -156,7 +156,6 @@ namespace AdversityRoad.Player
         Vector3 _planarVel;                // 玩家水平速度（移动构图的引导留白用）
         Combat.CombatStateMachine _playerFsm;   // 临战判定（未锁定的战斗回正用）
         bool _combatReorient;              // 大幅换向追击中（迟滞开关防小幅摆镜）
-        float _yawErr;                     // 本帧镜头与角色朝向的偏差（大幅转向时拉远视野用）
         /// <summary>离轴奔跑强度（0~1，平滑）：横向/后向跑时拉远取景，进一步扩大可见前方。</summary>
         float _offAxisRun;
         float _towardCamT;                 // 持续朝镜头行进的时长（区分"转身看一眼"与"真要往那走"）
@@ -209,30 +208,11 @@ namespace AdversityRoad.Player
         // 反解：T = sqrt(6Δ/预算)，再取一个下限保证小幅回正也不显得急促。
         static float RecenterDuration(float amount, float accelBudget, float minTime)
             => Mathf.Max(minTime, Mathf.Sqrt(6f * Mathf.Abs(amount) / Mathf.Max(1f, accelBudget)));
-        /// <summary>自动回正（镜头自己决定要动）的角加速度预算：最保守。
-        /// 500°/s² ⇒ 180° 用 1.47s、90° 用 1.04s，全程在舒适区内。</summary>
-        const float AutoRecenterAccelBudget = 500f, AutoRecenterMinTime = 0.5f;
-        /// <summary>一键回正是玩家自己按的，自发运动耐受度高，可以更利落；
-        /// 但 1400°/s² 仍只有原先 8816 的六分之一。180° 用 0.88s。</summary>
+        /// <summary>一键回正是玩家自己按的，自发运动耐受度高，可以利落一点；
+        /// 但 1400°/s² 仍只有原先 8816 的六分之一。180° 用 0.88s、90° 用 0.62s。</summary>
         const float ManualRecenterAccelBudget = 1400f, ManualRecenterMinTime = 0.3f;
-        const float AutoRecenterGap = 2.2f;         // 两次自动回正的最小间隔
-        const float AutoRecenterWantHold = 0.2f;    // 需求持续这么久才兑现
-        const float AutoRecenterStickIdle = 0.12f;  // 摇杆松开这么久才算"环消失了"
-        const float AutoRecenterMinAmount = 25f;    // 摆不到这个幅度就不值得动镜
-        /// <summary>「一段移动刚结束」的时间窗：站定超过这么久就再也不自动回正。
-        /// 与前两个闸门叠加后，实际兑现窗口是松杆后的 0.32s ~ 1.2s。</summary>
-        const float AutoRecenterIdleWindow = 1.2f;
         float _recenterT, _recenterDur;
         float _recenterFrom, _recenterTo;
-        float _wantRecenterT, _lastRecenter = -99f;
-        float _stickIdleT;                 // 摇杆松开时长
-        float _idleStandT;                 // 既不推杆也不移动的持续时长
-        /// <summary>本次回正是镜头自己决定的（可被玩家重新推杆打断），
-        /// 而不是玩家一键触发的。回正期间 PlayerController 会冻结移动参考系，
-        /// 若不让玩家打断，就会出现"手指按着左、画面里角色却在往前跑"——
-        /// 那正是上游撤回过的那个代价。玩家一碰摇杆就把控制权还给他。</summary>
-        bool _recenterAuto;
-        float _recenterRate;               // 回正当前的角速度（被打断时交接给伺服）
         /// <summary>回正进行中——PlayerController 据此冻结移动参考系。</summary>
         public bool RecenterActive => _recenterT > 0f;
 
@@ -248,13 +228,12 @@ namespace AdversityRoad.Player
             return target.eulerAngles.y;
         }
 
-        void StartRecenter(float toYaw, float accelBudget, float minTime, bool auto = false)
+        void StartRecenter(float toYaw, float accelBudget, float minTime)
         {
             _recenterFrom = _yaw;
             _recenterTo = toYaw;
             _recenterDur = RecenterDuration(Mathf.DeltaAngle(_yaw, toYaw), accelBudget, minTime);
             _recenterT = _recenterDur;
-            _recenterAuto = auto;
         }
         readonly System.Collections.Generic.List<float> _threatDirs =
             new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
@@ -340,6 +319,12 @@ namespace AdversityRoad.Player
         /// <summary>视野开阔时的跟随死区（度）。开阔＝28°内的转向完全不动镜；
         /// 盲区时收回到 exploreReorientAngle（10°），细碎修正也照跟。</summary>
         const float SightDeadZoneOpen = 28f;
+        /// <summary>转向缓冲的最大拉远量（占基准吊杆的比例）。
+        /// 0.22 ⇒ 吊杆 4.6m 推到 5.6m，可见前方约多出 1.7m，角色占屏 40%→33%——
+        /// 还在主流第三人称的构图区间内，不会读作"人物变小"。</summary>
+        const float TurnDollyOut = 0.22f;
+        float _headingRateAvg;               // 低通后的转向角速度（"突然转向"的度量）
+        float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
         float _sightNow = SightMax, _sightGoing = SightMax;
         float _urgency, _urgencyVel;         // 0=一览无余，1=前方全是盲区
         Transform _focusEnemy;                 // 「必须看得见的那个敌人」
@@ -580,6 +565,11 @@ namespace AdversityRoad.Player
             if (headingRate > 220f) _headingHoldT = 0f;
             else _headingHoldT += dt;
             _lastHeading = rawHeading;
+            // 低通后的转向角速度：**"突然转向"这个事件本身**的度量。
+            // 转向缓冲拉远必须用它，不能用镜头偏差——偏差恒等于摇杆离轴角 θ，
+            // 稳态推着不放也一直大，于是吊杆会长时间停在拉远位，且随拇指抖动前后泵动。
+            // 角速度只在【真的在转】的那零点几秒里大，转完自己就回落了。
+            _headingRateAvg = Mathf.Lerp(_headingRateAvg, headingRate, 1f - Mathf.Exp(-8f * dt));
             // 自适应低通滤波：朝向还在乱动时收敛慢（滤掉摇杆抖动），
             // 一旦朝向稳定下来就快速收敛——避免"转完身还要等滤波追上"的盲区延迟
             float lpRate = Mathf.Lerp(5f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
@@ -713,11 +703,6 @@ namespace AdversityRoad.Player
                                (_playerFsm != null && _playerFsm.InCombat);
             _combatBlend = Mathf.MoveTowards(_combatBlend, fightingNow ? 1f : 0f, dt / 0.6f);
             bool stickHeld = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
-            _stickIdleT = stickHeld ? 0f : _stickIdleT + dt;
-            // 「站定」时长：既没推杆也没在移动，持续了多久。
-            // 自动回正只服务于【一段移动刚结束】的那个节拍，绝不打扰站着的玩家——
-            // 玩家特意让镜头对着角色的脸站着，那是他摆的机位，镜头一动都不该动。
-            _idleStandT = (stickHeld || moveSpeed > 0.6f) ? 0f : _idleStandT + dt;
 
             // ---- 「那个必须看得见的敌人」在不在画面里 ----
             // 度量每帧都算，且【不藏在任何分支里】：一旦藏进战斗分支，
@@ -795,66 +780,32 @@ namespace AdversityRoad.Player
                 StartRecenter(RecenterTargetYaw(lockTarget),
                               ManualRecenterAccelBudget, ManualRecenterMinTime);
 
-            // ---- 自动回正：把同一个动作正式接进自动运镜（保留一键回正不变）----
-            // 连续伺服受代数环所限，永远追不平一个"推着离轴摇杆"的角色；
-            // 而【松开摇杆的那一刻】环就消失了，那才是把镜头一次性摆正的正确时机，
-            // 也是玩家刚打完一轮、正在换气的时刻——运镜发生在这里最不打扰。
-            // 三重闸门（缺一个就会变成"每隔一两秒摆一次"）：
-            //   · 松杆 + 不在手动取景 + 没在做别的运镜；
-            //   · 偏差确实大到值得动（<25° 一律不动，构图偏一点不是缺陷）；
-            //   · 两次之间至少隔 AutoRecenterGap，且需求持续 AutoRecenterWantHold 才兑现；
-            //   · **只在"一段移动刚结束"的那个节拍内兑现**（_idleStandT < AutoRecenterIdleWindow）。
-            //     少了这一条，"玩家特意让镜头面对角色的脸站着"就会被镜头一次次绕走——
-            //     那是玩家自己摆的机位，不是需要修正的构图。
-            // 战斗中把门槛整体抬高（25°→55°、间隔 2.2s→5s）：交战时松杆极其频繁
-            //（出招、格挡、闪避之间都会松），若沿用探索档，镜头会每隔一两秒摆一次——
-            // 那正是"很敏感"本身。战斗里"看得见敌人"由上面的出画兜底负责，
-            // 构图摆正远不如画面稳住重要。
-            float recenterErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, RecenterTargetYaw(lockTarget)));
-            // 第五道闸门（本轮新增）：**视野开阔就不回正**。
-            // 你在开阔地斜着跑，前方一样一览无余——这时候把镜头摆到背后纯粹是
-            // "整理构图"，而代价是每转一次向就摆一次镜。构图偏一点不是缺陷，是留白。
-            // 只有两种情况才值得摆：前方确实看不清（_urgency），
-            // 或者已经偏到把行进方向甩出画面的程度（>110°，那时候是真的在盲开）。
-            bool sightWantsRecenter = _urgency > 0.35f || recenterErr > 110f;
-            bool wantAuto = autoFollow && !manualLook && _recenterT <= 0f && !ultimate &&
-                            _stickIdleT > AutoRecenterStickIdle &&
-                            _idleStandT < AutoRecenterIdleWindow &&
-                            sightWantsRecenter &&
-                            recenterErr > Mathf.Lerp(AutoRecenterMinAmount, 55f, _combatBlend);
-            _wantRecenterT = wantAuto ? _wantRecenterT + dt : 0f;
-            if (_wantRecenterT > AutoRecenterWantHold &&
-                Time.unscaledTime - _lastRecenter > Mathf.Lerp(AutoRecenterGap, 5f, _combatBlend))
-            {
-                StartRecenter(RecenterTargetYaw(lockTarget),
-                              AutoRecenterAccelBudget, AutoRecenterMinTime, true);
-                _wantRecenterT = 0f;
-            }
-            // 玩家重新推杆 ⇒ 立刻放弃自动回正（一键回正是玩家自己按的，不打断）。
-            // 回正期间移动参考系被冻结，不还控制权就会变成"手指按着左、角色往前跑"。
-            // 打断不能是"速度瞬间归零"（那是无限 jerk，读作卡一下）：把回正当前的
-            // 角速度交接给跟随伺服的速度状态，让它自己平滑地减速下来。
-            if (_recenterAuto && stickHeld)
-            {
-                _recenterT = 0f;
-                _recenterAuto = false;
-                _yawFollowVel = _recenterRate;
-                _autoYawRate = _recenterRate;
-            }
+            // ===== 「停下来之后自动回正」已撤销（本轮）=====
+            // 对照成熟大作，这一档在**任何一款都不存在**：
+            //   · 魂系 / 只狼 / 艾尔登法环 / 黑神话悟空：未锁定时镜头【只在你移动时】
+            //     缓缓跟到身后；你一停，镜头就停在原处，不会再自己摆。回正是一个
+            //     显式按键（右摇杆按下 / 锁定键），从来不是"停下"这个事件的后果。
+            //   · 战神(2018/诸神黄昏)、地平线、对马、刺客信条：同样只有跟随 + 显式回正键。
+            //   · 塞尔达：ZL / X 是玩家自己按的复位，停步不触发任何运镜。
+            // 道理也站得住：**停下来恰恰是玩家想看看四周、看看自己角色的时刻**，
+            // 这时候把镜头摆走是最不合时宜的一次运镜；而且它无法预测——
+            // 玩家没做任何动作画面却动了，那正是"镜头有自己的想法"这种糟糕观感的来源。
+            //
+            // 功能上它也已经没有存在的必要：连续跟随本来就在你【移动时】把镜头带到
+            // 身后，且盲区时会自动提速（见 _urgency）；停下之后即使构图偏一点，
+            // 按你的开阔度原则——只要看得见远方，那就不是问题。
+            // 下一次起跑时跟随会立刻接管，自己就正回来了。
+            // 保留【一键回正】：那是这个类型的通行解，玩家自己按的运动不引起晕动。
 
             if (_recenterT > 0f)
             {
                 _recenterT -= dt;
                 // 平滑收尾曲线（SmoothStep）：起止都无速度突变，不违反限幅精神
                 float u = 1f - Mathf.Clamp01(_recenterT / Mathf.Max(0.01f, _recenterDur));
-                float yawWas = _yaw;
                 _yaw = Mathf.LerpAngle(_recenterFrom, _recenterTo, Mathf.SmoothStep(0f, 1f, u));
-                _recenterRate = Mathf.DeltaAngle(yawWas, _yaw) / dt;   // 供打断时交接速度
                 _yawFollowVel = 0f;
                 _autoYawRate = 0f;
                 _lastManualLook = -99f;   // 回正后立刻允许自动跟随接管，不留 1.2s 空窗
-                // 冷却从【动作结束】起算而不是起始：否则 0.8s 的回正会把间隔吃掉大半
-                _lastRecenter = Time.unscaledTime;
             }
 
             // 自动运镜的角加速度限幅——从这里开始记录基线。
@@ -925,7 +876,6 @@ namespace AdversityRoad.Player
                     }
                     // 速度衰减而非硬置零——硬置零正是 1509°/s² 的来源
                     else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
-                    _yawErr = aimErr;
                 }
             }
             else if (autoFollow)
@@ -1099,7 +1049,6 @@ namespace AdversityRoad.Player
                         smoothT, maxSpd, dt);
                 }
                 else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
-                _yawErr = err;   // 供下方「大幅转向时轻微拉远视野」使用
             }
             // 限幅落地：把本帧自动运镜的角速度变化钳在 MaxAutoYawAccel 内。
             // 晕动与角【加速度】相关，与角速度关系小得多——实测掉头时的峰值加速度
@@ -1269,13 +1218,8 @@ namespace AdversityRoad.Player
                 // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
                 // 不会形成"呼吸式"变焦那种不稳感。
                 float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
-                // 转向开阔（0.06→0.15）：转向瞬间恰是最需要看清周围的时刻。
-                // 用【拉远吊杆】而不是【放大 FOV】——变焦会显著加剧晕动，
-                // 而纯位移只是把画面推开，是这几个杠杆里唯一还有余量且无副作用的。
-                // 转完即回（_lenFactor 的慢插值负责），角色占屏只在转向瞬间由 40%→35%。
-                float turnOut = Mathf.Clamp01(_yawErr / 120f) * 0.15f;
                 // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 8.1m
-                wantFactor = 1f + runOut + turnOut + _offAxisRun * 0.12f;
+                wantFactor = 1f + runOut + _offAxisRun * 0.12f;
             }
             // 大招镜头：短暂拉近（覆盖当前构图，结束自动回稳）
             // 推近幅度随特写强度分级：击杀轻推、超必杀满推——不再一律贴到 0.82
@@ -1289,8 +1233,30 @@ namespace AdversityRoad.Player
             _lenFactor = Mathf.SmoothDamp(_lenFactor, wantFactor, ref _lenFactorVel,
                 0.75f, Mathf.Infinity, dt);
 
+            // ===== 转向缓冲拉远（本轮）=====
+            // 跑动中突然改方向的那一刻，正是最需要看清周围的时刻：先把吊杆推出去
+            // 一截，视野立刻多出一圈，镜头就有余裕慢慢转过去——**用空间换时间，
+            // 免掉那记"猛转一下"**。与紧迫度是同一思路的两只手：一个把盲区提前化解，
+            // 一个在转向当下直接给出更多可见范围。
+            // 用【拉远吊杆】而不是【放大 FOV】：变焦会显著加剧晕动，纯位移只是把画面
+            // 推开，是这几个杠杆里唯一还有余量且无副作用的。
+            //
+            // 判据是【转向角速度】而不是【镜头偏差】：后者恒等于摇杆离轴角 θ，
+            // 稳态推着不放也一直大，吊杆会长期停在拉远位并随拇指抖动前后泵动；
+            // 角速度只在真的在转的那零点几秒里大，转完自己就回落。
+            // 45°/s 起算、180°/s 满级；再乘速度——站着原地转身不需要缓冲。
+            //
+            // **不走 _lenFactor**（那条是 0.75s 的分镜级慢插值，一次 0.4 秒的转向
+            // 在它那里几乎看不出来）。这里单独走一条起快收慢的临界阻尼：
+            // 起 0.45s（峰值推拉约 1.2 m/s，属舒适区）、收 1.2s（转完慢慢还回去，
+            // 不会"推出去又立刻缩回来"的呼吸感）。
+            float turnWant = Mathf.Clamp01((_headingRateAvg - 45f) / 135f)
+                             * Mathf.Clamp01(moveSpeed / 3f);
+            _turnBurst = Mathf.SmoothDamp(_turnBurst, turnWant, ref _turnBurstVel,
+                turnWant > _turnBurst ? 0.45f : 1.2f, Mathf.Infinity, dt);
+
             Vector3 boomDir = (rot * offset).normalized;
-            float maxDist = offset.magnitude * _lenFactor;
+            float maxDist = offset.magnitude * _lenFactor * (1f + _turnBurst * TurnDollyOut);
 
             // ---- 碰撞：回缩快、伸出慢，避免弹跳 ----
             // 只对【环境】做遮挡回缩：忽略触发器（受击/攻击判定盒）、玩家与敌人的
