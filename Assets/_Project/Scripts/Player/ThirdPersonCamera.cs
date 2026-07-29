@@ -316,6 +316,32 @@ namespace AdversityRoad.Player
         /// <summary>出画兜底只管【近身】的那个对手：十米开外跑动中的追兵不属于
         /// "我把对手打丢了"。</summary>
         const float CombatFollowRange = 8f;
+
+        // ===== 视野开阔度：决定运镜快慢的唯一裁决者（本轮）=====
+        // 规则用一句话说完：**看得见远方 ⇒ 慢慢跟；看不见远方 ⇒ 赶紧转过去。**
+        // 转向本身不是动镜的理由——你在开阔地斜着跑，前方一样一览无余，
+        // 这时候把镜头摆正只是"整理构图"，代价却是画面一直在动。
+        // 反过来，走廊、拐角、贴墙这些地方，前方就那么几米，
+        // 不立刻把要去的方向框进画面就是真盲区，那才值得快。
+        //
+        // 更要紧的是**别让盲区发生**：判据用【撞上的剩余时间】而不是距离，
+        // 于是墙还在 15m 外时镜头就开始不紧不慢地转，等你真到墙边早已对好——
+        // 永远不必做那种"突然快速转一下"的运镜，晕动自然就没有了。
+        const float SightMax = 26f;          // 通视探测上限（够远就不必再分辨）
+        const float SightProbeRadius = 0.35f;
+        const float SightOpen = 18f;         // 看得到这么远＝开阔，运镜可以最慢
+        const float SightTight = 6f;         // 只看得到这么近＝受限，必须快
+        const float TtiRelaxed = 3.0f;       // 距离撞上还有 3 秒：完全不急
+        const float TtiUrgent = 0.9f;        // 只剩 0.9 秒：满级紧迫
+        /// <summary>行进方向偏离画面正前多少（占半视野的比例）开始算"看不见要去的地方"。
+        /// 这一项不能省：开阔地里【朝镜头跑】时通视距离很长，但那个方向根本不在画面里，
+        /// 只看开阔度会漏掉这种最典型的盲区。</summary>
+        const float OffScreenStart = 0.65f, OffScreenFull = 0.95f;
+        /// <summary>视野开阔时的跟随死区（度）。开阔＝28°内的转向完全不动镜；
+        /// 盲区时收回到 exploreReorientAngle（10°），细碎修正也照跟。</summary>
+        const float SightDeadZoneOpen = 28f;
+        float _sightNow = SightMax, _sightGoing = SightMax;
+        float _urgency, _urgencyVel;         // 0=一览无余，1=前方全是盲区
         Transform _focusEnemy;                 // 「必须看得见的那个敌人」
         float _focusDist = 99f;                // 到聚焦敌人的水平距离
         Vector3 _focusPos;                     // 低通后的敌人位置（滤位置而不是滤屏幕角）
@@ -731,6 +757,38 @@ namespace AdversityRoad.Player
                 _focusDist < CombatFollowRange &&
                 _focusFrameT > Mathf.Lerp(FocusFrameHold, FocusFrameHoldCombat, _combatBlend);
 
+            // ===== 视野开阔度 → 运镜紧迫度（本轮的核心裁决）=====
+            // 三条来源取【最大】——任何一条成立都算"看不清要去的地方"：
+            //   ① 当前画面本身就闭塞（沿画面正前只看得到几米）；
+            //   ② 要去的方向马上要撞上东西（剩余时间，不是剩余距离——
+            //      走得慢就不急，跑得快才急，这才是玩家真实的紧迫感）；
+            //   ③ 要去的方向压根不在画面里（开阔地朝镜头跑：通视很长，却完全看不见路）。
+            // 用【剩余时间】的好处是它提前很多就开始上升：5.2m/s 跑速下
+            // TtiRelaxed=3s 对应 15.6m，也就是墙还在十几米外镜头就不紧不慢地开始转，
+            // 等真到墙边早已对好——**盲区被提前化解掉，而不是发生后再抢救**。
+            // 这正是"避免镜头突然快速转动导致头晕"的正解：不是把快的那一下调慢，
+            // 而是让它根本不需要发生。
+            _sightNow = Mathf.Lerp(_sightNow, SightDistance(_curYaw), 1f - Mathf.Exp(-4f * dt));
+            _sightGoing = Mathf.Lerp(_sightGoing, SightDistance(_headingAvg),
+                1f - Mathf.Exp(-4f * dt));
+            float closedUrge = 1f - Mathf.InverseLerp(SightTight, SightOpen, _sightNow);
+            float tti = _sightGoing / Mathf.Max(1.2f, moveSpeed);
+            float ttiUrge = 1f - Mathf.InverseLerp(TtiUrgent, TtiRelaxed, tti);
+            // 「要去的地方」在画面里的偏角：用 0.9 秒后的位置作为视察点
+            float lookAhead = Mathf.Clamp(moveSpeed * 0.9f, 2f, 6f);
+            float aheadAng = Mathf.Abs(ScreenAngleTo(target.position +
+                Quaternion.Euler(0f, _headingAvg, 0f) * Vector3.forward * lookAhead));
+            float offUrge = Mathf.InverseLerp(halfHFov * OffScreenStart,
+                                              halfHFov * OffScreenFull, aheadAng);
+            // 站定时没有"要去的方向"，②③ 两条一律不成立（否则"转身看正脸"会被
+            // 读成"前方 180° 全是盲区"，镜头随即绕走——那是上一版最典型的误判）
+            if (moveSpeed < 0.6f) { ttiUrge = 0f; offUrge = 0f; }
+            // 紧迫度本身必须临界阻尼：它调制着转速，若阶跃，转速就跟着阶跃，
+            // 又变回"猛地开始转、猛地停住"。0.5s 让快慢之间是渐变而不是换挡。
+            _urgency = Mathf.SmoothDamp(_urgency,
+                Mathf.Max(closedUrge, Mathf.Max(ttiUrge, offUrge)),
+                ref _urgencyVel, 0.5f, Mathf.Infinity, dt);
+
             // ---- 一键回正（玩家显式触发）：触屏双击转镜区 / 桌面 V 键 ----
             if (MobileInput.ConsumeRecenter() ||
                 (!Application.isMobilePlatform && Input.GetKeyDown(KeyCode.V)))
@@ -753,9 +811,16 @@ namespace AdversityRoad.Player
             // 那正是"很敏感"本身。战斗里"看得见敌人"由上面的出画兜底负责，
             // 构图摆正远不如画面稳住重要。
             float recenterErr = Mathf.Abs(Mathf.DeltaAngle(_yaw, RecenterTargetYaw(lockTarget)));
+            // 第五道闸门（本轮新增）：**视野开阔就不回正**。
+            // 你在开阔地斜着跑，前方一样一览无余——这时候把镜头摆到背后纯粹是
+            // "整理构图"，而代价是每转一次向就摆一次镜。构图偏一点不是缺陷，是留白。
+            // 只有两种情况才值得摆：前方确实看不清（_urgency），
+            // 或者已经偏到把行进方向甩出画面的程度（>110°，那时候是真的在盲开）。
+            bool sightWantsRecenter = _urgency > 0.35f || recenterErr > 110f;
             bool wantAuto = autoFollow && !manualLook && _recenterT <= 0f && !ultimate &&
                             _stickIdleT > AutoRecenterStickIdle &&
                             _idleStandT < AutoRecenterIdleWindow &&
+                            sightWantsRecenter &&
                             recenterErr > Mathf.Lerp(AutoRecenterMinAmount, 55f, _combatBlend);
             _wantRecenterT = wantAuto ? _wantRecenterT + dt : 0f;
             if (_wantRecenterT > AutoRecenterWantHold &&
@@ -870,7 +935,13 @@ namespace AdversityRoad.Player
                 bool fighting = fightingNow;
                 // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
                 // 若只看 moveSpeed 会误判成静止而完全不回正——这正是"出招中转向后看不见前方"的缺口
-                bool steering = stickHeld;
+                // 「推杆」只在【交战中】才单独算作行进意图：出招/技能期间移动被定步锁住，
+                // 角色只转不移动，若只看 moveSpeed 会误判成静止而完全不回正。
+                // 但在非战斗时它是个误判源——站着不动、只用摇杆把角色转向左/右/后，
+                // 会被读成"我要往那边去"，镜头随即绕过去。而非战斗时推杆必然产生位移，
+                // moving 本来就覆盖得到；短促一点（改朝向）撑不到 0.6m/s 的低通均速，
+                // 正好被滤掉——这才是"站着改朝向不该动镜"的正确判法。
+                bool steering = stickHeld && fighting;
                 bool active = moving || steering;
 
                 // ===== 战斗中：稳定是第一性原则（本轮的核心）=====
@@ -886,8 +957,16 @@ namespace AdversityRoad.Player
                 // 代价是"构图偏一点"——那由下面的兜底与松杆自动回正来收，
                 // 而不是靠镜头每帧微调。镜头要么纹丝不动，要么在做一个明确的运镜。
                 float calm = _combatBlend;
-                float dz = Mathf.Lerp(exploreReorientAngle, 30f, calm);
-                float calmSpd = Mathf.Lerp(1f, 0.55f, calm);
+                // ===== 视野开阔度决定"该不该动、动多快"（本轮）=====
+                // 开阔（_urgency→0）：死区 28°、转速 45%——斜着跑也不动镜，动也是慢的；
+                // 盲区（_urgency→1）：死区回到 10°、转速全开——赶紧把要去的方向框进来。
+                // 中间是连续过渡，没有换挡感（_urgency 本身已做临界阻尼）。
+                float dzSight = Mathf.Lerp(SightDeadZoneOpen, exploreReorientAngle, _urgency);
+                float sightSpd = Mathf.Lerp(0.45f, 1f, _urgency);
+                // 交战时另有一套（稳定第一）：死区固定抬到 30°、转速压到 55%。
+                // 战斗里"看得见敌人"由下面的出画兜底负责，不靠通视距离。
+                float dz = Mathf.Lerp(dzSight, 30f, calm);
+                float calmSpd = Mathf.Lerp(sightSpd, 0.55f, calm);
                 // 唯一的例外：那个必须看得见的敌人已经【真的出画】了。
                 // 稳定压倒一切，但"看不见敌人"不是稳定，是失职——这条兜底存在的
                 // 全部理由，就是让"打着打着敌人不知道在哪"不可能发生。
@@ -940,16 +1019,26 @@ namespace AdversityRoad.Player
                                      && _towardCamT < TowardCameraHold;
 
                 // 大幅换向门槛：交战中抬高到 62°（只有真的掉头才值得动镜）
-                float bigAngle = Mathf.Lerp(45f, 62f, calm);
-                float holdNeed = Mathf.Lerp(0.15f, 0.28f, calm);
+                // 大幅换向的追击闸门同样吃视野系数：开阔地里连 70° 的转向都不追
+                //（反正看得见），闭塞处 45° 就追。
+                float bigAngle = Mathf.Max(Mathf.Lerp(70f, 45f, _urgency),
+                                           Mathf.Lerp(0f, 62f, calm));
+                float holdNeed = Mathf.Lerp(0.15f, 0.28f, calm) * Mathf.Lerp(1.6f, 1f, _urgency);
                 // 那个方向有敌人：几乎立刻开始转过去（把"发现追兵"的延迟压到最低）
                 if (threatAhead || enemyLost) { holdNeed = 0.06f; bigAngle = 35f; }
-                if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent) _combatReorient = true;
+                // 追击闸门同样要求【真的在往某处去】：此前它不看 active，于是站着原地
+                // 转 90° 就会锁存住把镜头绕过去——正是"站着改朝向镜头却在转"的来源。
+                // 背后有威胁 / 敌人已出画时豁免：那两种情形必须看过去。
+                if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent &&
+                    (active || threatAhead || enemyLost)) _combatReorient = true;
                 else if (err < dz * 0.6f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
 
                 // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
-                // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区
-                float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f));
+                // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区。
+                // 再乘一道视野系数：**开阔时不必立刻决定**（0.33s 才起手，转向转一半
+                // 又改主意的都被吃掉），盲区时按原值立刻起手。
+                float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f))
+                                   * Mathf.Lerp(2.2f, 1f, _urgency);
                 bool gentle = active && _headingHoldT > steadyNeed && err > dz
                               && !backingIntent;
 
@@ -1281,6 +1370,38 @@ namespace AdversityRoad.Player
                 if (col.GetComponentInParent<PlayerController>() != null) continue;
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
                 best = Mathf.Min(best, Mathf.Max(1.6f, hit.distance - 0.1f));
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// 【通视距离】：从取景点沿某个方位平射出去，多远才被挡住（封顶 SightMax）。
+        /// 这是"视野开不开阔"的直接度量，也是本轮运镜快慢的唯一裁决者。
+        /// 与 FreeBoomDistance 的区别：那条是往【镜头要退去的方向】探（吊杆会不会顶墙），
+        /// 这条是往【要看/要去的方向】平探（看不看得见远方）。
+        /// </summary>
+        // 这条探测每帧要跑两次（画面正前 + 行进方向），必须无 GC：
+        // SphereCastAll 每次都会新建数组，60fps 下就是每秒 120 次分配。
+        static readonly RaycastHit[] SightHits = new RaycastHit[8];
+
+        float SightDistance(float yawDeg)
+        {
+            Vector3 eye = target.position + Vector3.up * (_pivotH + 0.5f);
+            Vector3 dir = Quaternion.Euler(0f, yawDeg, 0f) * Vector3.forward;
+            float best = SightMax;
+            int n = Physics.SphereCastNonAlloc(eye, SightProbeRadius, dir, SightHits, SightMax,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var hit = SightHits[i];
+                if (hit.distance <= 0.001f) continue;
+                var col = hit.collider;
+                // 忽略动态碎屑、玩家与敌人本体：它们不构成"视野受限"，
+                // 敌人挡一下反而是你正想看的东西
+                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
+                if (col.GetComponentInParent<PlayerController>() != null) continue;
+                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                best = Mathf.Min(best, hit.distance);
             }
             return best;
         }
