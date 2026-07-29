@@ -165,6 +165,16 @@ namespace AdversityRoad.Player
     /// 站着点一下左/右/前/后只有一瞬的位移，撑不满 0.35s ⇒ 仍算站定，镜头不动；
     /// 一直朝前跑则轻松满足 ⇒ 转向时该跟就跟。
     ///
+    /// **两个量决定"晕不晕"：判据的早晚，和运动的角加速度。**
+    ///   · 判据的早晚 —— 前视点用【速度推算】而不是固定 6m：真正该问的是
+    ///     "多久之后会真的出问题"，而那取决于你走得多快。跑起来要转 73° 才动镜，
+    ///     走着几乎不动——"转个向就回正"因此不再发生。
+    ///   · 角加速度 —— 回正时长由**角加速度预算反解**（SmoothStep 峰值 = 6Δ/T²
+    ///     ⇒ T = √(6Δ/预算)），不再拍一个固定区间。旧的 0.4~0.8s 实测
+    ///     60°→1266、90°→1500、180°→1688 °/s²，超舒适上限（≈600）两三倍。
+    ///     现自动回正按 500 预算（60°→0.85s、180°→1.47s），一键回正按 1400
+    ///     （玩家自发触发，耐受度高得多）。
+    ///
     /// **战斗中，稳定压倒一切。** 近身缠斗时镜头应当近乎焊死——
     /// 方向跟随关闭、整理构图式回正关闭、框敌取景窗放宽到 0.74 倍半视野（≈39°）。
     /// 而敌人在 2.5m 内的屏幕角上限只有 32.9°（镜头在身后 4.6m 造成的向心压缩），
@@ -261,8 +271,8 @@ namespace AdversityRoad.Player
         [Tooltip("慢漂死区（度）：镜头与角色朝向的偏差小于它完全不动镜")]
         public float settleDeadZone = 9f;
         [Tooltip("看不见前方（前方视察点出取景窗）时的速率上限（度/秒）。" +
-                 "环还在，转多快都不收敛，快只换更紧的弧，封顶即可——90°/s 对应弧半径 3.3m")]
-        public float blindMaxRate = 90f;
+                 "环还在，转多快都不收敛，快只换更紧的弧，封顶即可——75°/s 对应弧半径 4.0m")]
+        public float blindMaxRate = 75f;
 
         [Header("大招镜头：短暂拉近，结束回稳（普通移动/普攻不触发）")]
         [Tooltip("大招时的取景距离系数（<1 拉近；幅度克制，不掉转/不猛切镜头）")]
@@ -286,7 +296,7 @@ namespace AdversityRoad.Player
         /// 0.32s 下 61°/s 的目标对应峰值角加速度 ≈190°/s²，远在舒适区（≈600）内。</summary>
         const float FollowRateSmooth = 0.32f;
         /// <summary>大幅掉头时的速率平滑（更利落）。90°/s 目标对应峰值角加速度
-        /// ≈270°/s²，仍远在舒适区（≈600）内——"必须动"的情景要动得跟手。</summary>
+        /// ≈225°/s²，仍远在舒适区（≈600）内——"必须动"的情景要动得跟手。</summary>
         const float FollowRateSmoothUrgent = 0.20f;
         float _boomDist, _boomVel;
         float _boomWant = 99f, _boomClearT;   // 吊杆目标的抗颤保持（见碰撞回缩处）
@@ -350,10 +360,10 @@ namespace AdversityRoad.Player
         // 与转速、聚焦点都无关。大作对此的解法不是让镜头去追一个无解的目标，
         // 而是给玩家一个显式动作，一次性把镜头拉到行进方向背后。
         // 回正期间【锁存移动参考系】：否则镜头快速绕行会把角色一起拖着转，
-        // 0.35s 内可拖出 90°，回正反而把人转晕。
-        const float RecenterTime = 0.35f;
+        // 回正反而把人转晕。
         float _recenterT;
-        float _recenterDur = RecenterTime;   // 本次回正的时长（自动回正更从容）
+        // 本次回正的时长——不再是固定值，由角加速度预算反解（见 RecenterDuration）
+        float _recenterDur = 0.5f;
         float _recenterFrom, _recenterTo;
         float _lastRecenter = -99f;
         /// <summary>回正进行中——PlayerController 据此冻结移动参考系。</summary>
@@ -385,6 +395,10 @@ namespace AdversityRoad.Player
         /// 换 FOV / 换屏幕比例都自动跟着走。
         /// </summary>
         const float FocusWindowRatio = 0.58f;
+        /// <summary>【行进】用的取景窗比例（比框敌的更宽）：0.70×52.5°≈37°。
+        /// 与速度推算的前视点配合，跑起来要转 73° 才动镜、走着几乎不动——
+        /// "转个向就回正"因此不再发生。</summary>
+        const float TravelWindowRatio = 0.70f;
         /// <summary>战斗中【框敌】的取景窗占水平半视野的比例（比行进用的更宽）。
         /// 稳定第一：0.74×52.5°≈39°，3m 以内的贴身互殴几乎不可能触发框敌，
         /// 镜头因此彻底静止；而敌人最远也只到半宽的 74%，仍看得清清楚楚。</summary>
@@ -437,12 +451,19 @@ namespace AdversityRoad.Player
         Camera _cam;                       // 取水平视野用
 
         /// <summary>
-        /// 「前方视察点」的距离：角色朝向前方这么远的一个点。
-        /// 判断"玩家看不看得见自己要去的地方"就看这个点在不在取景窗内——
-        /// 比直接比朝向角靠谱得多，因为它自动把【镜头在身后 4.6m】的向心压缩算进去了。
-        /// 6m 约等于全速跑 1.2 秒的距离：够远，能代表"前方"；不至于远到永远出窗。
+        /// 「前方视察点」＝按**当前速度**推算的 LookAheadTime 秒后的位置。
+        ///
+        /// 用固定距离（原来写死 6m）是不对的：它让"转向"这件事在任何速度下
+        /// 都以同一个角度触发动镜（约 52°），于是慢慢走着改个方向镜头也要转——
+        /// 太早、太频繁。真正该问的是**"多久之后会真的出问题"**，
+        /// 而那取决于你走得多快。速度推算天然给出这个尺度：
+        ///   全速跑 5.2m/s → 前视点 4.7m → 转 73° 才动镜
+        ///   小跑   3.5m/s → 前视点 3.1m → 转 99° 才动镜
+        ///   走     2.6m/s → 前视点 2.3m → 几乎不动镜
+        /// 跑得越快越早需要看清前方，走着就几乎不必动——这才是"按参照物灵活判断"。
         /// </summary>
-        const float LookAheadDist = 6f;
+        const float LookAheadTime = 0.9f;
+        const float LookAheadMin = 2f, LookAheadMax = 6f;
 
         /// <summary>某个世界点的有符号屏幕水平角（度）。
         /// 用镜头【真实的 forward】量：肩后构图的横向偏移让实际视线偏离 _curYaw 约 5.6°，
@@ -520,8 +541,24 @@ namespace AdversityRoad.Player
         const float AutoRecenterStickIdle = 0.07f;  // 摇杆松开多久即可兑现（掉头时拇指过中心很快，抓得紧一点）
         const float AutoRecenterStickAligned = 35f; // 摇杆离画面正前小于此角也可兑现（环很弱）
         const float AutoRecenterMinAmount = 25f;    // 摆不到这个幅度就不值得动镜
-        const float AutoRecenterMinTime = 0.4f;
-        const float AutoRecenterMaxTime = 0.8f;
+        // ===== 回正时长由【角加速度预算】反解，而不是拍一个区间 =====
+        // SmoothStep 的峰值角加速度 = 6×幅度/时长²，于是 时长 = √(6×幅度/预算)。
+        // 这样不论摆多大幅度，角加速度都不超预算——而角加速度正是晕动的主因。
+        // 旧的 0.4~0.8s 区间实测：60°→1266、90°→1500、180°→1688 °/s²，
+        // 全都超舒适上限（约 600）两三倍，这就是"回正转得太快、让人头晕"。
+        /// <summary>自动回正的角加速度预算：非玩家主动触发，必须最保守。
+        /// 500 °/s² 下 60°→0.85s、90°→1.04s、180°→1.47s，峰值角速度 106~184°/s。</summary>
+        const float AutoRecenterAccelBudget = 500f;
+        const float AutoRecenterMinTime = 0.5f;
+        /// <summary>一键回正的角加速度预算：玩家自己按的，自发运动的耐受度高得多，
+        /// 可以更利落。1400 °/s² 下 60°→0.51s、90°→0.62s、180°→0.88s。</summary>
+        const float ManualRecenterAccelBudget = 1400f;
+        const float ManualRecenterMinTime = 0.3f;
+
+        /// <summary>由角加速度预算反解回正时长（SmoothStep 峰值加速度 = 6Δ/T²）。</summary>
+        static float RecenterDuration(float amount, float accelBudget, float minTime)
+            => Mathf.Max(minTime,
+                Mathf.Sqrt(6f * Mathf.Abs(amount) / Mathf.Max(1f, accelBudget)));
         float _stickIdleT;                 // 摇杆松开时长
         float _wantRecenterT;              // 「看不见要去/要打的地方」已持续多久
 
@@ -1055,7 +1092,7 @@ namespace AdversityRoad.Player
             // 有敌人"就整条分支接管，探索跟随被完全吞掉——玩家跑着突然改方向，
             // 镜头一点反应都没有。度量与决策必须分开。
             float halfHFov = HalfHorizontalFov();
-            float focusWindow = halfHFov * FocusWindowRatio;
+            float focusWindow = halfHFov * TravelWindowRatio;
             // 战斗中把【框敌的】取景窗放宽（0.58→0.74 倍半视野）：稳定第一。
             // 贴身互殴时敌人本来就在画面中间一带（2m 处屏幕角上限只有 25.8°），
             // 窗放宽后 3m 以内几乎不可能触发框敌 ⇒ 镜头在近身缠斗里彻底静止；
@@ -1111,9 +1148,13 @@ namespace AdversityRoad.Player
             // ② 前方视察点的屏幕角：看得见"要去的地方"吗。
             //    只在【有行进意图】时才成立；站定时不存在"前方"，一律视为看得见。
             float aheadYaw = travelValid ? _travelAvg : _headingAvg;
+            // 前视点＝按当前速度推算的 0.9 秒后位置（不是固定 6m）：
+            // 走得慢就近、跑得快才远，于是"多久之后会真的出问题"才是判据
+            float lookAhead = Mathf.Clamp(moveSpeed * LookAheadTime,
+                LookAheadMin, LookAheadMax);
             float aheadAng = idleNow ? 0f : Mathf.Abs(ScreenAngleTo(
                 target.position + Quaternion.Euler(0f, aheadYaw, 0f) *
-                Vector3.forward * LookAheadDist));
+                Vector3.forward * lookAhead));
 
             // ===== 方向必须【已确认】才算数（锚点法，量的是拇指角）=====
             // 这是"摇杆转一圈，屏幕跟着一直转"的正解。转圈时方位每时每刻都在变，
@@ -1189,7 +1230,13 @@ namespace AdversityRoad.Player
             // ---- 一键回正（玩家显式触发）：触屏双击转镜区 / 桌面 V 键 ----
             if (MobileInput.ConsumeRecenter() ||
                 (!Application.isMobilePlatform && Input.GetKeyDown(KeyCode.V)))
-                StartRecenter(RecenterTime, RecenterTargetYaw(lockTarget));
+            {
+                float manualTo = RecenterTargetYaw(lockTarget);
+                // 一键回正原本固定 0.35s，180° 时峰值角加速度高达 8816°/s²（!）。
+                // 玩家自发触发的运动耐受度高，但也不该到这个量级；同样按预算反解。
+                StartRecenter(RecenterDuration(Mathf.DeltaAngle(_yaw, manualTo),
+                    ManualRecenterAccelBudget, ManualRecenterMinTime), manualTo);
+            }
 
             // ---- 自动回正（本轮新增）：把同一个动作接进自动运镜 ----
             // 交战中不再做连续伺服（见下方 followHold 的说明），镜头因此完全静止。
@@ -1200,10 +1247,9 @@ namespace AdversityRoad.Player
             {
                 float want = RecenterTargetYaw(lockTarget);
                 float amount = Mathf.Abs(Mathf.DeltaAngle(_yaw, want));
-                // 非玩家主动触发的运镜要更从容：时长随幅度加长，90° 峰值由 386°/s
-                // 降到 ≈225°/s、180° 由 771°/s 降到 ≈353°/s，都落在舒适区内
-                StartRecenter(Mathf.Lerp(AutoRecenterMinTime, AutoRecenterMaxTime,
-                    Mathf.Clamp01(amount / 180f)), want);
+                // 非玩家主动触发的运镜必须最保守：按 500°/s² 的角加速度预算反解时长
+                StartRecenter(RecenterDuration(amount, AutoRecenterAccelBudget,
+                    AutoRecenterMinTime), want);
             }
 
             if (_recenterT > 0f)
@@ -1279,8 +1325,10 @@ namespace AdversityRoad.Player
                         // ⑥ 速度按偏差连续映射（与探索同一条曲线）：小偏差慢、掉头快
                         float t = Mathf.Clamp01((aimErr - aimDead) / 120f);
                         float smoothT = Mathf.Lerp(0.42f, 0.14f, t);
+                        // 上限 6.4→4 倍（320→200°/s）：锁定切目标时的大幅摆镜
+                        // 是这套里最快的一处运镜，实测读作"猛"
                         float maxSpd = Mathf.Lerp(autoFollowSpeed * 1.1f,
-                                                  autoFollowSpeed * 6.4f, t);
+                                                  autoFollowSpeed * 4f, t);
                         // ⑦ 墙壁减速：别把镜头甩进墙里（探索分支早就有，战斗分支没有）
                         if (aimErr > 45f)
                         {
@@ -1321,7 +1369,7 @@ namespace AdversityRoad.Player
                 float fSmoothT = Mathf.Lerp(0.45f, 0.16f, ft);
                 // 小幅纠偏要慢（0.9→0.45 倍基准）：真正需要快的只有"敌人绕到背后"
                 // 那种大幅情形，而它由 ft 那一端负责。战斗中的小修小补必须温吞。
-                float fMaxSpd = Mathf.Lerp(autoFollowSpeed * 0.45f, autoFollowSpeed * 5f, ft);
+                float fMaxSpd = Mathf.Lerp(autoFollowSpeed * 0.45f, autoFollowSpeed * 3f, ft);
                 // 墙壁减速：别为了框住敌人把镜头甩进墙里
                 if (outside > 25f)
                 {
