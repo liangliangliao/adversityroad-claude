@@ -163,6 +163,10 @@ namespace AdversityRoad.Player
         ShotProfile _shot;                 // 当前生效的景别（插值后的实时值）
         float _nextShotScan;               // 敌情扫描节流
         int _nearbyEnemies;
+        ShotProfile _shotTarget;            // 已定下的目标景别（受最短驻留保护）
+        float _shotSwitchT = -99f;          // 上次换景别的时刻
+        bool _crowdLatch;                   // 群战迟滞（3 进 / 1 出）
+        float _fallT;                       // 持续下坠时长（区分起跳上升与真的在掉）
         float _roomAround = 99f;           // 镜头四周可用空间（识别狭窄场地）
         bool _shotInit;
         /// <summary>朝镜头持续行进多久才认定"真要往那个方向去"，才允许绕镜。
@@ -323,6 +327,10 @@ namespace AdversityRoad.Player
         /// 0.22 ⇒ 吊杆 4.6m 推到 5.6m，可见前方约多出 1.7m，角色占屏 40%→33%——
         /// 还在主流第三人称的构图区间内，不会读作"人物变小"。</summary>
         const float TurnDollyOut = 0.22f;
+        /// <summary>方向跟随的驱动强度（0~1，临界阻尼）。**跟随的前提永远是
+        /// "你正在往某处去"**——停下时它滑到 0，镜头自己减速停住，而不是被掐断
+        /// （硬关伺服＝速度台阶＝无限 jerk，读作"卡一下"）。</summary>
+        float _followDrive, _followDriveVel;
         float _headingRateAvg;               // 低通后的转向角速度（"突然转向"的度量）
         float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
         float _sightNow = SightMax, _sightGoing = SightMax;
@@ -679,15 +687,35 @@ namespace AdversityRoad.Player
             _shoulderSide = Mathf.MoveTowards(_shoulderSide, _shoulderTarget, dt / 0.7f);
             // 换角 2 秒走完（比换肩更慢——它的幅度更大）
             _occYawBias = Mathf.MoveTowards(_occYawBias, _occYawTarget, 45f * dt);
+            // ---- 腾空判定：只认【真的在往下掉】，不认起跳的上升段 ----
+            // 上升段人眼看到的是自己在往上走，落点还没成为问题；而且短跳（0.3s 以内）
+            // 拉一下又收回来纯粹是呼吸感。故要求：离地 + 下坠 + 持续 0.25s。
+            bool fallingRaw = player != null && player.Airborne && player.VerticalVelocity < -1.5f;
+            _fallT = fallingRaw ? _fallT + dt : 0f;
+            bool falling = _fallT > 0.25f;
+            // ---- 群战迟滞：3 个进、1 个出 ----
+            // 阈值上一个人来回进出，就是一次 0.55m 的推拉。宁可多留一会儿群战景别。
+            if (_engagedEnemies >= 3) _crowdLatch = true;
+            else if (_engagedEnemies <= 1) _crowdLatch = false;
             var wantShot = CameraDirector.Pick(
-                _ultimateTimer > 0f, _nearbyEnemies,
-                lockOn != null && lockOn.CurrentTarget != null, _roomAround);
-            if (!_shotInit) { _shot = wantShot; _shotInit = true; }
+                _ultimateTimer > 0f, _crowdLatch ? Mathf.Max(3, _engagedEnemies) : _engagedEnemies,
+                lockOn != null && lockOn.CurrentTarget != null, _roomAround,
+                falling, player != null && player.IsCrouched);
+            if (!_shotInit) { _shot = _shotTarget = wantShot; _shotInit = true; }
             else
             {
+                // 最短驻留：换景别是分镜级的决定，不该每秒发生一次。
+                // 演出/腾空/狭窄是短节拍，豁免——它们晚一步就没意义了。
+                if (wantShot.name != _shotTarget.name &&
+                    (CameraDirector.Urgent(wantShot) ||
+                     Time.unscaledTime - _shotSwitchT > CameraDirector.Dwell))
+                {
+                    _shotTarget = wantShot;
+                    _shotSwitchT = Time.unscaledTime;
+                }
                 // 参数级插值＝推轨，而不是切镜：这是"平稳、不适感为零"的关键
-                float rate = CameraDirector.BlendRate(_shot, wantShot);
-                _shot = ShotProfile.Lerp(_shot, wantShot, 1f - Mathf.Exp(-rate * dt));
+                float rate = CameraDirector.BlendRate(_shot, _shotTarget);
+                _shot = ShotProfile.Lerp(_shot, _shotTarget, 1f - Mathf.Exp(-rate * dt));
             }
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
             bool combat = lockTarget != null;
@@ -981,7 +1009,13 @@ namespace AdversityRoad.Player
                 // 背后有威胁 / 敌人已出画时豁免：那两种情形必须看过去。
                 if (err > bigAngle && _headingHoldT > holdNeed && !backingIntent &&
                     (active || threatAhead || enemyLost)) _combatReorient = true;
-                else if (err < dz * 0.6f || _headingHoldT < 0.1f || backingIntent) _combatReorient = false;
+                // 【停下来就解除】——这是"停下来镜头还在自己回正"的真正来源。
+                // 此前的解除条件只有"偏差追到 <0.6×死区"：跑动中转向会把这个锁存打开，
+                // 而代数环让偏差一直等于摇杆离轴角、根本追不下去；于是你一停，
+                // 锁存还在，镜头就自顾自地继续绕到你背后——**玩家没做任何动作，
+                // 画面却在动**。跟随的前提永远是"你正在往某处去"，停了就该停。
+                else if (err < dz * 0.6f || _headingHoldT < 0.1f || backingIntent ||
+                         !active) _combatReorient = false;
 
                 // 稳定确认时长随偏差缩短：小幅修正需要确认（防摇杆抖动牵动镜头），
                 // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区。
@@ -992,10 +1026,19 @@ namespace AdversityRoad.Player
                 bool gentle = active && _headingHoldT > steadyNeed && err > dz
                               && !backingIntent;
 
+                // 跟随的【驱动强度】走临界阻尼，而不是布尔开关。
+                // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
+                // 无限 jerk，读作"卡一下"。改成 0.3s 内把上限速降到 0：
+                // 镜头是**自己滑停**的，而不是被掐断的。
+                bool followWant = !manualRecently && (_combatReorient || gentle);
+                _followDrive = Mathf.SmoothDamp(_followDrive, followWant ? 1f : 0f,
+                    ref _followDriveVel, 0.3f, Mathf.Infinity, dt);
+
                 // enemyLost 独立放行：它的 err 只是"超出窗沿多少度"，通常很小，
                 // 落不进 gentle（需要在移动/推杆）也落不进 _combatReorient（需要大角度）。
                 // 而"敌人已经出画"本身就是充分理由，不该再要求玩家正在跑。
-                if (!manualRecently && (_combatReorient || gentle || enemyLost))
+                bool enemyNet = !manualRecently && enemyLost;
+                if (_followDrive > 0.02f || enemyNet)
                 {
                     // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
                     // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
@@ -1003,7 +1046,8 @@ namespace AdversityRoad.Player
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t)
                                     / Mathf.Max(0.3f, calmSpd);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
-                                              exploreMaxSpeed * 4f, t) * calmSpd;
+                                              exploreMaxSpeed * 4f, t) * calmSpd
+                                   * Mathf.Max(_followDrive, enemyNet ? 1f : 0f);
                     // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
                     //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
                     //   一条不再改变行为的特殊分支只会让运镜更难预测，故移除。）
@@ -1077,6 +1121,11 @@ namespace AdversityRoad.Player
                 // 目标俯仰＝基准 + 当前景别的俯仰偏置（群战略俯看局势、特写略压低）
                 if (lockTarget != null)
                     _pitch = Mathf.MoveTowards(_pitch, combatLockPitch + _shot.pitchBias, 14f * dt);
+                // 坠落时不等 2.5s 的闲置延迟、也不看水平速度：**落点在角色下方**，
+                // 不压一点俯角它就在画面外，而"看清落点"正是腾空景别存在的理由。
+                // 22°/s ⇒ 8° 的俯角偏置 0.4 秒到位，赶得上一次普通跳跃。
+                else if (falling)
+                    _pitch = Mathf.MoveTowards(_pitch, defaultPitch + _shot.pitchBias, 22f * dt);
                 else if (Time.unscaledTime - _lastManualLook > pitchRecenterDelay && moveSpeed > 1.2f)
                     _pitch = Mathf.MoveTowards(_pitch, defaultPitch + _shot.pitchBias, 10f * dt);
             }

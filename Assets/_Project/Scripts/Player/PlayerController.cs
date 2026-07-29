@@ -72,6 +72,10 @@ namespace AdversityRoad.Player
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
+        /// <summary>是否离地（跳跃/坠落中）。镜头据此切"腾空·拉远看落点"景别。</summary>
+        public bool Airborne => _cc != null && !_cc.isGrounded;
+        /// <summary>纵向速度（负=下坠）。镜头用它区分"起跳上升"与"真的在往下掉"。</summary>
+        public float VerticalVelocity => _vy;
 
         /// <summary>倒地起身等外部授予的无敌帧。</summary>
         public void SetInvincible(float duration) => _iframeTimer = Mathf.Max(_iframeTimer, duration);
