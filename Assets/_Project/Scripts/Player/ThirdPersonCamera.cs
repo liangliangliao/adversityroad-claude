@@ -150,6 +150,12 @@ namespace AdversityRoad.Player
     /// 其中 Idle 与 Blind 这一对是整套设计的枢纽：**它们的几何一模一样**
     /// （镜头都不在角色背后），意图却完全相反。区分它们的不是角度，是有没有在往某处去。
     ///
+    /// **战斗中，稳定压倒一切。** 近身缠斗时镜头应当近乎焊死——
+    /// 方向跟随关闭、整理构图式回正关闭、框敌取景窗放宽到 0.74 倍半视野（≈39°）。
+    /// 而敌人在 2.5m 内的屏幕角上限只有 32.9°（镜头在身后 4.6m 造成的向心压缩），
+    /// **够不着窗沿 ⇒ 贴身互殴时镜头完全静止**。只剩两条保命通路仍然生效：
+    /// 敌人快出窗时把它推回窗沿、以及彻底出画 0.5s 的无条件回正。
+    ///
     /// **电影级的第一原则：拍得到，就不动。**
     /// 机位调整是有代价的动作，只该为【画面里缺了必须看到的东西】而付。
     /// 于是所有会改变画面的杠杆都统一挂到同一个判据上——「要看的东西在不在取景窗内」：
@@ -361,6 +367,10 @@ namespace AdversityRoad.Player
         /// 换 FOV / 换屏幕比例都自动跟着走。
         /// </summary>
         const float FocusWindowRatio = 0.58f;
+        /// <summary>战斗中【框敌】的取景窗占水平半视野的比例（比行进用的更宽）。
+        /// 稳定第一：0.74×52.5°≈39°，3m 以内的贴身互殴几乎不可能触发框敌，
+        /// 镜头因此彻底静止；而敌人最远也只到半宽的 74%，仍看得清清楚楚。</summary>
+        const float FocusWindowCombatRatio = 0.74f;
         /// <summary>推回窗沿时的软区：驱动量在窗沿附近连续趋零，不在边界上硬启停。</summary>
         const float FocusEdgeSoft = 10f;
         const float FocusAcquireRange = 12f;   // 12m 内选聚焦目标
@@ -377,6 +387,9 @@ namespace AdversityRoad.Player
         /// <summary>敌人出取景窗要持续这么久才动机位，滤掉绕圈跑时自身位移
         /// 造成的一帧越界。彻底出画另有 FocusLostForce 那条无条件兜底。</summary>
         const float FocusFrameHold = 0.12f;
+        /// <summary>战斗中的出窗忍耐期（更长）：闪避/突进/被击退都会让敌人短暂
+        /// 掠出窗沿，那些都会自己回来，不值得为它动机位。</summary>
+        const float FocusFrameHoldCombat = 0.28f;
         bool _focusActive;                 // 本帧是否该框住聚焦敌人（撤离中为假）
         float _focusScreenAng;             // 聚焦敌人的有符号屏幕水平角
         float _focusDist = 99f;            // 与聚焦敌人的距离
@@ -1023,6 +1036,13 @@ namespace AdversityRoad.Player
             // 镜头一点反应都没有。度量与决策必须分开。
             float halfHFov = HalfHorizontalFov();
             float focusWindow = halfHFov * FocusWindowRatio;
+            // 战斗中把【框敌的】取景窗放宽（0.58→0.74 倍半视野）：稳定第一。
+            // 贴身互殴时敌人本来就在画面中间一带（2m 处屏幕角上限只有 25.8°），
+            // 窗放宽后 3m 以内几乎不可能触发框敌 ⇒ 镜头在近身缠斗里彻底静止；
+            // 而 0.74×52.5°≈39°，敌人最远也只到半宽的 74%，仍看得清清楚楚。
+            // 「前方视察点」那一路不受影响，仍用 0.58——那是行进用的判据。
+            float enemyWindow = halfHFov *
+                Mathf.Lerp(FocusWindowRatio, FocusWindowCombatRatio, _combatBlend);
 
             // ① 敌人的屏幕角（低通滤【位置】而不是屏幕角——后者含镜头自身转动，
             //    滤它等于把回路反馈也延迟 τ≈0.31s，与伺服时间常数同量级，必然振荡）
@@ -1039,8 +1059,10 @@ namespace AdversityRoad.Player
                 if (Mathf.Abs(_focusScreenAng) > halfHFov * 0.95f) _focusOutT += dt;
                 else _focusOutT = 0f;
                 // 出窗需持续一小会儿才动机位：玩家绕圈跑时，是【自己的位移】把敌人
-                // 在画面里推来推去，一帧的越界不值得动镜
-                if (Mathf.Abs(_focusScreenAng) > focusWindow) _focusFrameT += dt;
+                // 在画面里推来推去，一帧的越界不值得动镜。战斗中这个"忍耐期"再加长
+                // （0.12→0.28s）：闪避、突进、被击退都会让敌人短暂掠出窗沿，
+                // 那些都会自己回来，不值得为它动机位。
+                if (Mathf.Abs(_focusScreenAng) > enemyWindow) _focusFrameT += dt;
                 else _focusFrameT = 0f;
             }
             else { _focusOutT = 0f; _focusFrameT = 0f; }
@@ -1124,9 +1146,17 @@ namespace AdversityRoad.Player
             // 站着，就该一直是那样；那时也根本没有"前方"需要看清。
             // 反过来，一旦开始朝某个方向跑而前方看不见（Blind），回正就是必须的，
             // 否则等于开车看不见路。
+            // 阈值跟着各自的窗走：敌人用（战斗中更宽的）框敌窗，前方用行进窗
+            float wantWindow = _focusActive ? enemyWindow : focusWindow;
             float wantAng = _focusActive ? Mathf.Abs(_focusScreenAng) : aheadAng;
-            bool mayRecenter = _intent != CamIntent.Idle && _intent != CamIntent.ManualFraming;
-            if (mayRecenter && wantAng > focusWindow * 0.8f && (_focusActive || dirCommitted))
+            // **战斗中不做"整理构图"式回正**（稳定第一）。
+            // 那一档的门槛是 0.8×取景窗 ≈24°，而敌人在 2m 处的屏幕角上限就有 25.8°——
+            // 也就是说贴身互殴时它随时够得着；偏偏战斗中松杆极其频繁（出招、格挡、
+            // 闪避之间都会松），间隔又只有 1.5s，于是镜头每隔一两秒就摆一次。
+            // 战斗里"看得见敌人"由取景窗保底、"彻底出画"由无条件兜底负责，
+            // 都不需要这一档；把构图摆正远不如画面稳住重要。
+            bool mayRecenter = _intent == CamIntent.Blind || _intent == CamIntent.Cruising;
+            if (mayRecenter && wantAng > wantWindow * 0.8f && (_focusActive || dirCommitted))
                 _wantRecenterT += dt;
             else _wantRecenterT = 0f;
 
@@ -1244,7 +1274,7 @@ namespace AdversityRoad.Player
                     FollowRateSmooth, Mathf.Infinity, dt);
             }
             else if (autoFollow && !fpNow && _focusActive && !manualLook &&
-                     _focusFrameT > FocusFrameHold)
+                     _focusFrameT > Mathf.Lerp(FocusFrameHold, FocusFrameHoldCombat, _combatBlend))
             {
                 // ===== 战斗自动聚焦（未锁定）：取景窗 =====
                 // 镜头的首要职责是【让你看得见正在打的人】。曾为了不抖把交战中的自动
@@ -1256,14 +1286,16 @@ namespace AdversityRoad.Player
                 // 这条分支只在【敌人真的要出窗】时才接管。上一版写成"只要有聚焦敌人
                 // 就走这条"，于是 12m 内有敌人时探索跟随被整条吞掉——玩家跑着突然
                 // 改方向，镜头一点反应都没有。**框敌是一条约束，不是一种模式。**
-                float outside = Mathf.Abs(_focusScreenAng) - focusWindow;
+                float outside = Mathf.Abs(_focusScreenAng) - enemyWindow;
                 // 只推回【窗沿】，不推到中央——推到中央意味着镜头得跟着敌人的
                 // 每一步走，那正是"永远在轻微动"。推回窗沿则一到位就停。
                 // 屏幕角超出多少，镜头就朝那一侧转多少，不多不少。
                 float wantYaw = _yaw + Mathf.Sign(_focusScreenAng) * outside;
                 float ft = Mathf.Clamp01(outside / 90f);
                 float fSmoothT = Mathf.Lerp(0.45f, 0.16f, ft);
-                float fMaxSpd = Mathf.Lerp(autoFollowSpeed * 0.9f, autoFollowSpeed * 5f, ft);
+                // 小幅纠偏要慢（0.9→0.45 倍基准）：真正需要快的只有"敌人绕到背后"
+                // 那种大幅情形，而它由 ft 那一端负责。战斗中的小修小补必须温吞。
+                float fMaxSpd = Mathf.Lerp(autoFollowSpeed * 0.45f, autoFollowSpeed * 5f, ft);
                 // 墙壁减速：别为了框住敌人把镜头甩进墙里
                 if (outside > 25f)
                 {
