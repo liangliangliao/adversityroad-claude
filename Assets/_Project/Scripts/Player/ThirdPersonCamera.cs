@@ -331,6 +331,7 @@ namespace AdversityRoad.Player
         /// "你正在往某处去"**——停下时它滑到 0，镜头自己减速停住，而不是被掐断
         /// （硬关伺服＝速度台阶＝无限 jerk，读作"卡一下"）。</summary>
         float _followDrive, _followDriveVel;
+        float _stickIdleT;                   // 摇杆松开时长（跟随起停的零延迟判据）
         float _headingRateAvg;               // 低通后的转向角速度（"突然转向"的度量）
         float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
         float _sightNow = SightMax, _sightGoing = SightMax;
@@ -730,7 +731,13 @@ namespace AdversityRoad.Player
             bool fightingNow = lockTarget != null || _engagedEnemies > 0 ||
                                (_playerFsm != null && _playerFsm.InCombat);
             _combatBlend = Mathf.MoveTowards(_combatBlend, fightingNow ? 1f : 0f, dt / 0.6f);
-            bool stickHeld = player != null && player.StickWorldDir.sqrMagnitude > 0.04f;
+            // 门槛取 0.1（而非移动逻辑用的 0.2）：轻推慢走时摇杆量程经死区重映射
+            // 与 1.3 次响应曲线后只有 0.12 左右，用 0.2 会把"走"整个判成没推杆，
+            // 慢走时镜头就完全不跟了。这里只需要区分【有没有在推】。
+            bool stickHeld = player != null && player.StickWorldDir.sqrMagnitude > 0.01f;
+            // 松杆时长：**这是"我不去了"的零延迟信号**，跟随的起停全看它。
+            // 位移/速度都要经过滤波，只有手指离开摇杆这件事是当帧就知道的。
+            _stickIdleT = stickHeld ? 0f : _stickIdleT + dt;
 
             // ---- 「那个必须看得见的敌人」在不在画面里 ----
             // 度量每帧都算，且【不藏在任何分支里】：一旦藏进战斗分支，
@@ -911,16 +918,23 @@ namespace AdversityRoad.Player
                 bool moving = moveSpeed > 0.6f;
                 bool manualRecently = manualLook;
                 bool fighting = fightingNow;
-                // 「正在推杆」也算主动意图：出招/技能期间角色只转不移动（移动被定步锁住），
-                // 若只看 moveSpeed 会误判成静止而完全不回正——这正是"出招中转向后看不见前方"的缺口
-                // 「推杆」只在【交战中】才单独算作行进意图：出招/技能期间移动被定步锁住，
-                // 角色只转不移动，若只看 moveSpeed 会误判成静止而完全不回正。
-                // 但在非战斗时它是个误判源——站着不动、只用摇杆把角色转向左/右/后，
-                // 会被读成"我要往那边去"，镜头随即绕过去。而非战斗时推杆必然产生位移，
-                // moving 本来就覆盖得到；短促一点（改朝向）撑不到 0.6m/s 的低通均速，
-                // 正好被滤掉——这才是"站着改朝向不该动镜"的正确判法。
-                bool steering = stickHeld && fighting;
-                bool active = moving || steering;
+                // ===== 「正在往某处去」＝【手指还在推】且【确实在移动】=====
+                //
+                // 这一行直接决定"停下来镜头还会不会转"。此前只看 moveSpeed，
+                // 而 moveSpeed 是 8/s 的低通均速（τ=0.125s）：松杆后角色 0.12 秒就停了，
+                // 均速却要 **0.27 秒**才掉到 0.6 的门槛，再加驱动滑停 0.45 秒——
+                // 合计 0.72 秒的继续转动；开阔地 90° 偏差下峰值 89°/s，扫过约 **40°**。
+                // 玩家早已松手站住，画面还在慢慢转，这就是"停下来还会转动镜头"。
+                //
+                // 而【松开摇杆】这个信号**零延迟**：移动完全由摇杆驱动，手指一离开
+                // 就是"我不去了"，不需要等任何滤波追上来。80ms 宽限只为挡住摇杆读数
+                // 在阈值上的偶发抖动，不构成可感知的拖尾。
+                //
+                // 交战中额外放行"只推杆不移动"：出招/技能期间移动被定步锁住，
+                // 角色只转不移动，此时仍要跟。反过来非战斗时推杆必然产生位移，
+                // 由 moving 覆盖；站着点一下改朝向撑不到 0.6m/s 的均速，正好被滤掉。
+                bool stickOn = _stickIdleT < 0.05f;
+                bool active = stickOn && (moving || fighting);
 
                 // ===== 战斗中：稳定是第一性原则（本轮的核心）=====
                 // 交战时方位角的变化率最高（2m 距离、敌人横移 2.5m/s ⇒ 71°/s），
@@ -1030,9 +1044,13 @@ namespace AdversityRoad.Player
                 // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
                 // 无限 jerk，读作"卡一下"。改成 0.3s 内把上限速降到 0：
                 // 镜头是**自己滑停**的，而不是被掐断的。
+                // 起手要柔（0.3s），收手要利落（0.14s）：**起步慢是防抖，停得慢是拖尾**，
+                // 两者的诉求相反，不该共用一个时间常数。0.14s 下 89°/s 的减速约
+                // 640°/s²——而下游的角加速度限幅本就【只限提速不限减速】
+                //（阻止镜头停下来只会制造拖尾），这里正是同一个道理。
                 bool followWant = !manualRecently && (_combatReorient || gentle);
                 _followDrive = Mathf.SmoothDamp(_followDrive, followWant ? 1f : 0f,
-                    ref _followDriveVel, 0.3f, Mathf.Infinity, dt);
+                    ref _followDriveVel, followWant ? 0.3f : 0.14f, Mathf.Infinity, dt);
 
                 // enemyLost 独立放行：它的 err 只是"超出窗沿多少度"，通常很小，
                 // 落不进 gentle（需要在移动/推杆）也落不进 _combatReorient（需要大角度）。
@@ -1045,8 +1063,14 @@ namespace AdversityRoad.Player
                     float t = Mathf.Clamp01((err - dz) / 130f);
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t)
                                     / Mathf.Max(0.3f, calmSpd);
+                    // 「偏差越大转越快」这条升速曲线（最高 4×）**是为了压盲区时长而设的**，
+                    // 而开阔地根本没有盲区可压——那里 90° 偏差也照样一览无余。
+                    // 让升速倍率本身也吃视野系数：开阔 1.4×（90° 偏差约 42°/s，
+                    // 是"缓缓跟过去"），盲区仍是原来的 4×（最高 340°/s，掉头不留盲区）。
+                    // 顺带把停下时的余量转动也砍掉一半——峰值速度低了，滑停自然就短。
+                    float esc = Mathf.Lerp(1.4f, 4f, _urgency);
                     float maxSpd = Mathf.Lerp(exploreMaxSpeed * 0.82f,
-                                              exploreMaxSpeed * 4f, t) * calmSpd
+                                              exploreMaxSpeed * esc, t) * calmSpd
                                    * Mathf.Max(_followDrive, enemyNet ? 1f : 0f);
                     // （曾在此处加过「掉头甩镜」把上限提到 5×。加入角加速度限幅后，
                     //   4× 与 5× 的实测盲区都是 0.97s——限幅才是瓶颈，倍率已无影响。
