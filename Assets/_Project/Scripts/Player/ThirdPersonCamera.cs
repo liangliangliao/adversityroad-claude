@@ -332,21 +332,29 @@ namespace AdversityRoad.Player
         /// （硬关伺服＝速度台阶＝无限 jerk，读作"卡一下"）。</summary>
         float _followDrive, _followDriveVel;
         // ---- 转向额度（"镜头响应动作而非状态"的实处）----
-        /// <summary>拇指角要转过多少度才算一次"明确的转向"。25° 以下落在跟随死区里，
-        /// 本来就不该动镜。</summary>
-        const float TurnAskGate = 25f;
+        /// <summary>拇指角要转过多少度才算一次"明确的转向"。
+        /// 25→35°：小幅修正一律不动镜（"不动就不动"），而 35° 以上才是真的换方向。</summary>
+        const float TurnAskGate = 35f;
         /// <summary>单次可累积的额度上限（度）。**这是"永远不会变成转圈"的保证**：
-        /// 不管玩家怎么搓，一次转向最多换来 100° 的快速摆镜。</summary>
-        const float TurnBudgetMax = 100f;
+        /// 不管玩家怎么搓，一次转向最多换来这么多快速摆镜。
+        /// 100→65°：镜头每转 1° 角色就跟着转 1°，65° 已是"倾身入弯"的上限，
+        /// 再多就读作角色在原地绕。</summary>
+        const float TurnBudgetMax = 65f;
+        /// <summary>两次记账之间的最小间隔（秒）。硬保证：无论上游信号出什么问题，
+        /// 快速摆镜都不可能连续发生——这是"不动就不动"的兜底闸，
+        /// 也是上一版自激振荡（发额度→镜头转→信号被自己扰动→再发额度）的防线。</summary>
+        const float TurnGrantGap = 0.9f;
+        float _lastTurnGrant = -99f;
         /// <summary>额度的时间泄漏（度/秒）：过期的额度不该留着。
         /// 只做陈旧保护（25°/s ⇒ 4 秒内自然清空），不能开大——它和"按实际转过的度数
         /// 扣减"是并行的两路消耗，开大会让镜头只转到应转幅度的一小半就停。</summary>
         const float TurnBudgetLeak = 25f;
-        /// <summary>有额度时的跟随转速（度/秒）。170°/s ⇒ 90° 转向约 0.53 秒摆到位，
-        /// 这就是大作里"转向后画面很快重新定向"的量级；峰值角加速度由
-        /// _followDrive 的 0.12s 起手决定，约 1400°/s²…… 故再走一道下游限幅
-        /// （MaxAutoYawAccel 1100）兜底。</summary>
-        const float TurnFollowRate = 170f;
+        /// <summary>有额度时的跟随转速（度/秒）。
+        /// 170→100：**转速就是角色的转弯角速度**（H = C + θ，1:1），
+        /// 5.2m/s 跑速下 170°/s 对应转弯半径仅 1.75m——读作"原地打转"；
+        /// 100°/s 是 3.0m，读作"倾身入弯"。65° 的额度在 100°/s 下 0.65 秒花完，
+        /// 镜头的响应依然清晰可见，而角色的轨迹是一道缓弧而不是一个圈。</summary>
+        const float TurnFollowRate = 100f;
         float _turnBudget;                   // 剩余额度（度）
         float _thumbAnchor, _thumbPrev, _thumbSettleT;
         bool _thumbInit;
@@ -777,7 +785,17 @@ namespace AdversityRoad.Player
             //     用完即回落到常规限速——**幅度有上限，所以永远不会变成转圈**。
             if (stickHeld && player.StickWorldDir.sqrMagnitude > 0.01f)
             {
-                float thumb = Mathf.DeltaAngle(_yaw,
+                // **必须减 _curYaw，不能减 _yaw**——这是上一版"镜头又开始晃 + 按住摇杆
+                // 会绕圈回到原方向"的全部原因。摇杆的世界方向由 PlayerController 用
+                // 【渲染】偏航（cameraTransform.eulerAngles.y，即 _curYaw）解算，
+                // 而 _curYaw 比目标偏航 _yaw 滞后约 转速×rotationSmoothTime：
+                // 170°/s 时滞后 18.7°。拿 _yaw 去减就等于
+                //     thumb = θ + (_curYaw − _yaw)
+                // 那个滞后项在镜头起停时来回摆 19°，正好顶在 25° 的记账门槛上：
+                //     发额度 → 镜头快转 → 滞后变大 → thumb 又跳 → 再发额度 → …
+                // 自激循环，170°/s 下 2.1 秒就能转满一圈——角色也就跟着绕回原方向。
+                // 减 _curYaw 得到的才是干净的 θ：**镜头怎么转它都不变。**
+                float thumb = Mathf.DeltaAngle(_curYaw,
                     Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
                 if (!_thumbInit) { _thumbInit = true; _thumbAnchor = _thumbPrev = thumb; }
                 float thumbRate = Mathf.Abs(Mathf.DeltaAngle(_thumbPrev, thumb)) / dt;
@@ -785,10 +803,22 @@ namespace AdversityRoad.Player
                 // 稳＝拇指角变化率低于 70°/s；连续稳住 0.09s 才算"这就是我要的方向"
                 _thumbSettleT = thumbRate < 70f ? _thumbSettleT + dt : 0f;
                 float turnAsk = Mathf.Abs(Mathf.DeltaAngle(_thumbAnchor, thumb));
-                if (_thumbSettleT > 0.09f && turnAsk > TurnAskGate)
+                if (_thumbSettleT > 0.09f && turnAsk > TurnAskGate &&
+                    Time.unscaledTime - _lastTurnGrant > TurnGrantGap)
                 {
-                    _turnBudget = Mathf.Min(TurnBudgetMax, _turnBudget + turnAsk);
+                    // ===== 额度大小随【视野需求】缩放，这是两个诉求的交汇点 =====
+                    // 镜头每转 1°，角色的行进方向就跟着转 1°（H = C + θ，1:1，无法绕开）。
+                    // 所以"镜头转得多"与"角色走直线"是同一个量的两面：
+                    //   · 视野开阔 ⇒ 本来就看得见要去的地方 ⇒ 只给 45% 额度，
+                    //     镜头小幅意思一下，角色基本直行；
+                    //   · 前方是盲区 ⇒ 不转过去等于盲开 ⇒ 给满额度，
+                    //     此时"看得见路"压倒"走得直"。
+                    // 这正是"不动就不动"与"转向要跟"能同时成立的唯一方式：
+                    // **不是折中一个中间值，而是按当下到底需不需要来分配。**
+                    _turnBudget = Mathf.Min(TurnBudgetMax,
+                        _turnBudget + turnAsk * Mathf.Lerp(0.45f, 1f, _urgency));
                     _thumbAnchor = thumb;    // 记账完毕，锚点归位（不会重复计同一次转向）
+                    _lastTurnGrant = Time.unscaledTime;
                 }
                 // 未达门槛时锚点慢漂：吸收拇指的小幅游走，不让噪声攒成额度
                 else if (_thumbSettleT > 0.09f)
