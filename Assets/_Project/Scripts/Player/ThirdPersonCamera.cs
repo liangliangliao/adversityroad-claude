@@ -194,8 +194,11 @@ namespace AdversityRoad.Player
         /// 12°/30°：正前小幅修正完全不限速（那正是"边跑边微调、镜头跟着走"该有的样子），
         /// 45° 以上进入满限速。实测弧线半径 正前=直线 / 30°=5.6m / 45°=10.1m /
         /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
+        /// 宽度 30→18：跟随死区在开阔时已抬到 28°，于是 28~42° 之间还留着一段
+        /// 部分限速的窗口（θ=35° 时仍会以 ~10°/s 绕行，五秒就偏 48°）。
+        /// 收到 18° 后 30° 起就是满限速，那段"看不出为什么在慢慢转"的窗口消失。
         const float OrbitGateAngle = 12f;
-        const float OrbitGateWidth = 30f;
+        const float OrbitGateWidth = 18f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -816,7 +819,7 @@ namespace AdversityRoad.Player
                     // 这正是"不动就不动"与"转向要跟"能同时成立的唯一方式：
                     // **不是折中一个中间值，而是按当下到底需不需要来分配。**
                     _turnBudget = Mathf.Min(TurnBudgetMax,
-                        _turnBudget + turnAsk * Mathf.Lerp(0.45f, 1f, _urgency));
+                        _turnBudget + turnAsk * Mathf.Lerp(0.30f, 1f, _urgency));
                     _thumbAnchor = thumb;    // 记账完毕，锚点归位（不会重复计同一次转向）
                     _lastTurnGrant = Time.unscaledTime;
                 }
@@ -1178,19 +1181,35 @@ namespace AdversityRoad.Player
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
                     // 顶在墙上被迫贴脸，视野瞬间塌掉。大幅回正前先探一下目标方位是否够宽敞：
                     // 越憋屈就转得越慢（最低降到 25%），把镜头留在看得见的地方。
-                    // 代数环限速：玩家正推着一个非正前方向时，镜头绕行会拖着角色画弧，
-                    // 弧的角速度＝绕行速率。压到 SustainedOrbitCap 让它成为缓弧而非转圈。
-                    // 摇杆回正/松开后不限速——那时环不存在，镜头可全速追平。
-                    if (player != null)
+                    // ===== 代数环限速：**开阔时直接压到 0，镜头不再持续绕行** =====
+                    //
+                    // 这是"转向还是不走直线"的根。此前只是把持续绕行【限速】到 30°/s，
+                    // 而没有【停掉】它：按住偏轴摇杆时 err ≡ θ 恒大于死区，
+                    // 跟随于是无限期成立，镜头以 30°/s 一直绕——半径 9.9m、12 秒一圈。
+                    // 而 H = C + θ 让角色 1:1 跟着转，**按住摇杆十几秒就是一个大圈**。
+                    // 基线（9d0e603）在三难取舍里主动放弃了"角色不画弧"这一条，
+                    // 但实测反馈说明这个代价不能接受。
+                    //
+                    // 改法遵循同一条原则——**按当下到底需不需要来分配**：
+                    //   · 视野开阔（_urgency→0）⇒ 你已经看得见要去的地方 ⇒ 绕行速率 **0**，
+                    //     镜头一动不动，角色**严格走直线**；
+                    //   · 前方盲区（_urgency→1）⇒ 不转过去等于盲开 ⇒ 恢复到 30°/s，
+                    //     此时"看得见路"压倒"走得直"（半径 9.9m 的缓弧，代价可接受）。
+                    // 于是"转向合理跟随"由**有界的转向额度**负责（一次性、转完就停），
+                    // "不动就不动 + 走直线"由这里的 0 负责。两者各归其职，不再互相拉扯。
+                    //
+                    // enemyNet 豁免：那一路追的是【敌人方位】，它不是镜头偏航的函数，
+                    // 压根没有代数环，限它只会让敌人留在画外。
+                    if (player != null && !enemyNet)
                     {
                         Vector3 sw = player.StickWorldDir;
                         if (sw.sqrMagnitude > 0.04f)
                         {
                             float stickYaw = Quaternion.LookRotation(sw.normalized).eulerAngles.y;
-                            float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _yaw));
+                            float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _curYaw));
                             float gate = Mathf.Clamp01((off - OrbitGateAngle) / OrbitGateWidth);
                             if (gate > 0f)
-                                maxSpd = Mathf.Lerp(maxSpd, SustainedOrbitCap, gate);
+                                maxSpd = Mathf.Lerp(maxSpd, SustainedOrbitCap * _urgency, gate);
                         }
                     }
 
