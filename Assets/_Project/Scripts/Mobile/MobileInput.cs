@@ -14,6 +14,11 @@ namespace AdversityRoad.Mobile
     public static class MobileInput
     {
         public static Vector2 Move;          // 虚拟摇杆
+        /// <summary>手指此刻是否按在摇杆上——**未经任何平滑的原始状态**。
+        /// Move 走了力度/方向平滑（手感所需），松手后还要衰减几十毫秒才归零；
+        /// 而镜头需要判断"玩家还想不想往某处去"，那必须是零延迟的：
+        /// 停下来时镜头多转的每一度都会被看见。</summary>
+        public static bool MoveHeld;
         public static Vector2 LookDelta;     // 触屏转镜头增量（由镜头消费式读取）
 
         static readonly Dictionary<string, int> _pressFrame = new Dictionary<string, int>();

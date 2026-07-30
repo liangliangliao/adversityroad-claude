@@ -72,6 +72,9 @@ namespace AdversityRoad.Player
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
+        /// <summary>手指/方向键此刻是否在推——**零平滑、零延迟**。
+        /// 镜头的跟随起停以它为准（见 ThirdPersonCamera 的 active 判据）。</summary>
+        public bool StickHeld { get; private set; }
         /// <summary>是否离地（跳跃/坠落中）。镜头据此切"腾空·拉远看落点"景别。</summary>
         public bool Airborne => _cc != null && !_cc.isGrounded;
         /// <summary>纵向速度（负=下坠）。镜头用它区分"起跳上升"与"真的在往下掉"。</summary>
@@ -134,6 +137,12 @@ namespace AdversityRoad.Player
             stickInput = Vector2.ClampMagnitude(stickInput, 1f);
             Vector3 stickDir = CameraRelative(stickInput);
             StickWorldDir = stickDir;   // 供技能连招判断"玩家是否正在主动引导方向"
+            // 未经平滑的"手指/按键此刻在不在"——镜头用它作为跟随起停的零延迟判据。
+            // StickWorldDir 来自平滑后的摇杆量，松手后还要几十毫秒才落到阈值以下，
+            // 而镜头在那几十毫秒里多转的每一度都会被玩家看见。
+            StickHeld = MobileInput.MoveHeld ||
+                        Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.1f ||
+                        Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.1f;
 
             // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招。
             // 例外——收招闪避取消（大作手感）：技能/绝招打完主要段进入恢复相位后，

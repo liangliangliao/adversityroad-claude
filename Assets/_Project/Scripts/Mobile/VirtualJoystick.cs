@@ -41,7 +41,12 @@ namespace AdversityRoad.Mobile
 
         void Awake() => _rt = GetComponent<RectTransform>();
 
-        public void OnPointerDown(PointerEventData e) { _held = true; OnDrag(e); }
+        public void OnPointerDown(PointerEventData e)
+        {
+            _held = true;
+            MobileInput.MoveHeld = true;   // 零延迟：镜头据此判断"还想不想往某处去"
+            OnDrag(e);
+        }
 
         public void OnDrag(PointerEventData e)
         {
@@ -55,6 +60,7 @@ namespace AdversityRoad.Mobile
         public void OnPointerUp(PointerEventData e)
         {
             _held = false;
+            MobileInput.MoveHeld = false;
             _target = Vector2.zero;
             if (handle != null) handle.anchoredPosition = Vector2.zero;
         }
