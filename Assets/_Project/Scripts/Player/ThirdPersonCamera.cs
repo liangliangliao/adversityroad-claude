@@ -218,6 +218,41 @@ namespace AdversityRoad.Player
         /// <summary>一键回正是玩家自己按的，自发运动耐受度高，可以利落一点；
         /// 但 1400°/s² 仍只有原先 8816 的六分之一。180° 用 0.88s、90° 用 0.62s。</summary>
         const float ManualRecenterAccelBudget = 1400f, ManualRecenterMinTime = 0.3f;
+        // ===== 掉头辅助（本轮 · 唯一能同时满足"镜头对准目标方向"与"角色走直线"的做法）=====
+        //
+        // 恒等式 H = C + θ 决定了：只要手指还按在非正前方向，
+        //   「镜头绕到背后（C_final = H）」与「每帧现算（H = C + θ）」
+        // 两者相减必然要求 θ = 0。换句话说——**掉头时镜头绕过去、角色又走直线，
+        // 在"每帧现算"的框架里是代数上不可能的**，不是参数没调好。
+        // 你举的例子（前进中把摇杆拉到相反方向）算下来正是：镜头转 180°，
+        // 角色朝向也被带着转 180°，绕一圈回到原方向。
+        //
+        // 唯一出路：**镜头掉头的那段时间里不要每帧现算**。
+        // 于是这里持有一个【移动参考系偏置】，等于本次自主转镜已经转过的角度；
+        // PlayerController 解算摇杆时把它减掉，角色朝向在整段转镜里保持不变。
+        //
+        // 上游曾试过"锁存移动参考系"并撤回（"手指按着左、画面里角色往前跑"）。
+        // 本版与那次的关键区别是**范围极窄**：
+        //   · 只对【一次明确的掉头】（拇指角一次转过 >100°）生效，中小转向完全不涉及；
+        //   · 有始有终，时长由角加速度预算反解，最长约 1.2s；
+        //   · 玩家一松手立即归零（那一刻角色本来就停着，不会有跳变）；
+        //   · 期间的**增量**操作完全正确——从当前手指位置微调多少度，角色就转多少度，
+        //     只有"摇杆的画面含义"是旧的，而这个代价一松手就消失。
+        /// <summary>拇指角一次转过多少度才算"掉头"。100°：普通转向不触发，
+        /// 只有真的要往反方向去才走这条特殊通路。</summary>
+        const float TurnAroundAsk = 100f;
+        /// <summary>掉头转镜的角加速度预算。700°/s² ⇒ 180° 用 1.24s、峰值 218°/s。
+        /// 比自动回正激进（这是玩家刚刚明确要求的掉头），但仍在可接受区间。</summary>
+        const float TurnAroundAccelBudget = 700f, TurnAroundMinTime = 0.7f;
+        const float TurnAroundGap = 1.5f;   // 两次掉头辅助的最小间隔
+        float _lastTurnAround = -99f;
+        bool _basisHold;                    // 参考系偏置生效中（松手即解除）
+        float _basisAnchor;                 // 偏置的起算偏航
+        float _basisOffset;
+        /// <summary>移动参考系偏置（度）：PlayerController 解算摇杆时减掉它。
+        /// 非零只发生在镜头做一次有始有终的自主转镜期间，且玩家松手即归零。</summary>
+        public float MoveBasisOffset => _basisOffset;
+        bool _recenterAuto;                 // 本次转镜是镜头自己发起的（可被松手打断）
         float _recenterT, _recenterDur;
         float _recenterFrom, _recenterTo;
         /// <summary>回正进行中——PlayerController 据此冻结移动参考系。</summary>
@@ -235,12 +270,19 @@ namespace AdversityRoad.Player
             return target.eulerAngles.y;
         }
 
-        void StartRecenter(float toYaw, float accelBudget, float minTime)
+        void StartRecenter(float toYaw, float accelBudget, float minTime, bool auto = false)
         {
             _recenterFrom = _yaw;
             _recenterTo = toYaw;
             _recenterDur = RecenterDuration(Mathf.DeltaAngle(_yaw, toYaw), accelBudget, minTime);
             _recenterT = _recenterDur;
+            _recenterAuto = auto;
+            // 一旦镜头开始自主转镜，就把移动参考系钉在此刻——否则角色会被镜头
+            // 一起拖着转（180° 的掉头会把人绕回原方向，见上方 TurnAroundAsk 的说明）
+            // 用 (_curYaw − 已积累偏置) 作锚点，于是新一次转镜是在旧偏置之上【累积】，
+            // 而不是把它清掉——重叠的转镜（例如掉头途中又按了一键回正）不会跳变。
+            _basisAnchor = _curYaw - _basisOffset;
+            _basisHold = true;
         }
         readonly System.Collections.Generic.List<float> _threatDirs =
             new System.Collections.Generic.List<float>();   // 附近敌人的方位角（0.3s 刷新）
@@ -886,7 +928,11 @@ namespace AdversityRoad.Player
                 //     发额度 → 镜头快转 → 滞后变大 → thumb 又跳 → 再发额度 → …
                 // 自激循环，170°/s 下 2.1 秒就能转满一圈——角色也就跟着绕回原方向。
                 // 减 _curYaw 得到的才是干净的 θ：**镜头怎么转它都不变。**
-                float thumb = Mathf.DeltaAngle(_curYaw,
+                // 再减掉参考系偏置：摇杆的世界方向现在是（_curYaw − 偏置 + θ），
+                // 不扣掉偏置的话，掉头辅助期间偏置会一路涨到 180°，
+                // thumb 就跟着甩 180° —— 又是一次自激（会误触发第二次掉头、
+                // 或把刚建立的偏置立刻解除）。扣掉之后 thumb 恒等于真实的 θ。
+                float thumb = Mathf.DeltaAngle(_curYaw - _basisOffset,
                     Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
                 if (!_thumbInit) { _thumbInit = true; _thumbAnchor = _thumbPrev = thumb; }
                 float thumbRate = Mathf.Abs(Mathf.DeltaAngle(_thumbPrev, thumb)) / dt;
@@ -894,7 +940,30 @@ namespace AdversityRoad.Player
                 // 稳＝拇指角变化率低于 70°/s；连续稳住 0.09s 才算"这就是我要的方向"
                 _thumbSettleT = thumbRate < 70f ? _thumbSettleT + dt : 0f;
                 float turnAsk = Mathf.Abs(Mathf.DeltaAngle(_thumbAnchor, thumb));
-                if (_thumbSettleT > 0.09f && turnAsk > TurnAskGate &&
+
+                // ===== 掉头辅助：一次明确的大幅换向 =====
+                // 走的是"一次有始有终的转镜 + 移动参考系钉住"这条特殊通路，
+                // 于是**镜头能真的对准新方向，而角色全程直线**——
+                // 这是那条恒等式允许的唯一解法（见 TurnAroundAsk 处的推导）。
+                // 只在探索时启用：交战中另有一套（稳定第一 + 出画兜底），
+                // 锁定/手动取景/演出期间则是玩家或导演在支配镜头。
+                bool canTurnAround = _thumbSettleT > 0.09f && turnAsk > TurnAroundAsk &&
+                                     moveSpeed > 0.6f && lockTarget == null && !manualLook &&
+                                     _recenterT <= 0f && _ultimateTimer <= 0f &&
+                                     _combatBlend < 0.5f &&
+                                     Time.unscaledTime - _lastTurnAround > TurnAroundGap;
+                if (canTurnAround)
+                {
+                    // 目标＝玩家此刻要去的【世界方向】（摇杆方向本身）。
+                    // 不用 target.eulerAngles.y——角色转身要几帧才到位，会取到旧值。
+                    float toYaw = Quaternion.LookRotation(
+                        player.StickWorldDir.normalized).eulerAngles.y;
+                    StartRecenter(toYaw, TurnAroundAccelBudget, TurnAroundMinTime, true);
+                    _lastTurnAround = Time.unscaledTime;
+                    _thumbAnchor = thumb;
+                    _turnBudget = 0f;   // 这条通路接管，常规额度不必重复出力
+                }
+                else if (_thumbSettleT > 0.09f && turnAsk > TurnAskGate &&
                     Time.unscaledTime - _lastTurnGrant > TurnGrantGap)
                 {
                     // ===== 额度只由「画面闭塞」授权，不用三项紧迫度的最大值 =====
@@ -917,6 +986,12 @@ namespace AdversityRoad.Player
                 // 未达门槛时锚点慢漂：吸收拇指的小幅游走，不让噪声攒成额度
                 else if (_thumbSettleT > 0.09f)
                     _thumbAnchor = Mathf.MoveTowardsAngle(_thumbAnchor, thumb, 25f * dt);
+
+                // 又一次大幅换向（>60°）而没走掉头辅助 ⇒ 那是一条新命令，
+                // 理应按【当前】镜头解读，旧的参考系偏置必须让位。
+                if (!canTurnAround && _basisHold && _recenterT <= 0f &&
+                    _thumbSettleT > 0.09f && turnAsk > 60f)
+                { _basisHold = false; _basisOffset = 0f; }
             }
             else { _thumbInit = false; _thumbSettleT = 0f; _turnBudget = 0f; }
             // 时间泄漏：过期的额度不该留着。手指松开时上面已直接清零。
@@ -966,6 +1041,15 @@ namespace AdversityRoad.Player
             // 按你的开阔度原则——只要看得见远方，那就不是问题。
             // 下一次起跑时跟随会立刻接管，自己就正回来了。
             // 保留【一键回正】：那是这个类型的通行解，玩家自己按的运动不引起晕动。
+
+            // ---- 镜头自主转镜被玩家打断：松手即让位 ----
+            // 松手时角色本来就在停下，此刻结束转镜既不会有跳变，也符合
+            //「停下来镜头就该停」。一键回正是玩家自己按的，不打断。
+            if (_recenterAuto && !stickHeld)
+            {
+                _recenterT = 0f;
+                _recenterAuto = false;
+            }
 
             if (_recenterT > 0f)
             {
@@ -1341,6 +1425,20 @@ namespace AdversityRoad.Player
             // 掉头的速度改由上游的角加速度限幅统一保证，不需要在这里再抄近路。
             _curYaw = Mathf.SmoothDampAngle(_curYaw, _yaw, ref _yawVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
+
+            // ===== 移动参考系偏置的维护（必须在 _curYaw 更新之后）=====
+            // 转镜进行中：偏置＝已经转过的角度，于是 PlayerController 减掉它之后
+            //   角色朝向恒定 ⇒ **全程直线**。
+            // 转镜结束后：偏置【冻住】不再跟着 _curYaw 变（否则之后玩家自己甩镜
+            //   也会歪掉摇杆含义），一直保留到玩家松开摇杆——
+            //   那一刻角色本来就停着，归零不会产生任何跳变。
+            // 另一条解除路径：玩家又做了一次大幅换向（拇指角一次转过 >60°）。
+            //   那是一条新命令，理应按【当前】镜头来解读，旧偏置必须让位。
+            if (_basisHold)
+            {
+                if (_recenterT > 0f) _basisOffset = Mathf.DeltaAngle(_basisAnchor, _curYaw);
+                if (!stickHeld) { _basisHold = false; _basisOffset = 0f; }
+            }
             _curPitch = Mathf.SmoothDamp(_curPitch, _pitch, ref _pitchVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
 

@@ -361,28 +361,24 @@ namespace AdversityRoad.Player
         /// </summary>
         Vector3 CameraRelative(Vector2 input)
         {
-            if (input.sqrMagnitude < 0.0001f) { _recenterFrameInit = false; return Vector3.zero; }
+            if (input.sqrMagnitude < 0.0001f) return Vector3.zero;
             if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
 
-            // 一键回正期间【冻结参考系】：回正会在 0.35s 内快速绕行，
-            // 若参考系跟着转，镜头会把角色一起拖着转（0.35s 可拖出 90°），
-            // 回正反而把人转晕。冻结是有界的、玩家自己触发的，与常态无关。
+            // ===== 移动参考系偏置（镜头侧持有，见 ThirdPersonCamera.MoveBasisOffset）=====
+            // 这里不再自己判断"要不要冻结"，而是直接减掉镜头给出的偏置。
+            // 偏置只在镜头做【一次有始有终的自主转镜】（掉头辅助 / 一键回正）时非零，
+            // 数值等于那次转镜已经转过的角度，并在玩家松开摇杆时归零。
+            //
+            // 为什么必须这样：移动是镜头相对的 ⇒ H = C + θ。镜头掉头 180° 时，
+            // 若每帧现算，H 会跟着 C 一起转 180°，角色绕一圈回到原方向——
+            // 这是代数事实，不是参数问题。减掉偏置后 H 在整段转镜里保持不变，
+            // **角色严格朝玩家指定的方向直线前进**，而镜头照样绕到它背后。
+            // 代价是这段时间里"摇杆的画面含义"是旧的（手指按着下、画面里角色往上跑），
+            // 但那个代价一松手就消失，而且期间的**增量**操作依然完全正确
+            //（从当前手指位置微调多少度，角色就转多少度）。
             if (_cam == null) _cam = cameraTransform.GetComponent<ThirdPersonCamera>();
-            float frameYaw;
-            if (_cam != null && _cam.RecenterActive)
-            {
-                if (!_recenterFrameInit)
-                {
-                    _recenterFrameYaw = cameraTransform.eulerAngles.y;
-                    _recenterFrameInit = true;
-                }
-                frameYaw = _recenterFrameYaw;
-            }
-            else
-            {
-                _recenterFrameInit = false;
-                frameYaw = cameraTransform.eulerAngles.y;
-            }
+            float frameYaw = cameraTransform.eulerAngles.y;
+            if (_cam != null) frameYaw -= _cam.MoveBasisOffset;
 
             Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
             Vector3 fwd = frame * Vector3.forward;
@@ -391,8 +387,6 @@ namespace AdversityRoad.Player
         }
 
         ThirdPersonCamera _cam;
-        float _recenterFrameYaw;
-        bool _recenterFrameInit;
 
         void ApplyGravityOnly(float dt)
         {
