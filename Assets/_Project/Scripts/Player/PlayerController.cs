@@ -361,24 +361,43 @@ namespace AdversityRoad.Player
         /// </summary>
         Vector3 CameraRelative(Vector2 input)
         {
-            if (input.sqrMagnitude < 0.0001f) return Vector3.zero;
+            if (input.sqrMagnitude < 0.0001f) { _recenterFrameInit = false; return Vector3.zero; }
             if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
 
-            // ===== 移动参考系偏置（镜头侧持有，见 ThirdPersonCamera.MoveBasisOffset）=====
-            // 这里不再自己判断"要不要冻结"，而是直接减掉镜头给出的偏置。
-            // 偏置只在镜头做【一次有始有终的自主转镜】（掉头辅助 / 一键回正）时非零，
-            // 数值等于那次转镜已经转过的角度，并在玩家松开摇杆时归零。
+            // ===== 移动参考系永远是【当前镜头】，唯一例外是一键回正期间 =====
             //
-            // 为什么必须这样：移动是镜头相对的 ⇒ H = C + θ。镜头掉头 180° 时，
-            // 若每帧现算，H 会跟着 C 一起转 180°，角色绕一圈回到原方向——
-            // 这是代数事实，不是参数问题。减掉偏置后 H 在整段转镜里保持不变，
-            // **角色严格朝玩家指定的方向直线前进**，而镜头照样绕到它背后。
-            // 代价是这段时间里"摇杆的画面含义"是旧的（手指按着下、画面里角色往上跑），
-            // 但那个代价一松手就消失，而且期间的**增量**操作依然完全正确
-            //（从当前手指位置微调多少度，角色就转多少度）。
+            // 曾经试过"镜头自主掉头时钉住参考系"，让角色在镜头绕行期间走直线。
+            // 代数上它确实成立，但实机截图给出了否决性的证据：
+            // **摇杆推在左下、画面里角色却在往画面深处跑**——偏差最大可达 180°。
+            // 上游此前也因同一现象撤回过（cd4bc4a）。两次独立验证，结论一致：
+            // 「摇杆方向 ↔ 画面方向」的一致性是不可交易的，它比"轨迹是直线"更基本，
+            // 因为玩家是照着画面推杆的，一旦对不上，每一次输入都在赌。
+            //
+            // 于是恒等式 H = C + θ 全时成立，而它的推论是：
+            // **镜头在玩家按着摇杆时每转 1°，角色就被带转 1°。**
+            // 所以镜头侧的答案只能是——按着摇杆时压根不自动转（见 ThirdPersonCamera
+            // 的 _viewBlocked：开阔时旋转授权为 0）。这也正是《原神》《塞尔达》
+            // 《魂系》等虚拟摇杆/手柄第三人称作品的通行做法：**镜头偏航归玩家**，
+            // 自动运镜只用于锁定、显式回正与战斗兜底。
+            //
+            // 一键回正是唯一例外：那是玩家自己按的、有始有终的 0.6~0.9s 动作，
+            // 期间冻结参考系可避免镜头把角色一起拖转，动作一结束立即恢复。
             if (_cam == null) _cam = cameraTransform.GetComponent<ThirdPersonCamera>();
-            float frameYaw = cameraTransform.eulerAngles.y;
-            if (_cam != null) frameYaw -= _cam.MoveBasisOffset;
+            float frameYaw;
+            if (_cam != null && _cam.RecenterActive)
+            {
+                if (!_recenterFrameInit)
+                {
+                    _recenterFrameYaw = cameraTransform.eulerAngles.y;
+                    _recenterFrameInit = true;
+                }
+                frameYaw = _recenterFrameYaw;
+            }
+            else
+            {
+                _recenterFrameInit = false;
+                frameYaw = cameraTransform.eulerAngles.y;
+            }
 
             Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
             Vector3 fwd = frame * Vector3.forward;
@@ -387,6 +406,8 @@ namespace AdversityRoad.Player
         }
 
         ThirdPersonCamera _cam;
+        float _recenterFrameYaw;
+        bool _recenterFrameInit;
 
         void ApplyGravityOnly(float dt)
         {
