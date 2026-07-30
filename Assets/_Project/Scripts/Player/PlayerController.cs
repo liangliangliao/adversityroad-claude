@@ -397,6 +397,11 @@ namespace AdversityRoad.Player
             {
                 _recenterFrameInit = false;
                 frameYaw = cameraTransform.eulerAngles.y;
+                // 转向对齐欠账：镜头为"把行进方向摆正到画面里"而转过多少度，
+                // 就在这里减掉多少度，于是那次旋转真的换回了取景，
+                // 而不是把角色一起转走。**封顶 30°、松手即零、按着不放也会
+                // 以 18°/s 自动还清**——与上游撤回的那次无限期锁存不是一回事。
+                if (_cam != null) frameYaw -= _cam.MoveBasisOffset;
             }
 
             Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
