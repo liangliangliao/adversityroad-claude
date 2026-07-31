@@ -610,7 +610,10 @@ namespace AdversityRoad.Player
             _headingRateAvg = Mathf.Lerp(_headingRateAvg, headingRate, 1f - Mathf.Exp(-8f * dt));
             // 自适应低通滤波：朝向还在乱动时收敛慢（滤掉摇杆抖动），
             // 一旦朝向稳定下来就快速收敛——避免"转完身还要等滤波追上"的盲区延迟
-            float lpRate = Mathf.Lerp(5f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
+            // 下限 5→8：转向瞬间 _headingHoldT 被清零、lpRate 掉到最低，
+            // τ=0.2s 的滞后正好压在最需要镜头动起来的那一刻。8 ⇒ τ=0.125s，
+            // 省下 0.075s 的纯延迟；抗抖由跟随的 28° 死区负责，不靠这里。
+            float lpRate = Mathf.Lerp(8f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
             _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-lpRate * dt));
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
@@ -1143,8 +1146,12 @@ namespace AdversityRoad.Player
                 // 但 180° 掉头本身就是无歧义的意图，再等 0.15s 纯粹是加盲区。
                 // 再乘一道视野系数：**开阔时不必立刻决定**（0.33s 才起手，转向转一半
                 // 又改主意的都被吃掉），盲区时按原值立刻起手。
+                // 开阔加权（×2.2）的本意是"开阔时不必立刻决定"，防的是转一半又改主意。
+                // 但**大幅转向本身就是无歧义的意图**，再压 0.33 秒纯粹是延迟。
+                // 于是让加权随转向幅度退掉：45° 以下照旧稳一稳，90° 以上立即起手。
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f))
-                                   * Mathf.Lerp(2.2f, 1f, _urgency);
+                                   * Mathf.Lerp(Mathf.Lerp(2.2f, 1f, _urgency), 1f,
+                                                Mathf.Clamp01((err - 45f) / 45f));
                 bool gentle = active && _headingHoldT > steadyNeed && err > dz
                               && !backingIntent;
 
@@ -1154,13 +1161,15 @@ namespace AdversityRoad.Player
                 // 镜头是**自己滑停**的，而不是被掐断的。
                 // 起手要柔、收手要**当机立断**：起步慢是防抖，停得慢是拖尾，
                 // 两者诉求相反，不该共用一个时间常数。
-                //   · 起 0.3s（防摇杆抖动牵动镜头）；
+                //   · 起 0.18s（0.3→0.18：起手快一拍能让镜头早约 0.15 秒真正动起来，
+                //     而峰值角加速度只有 26°/s ÷ 0.18s ≈ 145°/s²，远在舒适区 600 之内——
+                //     **"平稳"由角加速度决定，不由起手时间常数决定**）；
                 //   · 收 0.06s ≈ 4 帧：**手指离开摇杆的那一刻就不再往前转了**。
                 // 这不会造成"卡一下"——_yaw 停住之后，渲染用的 _curYaw 还要经
                 // rotationSmoothTime(0.11s) 的临界阻尼追上来，那 4~5° 的收尾
                 // 是纯粹的减速曲线，读作"镜头稳稳停住"，不是一次运镜决定。
                 bool followWant = !manualRecently && (_combatReorient || gentle);
-                float driveT = followWant ? 0.3f : 0.06f;
+                float driveT = followWant ? 0.18f : 0.06f;
                 _followDrive = Mathf.SmoothDamp(_followDrive, followWant ? 1f : 0f,
                     ref _followDriveVel, driveT, Mathf.Infinity, dt);
 
@@ -1221,6 +1230,17 @@ namespace AdversityRoad.Player
                             float orbit = SustainedOrbitCap * ramp;
                             // 前方真的闭塞时允许快一点（那时"看得见路"值得多付一点弧）
                             orbit *= Mathf.Lerp(1f, 1.8f, _viewBlocked);
+                            // ===== 转向起始的瞬态提速：让"看见前方"来得更早 =====
+                            // 稳态速率决定弧的松紧，必须慢；但**刚转向的那一两秒**
+                            // 玩家本来就在主动改方向，多转的那一点被他自己的操作盖住了，
+                            // 是这条曲线上唯一还能提速而不显得"镜头跟你较劲"的窗口。
+                            // 用 _turnBurst（低通后的转向角速度，且要求方向已定下来，
+                            // 搓杆不算）做包络：起 0.45s、收 1.2s，峰值约 0.7。
+                            //   峰值速率 26 → 44°/s，但**峰值角加速度只有 ~73°/s²**
+                            //   （舒适上限 600）——快而不颠，因为颠的是加速度不是速度。
+                            //   额外转过的总量约 22°，弧在峰值处半径 6.8m、持续不到半秒，
+                            //   横向偏离仅 0.49m；而 90° 对齐由 3.5s 缩到约 2.6s。
+                            orbit *= Mathf.Lerp(1f, 2f, _turnBurst);
                             maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
