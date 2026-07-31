@@ -356,6 +356,10 @@ namespace AdversityRoad.Player
         // 决定该跟得快还是压得住（搓杆时 θ 一直在扫 ⇒ 永不判定为已定）。
         float _thumbPrev, _thumbSettleT;
         float _thumbRatePeak;                // 刚才那一下转向有多急（相机无关，峰值保持）
+        float _thumbAbs;                     // |θ|：要去的方向离画面正前多远
+        /// <summary>本次转向的幅度，在瞬态起手的那一刻锁存。
+        /// **必须锁存，不能用瞬时偏差**——偏差一降倍率就塌，大幅掉头会在半途失速。</summary>
+        float _turnMag;
         bool _thumbInit;
         float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
         float _sightNow = SightMax, _sightGoing = SightMax;
@@ -925,6 +929,7 @@ namespace AdversityRoad.Player
                 // 那是一个正反馈，正是之前"绕圈回到原方向"的同款成因。
                 // 拇指角速率与镜头无关：手指不动它就是 0，镜头转多快都不变。
                 _thumbRatePeak = Mathf.Max(_thumbRatePeak - 400f * dt, thumbRate);
+                _thumbAbs = Mathf.Abs(thumb);   // 要去的方向离画面正前多远＝镜头要转多远
             }
             else { _thumbInit = false; _thumbSettleT = 0f; _thumbRatePeak = 0f; }
 
@@ -952,6 +957,9 @@ namespace AdversityRoad.Player
             float turnWant = Mathf.Clamp01((_thumbRatePeak - 200f) / 400f)
                              * Mathf.Clamp01(moveSpeed / 3f)
                              * (_thumbSettleT > 0.09f ? 1f : 0f);
+            // 瞬态起手的那一刻锁存【本次要转多远】：小转向本来就没多少盲区，
+            // 慢一点无所谓；180° 掉头则是盲区最深、慢下来绕得最远的那一档，必须快。
+            if (turnWant > 0.05f && _turnBurst < 0.05f) _turnMag = _thumbAbs;
             _turnBurst = Mathf.SmoothDamp(_turnBurst, turnWant, ref _turnBurstVel,
                 turnWant > _turnBurst ? 0.45f : 1.2f, Mathf.Infinity, dt);
 
@@ -1281,9 +1289,17 @@ namespace AdversityRoad.Player
                             // 慢并不等于"弧小"，只等于"绕得久、绕得远"。
                             // 真正的约束只有角加速度（晕动），而 90°/s 配 0.45s 的平滑
                             // 升起只有约 120°/s²，舒适上限是 600——离得很远。
-                            // 所以起始瞬态放到 3.5 倍：峰值 ≈ 26×(1+2.5×0.7) ≈ 90°/s，
-                            // 转完 1.2s 内回落到 26°/s 的稳态缓行。
-                            orbit *= Mathf.Lerp(1f, 3.5f, _turnBurst);
+                            // 而且这个账**随转向幅度急剧恶化**：180° 掉头走的是半圆，
+                            // 横向绕出是 2R——75°/s 要绕出 7.9m、跑 2.4 秒，
+                            // 正是"走了很大一段弧才摆正"。所以倍率必须随幅度给：
+                            //   60° 以下 ×2.5   （峰值 33°/s，本来就没多少盲区，慢无所谓）
+                            //   90°      ×5.4   （峰值 94°/s，1.15s、半径 3.2m）
+                            //   170°+    ×10    （峰值 203°/s，1.27s、半径 1.5m）
+                            // 提速侧峰值角加速度 401°/s²，仍在舒适上限 600 之内；
+                            // 减速侧不限（下游限幅本就只限提速——拦着镜头停下只会拖尾）。
+                            float boost = Mathf.Lerp(2.5f, 10f,
+                                Mathf.Clamp01((_turnMag - 60f) / 110f));
+                            orbit *= Mathf.Lerp(1f, boost, _turnBurst);
                             // 置信度直接缩放速率：一串换向按其"有多像一个方向"
                             // 给出相应的摆正速度，搓杆则趋零。
                             orbit *= dirTrust;
