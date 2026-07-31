@@ -41,8 +41,13 @@ namespace AdversityRoad.Combat
         }
 
         // 技能输入缓冲（意图匹配）：在出招锁定/硬直期间按下的技能不再石沉大海，
-        // 而是排队等待——动作一结束立刻接上，读作"我按了它就会打出来"
-        const float SkillBufferWindow = 0.35f;
+        // 而是排队等待——动作一结束立刻接上，读作"我按了它就会打出来"。
+        //
+        // 寿命必须覆盖"当前正锁着的那个动作"：技能只在 IsActionLocked 时才入缓冲，
+        // 而锁本身可长达 2.05s（蓄力气场）/1.75s（超必杀）/1.45s（技能连招）。
+        // 原来的 0.35s 固定窗比几乎每一个长动作都短——排队进去必然过期，
+        // 与"排队等待"的注释完全相反：技能连招后想立刻接第二个技能，那一下永远丢。
+        const float SkillBufferWindow = InputBuffer.QueuedLife;   // 2.5s，覆盖最长动作
         int _bufferedSkill = -1;
         float _bufferedSkillAt = -99f;
         float _lastCdHint = -99f, _lastResourceHint = -99f;   // 提示节流（连点不刷屏）
@@ -54,7 +59,8 @@ namespace AdversityRoad.Combat
 
             int n = Mathf.Min(6, equippedSkills.Count);
             int pressed = -1;
-            // 数字键 1-6 / 触屏技能按钮：定·气·还·火·盾·收
+            // 桌面：数字键 1-6。触屏：技能没有独立按钮，由修饰键「术」+核心键路由产生
+            //（术+拳=Skill1 … 术+挡=Skill6，见 MobileInput.SkillMap），此处读到的名字不变。
             for (int i = 0; i < n; i++)
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i) || MobileInput.GetDown("Skill" + (i + 1)))
                     pressed = i;
@@ -83,7 +89,16 @@ namespace AdversityRoad.Combat
 
         public bool TryCast(Data.SkillDefinition skill)
         {
-            if (skill == null || _fsm.IsActionLocked) return false;
+            if (skill == null) return false;
+            // 收招取消：长动作打完主要判定进入恢复相位后，技能同样可以立刻接上——
+            // 与攻击、闪避同一条规则。否则技能→技能之间恒定卡着一整个收招段，
+            // 排队的第二个技能虽然不再丢，却要等一秒多才出来。
+            //
+            // 这里【只判定、不改状态】：下面还有冷却/意势/体力/意志四道门槛，
+            // 任何一道没过都会 return false——若在此处先解锁，玩家会被白白踢出恢复相位
+            // （技能没放出来，收招却被切了）。真正的状态切换交给下面的 RequestState，
+            // 它本就无条件覆盖当前状态，并由 StartCombo 停掉上一套连招协程。
+            if (_fsm.IsActionLocked && !_fsm.CanCancelRecovery) return false;
             if (_cooldowns.TryGetValue(skill.skillId, out float cd) && cd > 0)
             {
                 // 连点冷却中的技能不刷屏（节流）
@@ -126,6 +141,14 @@ namespace AdversityRoad.Combat
             }
             if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
 
+            // 技能同样是连招元素：成功施展即入融合链，于是「术→剑」「跃→术→剑」
+            // 这类跨系统串法能接成融招（术后追斩 / 踏云术斩）。
+            // 技能不再是一段自成一体的独立演出，而是可被前后动作接住的一环。
+            {
+                var cf = Combat();
+                if (cf != null) cf.Fusion.Push(MoveToken.Skill);
+            }
+
             // 逆伤崩拳气质：高伤害但额外消耗自尊/意志的技能由 selfCostAxisDamage 表达
             if (skill.selfCostAxisDamage > 0)
                 _player.Stats.TakeMentalDamage(skill.selfCostAxis, skill.selfCostAxisDamage);
@@ -152,9 +175,13 @@ namespace AdversityRoad.Combat
 
             if (skill.physicalDamage > 0)
             {
+                // 技能也吃融合加成：从连招串进来的技能比冷启动单放更狠——
+                // 「技能是连招的一环」这句话必须在伤害上兑现，否则玩家没有理由去串。
+                var cfd = Combat();
+                float fusionMult = cfd != null ? cfd.Fusion.FusionMult : 1f;
                 var dmg = new DamageInfo
                 {
-                    physicalDamage = skill.physicalDamage,
+                    physicalDamage = skill.physicalDamage * fusionMult,
                     postureDamage = skill.postureDamage,
                     knockback = skill.knockback,
                     attackerId = "player_skill_" + skill.skillId
@@ -266,6 +293,9 @@ namespace AdversityRoad.Combat
             PlayerCombatController.PoseHitShape(pose, out Vector3 size, out Vector3 center);
             if (!Mathf.Approximately(scale, 1f)) { size *= scale; center.z *= scale; }
             weaponHitbox.SetShape(size, center);
+            // 绝招连段的每一段同样吃融合加成（技能是连招的一环，不是独立的孤岛）
+            var cf = Combat();
+            if (cf != null) dmg *= cf.Fusion.FusionMult;
             StartCoroutine(StrikeWindow(windup, open, dmg, posture, knockback, tag));
         }
 
@@ -287,6 +317,10 @@ namespace AdversityRoad.Combat
             weaponHitbox.DisableHitbox();
             weaponHitbox.onHit = null;
         }
+
+        /// <summary>终结段判定窗时长（windup 0.12 + open 0.22）：
+        /// 收招取消窗必须开在它之后，否则玩家连打会把自己的终结段取消掉。</summary>
+        const float FinalStrikeWindow = 0.34f;
 
         void StartCombo(IEnumerator combo)
         {
@@ -348,7 +382,9 @@ namespace AdversityRoad.Combat
             CombatFeedback.Debris(transform.position + transform.forward * 1.2f, ringColor, 7);
             Core.GameAudio.Play(Core.GameAudio.Sfx.HeavyHit, 0.8f);
             Core.GameEvents.RaiseSubtitle("四象归一——心神落定，心理属性恢复。");
-            _fsm.CanDodgeCancel = true;   // 收招相位：可用闪避立刻打断，不必等动作播完
+            // 等最后一击的判定窗完整走完再开放取消，否则连打会把终结段吃掉
+            yield return new WaitForSeconds(FinalStrikeWindow);
+            _fsm.CanCancelRecovery = true;   // 收招相位：闪避或攻击均可立刻打断，不必等动作播完
         }
 
         // ===================== 收「收心·万流归元」 =====================
@@ -393,7 +429,9 @@ namespace AdversityRoad.Combat
             Core.GameEvents.RaiseSubtitle(cleared > 0
                 ? "万流归元——" + cleared + " 个幻影散去。不是所有声音都要回应。"
                 : "万流归元——我把注意力拿回来，放回自己手上的事。");
-            _fsm.CanDodgeCancel = true;   // 收招相位：可用闪避立刻打断，不必等动作播完
+            // 等最后一击的判定窗完整走完再开放取消，否则连打会把终结段吃掉
+            yield return new WaitForSeconds(FinalStrikeWindow);
+            _fsm.CanCancelRecovery = true;   // 收招相位：闪避或攻击均可立刻打断，不必等动作播完
         }
 
         // ===================== 还「还域·界返三连」 =====================
@@ -459,7 +497,9 @@ namespace AdversityRoad.Combat
                 : returned > 0
                     ? "界返三连——把不属于我的" + returned + "份责任，成套还了回去。"
                     : "界返三连——我只承担属于自己的那部分。");
-            _fsm.CanDodgeCancel = true;   // 收招相位：可用闪避立刻打断，不必等动作播完
+            // 等最后一击的判定窗完整走完再开放取消，否则连打会把终结段吃掉
+            yield return new WaitForSeconds(FinalStrikeWindow);
+            _fsm.CanCancelRecovery = true;   // 收招相位：闪避或攻击均可立刻打断，不必等动作播完
             Core.GameAudio.Play(Core.GameAudio.Sfx.HeavyHit, 0.7f);
         }
 
@@ -521,7 +561,9 @@ namespace AdversityRoad.Combat
             Core.GameEvents.RaiseSubtitle(unfroze
                 ? "燃火燎原——行动打破冻结！先做五分钟，动起来再说。"
                 : "燃火燎原——不等动力，先开始；动力是被行动召回的。");
-            _fsm.CanDodgeCancel = true;   // 收招相位：可用闪避立刻打断，不必等动作播完
+            // 等最后一击的判定窗完整走完再开放取消，否则连打会把终结段吃掉
+            yield return new WaitForSeconds(FinalStrikeWindow);
+            _fsm.CanCancelRecovery = true;   // 收招相位：闪避或攻击均可立刻打断，不必等动作播完
         }
 
         // ===================== 盾「镜界·退身斩」 =====================
@@ -576,7 +618,9 @@ namespace AdversityRoad.Combat
             Strike(PoseState.SwordThrust, 24f, 26f, 4f, 0.08f, 0.16f, 1.3f, "player_skill_budu");
             CombatFeedback.SlowMo(0.5f, 0.12f);
             Core.GameEvents.RaiseSubtitle("镜界反击——无法确认的事，我不把猜测当事实（抵消下一次心理攻击）。");
-            _fsm.CanDodgeCancel = true;   // 收招相位：可用闪避立刻打断，不必等动作播完
+            // 等最后一击的判定窗完整走完再开放取消，否则连打会把终结段吃掉
+            yield return new WaitForSeconds(FinalStrikeWindow);
+            _fsm.CanCancelRecovery = true;   // 收招相位：闪避或攻击均可立刻打断，不必等动作播完
         }
     }
 }

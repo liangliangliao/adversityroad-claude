@@ -116,6 +116,42 @@ namespace AdversityRoad.Combat
             new Recipe { seq = "KKP",  name = "双斩·惊鸿飞踢", mult = 1.5f, cost = 0, pose = PoseState.JumpKick },
         };
 
+        /// <summary>
+        /// 跨元素配方：在【自由融合链】上匹配，而不是只看拳/剑序列。
+        /// 与上面的 Recipes 的本质区别——这里的字母表包含**全部**基础动作与系统：
+        /// P拳 K剑 H重 J跃 D闪 S术 G架。所以「跳→剑」「闪→拳」「术→重」这类
+        /// 跨系统的串法才可能成招，而不是被当成互不相干的两个动作。
+        /// </summary>
+        struct FusionRecipe
+        {
+            public string tail;      // 融合链尾的代号串
+            public string name;
+            public float mult;
+            public int cost;
+            public PoseState pose;
+        }
+
+        // 「放开限制」的具体兑现：跳跃、闪避、技能、格挡都能与拳剑重互相接续成招。
+        // 排在前面的优先（长串优先于短串，避免长招被短招吃掉）。
+        static readonly FusionRecipe[] FusionRecipes =
+        {
+            // ---- 四元及以上：跨越三大系统的高阶融合（需意势）----
+            new FusionRecipe { tail = "JSK", name = "踏云术斩·天倾一击", mult = 3.0f, cost = 2, pose = PoseState.AttackLeap },
+            new FusionRecipe { tail = "DSP", name = "影遁术拳·无相连环", mult = 2.8f, cost = 2, pose = PoseState.SpinKick },
+            new FusionRecipe { tail = "JHK", name = "踏空三叠·裂地崩斩", mult = 2.7f, cost = 1, pose = PoseState.AttackSpin },
+            new FusionRecipe { tail = "GPK", name = "架打连环·后发先至", mult = 2.5f, cost = 1, pose = PoseState.SwordThrust },
+
+            // ---- 三元/二元：无消耗的日常跨系统衔接（鼓励随手串）----
+            new FusionRecipe { tail = "SK",  name = "术后追斩·势不可挡", mult = 1.7f, cost = 0, pose = PoseState.AttackUp },
+            new FusionRecipe { tail = "SP",  name = "术后贯拳·气随身走", mult = 1.6f, cost = 0, pose = PoseState.PunchCross },
+            new FusionRecipe { tail = "DK",  name = "闪身突刺·后发制人", mult = 1.8f, cost = 0, pose = PoseState.SwordThrust },
+            new FusionRecipe { tail = "DP",  name = "闪身重拳·借势反打", mult = 1.6f, cost = 0, pose = PoseState.PunchCross },
+            new FusionRecipe { tail = "JK",  name = "踏空斩·凌云一式", mult = 1.9f, cost = 0, pose = PoseState.AttackLeap },
+            new FusionRecipe { tail = "JP",  name = "惊鸿飞踢·踏虚而至", mult = 1.7f, cost = 0, pose = PoseState.JumpKick },
+            new FusionRecipe { tail = "GK",  name = "架后反斩", mult = 1.5f, cost = 0, pose = PoseState.AttackUp },
+            new FusionRecipe { tail = "HK",  name = "重斩接锋·崩势", mult = 1.5f, cost = 0, pose = PoseState.SwordThrust },
+        };
+
         PlayerController _player;
         CombatStateMachine _fsm;
         CharacterController _cc;
@@ -126,7 +162,32 @@ namespace AdversityRoad.Combat
         ComboStage _cur;
         string _seq = "";             // 本次连段的拳腿序列（组合技识别）
         AttackBtn _buffered = AttackBtn.None;
-        float _bufferedAt;            // 输入缓冲时间戳（过期作废，防陈旧输入迟到触发）
+        float _bufferedAt;            // 输入缓冲时间戳
+        bool _bufferedQueued;         // 按下时是否正处于动作锁（排队意图 vs 即时意图）
+
+        // ===== 缓冲寿命：两种意图两种算法（大作通用）=====
+        // 旧实现只有一个 0.6s 固定窗，而动作锁时长是任意的：蓄力二连 0.88/1.0s、
+        // 五个技能 1.15~1.45s、超必杀 1.75s、蓄力气场最长 2.05s——统统超过 0.6s。
+        // 结果就是「点重→立刻点拳」时，拳在锁解除前就过期，被静默吞掉（实测确认）。
+        // 现在：锁定中按下＝明确要接下一招 → 活到动作结束；自由时按下 → 短窗口。
+        const float BufferFreeWindow = 0.6f;    // 自由状态下按的键
+        const float BufferQueuedLife = 2.5f;    // 锁定中排队的上限（覆盖最长动作 2.05s）
+
+        /// <summary>缓冲中的攻击是否仍然有效。</summary>
+        bool BufferAlive()
+        {
+            if (_buffered == AttackBtn.None) return false;
+            float age = Time.time - _bufferedAt;
+            return age <= (_bufferedQueued ? BufferQueuedLife : BufferFreeWindow);
+        }
+
+        /// <summary>记录一次攻击缓冲，并标记它是排队意图还是即时意图。</summary>
+        void BufferAttack(AttackBtn btn)
+        {
+            _buffered = btn;
+            _bufferedAt = Time.time;
+            _bufferedQueued = _fsm.IsActionLocked || _charging || _depth >= 0;
+        }
         Coroutine _hitboxRoutine;
         Coroutine _ranwuRoutine;
 
@@ -176,6 +237,10 @@ namespace AdversityRoad.Combat
             float dt = Time.deltaTime;
             if (_parryTimer > 0) _parryTimer -= dt;
             if (_specialCd > 0) _specialCd -= dt;
+            // 融合链自然过期 → 复位播报等级，下一串重新从头累积
+            if (Fusion.Length == 0) _lastFusionVariety = 0;
+            if (_cc.isGrounded) _airActs = 0;   // 落地重置空中连段额度
+            PushFusionHud();
 
             // 受身：被击倒瞬间按闪避快速翻身（KOF 受身）。
             // 走 PlayerController 的共享输入缓冲——消费式输入每帧只能被读一次，
@@ -194,7 +259,11 @@ namespace AdversityRoad.Combat
             {
                 _stageT += dt;
                 if (_buffered != AttackBtn.None && _stageT >= _cur.cancelAt)
-                    NextStage(_buffered);
+                {
+                    // 连段推进此前不校验有效期，陈旧输入能在连段内迟到触发
+                    if (BufferAlive()) NextStage(_buffered);
+                    else _buffered = AttackBtn.None;
+                }
                 else if (_stageT >= _cur.length) EndCombo();
             }
 
@@ -256,13 +325,20 @@ namespace AdversityRoad.Combat
                 // 蓄力中按下拳/腿：进缓冲排队（重击一出手立刻接连段，输入不丢）
                 AttackBtn queued = punchDown ? AttackBtn.Punch
                     : kickDown ? AttackBtn.Kick : AttackBtn.None;
-                if (queued != AttackBtn.None) { _buffered = queued; _bufferedAt = Time.time; }
+                if (queued != AttackBtn.None) BufferAttack(queued);
                 return;
             }
 
             if (heavyDown)
             {
-                if (!_cc.isGrounded) { AirLeapAttack(); return; }   // 跳+重=空袭跳劈
+                // 跳+重＝空袭跳劈：同样占用滞空额度（否则空中可无限重砸）
+                if (!_cc.isGrounded)
+                {
+                    if (_airActs >= MaxAirActs) return;
+                    _airActs++;
+                    AirLeapAttack();
+                    return;
+                }
                 if (_depth >= 1 && _stageT >= 0.1f) { QiShou(); return; }
                 MoveIntent(out _heavyDirFwd, out _heavyDirSide);
                 StartCharge();
@@ -272,20 +348,27 @@ namespace AdversityRoad.Combat
             AttackBtn pressed = punchDown ? AttackBtn.Punch : kickDown ? AttackBtn.Kick : AttackBtn.None;
             if (pressed != AttackBtn.None)
             {
-                if (_depth >= 0) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                if (_depth >= 0) { BufferAttack(pressed); return; }
                 // 动作锁期间（受击硬直/重击收招等）不再吞掉输入：进缓冲排队，
                 // 锁一解除立即出招——连点第二下绝不丢（"连续性差/有延迟"的根因）
-                if (_fsm.IsActionLocked) { _buffered = pressed; _bufferedAt = Time.time; return; }
+                if (_fsm.IsActionLocked) { BufferAttack(pressed); return; }
                 StartAttack(pressed);
                 return;
             }
 
             // 缓冲兑现：锁解除后立刻打出排队的那一下（0.6s 内有效，过期作废）
-            if (_depth < 0 && _buffered != AttackBtn.None && !_fsm.IsActionLocked)
+            // 收招取消（大作核心手感）：长动作打完主要判定进入恢复相位后，
+            // **攻击**同样可以立刻打断收招——此前只有闪避享有这个特权，
+            // 攻击必须干等整个锁走完（技能 1.45s、超必杀 1.75s），
+            // 于是"排队的那一下"虽然不再丢，却要等一秒多才出来，照样读作卡顿。
+            bool cancelWindow = _fsm.IsActionLocked && _fsm.CanCancelRecovery;
+            if (_depth < 0 && _buffered != AttackBtn.None && (!_fsm.IsActionLocked || cancelWindow))
             {
-                if (Time.time - _bufferedAt > 0.6f) { _buffered = AttackBtn.None; return; }
+                // 长动作（技能/蓄力二连/超必杀）刚结束时走的就是这里：排队意图不再被时钟吃掉
+                if (!BufferAlive()) { _buffered = AttackBtn.None; return; }
                 var b = _buffered;
                 _buffered = AttackBtn.None;
+                if (cancelWindow) _fsm.RequestState(CombatState.Locomotion);   // 切断收招
                 StartAttack(b);
             }
         }
@@ -294,13 +377,20 @@ namespace AdversityRoad.Combat
         {
             if (!_cc.isGrounded)
             {
-                // 跳跃派生：跳+拳=飞踢，跳+剑=空袭跳劈
+                // 空中连段：一次滞空可打两段（大作通用的 air combo）。
+                // 第一段是起手（飞踢 / 空袭下劈），第二段是**滞空派生**——
+                // 跳跃因此不再是"跳起来只能打一下"，而是能与拳剑串成空中组合技。
+                if (_airActs >= MaxAirActs) return;
+                _airActs++;
+                Fusion.Push(pressed == AttackBtn.Kick ? MoveToken.Sword : MoveToken.Punch);
+                if (_airActs >= 2) { AirFollowUp(pressed); return; }
                 if (pressed == AttackBtn.Kick) JumpAttack(); else JumpKickAttack();
                 return;
             }
             // 蹲伏派生：蹲+拳=扫堂腿（贴地环扫），蹲+剑=低位突刺（下段直线戳击）
             if (_player.IsCrouched)
             {
+                Fusion.Push(pressed == AttackBtn.Kick ? MoveToken.Sword : MoveToken.Punch);
                 if (pressed == AttackBtn.Kick) CrouchThrust(); else SweepAttack();
                 return;
             }
@@ -353,6 +443,8 @@ namespace AdversityRoad.Combat
             _cur = s;
             _stageT = 0;
             _seq += btn == AttackBtn.Kick ? "K" : "P";
+            // 自由融合：拳/剑也是元素之一，与跳跃/闪避/技能同池
+            Fusion.Push(btn == AttackBtn.Kick ? MoveToken.Sword : MoveToken.Punch);
             RaiseSeq();
             _fsm.InCombat = true;
 
@@ -386,6 +478,38 @@ namespace AdversityRoad.Combat
                 }
             }
 
+            // ===== 跨元素配方：跳/闪/术/架 与拳剑重的互相接续 =====
+            // 拳剑序列没成招时，再看【融合链】——上一手是跳跃、闪避、技能还是格挡，
+            // 都能与这一手接成有名字的招。这才是"不局限于现有技能"的实处。
+            if (!recipeHit)
+            {
+                foreach (var fr in FusionRecipes)
+                {
+                    if (!Fusion.TailIs(fr.tail)) continue;
+                    if (fr.cost > 0 && !TrySpendMomentum(fr.cost))
+                    {
+                        GameEvents.RaiseSubtitle("意势不足，「" + fr.name + "」未能成招（需 " + fr.cost + " 势）");
+                        break;
+                    }
+                    dmg *= fr.mult;
+                    recipeHit = true;
+                    playPose = fr.pose;
+                    _cur.length = 0.5f;
+                    _cur.cancelAt = 0.36f;
+                    _cur.open = Mathf.Max(_cur.open, 0.24f);
+                    _seq = "";
+                    Fusion.ConsumeTail(fr.tail.Length);   // 用掉这一串，避免同串反复触发
+                    GameEvents.RaiseSkillBanner("融招「" + fr.name + "」");
+                    CombatFeedback.RecipeBurst(transform.position, new Color(0.75f, 0.95f, 1f));
+                    if (fr.cost > 0)
+                    {
+                        CombatFeedback.SlowMo(0.4f, 0.18f);
+                        CombatFeedback.CloseUp(0.85f, 0.65f);   // 高阶融招与预设绝招同级
+                    }
+                    break;
+                }
+            }
+
             _fsm.RequestState(CombatState.LightAttack, _cur.length);
             PlayPose(playPose);
             FaceAndLunge(s.lunge);
@@ -397,22 +521,55 @@ namespace AdversityRoad.Combat
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，帧数更短、削韧更高）。
             float knock = (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f);
             if (btn == AttackBtn.Kick) knock += 3.5f;
+            // ===== 自由融合加成（不局限于预设配方）=====
+            // 只要这一串里用到的【元素种类】够多，就自动成招——伤害按种类阶梯上升，
+            // 招名由实际打出的元素动态生成。拳→跃→剑→术→闪 这种没人预设过的串法，
+            // 一样能打出五元融合。奖励的是临场把各种手段串起来的能力，而不是背招表。
+            if (Fusion.FusionReady && !recipeHit)
+            {
+                float fm = Fusion.FusionMult;
+                if (fm > 1.01f)
+                {
+                    dmg *= fm;
+                    if (Fusion.Variety > _lastFusionVariety)
+                    {
+                        _lastFusionVariety = Fusion.Variety;
+                        GameEvents.RaiseSkillBanner("融合「" + Fusion.FusionName() + "」");
+                        CombatFeedback.RecipeBurst(transform.position,
+                            new Color(0.6f, 0.9f, 1f));
+                        if (Fusion.Variety >= 5) CombatFeedback.SlowMo(0.45f, 0.16f);
+                    }
+                }
+            }
+
             // 疲惫时不积意势（体力的代价体现在这里，而不是"打不出招"）
             OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, !exhausted,
                 playPose, recipeHit ? 1.3f : 1f);
         }
 
+        /// <summary>自由融合链：一切基础动作与技能共用的元素池（跳/闪/技能由各自系统推入）。</summary>
+        public ComboFusion Fusion { get; } = new ComboFusion();
+        int _lastFusionVariety;
+
         float _lastExhaustHint = -99f;   // 疲惫提示节流（不刷屏）
 
-        void RaiseSeq()
+        void RaiseSeq() => PushFusionHud(true);
+
+        string _hudSeq = "";
+
+        /// <summary>
+        /// 连段条改显示【融合链】而不是拳剑序列——玩家必须能看见自己正在串什么，
+        /// 否则"随便串都能成招"是不可感知的。链尾附上融合倍率（×1.35 这类），
+        /// 让"再换一种手段"的收益当场可见。
+        /// </summary>
+        void PushFusionHud(bool force = false)
         {
-            var sb = new System.Text.StringBuilder();
-            foreach (char c in _seq)
-            {
-                if (sb.Length > 0) sb.Append('·');
-                sb.Append(c == 'K' ? '剑' : '拳');
-            }
-            GameEvents.RaiseComboSeq(sb.ToString());
+            string s = Fusion.ChainLabel();
+            if (s.Length > 0 && Fusion.FusionReady)
+                s += "  ×" + Fusion.FusionMult.ToString("0.00");
+            if (!force && s == _hudSeq) return;
+            _hudSeq = s;
+            GameEvents.RaiseComboSeq(s);
         }
 
         /// <summary>闪避取消（大作惯例：翻滚随时切断轻连段收招）：清空连段状态与序列，
@@ -432,7 +589,9 @@ namespace AdversityRoad.Combat
         {
             _depth = -1;
             _seq = "";
-            GameEvents.RaiseComboSeq("");
+            // 连段结束**不清融合链**：跳跃/闪避/技能正是用来在两段连招之间搭桥的，
+            // 一收招就清零等于把"跨系统串招"这件事从根上取消掉。链自己会超时过期。
+            PushFusionHud(true);
             // 连段收尾立即解除动作锁：下一次点击零等待（残留锁是"连点延迟"根因）
             if (_fsm.Current == CombatState.LightAttack)
                 _fsm.RequestState(CombatState.Locomotion);
@@ -443,6 +602,7 @@ namespace AdversityRoad.Combat
         void StartCharge()
         {
             if (!_player.Stats.SpendStamina(6f)) return;
+            Fusion.Push(MoveToken.Heavy);   // 重击也是可入连招的元素
             EndCombo();
             _charging = true;
             _chargeT = 0;
@@ -527,12 +687,16 @@ namespace AdversityRoad.Combat
                     new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.SlowMo(0.45f, 0.2f);
             }
-            _fsm.CanDodgeCancel = true;   // 蓄力二连收招：可闪避取消
+            // 段2 判定窗（windup 0.12 + open 0.32）走完才开放取消：
+            // 否则玩家连打会把自己的第二段旋风斩取消掉，读作"第二下没打出来"
+            yield return new WaitForSeconds(0.44f);
+            _fsm.CanCancelRecovery = true;   // 蓄力二连收招：闪避或攻击均可取消
         }
 
         /// <summary>前+重：疾影突刺（动作库 Stabbing）——高速突进直刺，双重剑气。</summary>
         void DashStrike()
         {
+            Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.36f);
             PlayPose(PoseState.SwordThrust);
             FaceAndLunge(2.6f);
@@ -549,6 +713,7 @@ namespace AdversityRoad.Combat
         /// <summary>后+重：旋身空翻踢（动作库 Spin Flip Kick）——大击退吹飞拉开身位。</summary>
         void BlowbackKick()
         {
+            Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
             PlayPose(PoseState.SpinKick);
             FaceAndLunge(0.4f);
@@ -577,12 +742,13 @@ namespace AdversityRoad.Combat
         /// <summary>跳+重：空袭跳劈（动作库 Great Sword Jump Attack）——凌空砸地。</summary>
         void AirLeapAttack()
         {
+            Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.44f);
             _fsm.InCombat = true;
             PlayPose(PoseState.AttackLeap);
             ApplyAttackFacing();
             _player.ForceFall(-14f);
-            float dmg = heavyDamage * 1.1f * CritMult();
+            float dmg = heavyDamage * 1.1f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.72f, 0.3f));
             OpenHitboxTimed(0.14f, 0.34f, dmg, 30f, 3f, false, PoseState.AttackLeap, 1.1f);
             CombatFeedback.ShockRing(transform.position + transform.forward * 0.9f,
@@ -593,6 +759,7 @@ namespace AdversityRoad.Combat
         /// <summary>切手技：连段中轻点重击派生的快速反击（撩斩上挑）。</summary>
         void QiShou()
         {
+            Fusion.Push(MoveToken.Heavy);
             EndCombo();
             _fsm.RequestState(CombatState.HeavyAttack, 0.32f);
             PlayPose(PoseState.AttackUp);
@@ -651,10 +818,13 @@ namespace AdversityRoad.Combat
                     CombatFeedback.Debris(transform.position + transform.forward * 1.3f,
                         new Color(0.5f, 0.65f, 0.9f), 8);
                     CombatFeedback.SlowMo(0.35f, 0.3f);
-                    _fsm.CanDodgeCancel = true;   // 乱舞收招：可闪避取消，不必等演完
                 }
                 yield return new WaitForSeconds(s.wait);
             }
+            // 取消窗开在整套演完之后：此前设在终结一击的判定还没走完时（windup0.16+open0.2=0.36s
+            // 对上仅 0.4s 的收尾等待），玩家连打会把乱舞最后一击自己取消掉。
+            // 收尾等待 0.4s 已覆盖判定窗，故此处直接开窗，锁定 1.75s 仍余 0.48s 可省。
+            _fsm.CanCancelRecovery = true;   // 乱舞收招：闪避或攻击均可取消，不必等演完
         }
 
         // ================= 空中 / 蹲伏攻击 =================
@@ -665,9 +835,41 @@ namespace AdversityRoad.Combat
             _fsm.InCombat = true;
             PlayPose(PoseState.JumpAttack);
             _player.ForceFall(-13f);
-            float dmg = baseDamage * 1.5f * CritMult();
+            float dmg = baseDamage * 1.5f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
             OpenHitboxTimed(0.18f, 0.4f, dmg, 22f, 2.5f, true, PoseState.JumpAttack);
+        }
+
+        // ---- 空中连段计数（落地清零，见 Update）----
+        const int MaxAirActs = 2;   // 一次滞空最多两段（多了会变成空中滞留刷伤害）
+        int _airActs;
+
+        /// <summary>
+        /// 滞空第二段：真正的「跳跃 × 拳剑」复合招。
+        /// 剑向 → 空中回旋斩（横向清场并把自己再顶起一点，滞空更久）；
+        /// 拳向 → 空中连环踢（追打并压向地面，快速结束滞空）。
+        /// 这一段的存在，让跳跃从"位移手段"变成了组合技的第一个字。
+        /// </summary>
+        void AirFollowUp(AttackBtn pressed)
+        {
+            bool blade = pressed == AttackBtn.Kick;
+            var pose = blade ? PoseState.AttackSpin : PoseState.SpinKick;
+            var spec = MoveTable.Variant(blade ? "空中回旋绝斩" : "空中连环踢");
+            _fsm.RequestState(CombatState.LightAttack, 0.5f);
+            _fsm.InCombat = true;
+            PlayPose(pose);
+            ApplyAttackFacing();
+            // 剑向滞空续航（浮空斩要打得完），拳向压地收招（干净利落地落回来）
+            if (blade) _player.ForceFall(-2.5f); else _player.ForceFall(-15f);
+            GlideMove(transform.forward * (blade ? 0.6f : 1.1f), 0.14f);
+            float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
+            CombatFeedback.SwingArc(transform, true,
+                blade ? new Color(0.7f, 0.9f, 1f) : new Color(1f, 0.75f, 0.45f));
+            if (weaponHitbox != null) weaponHitbox.SetShape(spec.Size, spec.center);
+            if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
+            _hitboxRoutine = StartCoroutine(
+                HitboxWindow(0.12f, 0.32f, dmg, spec.postureMult, spec.knockback, true));
+            GameEvents.RaiseSkillBanner(blade ? "空中「回旋绝斩」" : "空中「连环踢」");
         }
 
         /// <summary>跳+腿：飞踢（KOF 跳踢），带前冲与击退。</summary>
@@ -678,7 +880,7 @@ namespace AdversityRoad.Combat
             PlayPose(PoseState.JumpKick);
             GlideMove(transform.forward * 1.2f, 0.16f);
             _player.ForceFall(-9f);
-            float dmg = baseDamage * 1.4f * CritMult();
+            float dmg = baseDamage * 1.4f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
             OpenHitboxTimed(0.15f, 0.36f, dmg, 26f, 4f, true, PoseState.JumpKick);
         }
@@ -700,13 +902,15 @@ namespace AdversityRoad.Combat
             _fsm.InCombat = true;
             PlayPose(PoseState.SwordThrust);
             ApplyAttackFacing();
-            float dmg = baseDamage * 1.2f * CritMult();
+            // 规格取自变体表：复用突刺的长窄直线形状，但整体压低到下段（打腿/打倒地目标）
+            var spec = MoveTable.Variant("低位突刺");
+            float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
-            // 复用突刺的长窄直线形状，但整体压低到下段（打腿/打倒地目标）
             if (weaponHitbox == null) return;
-            weaponHitbox.SetShape(new Vector3(0.9f, 0.8f, 2.5f), new Vector3(0, -0.45f, 1.4f));
+            weaponHitbox.SetShape(spec.Size, spec.center);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
-            _hitboxRoutine = StartCoroutine(HitboxWindow(0.1f, 0.18f, dmg, 16f, 1.5f, true));
+            _hitboxRoutine = StartCoroutine(
+                HitboxWindow(0.1f, 0.18f, dmg, spec.postureMult, spec.knockback, true));
         }
 
         // ================= 公共机制 =================
@@ -868,6 +1072,15 @@ namespace AdversityRoad.Combat
         /// 旋风斩/扫堂腿环身 360°、跳劈罩住落点、扫堂贴地。</summary>
         public static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
         {
+            // 判定框统一由招式规格表派生（轨迹 → 形状）：改数值只改 MoveTable 一处，
+            // 战斗代码与「招式」面板共用同一份真相。表中没有的姿态走下方兜底。
+            if (MoveTable.Has(p))
+            {
+                var spec = MoveTable.Get(p);
+                size = spec.Size;
+                center = spec.center;
+                return;
+            }
             switch (p)
             {
                 // ---- 剑系 ----
@@ -1077,6 +1290,7 @@ namespace AdversityRoad.Combat
                     AddMomentum(1);
                     if (Dyn() != null) _dynamics.OnPerfectDodge();
                     CombatFeedback.SlowMo(0.3f, 0.35f);
+                    CombatFeedback.CloseUp(0.7f, 0.5f);   // 读招成功：短促轻推，配合时缓
                     GameEvents.RaiseSubtitle("完美闪避！意势+1，下一击必暴击");
                 }
                 return;
@@ -1099,6 +1313,7 @@ namespace AdversityRoad.Combat
                     _player.Stats.focus = Mathf.Min(_player.Stats.maxFocus,
                         _player.Stats.focus + parryFocusRestore);
                     GameEvents.RaiseMentalStatChanged("focus", _player.Stats.focus, _player.Stats.maxFocus);
+                    Fusion.Push(MoveToken.Guard);   // 招架成功也是连招元素
                     GameEvents.RaiseSubtitle("定心格挡！心理攻击被化解，专注恢复。");
                     Core.GameAudio.Play(Core.GameAudio.Sfx.Parry);
                 }

@@ -43,6 +43,7 @@ namespace AdversityRoad.Player
         HumanoidAnimator _anim;
         LockOnSystem _lockOn;
         PlayerAppearance _appearance;
+        Combat.PlayerCombatController _pcc;
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
@@ -71,6 +72,13 @@ namespace AdversityRoad.Player
         public bool IsInvincible => _iframeTimer > 0;
         public bool IsDodging => _dodgeTimer > 0;
         public bool IsCrouched { get; private set; }
+        /// <summary>手指/方向键此刻是否在推——**零平滑、零延迟**。
+        /// 镜头的跟随起停以它为准（见 ThirdPersonCamera 的 active 判据）。</summary>
+        public bool StickHeld { get; private set; }
+        /// <summary>是否离地（跳跃/坠落中）。镜头据此切"腾空·拉远看落点"景别。</summary>
+        public bool Airborne => _cc != null && !_cc.isGrounded;
+        /// <summary>纵向速度（负=下坠）。镜头用它区分"起跳上升"与"真的在往下掉"。</summary>
+        public float VerticalVelocity => _vy;
 
         /// <summary>倒地起身等外部授予的无敌帧。</summary>
         public void SetInvincible(float duration) => _iframeTimer = Mathf.Max(_iframeTimer, duration);
@@ -91,6 +99,7 @@ namespace AdversityRoad.Player
         {
             // 运行时组装顺序下 Awake 期间兄弟组件可能尚未挂载，惰性补齐
             if (_combat == null) _combat = GetComponent<CombatStateMachine>();
+            if (_pcc == null) _pcc = GetComponent<Combat.PlayerCombatController>();
 
             float dt = Time.deltaTime;
             Stats.TickRegen(dt, _combat != null && _combat.InCombat);
@@ -101,10 +110,15 @@ namespace AdversityRoad.Player
             // 输入采集 → 缓冲（意图匹配）：必须在任何 early-return 之前，
             // 否则翻滚中/硬直中按下的键会被整帧跳过而丢失（连续翻滚就是这样失效的）。
             // 消费式输入（MobileInput.GetDown）每帧只在这里读一次，其余系统一律走缓冲。
+            // 按下时角色是否正处在"做不了别的事"的状态——动作锁 或 翻滚中。
+            // 这一位决定该输入是【排队意图】还是【即时意图】：排队的活到动作结束，
+            // 即时的用短窗口。此前不分意图，闪避窗 0.30s 连翻滚自身(0.42~0.7s)都撑不过，
+            // 连续翻滚与"技能收招接闪避"必然丢键。
+            bool busyNow = (_combat != null && _combat.IsActionLocked) || _dodgeTimer > 0;
             if (Input.GetKeyDown(KeyCode.LeftShift) || MobileInput.GetDown("Dodge"))
-                _inputBuf.Press("Dodge");
+                _inputBuf.Press("Dodge", busyNow);
             if (Input.GetKeyDown(KeyCode.Space) || MobileInput.GetDown("Jump"))
-                _inputBuf.Press("Jump");
+                _inputBuf.Press("Jump", busyNow);
 
             if (_dodgeTimer > 0)
             {
@@ -123,13 +137,19 @@ namespace AdversityRoad.Player
             stickInput = Vector2.ClampMagnitude(stickInput, 1f);
             Vector3 stickDir = CameraRelative(stickInput);
             StickWorldDir = stickDir;   // 供技能连招判断"玩家是否正在主动引导方向"
+            // 未经平滑的"手指/按键此刻在不在"——镜头用它作为跟随起停的零延迟判据。
+            // StickWorldDir 来自平滑后的摇杆量，松手后还要几十毫秒才落到阈值以下，
+            // 而镜头在那几十毫秒里多转的每一度都会被玩家看见。
+            StickHeld = MobileInput.MoveHeld ||
+                        Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.1f ||
+                        Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.1f;
 
             // 硬锁定（重击/倒地/硬直等）才禁止移动；轻击连段可以边移动边出招。
             // 例外——收招闪避取消（大作手感）：技能/绝招打完主要段进入恢复相位后，
             // 按闪避可立刻打断收招，不必干等动作播完。
             if (_combat != null && _combat.IsHardLocked)
             {
-                if (!(dodgePressed && _combat.CanDodgeCancel && Stats.stamina >= dodgeStaminaCost))
+                if (!(dodgePressed && _combat.CanCancelRecovery && Stats.stamina >= dodgeStaminaCost))
                 {
                     // 出招转向影响（大作 attack steering / directional influence）：
                     // 技能、绝招、重击期间【仍可用摇杆缓慢调整朝向】——此前这里直接 return，
@@ -183,6 +203,9 @@ namespace AdversityRoad.Player
                 if (IsCrouched) ToggleCrouch();
                 _vy = jumpForce;
                 _coyoteT = 0f;
+                // 跳跃是连招元素，不是移动的附属品：起跳即入融合链，
+                // 于是「跳→剑」「跳→重→剑」这些串法能被识别成招（踏空斩/踏空三叠）。
+                if (_pcc != null) _pcc.Fusion.Push(Combat.MoveToken.Jump);
             }
 
             // 翻滚闪避（Shift / 闪）——走缓冲：硬直/翻滚中按下的闪避会在此兑现
@@ -190,9 +213,15 @@ namespace AdversityRoad.Player
             {
                 _inputBuf.Consume("Dodge");
                 if (IsCrouched) ToggleCrouch();
-                // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手
-                var pcc = GetComponent<Combat.PlayerCombatController>();
-                if (pcc != null) pcc.CancelComboForDodge();
+                // 闪避取消：切断进行中的轻连段（清序列/收判定框），翻滚落地即可全新起手。
+                // 注意——切断的是拳剑序列，**融合链不断**：闪避本身作为元素留在链上，
+                // 所以「闪→剑」能接成闪身突刺，而不是把整段努力清零。
+                var pcc = _pcc != null ? _pcc : GetComponent<Combat.PlayerCombatController>();
+                if (pcc != null)
+                {
+                    pcc.CancelComboForDodge();
+                    pcc.Fusion.Push(Combat.MoveToken.Dodge);
+                }
                 _dodgeDir = moveDir.sqrMagnitude > 0.01f ? moveDir : transform.forward;
                 // 翻滚方向即刻转身
                 transform.rotation = Quaternion.LookRotation(_dodgeDir);
@@ -313,14 +342,75 @@ namespace AdversityRoad.Player
             }
         }
 
+        /// <summary>
+        /// 摇杆方向 → 世界方向（镜头相对）。**始终用镜头当前偏航**，
+        /// 保证"推左＝画面左、推上＝画面深处"这条映射任何时候都成立。
+        ///
+        /// 曾试过把参考系锁存、只跟手动转镜，以此切断"镜头绕行↔角色转向"的代数环。
+        /// 环确实断了，但代价是镜头绕到背后之后，摇杆与画面就对不上了
+        /// （手指还按着左，画面里角色却在往前跑）——实测下来这个代价不可接受。
+        ///
+        /// 这三条性质数学上最多同时满足两条：
+        ///   (a) 摇杆↔画面始终一致  (b) 镜头自动绕到背后  (c) 角色不画弧线
+        /// 因为 moveDir = 镜头偏航 + 摇杆角，镜头一转 moveDir 就跟着转。
+        /// 主流第三人称动作游戏一律取 (a)+(b)、放弃 (c)：持续推一个非正前方向时，
+        /// 角色走一条弧线。缺陷从来不是"会画弧"，而是弧的松紧——
+        /// 本作曾达 207~322°/s（半径仅 0.9~1.4m，读作原地转圈）；
+        /// 现由镜头侧把持续绕行速率压到 30°/s（半径 9.9m），即大作那种缓弧。
+        /// 见 ThirdPersonCamera 的 SustainedOrbitCap。
+        /// </summary>
         Vector3 CameraRelative(Vector2 input)
         {
-            if (input.sqrMagnitude < 0.0001f) return Vector3.zero;
+            if (input.sqrMagnitude < 0.0001f) { _recenterFrameInit = false; return Vector3.zero; }
             if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
-            Vector3 fwd = cameraTransform.forward; fwd.y = 0; fwd.Normalize();
-            Vector3 right = cameraTransform.right; right.y = 0; right.Normalize();
+
+            // ===== 移动参考系永远是【当前镜头】，唯一例外是一键回正期间 =====
+            //
+            // 曾经试过"镜头自主掉头时钉住参考系"，让角色在镜头绕行期间走直线。
+            // 代数上它确实成立，但实机截图给出了否决性的证据：
+            // **摇杆推在左下、画面里角色却在往画面深处跑**——偏差最大可达 180°。
+            // 上游此前也因同一现象撤回过（cd4bc4a）。两次独立验证，结论一致：
+            // 「摇杆方向 ↔ 画面方向」的一致性是不可交易的，它比"轨迹是直线"更基本，
+            // 因为玩家是照着画面推杆的，一旦对不上，每一次输入都在赌。
+            //
+            // 于是恒等式 H = C + θ 全时成立，而它的推论是：
+            // **镜头在玩家按着摇杆时每转 1°，角色就被带转 1°。**
+            // 所以镜头侧的答案只能是——按着摇杆时压根不自动转（见 ThirdPersonCamera
+            // 的 _viewBlocked：开阔时旋转授权为 0）。这也正是《原神》《塞尔达》
+            // 《魂系》等虚拟摇杆/手柄第三人称作品的通行做法：**镜头偏航归玩家**，
+            // 自动运镜只用于锁定、显式回正与战斗兜底。
+            //
+            // 一键回正是唯一例外：那是玩家自己按的、有始有终的 0.6~0.9s 动作，
+            // 期间冻结参考系可避免镜头把角色一起拖转，动作一结束立即恢复。
+            if (_cam == null) _cam = cameraTransform.GetComponent<ThirdPersonCamera>();
+            float frameYaw;
+            if (_cam != null && _cam.RecenterActive)
+            {
+                if (!_recenterFrameInit)
+                {
+                    _recenterFrameYaw = cameraTransform.eulerAngles.y;
+                    _recenterFrameInit = true;
+                }
+                frameYaw = _recenterFrameYaw;
+            }
+            else
+            {
+                _recenterFrameInit = false;
+                // **实时映射，无任何偏置**：摇杆方向恒等于画面方向，一帧都不错开。
+                // 代价由镜头侧承担——它只能以很慢的速率绕行（见 SustainedOrbitCap），
+                // 慢到玩家的补杆是无意识的，于是角色路径几乎看不出弯。
+                frameYaw = cameraTransform.eulerAngles.y;
+            }
+
+            Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
+            Vector3 fwd = frame * Vector3.forward;
+            Vector3 right = frame * Vector3.right;
             return (fwd * input.y + right * input.x).normalized;
         }
+
+        ThirdPersonCamera _cam;
+        float _recenterFrameYaw;
+        bool _recenterFrameInit;
 
         void ApplyGravityOnly(float dt)
         {

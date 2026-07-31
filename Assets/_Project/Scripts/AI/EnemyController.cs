@@ -423,21 +423,16 @@ namespace AdversityRoad.AI
             { PoseState.HeavyAttack, PoseState.AttackSpin, PoseState.SpinKick,
               PoseState.SideKick, PoseState.JumpKick };
 
-        /// <summary>按招式给出伤害/击退权重：重招伤害高击退大，快招频率高。</summary>
+        /// <summary>
+        /// 敌人招式的伤害/击退：统一从 EnemyMoveTable 取，不再散落魔数。
+        /// 与玩家表结构相同（轨迹/范围/伤害/削韧/击退），调值各自独立——
+        /// 玩家的大招付蓄力与意势的代价，敌人不付，照抄玩家系数会强出一截。
+        /// </summary>
         static void MoveStats(PoseState p, out float dmgMul, out float knock)
         {
-            switch (p)
-            {
-                case PoseState.HeavyAttack: dmgMul = 1.5f; knock = 4.5f; break;
-                case PoseState.AttackSpin:  dmgMul = 1.3f; knock = 3.5f; break;
-                case PoseState.SpinKick:    dmgMul = 1.25f; knock = 4f; break;
-                case PoseState.JumpKick:    dmgMul = 1.2f; knock = 4f; break;
-                case PoseState.SideKick:    dmgMul = 1.0f; knock = 3.5f; break;
-                case PoseState.SwordThrust: dmgMul = 1.15f; knock = 1.5f; break;
-                case PoseState.PunchCross:  dmgMul = 0.9f; knock = 1.2f; break;
-                case PoseState.AttackKick:  dmgMul = 0.95f; knock = 2.5f; break;
-                default:                    dmgMul = 1f; knock = 1.5f; break;
-            }
+            var m = Combat.EnemyMoveTable.Get(p);
+            dmgMul = m.damageMult;
+            knock = m.knockback;
         }
 
         /// <summary>各招式从起手到真正接触目标的时间：判定框在动画"打到"的那一帧
@@ -507,6 +502,10 @@ namespace AdversityRoad.AI
         {
             if (State == EnemyState.Dead || attackHitbox == null) return;
             MoveStats(_attackPose, out float dmgMul, out float knock);
+            // 判定框按招式轨迹取形：突刺细长（侧移可躲开）、横斩横宽、回旋斩环身 360°、
+            // 重砸罩住一片。此前敌人所有招共用一个固定方盒，玩家读了招也无从"往哪躲"。
+            var spec = Combat.EnemyMoveTable.Get(_attackPose);
+            attackHitbox.SetShape(spec.Size, spec.center);
             // 危险攻击：不可格挡（须闪避）+ 伤害/击退加成，兑现红光警示的威胁
             attackHitbox.EnableHitbox(new DamageInfo
             {
@@ -815,6 +814,7 @@ namespace AdversityRoad.AI
                 CombatFeedback.HitStop(0.12f);
                 CombatFeedback.SlowMo(0.4f, 0.16f);
                 CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
+                CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近
                 GameEvents.RaiseSkillBanner("处决");
             }
             // 头部会心的伤害数字更大更红（部位标签由 HitReactionOverlay 弹出，不重复）
@@ -1032,7 +1032,9 @@ namespace AdversityRoad.AI
             CombatFeedback.Debris(transform.position, new Color(0.4f, 0.2f, 0.45f), 6);
             // 击杀落幕（电影语言）：短促时缓 + 镜头缓推特写，看清敌人倒下的瞬间
             CombatFeedback.SlowMo(0.45f, 0.28f);
-            CombatFeedback.UltimateShot(1.1f);
+            // 击杀是【轻推】而非大招级满推，且交由镜头节流/群战抑制裁决——
+            // 群战里每杀一个就贴脸一次，会让镜头长期焊死在特写位
+            CombatFeedback.CloseUp(0.9f, 0.55f);
             GameAudio.Play(GameAudio.Sfx.Death, 0.9f);
             GameEvents.RaiseEnemyKilled(profile.enemyId);
             foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
