@@ -445,7 +445,15 @@ namespace AdversityRoad.Player
         float _pivotYAnchor;               // 纵向焦点死区锚（贴地/台阶的高频跳动不推镜）
         /// <summary>纵向焦点死区（米）：CharacterController 贴地会让 y 每帧小幅跳动。</summary>
         const float PivotYDeadZone = 0.06f;
-        float _headingAvg;                 // 平滑朝向（低通滤波，镜头的实际追踪目标）
+        float _headingAvg;                 // 平滑朝向（低通滤波）
+        /// <summary>朝向的【单位向量均值】。模长即"这串输入有多像一个方向"的置信度：
+        /// 按住不动→1.00，两向来回切→0.71，搓杆一圈/秒→0.33。
+        /// 一个量同时给出"平均朝哪"与"该不该跟"，取代了会被急转清零的稳定计时器。</summary>
+        Vector2 _headingMean;
+        bool _headingMeanInit;
+        /// <summary>方向均值的低通速率（1/秒）。2.2 ⇒ τ≈0.45s：
+        /// 足够长到能把搓杆平均掉，又足够短到一次干净的转向 1 秒内就建立起置信度。</summary>
+        const float DirMeanRate = 2.2f;
         float _headingHoldT;               // 当前朝向的稳定时长（大幅瞬转会清零重计）
         float _lastHeading;
         bool _headingInit;
@@ -610,6 +618,29 @@ namespace AdversityRoad.Player
             // 省下 0.075s 的纯延迟；抗抖由跟随的 28° 死区负责，不靠这里。
             float lpRate = Mathf.Lerp(8f, 18f, Mathf.Clamp01(_headingHoldT / 0.25f));
             _headingAvg = Mathf.LerpAngle(_headingAvg, rawHeading, 1f - Mathf.Exp(-lpRate * dt));
+
+            // ===== 方向均值【向量】：连续换向时"逐步摆正"的依据 =====
+            // 原先跟随要求 _headingHoldT > steadyNeed，而它在朝向角速度 >220°/s 时清零。
+            // 连续换向（手指不松、方向一个接一个切）时角色不停急转 ⇒ 计时反复清零
+            // ⇒ **跟随一次都不成立、镜头完全不动**。那正是需要它慢慢摆正的时候。
+            //
+            // 改用把朝向当【单位向量】做低通。均值的**模长天然就是置信度**——
+            // 它一个量同时回答了"平均朝哪"和"这串输入有多像一个方向"：
+            //   按住一个方向不动 → 1.00 ⇒ 满速跟
+            //   两个方向来回切   → 0.71 ⇒ 半速朝两者的中分线缓缓摆正（角色走弧线）
+            //   搓杆 0.5 圈/秒   → 0.57 ⇒ 几乎不动
+            //   搓杆 1 圈/秒     → 0.33 ⇒ 完全不动
+            // 于是"连续换向要逐步摆正"与"搓杆不许动镜"由同一个量分开，
+            // 不再需要一个会被急转清零的计时器。
+            float hRad = rawHeading * Mathf.Deg2Rad;
+            Vector2 hVec = new Vector2(Mathf.Sin(hRad), Mathf.Cos(hRad));
+            if (!_headingMeanInit) { _headingMeanInit = true; _headingMean = hVec; }
+            _headingMean = Vector2.Lerp(_headingMean, hVec, 1f - Mathf.Exp(-DirMeanRate * dt));
+            float dirConf = _headingMean.magnitude;
+            float meanYaw = _headingMean.sqrMagnitude > 1e-6f
+                ? Mathf.Atan2(_headingMean.x, _headingMean.y) * Mathf.Rad2Deg : _headingAvg;
+            // 置信度 → 可用速率：0.55 起、0.85 满。低于 0.55 一律不动。
+            float dirTrust = Mathf.Clamp01((dirConf - 0.55f) / 0.30f);
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
@@ -1090,7 +1121,7 @@ namespace AdversityRoad.Player
                 // 跟随的目标：平常是角色朝向；那个必须看得见的敌人真的出画时，
                 // 改为"把它推回取景窗沿"——不是推到画面中央。推到中央意味着镜头得
                 // 跟着敌人的每一步走，那正是"永远在轻微动"；推回窗沿则一到位就停。
-                float aimAt = _headingAvg;
+                float aimAt = meanYaw;
                 if (enemyLost)
                     aimAt = _yaw + Mathf.Sign(_focusScreenAng) *
                             (Mathf.Abs(_focusScreenAng) - enemyWindow + FocusEdgeSoft);
@@ -1155,8 +1186,11 @@ namespace AdversityRoad.Player
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f))
                                    * Mathf.Lerp(Mathf.Lerp(2.2f, 1f, _urgency), 1f,
                                                 Mathf.Clamp01((err - 45f) / 45f));
-                bool gentle = active && _headingHoldT > steadyNeed && err > dz
-                              && !backingIntent;
+                // 门槛由"朝向稳定了多久"换成"这串输入有多像一个方向"：
+                // 连续换向时前者永远不成立（急转把计时清零），后者仍有 0.7 的置信度，
+                // 于是镜头朝那一串换向的均值**缓缓摆正**——正是"跑一段弧线逐步摆正"。
+                bool gentle = active && dirTrust > 0.01f && err > dz && !backingIntent
+                              && _headingHoldT > steadyNeed * 0.35f;
 
                 // 跟随的【驱动强度】走临界阻尼，而不是布尔开关。
                 // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
@@ -1250,6 +1284,9 @@ namespace AdversityRoad.Player
                             // 所以起始瞬态放到 3.5 倍：峰值 ≈ 26×(1+2.5×0.7) ≈ 90°/s，
                             // 转完 1.2s 内回落到 26°/s 的稳态缓行。
                             orbit *= Mathf.Lerp(1f, 3.5f, _turnBurst);
+                            // 置信度直接缩放速率：一串换向按其"有多像一个方向"
+                            // 给出相应的摆正速度，搓杆则趋零。
+                            orbit *= dirTrust;
                             maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
