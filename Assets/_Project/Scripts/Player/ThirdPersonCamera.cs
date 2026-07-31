@@ -355,8 +355,8 @@ namespace AdversityRoad.Player
         // 这里只用它做一件事：判断【方向定没定下来】，供引导留白与转向拉远
         // 决定该跟得快还是压得住（搓杆时 θ 一直在扫 ⇒ 永不判定为已定）。
         float _thumbPrev, _thumbSettleT;
+        float _thumbRatePeak;                // 刚才那一下转向有多急（相机无关，峰值保持）
         bool _thumbInit;
-        float _headingRateAvg;               // 低通后的转向角速度（"突然转向"的度量）
         float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
         float _sightNow = SightMax, _sightGoing = SightMax;
         float _urgency, _urgencyVel;         // 0=一览无余，1=前方全是盲区
@@ -603,11 +603,6 @@ namespace AdversityRoad.Player
             if (headingRate > 220f) _headingHoldT = 0f;
             else _headingHoldT += dt;
             _lastHeading = rawHeading;
-            // 低通后的转向角速度：**"突然转向"这个事件本身**的度量。
-            // 转向缓冲拉远必须用它，不能用镜头偏差——偏差恒等于摇杆离轴角 θ，
-            // 稳态推着不放也一直大，于是吊杆会长时间停在拉远位，且随拇指抖动前后泵动。
-            // 角速度只在【真的在转】的那零点几秒里大，转完自己就回落了。
-            _headingRateAvg = Mathf.Lerp(_headingRateAvg, headingRate, 1f - Mathf.Exp(-8f * dt));
             // 自适应低通滤波：朝向还在乱动时收敛慢（滤掉摇杆抖动），
             // 一旦朝向稳定下来就快速收敛——避免"转完身还要等滤波追上"的盲区延迟
             // 下限 5→8：转向瞬间 _headingHoldT 被清零、lpRate 掉到最低，
@@ -893,8 +888,14 @@ namespace AdversityRoad.Player
                 _thumbPrev = thumb;
                 // 稳＝拇指角变化率低于 70°/s；连续稳住 0.09s 才算"这就是我要的方向"
                 _thumbSettleT = thumbRate < 70f ? _thumbSettleT + dt : 0f;
+                // 刚才这一下转向【有多急】的峰值保持（衰减 400°/s²）。
+                // **必须用拇指角速率，不能用朝向角速度**：后者含镜头自己转动的份额
+                //（镜头转 ⇒ 角色被带转 ⇒ 朝向角速度升高 ⇒ 提速 ⇒ 转更快…），
+                // 那是一个正反馈，正是之前"绕圈回到原方向"的同款成因。
+                // 拇指角速率与镜头无关：手指不动它就是 0，镜头转多快都不变。
+                _thumbRatePeak = Mathf.Max(_thumbRatePeak - 400f * dt, thumbRate);
             }
-            else { _thumbInit = false; _thumbSettleT = 0f; }
+            else { _thumbInit = false; _thumbSettleT = 0f; _thumbRatePeak = 0f; }
 
             // ===== 转向缓冲拉远（本轮）=====
             // 跑动中突然改方向的那一刻，正是最需要看清周围的时刻：先把吊杆推出去
@@ -904,10 +905,12 @@ namespace AdversityRoad.Player
             // 用【拉远吊杆】而不是【放大 FOV】：变焦会显著加剧晕动，纯位移只是把画面
             // 推开，是这几个杠杆里唯一还有余量且无副作用的。
             //
-            // 判据是【转向角速度】而不是【镜头偏差】：后者恒等于摇杆离轴角 θ，
-            // 稳态推着不放也一直大，吊杆会长期停在拉远位并随拇指抖动前后泵动；
-            // 角速度只在真的在转的那零点几秒里大，转完自己就回落。
-            // 45°/s 起算、180°/s 满级；再乘速度——站着原地转身不需要缓冲。
+            // 判据是【拇指角速率的峰值】——玩家刚才那一下转向有多急。
+            // 不能用镜头偏差（恒等于 θ，稳态推着不放也一直大，吊杆会长期停在拉远位）；
+            // 更不能用朝向角速度（含镜头自己转动的份额，构成正反馈，
+            // 正是"绕圈回到原方向"的同款成因）。拇指角速率与镜头无关。
+            // 再乘"方向已定下来"：搓杆时永不成立 ⇒ 搓杆不触发。
+            // 200°/s 起算、600°/s 满级（90° 的甩杆约 600~900°/s）；再乘速度。
             //
             // **不走 _lenFactor**（那条是 0.75s 的分镜级慢插值，一次 0.4 秒的转向
             // 在它那里几乎看不出来）。这里单独走一条起快收慢的临界阻尼：
@@ -915,7 +918,7 @@ namespace AdversityRoad.Player
             // 不会"推出去又立刻缩回来"的呼吸感）。
             // 再乘一道"方向已定下来"：搓杆时朝向角速度一直很高，
             // 若不加这一条，吊杆会被长期顶在拉远位（+22%），读作画面忽远忽近。
-            float turnWant = Mathf.Clamp01((_headingRateAvg - 45f) / 135f)
+            float turnWant = Mathf.Clamp01((_thumbRatePeak - 200f) / 400f)
                              * Mathf.Clamp01(moveSpeed / 3f)
                              * (_thumbSettleT > 0.09f ? 1f : 0f);
             _turnBurst = Mathf.SmoothDamp(_turnBurst, turnWant, ref _turnBurstVel,
@@ -1236,11 +1239,17 @@ namespace AdversityRoad.Player
                             // 是这条曲线上唯一还能提速而不显得"镜头跟你较劲"的窗口。
                             // 用 _turnBurst（低通后的转向角速度，且要求方向已定下来，
                             // 搓杆不算）做包络：起 0.45s、收 1.2s，峰值约 0.7。
-                            //   峰值速率 26 → 44°/s，但**峰值角加速度只有 ~73°/s²**
-                            //   （舒适上限 600）——快而不颠，因为颠的是加速度不是速度。
-                            //   额外转过的总量约 22°，弧在峰值处半径 6.8m、持续不到半秒，
-                            //   横向偏离仅 0.49m；而 90° 对齐由 3.5s 缩到约 2.6s。
-                            orbit *= Mathf.Lerp(1f, 2f, _turnBurst);
+                            // **一个反直觉但可以算出来的事实**：对齐一次 90° 转向，
+                            // 角色走的是半径 R=v/ω 的圆弧、总共转过 90°，
+                            // 所以绝对偏离 = R(1−cos90°) = R ——**速率越慢，绕出去越远**：
+                            //     26°/s ⇒ 半径 11.5m、耗时 3.5s、横向绕出 11.5m
+                            //     90°/s ⇒ 半径  3.3m、耗时 1.0s、横向绕出  3.3m
+                            // 慢并不等于"弧小"，只等于"绕得久、绕得远"。
+                            // 真正的约束只有角加速度（晕动），而 90°/s 配 0.45s 的平滑
+                            // 升起只有约 120°/s²，舒适上限是 600——离得很远。
+                            // 所以起始瞬态放到 3.5 倍：峰值 ≈ 26×(1+2.5×0.7) ≈ 90°/s，
+                            // 转完 1.2s 内回落到 26°/s 的稳态缓行。
+                            orbit *= Mathf.Lerp(1f, 3.5f, _turnBurst);
                             maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
