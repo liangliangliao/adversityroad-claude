@@ -189,16 +189,10 @@ namespace AdversityRoad.Player
         /// 只在【推着非正前方向】时生效：摇杆回正或松开后，环即消失，
         /// 镜头恢复全速追平（掉头后想尽快看清前方，松一下杆就行）。
         /// </summary>
-        const float SustainedOrbitCap = 30f;
-        /// <summary>摇杆偏离画面正前多少度起算限速，以及渐变过渡的宽度。
-        /// 12°/30°：正前小幅修正完全不限速（那正是"边跑边微调、镜头跟着走"该有的样子），
-        /// 45° 以上进入满限速。实测弧线半径 正前=直线 / 30°=5.6m / 45°=10.1m /
-        /// 90°=10.2m / 180°=10.5m，全部落在大作区间。</summary>
-        /// 宽度 30→18：跟随死区在开阔时已抬到 28°，于是 28~42° 之间还留着一段
-        /// 部分限速的窗口（θ=35° 时仍会以 ~10°/s 绕行，五秒就偏 48°）。
-        /// 收到 18° 后 30° 起就是满限速，那段"看不出为什么在慢慢转"的窗口消失。
-        const float OrbitGateAngle = 12f;
-        const float OrbitGateWidth = 18f;
+        /// 30→26°/s：这一个数同时决定弧线半径(v/ω)、玩家补杆速率(ω)、对齐耗时(θ/ω)。
+        /// 26°/s ⇒ 半径 11.5m、补杆 26°/s、90° 转向 3.5 秒对齐——
+        /// 慢到补杆是无意识的，于是实际路径几乎看不出弯。
+        const float SustainedOrbitCap = 26f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -218,65 +212,6 @@ namespace AdversityRoad.Player
         /// <summary>一键回正是玩家自己按的，自发运动耐受度高，可以利落一点；
         /// 但 1400°/s² 仍只有原先 8816 的六分之一。180° 用 0.88s、90° 用 0.62s。</summary>
         const float ManualRecenterAccelBudget = 1400f, ManualRecenterMinTime = 0.3f;
-        // ===== 转向对齐额度（本轮）：有封顶、会自动还清的「取景欠账」=====
-        //
-        // 守恒律（前面撞到过三次）：只要摇杆映射最终会恢复实时，
-        //     ∫角色被多转的角度  ==  镜头自动转过的总角度
-        // 唯一能选的是【什么时候付】：
-        //   (a) 转镜当下付 → 角色画急弧（已否决）
-        //   (b) 之后慢慢付 → 缓漂
-        //   (c) 不付、一直欠着 → 摇杆与画面对不上（截图否决，最大 180°）
-        //
-        // 但存在一个**免费窗口**：玩家松手的那一刻角色本来就停着，
-        // 欠账可以一笔勾销、代价为零；而松手是极高频的动作。
-        // 于是取一个各方都小的点：
-        //   · 封顶 30°——摇杆与画面的偏差最多 30°（截图那次是 180°）；
-        //   · 松手立即归零（最常见的路径，完全免费）；
-        //   · 一直按着不放：先保持 0.6s，再以 18°/s 缓慢还清——
-        //     角色的转弯半径 17m，比"几乎察觉不到"的 9.9m 还平缓，
-        //     还清只要 1.7s，期间不需要玩家补杆。
-        //
-        // 这笔欠账**同时就是取景收益**：角色朝向 H = C − A + θ，
-        // 于是行进方向在画面里的夹角由 θ 减到 θ − A。旋转之所以之前"白转"，
-        // 正是因为没有这个 A；有了它，转 30° 就真的把前方拉近 30°。
-        /// <summary>对齐额度封顶（度）＝摇杆与画面的最大偏差。
-        /// 30→20：真正的盲区（朝镜头跑）已由下面的「盲跑归位」在**零代价的时刻**
-        /// 解决，这里就不必再为它背高额度了。日常转向只留最小可见的一点对齐。</summary>
-        const float TurnAlignMax = 20f;
-        /// <summary>还清前的保持时长（秒）：给玩家一个"看清并重新推杆"的窗口。</summary>
-        const float TurnAlignHold = 0.6f;
-        /// <summary>还清速率（度/秒）：18°/s ⇒ 转弯半径 17m，读作缓漂而非画弧。</summary>
-        const float TurnAlignDecay = 18f;
-        float _alignOffset;        // 当前欠账（度，带符号）
-        float _alignHoldT;         // 已保持时长
-        /// <summary>移动参考系偏置：PlayerController 解算摇杆时减掉它。
-        /// 有封顶、会自动还清、松手即零——与上游撤回的那次"无限期锁存"不是一回事。</summary>
-        public float MoveBasisOffset => _alignOffset;
-
-        // ===== 盲跑归位：只在【零代价的那一刻】做，这是唯一的免费午餐 =====
-        //
-        // 朝镜头方向持续跑（θ≈180）是这套输入方案里唯一无解的一格：
-        //   · 实时映射 ⇒ 镜头转 ΔC 角色也转 ΔC，θ 恒为 180，**永远追不到背后**
-        //     （不是慢，是不收敛；转十秒也还是 180°）；
-        //   · 欠账映射 ⇒ 角色直线，但摇杆与画面偏差恰好等于镜头转过的角度。
-        // 大作的分野正在这里：魂系/法环/悟空/地平线选前者（缓慢绕行、玩家不停补杆、
-        // 跑出大弧）；原神/崩坏/塞尔达/多数手游选后者的极端——**镜头压根不自动转**，
-        // 偏航完全交给右侧拖拽与一键居中。两边都没有"既对准前方又完全不偏"的方案。
-        //
-        // 但有一个时刻两种代价都为零：**玩家松开摇杆的那一瞬**。
-        // 角色本来就在停下，此时把镜头摆到刚才的行进方向上——
-        // 不画弧（没有移动可画）、不欠账（没有映射要错）。下一次推杆时
-        // "画面向上"就正好是刚才要去的方向。
-        //
-        // 只在真的盲跑之后才做（θ>110° 持续 0.8s），而不是每次停下都做——
-        // 后者是玩家明确否决过的"停下来镜头还自己转"。
-        const float BlindRunAngle = 110f;   // 摇杆离画面正前这么多才算"看不见前方"
-        const float BlindRunHold = 0.8f;    // 且要持续这么久（短暂后撤/侧移不算）
-        const float BlindRunGap = 2f;       // 两次归位的最小间隔
-        const float BlindAlignAccelBudget = 700f, BlindAlignMinTime = 0.7f;
-        float _blindRunT, _lastBlindAlign = -99f;
-        bool _blindAligning;                // 正在做盲跑归位（玩家一推杆立即让位）
-
         // ===== 为什么不做「掉头时无限期钉住移动参考系」 =====
         // 代数上它成立：镜头绕行 180° 期间把参考系钉住，角色朝向就恒定、走直线，
         // 而镜头照样绕到背后。但实机截图给出了否决性证据——
@@ -415,29 +350,11 @@ namespace AdversityRoad.Player
         /// "你正在往某处去"**——停下时它滑到 0，镜头自己减速停住，而不是被掐断
         /// （硬关伺服＝速度台阶＝无限 jerk，读作"卡一下"）。</summary>
         float _followDrive, _followDriveVel;
-        // ---- 转向额度（"镜头响应动作而非状态"的实处）----
-        /// <summary>拇指角要转过多少度才算一次"明确的转向"。
-        /// 25→35°：小幅修正一律不动镜（"不动就不动"），而 35° 以上才是真的换方向。</summary>
-        const float TurnAskGate = 35f;
-        /// <summary>两次记账之间的最小间隔（秒）。硬保证：无论上游信号出什么问题，
-        /// 快速摆镜都不可能连续发生——这是"不动就不动"的兜底闸，
-        /// 也是上一版自激振荡（发额度→镜头转→信号被自己扰动→再发额度）的防线。</summary>
-        const float TurnGrantGap = 0.9f;
-        float _lastTurnGrant = -99f;
-        /// <summary>额度的时间泄漏（度/秒）：过期的额度不该留着。
-        /// 只做陈旧保护（10°/s ⇒ 3 秒内自然清空），不能开大——它和"按实际转过的度数
-        /// 扣减"是并行的两路消耗，开大会让镜头只转到应转幅度的一小半就停。
-        /// 25→10：额度封顶已从 65° 收到 30°，泄漏再按原值会吃掉近两成，
-        /// 实际对齐量只剩 24°；压到 10 后 30° 的额度能兑现 27°。</summary>
-        const float TurnBudgetLeak = 10f;
-        /// <summary>有额度时的跟随转速（度/秒）。
-        /// 170→100：**转速就是角色的转弯角速度**（H = C + θ，1:1），
-        /// 5.2m/s 跑速下 170°/s 对应转弯半径仅 1.75m——读作"原地打转"；
-        /// 100°/s 是 3.0m，读作"倾身入弯"。65° 的额度在 100°/s 下 0.65 秒花完，
-        /// 镜头的响应依然清晰可见，而角色的轨迹是一道缓弧而不是一个圈。</summary>
-        const float TurnFollowRate = 100f;
-        float _turnBudget;                   // 剩余额度（度）
-        float _thumbAnchor, _thumbPrev, _thumbSettleT;
+        // ---- 拇指角（θ）：唯一与镜头无关的方向信号 ----
+        // 摇杆是镜头相对的，世界方向会被镜头带着转；而按住不动的手指其 θ 恒定。
+        // 这里只用它做一件事：判断【方向定没定下来】，供引导留白与转向拉远
+        // 决定该跟得快还是压得住（搓杆时 θ 一直在扫 ⇒ 永不判定为已定）。
+        float _thumbPrev, _thumbSettleT;
         bool _thumbInit;
         float _headingRateAvg;               // 低通后的转向角速度（"突然转向"的度量）
         float _turnBurst, _turnBurstVel;     // 转向缓冲强度（起快收慢，临界阻尼）
@@ -965,67 +882,16 @@ namespace AdversityRoad.Player
                 //     发额度 → 镜头快转 → 滞后变大 → thumb 又跳 → 再发额度 → …
                 // 自激循环，170°/s 下 2.1 秒就能转满一圈——角色也就跟着绕回原方向。
                 // 减 _curYaw 得到的才是干净的 θ：**镜头怎么转它都不变。**
-                // 减 _curYaw 得到 θ；**再把对齐欠账减掉**——摇杆的世界方向现在是
-                //（_curYaw − A + θ），不扣 A 的话 thumb 会随 A 一起漂最多 30°，
-                // 正好顶在 35° 的记账门槛上，又是一次自激。扣掉后 thumb 恒等于真实的 θ。
-                float thumb = Mathf.DeltaAngle(_curYaw - _alignOffset,
+                // 实时映射下没有任何偏置，thumb 就是干净的 θ：镜头怎么转它都不变。
+                float thumb = Mathf.DeltaAngle(_curYaw,
                     Quaternion.LookRotation(player.StickWorldDir.normalized).eulerAngles.y);
-                if (!_thumbInit) { _thumbInit = true; _thumbAnchor = _thumbPrev = thumb; }
+                if (!_thumbInit) { _thumbInit = true; _thumbPrev = thumb; }
                 float thumbRate = Mathf.Abs(Mathf.DeltaAngle(_thumbPrev, thumb)) / dt;
                 _thumbPrev = thumb;
                 // 稳＝拇指角变化率低于 70°/s；连续稳住 0.09s 才算"这就是我要的方向"
                 _thumbSettleT = thumbRate < 70f ? _thumbSettleT + dt : 0f;
-                float turnAsk = Mathf.Abs(Mathf.DeltaAngle(_thumbAnchor, thumb));
-
-                if (_thumbSettleT > 0.09f && turnAsk > TurnAskGate &&
-                    Time.unscaledTime - _lastTurnGrant > TurnGrantGap)
-                {
-                    // ===== 转向对齐：给一笔【有封顶、会自动还清】的额度 =====
-                    // 上一轮把授权系数设成 _viewBlocked（开阔时为 0），依据是
-                    // "转镜头改善不了取景"。那个结论有个前提——**没有参考系偏置**。
-                    // 有了偏置 A，角色朝向 H = C − A + θ，行进方向在画面里的夹角
-                    // 由 θ 减到 θ − A：**旋转这时真的能换回取景**，1:1。
-                    // 所以恢复授权，但额度与偏置共用同一个封顶（TurnAlignMax 30°），
-                    // 于是"取景收益"和"摇杆偏差"这两个同一枚硬币的两面都被钉在 30° 内。
-                    _turnBudget = Mathf.Min(TurnAlignMax, _turnBudget + turnAsk);
-                    _thumbAnchor = thumb;    // 记账完毕，锚点归位（不会重复计同一次转向）
-                    _lastTurnGrant = Time.unscaledTime;
-                }
-                // 未达门槛时锚点慢漂：吸收拇指的小幅游走，不让噪声攒成额度
-                else if (_thumbSettleT > 0.09f)
-                    _thumbAnchor = Mathf.MoveTowardsAngle(_thumbAnchor, thumb, 25f * dt);
-
-                // ---- 盲跑计时：θ 就是"要去的方向偏离画面正前多少"，与镜头无关 ----
-                // 只认【真的在跑】：站着把摇杆拉向自己不算盲跑。
-                bool blindNow = Mathf.Abs(thumb) > BlindRunAngle && moveSpeed > 0.6f;
-                _blindRunT = blindNow ? _blindRunT + dt : Mathf.Max(0f, _blindRunT - dt * 2f);
             }
-            else
-            {
-                // ---- 松手：**这是唯一零代价的归位时刻** ----
-                // 角色本来就在停下 ⇒ 转镜既不画弧（没有移动可画）
-                // 也不欠账（没有映射要错）。刚才真的盲跑过才做。
-                if (_blindRunT > BlindRunHold && !manualLook && _recenterT <= 0f &&
-                    lockTarget == null && _ultimateTimer <= 0f &&
-                    Time.unscaledTime - _lastBlindAlign > BlindRunGap)
-                {
-                    StartRecenter(target.eulerAngles.y,
-                                  BlindAlignAccelBudget, BlindAlignMinTime);
-                    _lastBlindAlign = Time.unscaledTime;
-                    _blindAligning = true;
-                }
-                _blindRunT = 0f;
-                _thumbInit = false; _thumbSettleT = 0f; _turnBudget = 0f;
-            }
-            // 归位途中玩家又推杆 ⇒ 立刻让位。这样参考系冻结（RecenterActive）
-            // 就永远不会在"有推杆"的时刻生效，摇杆与画面不可能对不上。
-            if (_blindAligning && (stickHeld || _recenterT <= 0f))
-            {
-                if (stickHeld) _recenterT = 0f;
-                _blindAligning = false;
-            }
-            // 时间泄漏：过期的额度不该留着。手指松开时上面已直接清零。
-            _turnBudget = Mathf.MoveTowards(_turnBudget, 0f, TurnBudgetLeak * dt);
+            else { _thumbInit = false; _thumbSettleT = 0f; }
 
             // ===== 转向缓冲拉远（本轮）=====
             // 跑动中突然改方向的那一刻，正是最需要看清周围的时刻：先把吊杆推出去
@@ -1279,13 +1145,8 @@ namespace AdversityRoad.Player
                 // 又改主意的都被吃掉），盲区时按原值立刻起手。
                 float steadyNeed = Mathf.Lerp(0.15f, 0.02f, Mathf.Clamp01((err - 45f) / 90f))
                                    * Mathf.Lerp(2.2f, 1f, _urgency);
-                // 有转向额度时**跳过确认与死区**：额度本身就是"玩家已经明确转向并
-                // 把方向定下来了"的凭证（拇指角稳住 0.09s 才发额度），再等一遍确认
-                // 就是那 0.33 秒的迟钝感；死区也不该拦——玩家要的正是这一下。
-                bool turning = _turnBudget > 2f && active && !backingIntent;
-                bool gentle = turning ||
-                              (active && _headingHoldT > steadyNeed && err > dz
-                               && !backingIntent);
+                bool gentle = active && _headingHoldT > steadyNeed && err > dz
+                              && !backingIntent;
 
                 // 跟随的【驱动强度】走临界阻尼，而不是布尔开关。
                 // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
@@ -1293,14 +1154,13 @@ namespace AdversityRoad.Player
                 // 镜头是**自己滑停**的，而不是被掐断的。
                 // 起手要柔、收手要**当机立断**：起步慢是防抖，停得慢是拖尾，
                 // 两者诉求相反，不该共用一个时间常数。
-                //   · 有转向额度时起 0.12s（玩家刚明确要求转向，慢一拍就读作迟钝）；
-                //     常规起 0.3s（防摇杆抖动牵动镜头）；
+                //   · 起 0.3s（防摇杆抖动牵动镜头）；
                 //   · 收 0.06s ≈ 4 帧：**手指离开摇杆的那一刻就不再往前转了**。
                 // 这不会造成"卡一下"——_yaw 停住之后，渲染用的 _curYaw 还要经
                 // rotationSmoothTime(0.11s) 的临界阻尼追上来，那 4~5° 的收尾
                 // 是纯粹的减速曲线，读作"镜头稳稳停住"，不是一次运镜决定。
                 bool followWant = !manualRecently && (_combatReorient || gentle);
-                float driveT = followWant ? (_turnBudget > 2f ? 0.12f : 0.3f) : 0.06f;
+                float driveT = followWant ? 0.3f : 0.06f;
                 _followDrive = Mathf.SmoothDamp(_followDrive, followWant ? 1f : 0f,
                     ref _followDriveVel, driveT, Mathf.Infinity, dt);
 
@@ -1332,25 +1192,24 @@ namespace AdversityRoad.Player
                     // 玩家面壁转身时，"绕到角色背后"恰好是墙的方向——硬绕过去只会让镜头
                     // 顶在墙上被迫贴脸，视野瞬间塌掉。大幅回正前先探一下目标方位是否够宽敞：
                     // 越憋屈就转得越慢（最低降到 25%），把镜头留在看得见的地方。
-                    // ===== 代数环限速：**开阔时直接压到 0，镜头不再持续绕行** =====
+                    // ===== 缓慢绕行：实时映射下唯一可用的对齐手段 =====
                     //
-                    // 这是"转向还是不走直线"的根。此前只是把持续绕行【限速】到 30°/s，
-                    // 而没有【停掉】它：按住偏轴摇杆时 err ≡ θ 恒大于死区，
-                    // 跟随于是无限期成立，镜头以 30°/s 一直绕——半径 9.9m、12 秒一圈。
-                    // 而 H = C + θ 让角色 1:1 跟着转，**按住摇杆十几秒就是一个大圈**。
-                    // 基线（9d0e603）在三难取舍里主动放弃了"角色不画弧"这一条，
-                    // 但实测反馈说明这个代价不能接受。
+                    // 摇杆恒为镜头相对、一帧都不错开（PlayerController 里没有任何偏置）。
+                    // 于是 H = C + θ 全时成立，镜头每转 1°，角色的行进方向就转 1°。
+                    // 这条恒等式给出三个同时被同一个速率 ω 决定的量：
+                    //     角色弧线半径 = v/ω     玩家需要的补杆速率 = ω     对齐耗时 = θ/ω
+                    // 也就是说：**转得快 = 弧紧 + 补杆急**，转得慢 = 弧缓 + 补杆轻。
+                    // 补杆的【总量】是固定的（θ 必须降到 0），速率只决定它摊在多长时间里。
                     //
-                    // 改法遵循同一条原则——**按当下到底需不需要来分配**：
-                    //   · 视野开阔（_urgency→0）⇒ 你已经看得见要去的地方 ⇒ 绕行速率 **0**，
-                    //     镜头一动不动，角色**严格走直线**；
-                    //   · 前方盲区（_urgency→1）⇒ 不转过去等于盲开 ⇒ 恢复到 30°/s，
-                    //     此时"看得见路"压倒"走得直"（半径 9.9m 的缓弧，代价可接受）。
-                    // 于是"转向合理跟随"由**有界的转向额度**负责（一次性、转完就停），
-                    // "不动就不动 + 走直线"由这里的 0 负责。两者各归其职，不再互相拉扯。
+                    // 更要紧的一点：**只要玩家在补杆，角色就是直线**——弧只在完全不补杆时
+                    // 才出现。所以速率要慢到"补杆是无意识的"，人手自然就跟上了。
+                    // 26°/s ⇒ 半径 11.5m、一次 90° 转向的补杆摊在 3.5 秒里。
+                    // 这正是魂系/悟空那一派的做法，也是它们不显得"镜头跟你较劲"的原因。
                     //
-                    // enemyNet 豁免：那一路追的是【敌人方位】，它不是镜头偏航的函数，
-                    // 压根没有代数环，限它只会让敌人留在画外。
+                    // 速率随离轴角【比例】给出，而不是一到门槛就满速：
+                    //   · 离轴 < 死区（开阔 28°）⇒ 跟随本身不成立 ⇒ 一动不动；
+                    //   · 死区 → 死区+60° 之间线性升到满速；
+                    //   · 再往上封顶。于是日常的小幅走位完全不动镜，只有真的换方向才缓缓跟。
                     if (player != null && !enemyNet)
                     {
                         Vector3 sw = player.StickWorldDir;
@@ -1358,9 +1217,11 @@ namespace AdversityRoad.Player
                         {
                             float stickYaw = Quaternion.LookRotation(sw.normalized).eulerAngles.y;
                             float off = Mathf.Abs(Mathf.DeltaAngle(stickYaw, _curYaw));
-                            float gate = Mathf.Clamp01((off - OrbitGateAngle) / OrbitGateWidth);
-                            if (gate > 0f)
-                                maxSpd = Mathf.Lerp(maxSpd, SustainedOrbitCap * _viewBlocked, gate);
+                            float ramp = Mathf.Clamp01((off - dz) / 60f);
+                            float orbit = SustainedOrbitCap * ramp;
+                            // 前方真的闭塞时允许快一点（那时"看得见路"值得多付一点弧）
+                            orbit *= Mathf.Lerp(1f, 1.8f, _viewBlocked);
+                            maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
 
@@ -1379,35 +1240,10 @@ namespace AdversityRoad.Player
                         smoothT /= Mathf.Max(0.6f, damp);
                     }
 
-                    // ===== 转向额度：**最后叠加，因此能越过持续绕行限速** =====
-                    // 绕行限速（30°/s）的职责是"别让屏幕一直转"——那是针对【稳态】的。
-                    // 而一次明确的转向是【瞬态】，它有明确的幅度上限（TurnAlignMax 30°），
-                    // 转完就没了，压根不会变成转圈。两者不该由同一个闸管。
-                    // 少了这一层，转向时镜头就被死死压在 30°/s，读作"几乎没在跟"。
-                    if (turning)
-                    {
-                        maxSpd = Mathf.Max(maxSpd, TurnFollowRate * _followDrive);
-                        // 额度期间不要再让软死区把驱动衰减掉：玩家要的就是这一下
-                        smoothT = Mathf.Min(smoothT, 0.18f);
-                    }
-
-                    // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变。
-                    // 有额度时软区收窄到 6°：否则 28° 的开阔死区会把这次转向也一起吃掉。
-                    float softZone = turning ? 6f : dz;
-                    float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, softZone);
-                    float yawBeforeFollow = _yaw;
+                    // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
+                    float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, dz);
                     _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
-                    // 额度按【镜头实际转过的度数】扣减：转够了就自动回落到常规限速。
-                    // 这是"有始有终"的实处——不是靠计时器，而是靠真的转到位。
-                    float spent = Mathf.DeltaAngle(yawBeforeFollow, _yaw);
-                    _turnBudget = Mathf.Max(0f, _turnBudget - Mathf.Abs(spent));
-                    // **同步记账到参考系偏置**：镜头为对齐转过多少，就欠玩家多少。
-                    // 有了它，这次旋转才真的把行进方向拉近画面正前（θ → θ − A）；
-                    // 没有它，旋转对取景毫无贡献，只是把角色一起转走。
-                    if (turning)
-                        _alignOffset = Mathf.Clamp(_alignOffset + spent,
-                                                   -TurnAlignMax, TurnAlignMax);
                 }
                 else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
             }
@@ -1458,21 +1294,6 @@ namespace AdversityRoad.Player
             _curPitch = Mathf.SmoothDamp(_curPitch, _pitch, ref _pitchVel, rotationSmoothTime,
                 Mathf.Infinity, dt);
 
-            // ===== 还清对齐欠账 =====
-            // 松手 ⇒ 立即归零：那一刻角色本来就停着，勾销代价为零，而这是最常见的路径
-            //（转向 → 看清 → 松手重新推杆，欠账根本不会留到下一段移动）。
-            // 一直按着不放 ⇒ 先保持 TurnAlignHold 给玩家看清与重新推杆的窗口，
-            // 再以 TurnAlignDecay 缓慢还清：角色转弯半径 17m，读作缓漂而非画弧，
-            // 全程不需要玩家补杆，1.7 秒后摇杆与画面重新完全一致。
-            if (!stickHeld) { _alignOffset = 0f; _alignHoldT = 0f; }
-            else if (Mathf.Abs(_alignOffset) > 0.01f)
-            {
-                if (_turnBudget > 2f) _alignHoldT = 0f;   // 还在转，不算保持
-                else _alignHoldT += dt;
-                if (_alignHoldT > TurnAlignHold)
-                    _alignOffset = Mathf.MoveTowards(_alignOffset, 0f, TurnAlignDecay * dt);
-            }
-            else _alignHoldT = 0f;
 
             Quaternion rot = Quaternion.Euler(_curPitch, _curYaw, 0);
 

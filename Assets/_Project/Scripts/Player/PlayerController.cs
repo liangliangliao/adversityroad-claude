@@ -396,12 +396,10 @@ namespace AdversityRoad.Player
             else
             {
                 _recenterFrameInit = false;
+                // **实时映射，无任何偏置**：摇杆方向恒等于画面方向，一帧都不错开。
+                // 代价由镜头侧承担——它只能以很慢的速率绕行（见 SustainedOrbitCap），
+                // 慢到玩家的补杆是无意识的，于是角色路径几乎看不出弯。
                 frameYaw = cameraTransform.eulerAngles.y;
-                // 转向对齐欠账：镜头为"把行进方向摆正到画面里"而转过多少度，
-                // 就在这里减掉多少度，于是那次旋转真的换回了取景，
-                // 而不是把角色一起转走。**封顶 30°、松手即零、按着不放也会
-                // 以 18°/s 自动还清**——与上游撤回的那次无限期锁存不是一回事。
-                if (_cam != null) frameYaw -= _cam.MoveBasisOffset;
             }
 
             Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
