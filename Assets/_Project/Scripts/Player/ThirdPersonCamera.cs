@@ -239,8 +239,10 @@ namespace AdversityRoad.Player
         // 这笔欠账**同时就是取景收益**：角色朝向 H = C − A + θ，
         // 于是行进方向在画面里的夹角由 θ 减到 θ − A。旋转之所以之前"白转"，
         // 正是因为没有这个 A；有了它，转 30° 就真的把前方拉近 30°。
-        /// <summary>对齐额度封顶（度）＝摇杆与画面的最大偏差。</summary>
-        const float TurnAlignMax = 30f;
+        /// <summary>对齐额度封顶（度）＝摇杆与画面的最大偏差。
+        /// 30→20：真正的盲区（朝镜头跑）已由下面的「盲跑归位」在**零代价的时刻**
+        /// 解决，这里就不必再为它背高额度了。日常转向只留最小可见的一点对齐。</summary>
+        const float TurnAlignMax = 20f;
         /// <summary>还清前的保持时长（秒）：给玩家一个"看清并重新推杆"的窗口。</summary>
         const float TurnAlignHold = 0.6f;
         /// <summary>还清速率（度/秒）：18°/s ⇒ 转弯半径 17m，读作缓漂而非画弧。</summary>
@@ -250,6 +252,30 @@ namespace AdversityRoad.Player
         /// <summary>移动参考系偏置：PlayerController 解算摇杆时减掉它。
         /// 有封顶、会自动还清、松手即零——与上游撤回的那次"无限期锁存"不是一回事。</summary>
         public float MoveBasisOffset => _alignOffset;
+
+        // ===== 盲跑归位：只在【零代价的那一刻】做，这是唯一的免费午餐 =====
+        //
+        // 朝镜头方向持续跑（θ≈180）是这套输入方案里唯一无解的一格：
+        //   · 实时映射 ⇒ 镜头转 ΔC 角色也转 ΔC，θ 恒为 180，**永远追不到背后**
+        //     （不是慢，是不收敛；转十秒也还是 180°）；
+        //   · 欠账映射 ⇒ 角色直线，但摇杆与画面偏差恰好等于镜头转过的角度。
+        // 大作的分野正在这里：魂系/法环/悟空/地平线选前者（缓慢绕行、玩家不停补杆、
+        // 跑出大弧）；原神/崩坏/塞尔达/多数手游选后者的极端——**镜头压根不自动转**，
+        // 偏航完全交给右侧拖拽与一键居中。两边都没有"既对准前方又完全不偏"的方案。
+        //
+        // 但有一个时刻两种代价都为零：**玩家松开摇杆的那一瞬**。
+        // 角色本来就在停下，此时把镜头摆到刚才的行进方向上——
+        // 不画弧（没有移动可画）、不欠账（没有映射要错）。下一次推杆时
+        // "画面向上"就正好是刚才要去的方向。
+        //
+        // 只在真的盲跑之后才做（θ>110° 持续 0.8s），而不是每次停下都做——
+        // 后者是玩家明确否决过的"停下来镜头还自己转"。
+        const float BlindRunAngle = 110f;   // 摇杆离画面正前这么多才算"看不见前方"
+        const float BlindRunHold = 0.8f;    // 且要持续这么久（短暂后撤/侧移不算）
+        const float BlindRunGap = 2f;       // 两次归位的最小间隔
+        const float BlindAlignAccelBudget = 700f, BlindAlignMinTime = 0.7f;
+        float _blindRunT, _lastBlindAlign = -99f;
+        bool _blindAligning;                // 正在做盲跑归位（玩家一推杆立即让位）
 
         // ===== 为什么不做「掉头时无限期钉住移动参考系」 =====
         // 代数上它成立：镜头绕行 180° 期间把参考系钉住，角色朝向就恒定、走直线，
@@ -968,8 +994,36 @@ namespace AdversityRoad.Player
                 // 未达门槛时锚点慢漂：吸收拇指的小幅游走，不让噪声攒成额度
                 else if (_thumbSettleT > 0.09f)
                     _thumbAnchor = Mathf.MoveTowardsAngle(_thumbAnchor, thumb, 25f * dt);
+
+                // ---- 盲跑计时：θ 就是"要去的方向偏离画面正前多少"，与镜头无关 ----
+                // 只认【真的在跑】：站着把摇杆拉向自己不算盲跑。
+                bool blindNow = Mathf.Abs(thumb) > BlindRunAngle && moveSpeed > 0.6f;
+                _blindRunT = blindNow ? _blindRunT + dt : Mathf.Max(0f, _blindRunT - dt * 2f);
             }
-            else { _thumbInit = false; _thumbSettleT = 0f; _turnBudget = 0f; }
+            else
+            {
+                // ---- 松手：**这是唯一零代价的归位时刻** ----
+                // 角色本来就在停下 ⇒ 转镜既不画弧（没有移动可画）
+                // 也不欠账（没有映射要错）。刚才真的盲跑过才做。
+                if (_blindRunT > BlindRunHold && !manualLook && _recenterT <= 0f &&
+                    lockTarget == null && _ultimateTimer <= 0f &&
+                    Time.unscaledTime - _lastBlindAlign > BlindRunGap)
+                {
+                    StartRecenter(target.eulerAngles.y,
+                                  BlindAlignAccelBudget, BlindAlignMinTime);
+                    _lastBlindAlign = Time.unscaledTime;
+                    _blindAligning = true;
+                }
+                _blindRunT = 0f;
+                _thumbInit = false; _thumbSettleT = 0f; _turnBudget = 0f;
+            }
+            // 归位途中玩家又推杆 ⇒ 立刻让位。这样参考系冻结（RecenterActive）
+            // 就永远不会在"有推杆"的时刻生效，摇杆与画面不可能对不上。
+            if (_blindAligning && (stickHeld || _recenterT <= 0f))
+            {
+                if (stickHeld) _recenterT = 0f;
+                _blindAligning = false;
+            }
             // 时间泄漏：过期的额度不该留着。手指松开时上面已直接清零。
             _turnBudget = Mathf.MoveTowards(_turnBudget, 0f, TurnBudgetLeak * dt);
 
