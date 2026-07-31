@@ -199,10 +199,19 @@ namespace AdversityRoad.Combat
         string _lastMoveName;
         float _lastMoveNameAt;
 
-        public void SetPose(PoseState p)
+        public void SetPose(PoseState p) => SetPose(p, 0f);
+
+        /// <summary>设招。duration&gt;0 = 这一招在战斗逻辑里占用的时长——
+        /// 动捕层据此反推播放速度、程序化骨骼层据此压缩关键帧时间轴，
+        /// 让「画面上的动作」与「招式表的帧数据」严格同拍（出招不再拖泥带水）。</summary>
+        public void SetPose(PoseState p, float duration)
         {
             _pose = p;
             _t = 0;
+            _poseDur = duration;
+            // 程序化骨骼的招式曲线按 ≈0.5s 一招编写；招式更短就等比压缩时间轴
+            _poseTimeScale = duration > 0.02f && IsActionPose(p)
+                ? Mathf.Clamp(ProcPoseNominal / duration, 1f, 2.4f) : 1f;
             _poseSerial++;   // 每次设招（含同名连招重触发）都递增，供动捕层重放动作
 
             // 战斗可读性：出招瞬间头顶弹出招式名（格斗游戏惯例），看清双方正在用什么招。
@@ -243,12 +252,18 @@ namespace AdversityRoad.Combat
         /// <summary>
         /// 连段专用：外部指定攻击姿态，并吞掉本次 FSM 状态变化，
         /// 避免 MapFromFsm 用默认攻击姿态覆盖连段姿态。
+        /// duration = 该招在战斗逻辑里的时长（0=沿用片段默认速度）。
         /// </summary>
-        public void PlayAttackPose(PoseState p)
+        public void PlayAttackPose(PoseState p, float duration = 0f)
         {
             if (fsm != null) _lastFsmState = fsm.Current;
-            SetPose(p);
+            SetPose(p, duration);
         }
+
+        // 招式时长（战斗逻辑给的帧数据）与程序化骨骼的时间轴缩放
+        float _poseDur;
+        float _poseTimeScale = 1f;
+        const float ProcPoseNominal = 0.5f;   // 程序化招式曲线的编写长度
 
         float _actualSpeed = -1f;
 
@@ -285,7 +300,7 @@ namespace AdversityRoad.Combat
                     else
                     {
                         _pendingGetUp = false;
-                        _mecanim.PlayAction(_pose);
+                        _mecanim.PlayAction(_pose, _poseDur);
                     }
                 }
 
@@ -325,12 +340,23 @@ namespace AdversityRoad.Combat
                             Vector3.zero, 16f * dt);
                     }
                 }
+                // 刀光拖尾：此前只在下方【程序化骨骼】分支里开合，动捕模式走到这里
+                // 就 return 了——于是真正在跑的动捕角色从来没有过刀光。按招式的发力窗
+                // 开合：出招即开，招式时长走完即关。
+                if (weaponTrail != null)
+                {
+                    float swingLen = _poseDur > 0.02f ? _poseDur : _mecanim.ActionLength(_pose);
+                    if (swingLen <= 0.01f) swingLen = 0.45f;
+                    bool sw = IsActionPose(_pose) && _pose != PoseState.Hit && _t < swingLen;
+                    if (weaponTrail.emitting != sw) weaponTrail.emitting = sw;
+                }
                 _mecanim.Tick(dt);
                 return;
             }
 
             if (rig == null || visual == null) return;
-            _t += dt;
+            // 程序化骨骼：招式曲线的时间轴按招式实际时长压缩（出招同样"脆快"）
+            _t += dt * _poseTimeScale;
             float T = _t;
 
             bool moving = _speed01 > 0.03f && _grounded;

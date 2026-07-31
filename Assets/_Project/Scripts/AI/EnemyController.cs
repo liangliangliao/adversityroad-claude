@@ -769,7 +769,7 @@ namespace AdversityRoad.AI
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法。
             // 处决（大作破韧终结）：破绽期用重击/大招命中 = 巨额增伤 + 横幅 + 强顿帧慢镜，
             // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
-            bool execHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            bool execHeavy = DamageResolver.IsHeavy(dmg);
             bool execution = false;
             if (State == EnemyState.Stagger)
             {
@@ -796,22 +796,25 @@ namespace AdversityRoad.AI
             // 命中点：优先用判定框算出的【真实接触身体点】，退回估算（朝攻击者一侧胸口）
             Vector3 contact = dmg.hasContact ? dmg.contactPoint
                 : transform.position + dirA * 0.55f + Vector3.up * 1.25f;
-            // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定
-            bool fbHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
-            CombatFeedback.HitImpact(contact, sparkCol, fbHeavy);
+            // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定；
+            // 力度 0-1 连续分级：火花密度、闪核大小、顿帧时长、受击冲量都按它给，
+            // 一记直拳与一记裂地跳劈的反馈差距一眼可辨
+            bool fbHeavy = DamageResolver.IsHeavy(dmg);
+            float power = DamageResolver.Power01(dmg);
+            CombatFeedback.HitImpact(contact, sparkCol, fbHeavy, true, power);
             // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——从接触点顺打击方向外喷
             if (!guardedHit && dmg.physicalDamage > 0.5f)
                 CombatFeedback.BloodSpray(contact, -dirA);
             // 部位受击反应：命中头就甩头、命中腿就屈弯，接触点弹部位标签；
             // 连续两次打中同一部位就有两次可见反应（冲量叠加，打几下动几下）
             if (!guardedHit)
-                HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy);
+                HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy, 0.85f + power * 0.75f);
             CombatFeedback.HitFlash(gameObject);
             _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
             // 处决命中：仪式感反馈——横幅「处决」+ 强顿帧 + 短慢镜 + 能量爆发
             if (execution)
             {
-                CombatFeedback.HitStop(0.12f);
+                CombatFeedback.HitStop(0.15f);
                 CombatFeedback.SlowMo(0.4f, 0.16f);
                 CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近
@@ -829,8 +832,9 @@ namespace AdversityRoad.AI
                 // 位移驱动的步态会同步迈脚，读作"被打得连退几步"。
                 // 重击不走这里：位移完全交给 KnockFly 与倒地动画同步（否则双重
                 // 位移=先漂移一段再倒下，不真实）
+                // 0.5→0.85：轻连段的击退此前几乎看不见，敌人像钉在地上被挠痒痒
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * dmg.knockback * 0.5f;
+                             * dmg.knockback * 0.85f;
                 StartCoroutine(KnockSlide(kb));
             }
 
@@ -850,10 +854,14 @@ namespace AdversityRoad.AI
             // 受击反应（去掉"铁桩感"的关键）：
             // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
             // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
-            bool heavyHit = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            bool heavyHit = fbHeavy;
             if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
             {
-                _flinchCd = profile.category == EnemyCategory.Boss ? 2.4f : 1.1f;
+                // 受击霸体冷却 1.1→0.7s（Boss 2.4→1.9s）：原值下杂兵在一整套连段里
+                // 只踉跄一次，剩下四五下全程站着不动——这是"打上去没反应/攻击力弱"
+                // 最刺眼的一处。缩短后普通敌人几乎每两下就吃一次硬直，但仍保留
+                // 霸体窗口，不至于被彻底连到死。
+                _flinchCd = profile.category == EnemyCategory.Boss ? 1.9f : 0.7f;
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
                 CancelInvoke(nameof(FireProjectile));

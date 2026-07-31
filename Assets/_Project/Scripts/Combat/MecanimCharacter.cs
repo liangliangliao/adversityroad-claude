@@ -124,7 +124,12 @@ namespace AdversityRoad.Combat
                 }
             }
             poser.weaponPivot = weaponPivot;   // 可为 null（无兵器则无刀光，正常）
-            poser.weaponTrail = null;
+            // 刃尖拖尾：动捕角色用的是模型自带兵器，此前恒定 null——挥砍时刃划过空中
+            // 不留任何痕迹，这是"招式看着软"的一大来源。按包围盒定位刃尖自动挂上。
+            poser.weaponTrail = weaponPivot != null
+                ? WeaponFactory.AttachTipTrail(weaponPivot, baseMaterial,
+                    isPlayer ? new Color(0.75f, 0.9f, 1f, 0.85f) : new Color(1f, 0.6f, 0.45f, 0.8f))
+                : null;
             return true;
         }
 

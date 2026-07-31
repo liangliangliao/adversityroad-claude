@@ -25,15 +25,16 @@ namespace AdversityRoad.Combat
         bool _scanned;
 
         /// <summary>在 root 上触发一次部位受击（无该组件会自动补挂）。
-        /// hitDir = 打击推动方向（攻击者 → 受击者）。</summary>
-        public static void Trigger(Transform root, Vector3 contact, Vector3 hitDir, bool heavy)
+        /// hitDir = 打击推动方向（攻击者 → 受击者）；power = 力度倍率（1=标准）。</summary>
+        public static void Trigger(Transform root, Vector3 contact, Vector3 hitDir, bool heavy,
+            float power = 1f)
         {
             var o = root.GetComponentInChildren<HitReactionOverlay>();
             if (o == null) o = root.gameObject.AddComponent<HitReactionOverlay>();
-            o.AddHit(contact, hitDir, heavy);
+            o.AddHit(contact, hitDir, heavy, power);
         }
 
-        public void AddHit(Vector3 contact, Vector3 hitDir, bool heavy)
+        public void AddHit(Vector3 contact, Vector3 hitDir, bool heavy, float power = 1f)
         {
             if (!_scanned) Scan();
             hitDir.y = 0;
@@ -49,6 +50,8 @@ namespace AdversityRoad.Combat
             Consider(_legL, "左腿", heavy ? 24f : 15f, contact, ref bone, ref label, ref amp, ref best);
             Consider(_legR, "右腿", heavy ? 24f : 15f, contact, ref bone, ref label, ref amp, ref best);
             if (bone == null) return;
+            // 力度直接放大甩头/折身的幅度：越重的一击，身体被打得越夸张
+            amp *= Mathf.Clamp(power, 0.6f, 2f);
 
             // 反应轴：绕「与打击方向垂直的水平轴」正转 = 部位向打击方向倒去
             Vector3 axis = Vector3.Cross(Vector3.up, hitDir);

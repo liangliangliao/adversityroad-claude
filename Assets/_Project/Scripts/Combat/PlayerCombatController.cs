@@ -27,7 +27,11 @@ namespace AdversityRoad.Combat
     {
         [Header("连段")]
         public Hitbox weaponHitbox;
-        public float baseDamage = 16f;
+        // 基础伤害 16→20、重击 34→42（+25%）：普攻打在 70~140 血的心魔身上，
+        // 单下从 10 出头抬到 14 上下，重击/绝招则跨过"一击见效"的观感门槛。
+        // 「重击」的分级线（DamageResolver.HeavyPhysical=34）已同步上移，
+        // 普通连段不会因为调高攻击力就变成每一下都击倒。
+        public float baseDamage = 20f;
         // 轻击体力：连打约 5.8 段/秒，旧值 8 → 47/秒消耗 vs 15/秒回复，3 秒即见底。
         // 降到 3 后连打消耗 ≈20/秒，配合回复提升后可长时间连打不断（体力只在
         // 闪避/蓄力等"大动作"上形成真实取舍，而不是卡住普通连段）。
@@ -35,7 +39,7 @@ namespace AdversityRoad.Combat
         public float autoAimRange = 5f;
 
         [Header("重击 / 蓄力 / 指令技")]
-        public float heavyDamage = 34f;
+        public float heavyDamage = 42f;
         public float maxChargeTime = 0.85f;
         public float chargeStaminaPerSec = 9f;
         public float tapThreshold = 0.18f;   // 轻点/长按分界
@@ -511,7 +515,7 @@ namespace AdversityRoad.Combat
             }
 
             _fsm.RequestState(CombatState.LightAttack, _cur.length);
-            PlayPose(playPose);
+            PlayPose(playPose, _cur.length);
             FaceAndLunge(s.lunge);
 
             CombatFeedback.SwingArc(transform, nextDepth >= 2 || recipeHit,
@@ -651,11 +655,11 @@ namespace AdversityRoad.Combat
         /// （长/宽/高与距离一起放大），2 势终结版两段更大更痛。</summary>
         IEnumerator HeavyCombo(float charge01, bool finisher)
         {
-            _fsm.RequestState(CombatState.HeavyAttack, finisher ? 1.0f : 0.88f);
+            _fsm.RequestState(CombatState.HeavyAttack, finisher ? 0.92f : 0.8f);
             _fsm.InCombat = true;
 
             // ---- 段1：蓄力·巨剑跳劈 ----
-            PlayPose(PoseState.HeavyAttack);
+            PlayPose(PoseState.HeavyAttack, 0.34f);
             FaceAndLunge(0.9f);
             float dmg1 = heavyDamage * (1f + 0.6f * charge01 + (finisher ? 0.5f : 0f)) * CritMult();
             CombatFeedback.SwingArc(transform, true,
@@ -664,22 +668,23 @@ namespace AdversityRoad.Combat
                 CombatFeedback.RecipeBurst(transform.position,
                     finisher ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.55f, 0.2f));
             // 范围随蓄力放大：满蓄约 2.3 倍（长宽高与打击距离同步大幅增大，攻得更远更广）
-            OpenHitboxTimed(0.18f, 0.34f, dmg1, 26f + (finisher ? 12f : 0f), 3.5f, false,
+            // 前摇 0.10s：蓄力已经收过一次前摇的钱，释放时不该再等一拍才落刀
+            OpenHitboxTimed(0.10f, 0.20f, dmg1, 26f + (finisher ? 12f : 0f), 3.5f, false,
                 PoseState.HeavyAttack, 1.4f + 0.9f * charge01, true);
             GameEvents.RaiseSkillBanner(finisher ? "「旋风终结·二连」"
                 : charge01 > 0.7f ? "「蓄力·跳劈连斩」" : "「巨剑跳劈」");
             CombatFeedback.ShockRing(transform.position + transform.forward * 1.8f,
                 new Color(1f, 0.7f, 0.3f), 4.5f + 3f * charge01);
 
-            yield return new WaitForSeconds(0.34f);
+            yield return new WaitForSeconds(0.3f);
             if (_fsm.Current != CombatState.HeavyAttack) yield break;   // 被击倒等打断
 
             // ---- 段2：紧接巨剑旋风斩（环身大范围second hit）----
-            PlayPose(PoseState.AttackSpin);
+            PlayPose(PoseState.AttackSpin, 0.42f);
             FaceAndLunge(0.4f);
             float dmg2 = dmg1 * (finisher ? 0.9f : 0.7f);
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.85f, 0.4f));
-            OpenHitboxTimed(0.12f, 0.32f, dmg2, 20f, 5.5f, false,
+            OpenHitboxTimed(0.08f, 0.26f, dmg2, 20f, 5.5f, false,
                 PoseState.AttackSpin, finisher ? 1.9f : 1.5f + 0.5f * charge01, true);
             if (finisher)
             {
@@ -687,9 +692,9 @@ namespace AdversityRoad.Combat
                     new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.SlowMo(0.45f, 0.2f);
             }
-            // 段2 判定窗（windup 0.12 + open 0.32）走完才开放取消：
+            // 段2 判定窗（windup 0.08 + open 0.26）走完才开放取消：
             // 否则玩家连打会把自己的第二段旋风斩取消掉，读作"第二下没打出来"
-            yield return new WaitForSeconds(0.44f);
+            yield return new WaitForSeconds(0.36f);
             _fsm.CanCancelRecovery = true;   // 蓄力二连收招：闪避或攻击均可取消
         }
 
@@ -698,7 +703,7 @@ namespace AdversityRoad.Combat
         {
             Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.36f);
-            PlayPose(PoseState.SwordThrust);
+            PlayPose(PoseState.SwordThrust, 0.34f);
             FaceAndLunge(2.6f);
             float dmg = heavyDamage * 0.85f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.9f, 0.95f, 0.6f));
@@ -715,7 +720,7 @@ namespace AdversityRoad.Combat
         {
             Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
-            PlayPose(PoseState.SpinKick);
+            PlayPose(PoseState.SpinKick, 0.38f);
             FaceAndLunge(0.4f);
             float dmg = heavyDamage * 0.7f * CritMult();
             CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
@@ -727,7 +732,7 @@ namespace AdversityRoad.Combat
         void SideSpinStrike(bool right)
         {
             _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
-            PlayPose(PoseState.AttackSpin);
+            PlayPose(PoseState.AttackSpin, 0.38f);
             Vector3 lateral = (right ? transform.right : -transform.right) * 1.7f
                               + transform.forward * 0.4f;
             GlideMove(lateral, 0.14f);
@@ -745,7 +750,7 @@ namespace AdversityRoad.Combat
             Fusion.Push(MoveToken.Heavy);
             _fsm.RequestState(CombatState.HeavyAttack, 0.44f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.AttackLeap);
+            PlayPose(PoseState.AttackLeap, 0.42f);
             ApplyAttackFacing();
             _player.ForceFall(-14f);
             float dmg = heavyDamage * 1.1f * CritMult() * Fusion.FusionMult;
@@ -762,7 +767,7 @@ namespace AdversityRoad.Combat
             Fusion.Push(MoveToken.Heavy);
             EndCombo();
             _fsm.RequestState(CombatState.HeavyAttack, 0.32f);
-            PlayPose(PoseState.AttackUp);
+            PlayPose(PoseState.AttackUp, 0.3f);
             FaceAndLunge(0.5f);
             float dmg = heavyDamage * 0.85f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 0.9f, 1f));
@@ -787,26 +792,31 @@ namespace AdversityRoad.Combat
         IEnumerator RanWu(float charge01)
         {
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
-            _fsm.RequestState(CombatState.Finisher, 1.75f);
-            _player.SetInvincible(1.85f);
-            CombatFeedback.UltimateShot(1.75f);   // 镜头拉近看清连段
+            _fsm.RequestState(CombatState.Finisher, 1.5f);
+            _player.SetInvincible(1.6f);
+            CombatFeedback.UltimateShot(1.5f);   // 镜头拉近看清连段
             // 大幅剑技串成连段：节奏留给动作本体，每击只配一道收敛的刀光，
             // 收招才一次中等能量爆发 + 短时缓——特效点到为止，不糊住招式。
+            // 节拍收紧到 0.22~0.26 秒一击（原 0.27~0.32）：超必杀该是一串**急促**的
+            // 连斩，而不是四记各自演完的独立招式；每段的动画也压进各自的节拍里。
             var seq = new (PoseState pose, float dmg, float posture, float knock, float wait, Color arc)[]
             {
-                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.28f, new Color(0.6f, 0.85f, 1f)),
-                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.32f, new Color(0.7f, 0.9f, 1f)),
-                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.27f, new Color(0.8f, 0.92f, 1f)),
-                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.4f,  new Color(0.55f, 0.8f, 1f)),
+                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.23f, new Color(0.6f, 0.85f, 1f)),
+                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.26f, new Color(0.7f, 0.9f, 1f)),
+                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.22f, new Color(0.8f, 0.92f, 1f)),
+                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.38f, new Color(0.55f, 0.8f, 1f)),
             };
             float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
             for (int i = 0; i < seq.Length; i++)
             {
                 var s = seq[i];
-                PlayPose(s.pose);
+                PlayPose(s.pose, s.wait);
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
-                OpenHitboxTimed(0.16f, 0.2f, baseDmg * s.dmg, s.posture, s.knock, false,
+                // 判定窗必须短于节拍（0.08+0.13=0.21s < 最短 0.22s 一拍）：
+                // 否则下一段的 OpenHitboxTimed 会把上一段还没开完的判定协程掐掉，
+                // 乱舞就会"演了四刀只结算两刀"——看着华丽却打不痛人。
+                OpenHitboxTimed(0.08f, 0.13f, baseDmg * s.dmg, s.posture, s.knock, false,
                     s.pose, i == seq.Length - 1 ? 1.3f : 1.05f);
                 // 每击落点一道小型地面冲击环（震地感），终结一击放大招级爆发
                 CombatFeedback.ShockRing(transform.position + transform.forward * 1.1f,
@@ -833,7 +843,7 @@ namespace AdversityRoad.Combat
         {
             _fsm.RequestState(CombatState.LightAttack, 0.55f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.JumpAttack);
+            PlayPose(PoseState.JumpAttack, 0.5f);
             _player.ForceFall(-13f);
             float dmg = baseDamage * 1.5f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
@@ -857,7 +867,7 @@ namespace AdversityRoad.Combat
             var spec = MoveTable.Variant(blade ? "空中回旋绝斩" : "空中连环踢");
             _fsm.RequestState(CombatState.LightAttack, 0.5f);
             _fsm.InCombat = true;
-            PlayPose(pose);
+            PlayPose(pose, 0.46f);
             ApplyAttackFacing();
             // 剑向滞空续航（浮空斩要打得完），拳向压地收招（干净利落地落回来）
             if (blade) _player.ForceFall(-2.5f); else _player.ForceFall(-15f);
@@ -877,7 +887,7 @@ namespace AdversityRoad.Combat
         {
             _fsm.RequestState(CombatState.LightAttack, 0.5f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.JumpKick);
+            PlayPose(PoseState.JumpKick, 0.46f);
             GlideMove(transform.forward * 1.2f, 0.16f);
             _player.ForceFall(-9f);
             float dmg = baseDamage * 1.4f * CritMult() * Fusion.FusionMult;
@@ -890,7 +900,7 @@ namespace AdversityRoad.Combat
         {
             _fsm.RequestState(CombatState.LightAttack, 0.55f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.Sweep);
+            PlayPose(PoseState.Sweep, 0.5f);
             float dmg = baseDamage * 0.9f * CritMult();
             OpenHitboxTimed(0.16f, 0.3f, dmg, 30f, 1.5f, true, PoseState.Sweep);
         }
@@ -900,7 +910,7 @@ namespace AdversityRoad.Combat
         {
             _fsm.RequestState(CombatState.LightAttack, 0.46f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.SwordThrust);
+            PlayPose(PoseState.SwordThrust, 0.42f);
             ApplyAttackFacing();
             // 规格取自变体表：复用突刺的长窄直线形状，但整体压低到下段（打腿/打倒地目标）
             var spec = MoveTable.Variant("低位突刺");
@@ -922,10 +932,13 @@ namespace AdversityRoad.Combat
             return 1.7f;
         }
 
-        void PlayPose(PoseState p)
+        /// <summary>播放招式动作。dur = 这一招在战斗逻辑里占的时长（帧数据），
+        /// 动画层据此把动作压进同一个窗口——「表里写 0.3 秒，画面就 0.3 秒打完」。
+        /// 传 0 表示沿用片段默认速度（保持型姿态：格挡/蓄力/倒地）。</summary>
+        void PlayPose(PoseState p, float dur = 0f)
         {
             if (_anim == null) _anim = GetComponent<HumanoidAnimator>();
-            if (_anim != null) _anim.PlayAttackPose(p);
+            if (_anim != null) _anim.PlayAttackPose(p, dur);
         }
 
         /// <summary>出招转向 + 磁吸突进：有目标时按「够到目标」计算突进量——
@@ -1136,7 +1149,8 @@ namespace AdversityRoad.Combat
                 // 打击感：命中顿帧（不晕）随伤害加重 + 打击音效；
                 // 只有重击/大伤害才震屏——普通连段不频繁震屏（防晕）。
                 bool heavy = dmg >= heavyDamage;
-                CombatFeedback.HitStop(heavy ? 0.08f : 0.05f);
+                // 顿帧按力度连续给（与敌人侧的分级取更长者生效）
+                CombatFeedback.HitStopByPower(Mathf.Clamp01(dmg / 60f));
                 if (heavy) CombatFeedback.Shake(0.3f);
                 Core.GameAudio.Play(heavy ? Core.GameAudio.Sfx.HeavyHit : Core.GameAudio.Sfx.Hit,
                     heavy ? 1f : 0.8f);

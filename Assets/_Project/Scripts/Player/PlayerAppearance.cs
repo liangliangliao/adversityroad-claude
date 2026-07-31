@@ -322,13 +322,23 @@ namespace AdversityRoad.Player
                     FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
                     var pv = WrapWeaponPivot(w.transform, hand, bladeLocal, gripW);
                     hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
-                    if (poser != null) poser.weaponPivot = pv;
+                    if (poser != null)
+                    {
+                        poser.weaponPivot = pv;
+                        poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                            pv, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                    }
                 }
             }
             else if (builtin != null)
             {
                 // 默认（自带武器）：模型原生兵器，不隐藏、不叠加程序化剑
-                if (poser != null) poser.weaponPivot = builtin;
+                if (poser != null)
+                {
+                    poser.weaponPivot = builtin;
+                    poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                        builtin, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                }
             }
             else if (hand != null)
             {
@@ -658,7 +668,12 @@ namespace AdversityRoad.Player
                     var g = rh.GetComponent<FingerGrip>();
                     if (g == null) g = rh.gameObject.AddComponent<FingerGrip>();
                     g.Setup(rh, bl, gw);
-                    if (poser != null) poser.weaponPivot = _drawnPivot;
+                    if (poser != null)
+                    {
+                        poser.weaponPivot = _drawnPivot;
+                        poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                            _drawnPivot, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                    }
                 },
                 // 收刀入座：撤右手握拳与掌心枢轴（先把剑身救出再销毁枢轴）
                 rh =>
@@ -671,13 +686,14 @@ namespace AdversityRoad.Player
                         Destroy(_drawnPivot.gameObject);
                         _drawnPivot = null;
                     }
-                    if (poser != null) poser.weaponPivot = null;
+                    if (poser != null) { poser.weaponPivot = null; poser.weaponTrail = null; }
                 });
             // 自然携持：每帧把鞘摆竖直(柄朝上微前倾)、鞘中点贴左手掌心——
             // 不再依赖装备瞬间的手掌姿势（T-pose 烘焙是"整套横穿身前"的根因）
             _sheath.SetCarry(set, lhand, visualRoot, mouthL, botL, (mouthL + botL) * 0.5f,
                 lhand.InverseTransformPoint(palm));
-            if (poser != null) poser.weaponPivot = null;   // 收刀状态：耍花/刀光不驱动剑身
+            // 收刀状态：耍花/刀光不驱动剑身
+            if (poser != null) { poser.weaponPivot = null; poser.weaponTrail = null; }
         }
 
         /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，

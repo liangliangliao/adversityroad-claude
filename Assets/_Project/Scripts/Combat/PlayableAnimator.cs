@@ -26,58 +26,68 @@ namespace AdversityRoad.Combat
     public class PlayableAnimator
     {
         // Mixamo 片段名（小写）→ 招式。前面的候选优先精确匹配，找不到再按包含匹配。
-        // speed=播放速度；hold=播完保持最后一帧（倒地/死亡等持续状态，直到切换姿态）；
-        // start=起手偏移（跳过片段开头这一比例）。
+        // speed=播放速度下限；hold=播完保持最后一帧（倒地/死亡等持续状态，直到切换姿态）；
+        // start/end=有效发力窗（跳过片段头尾这两个比例之外的部分）。
         struct ActionDef
         {
             public PoseState pose;
             public string[] keys;
             public float speed;
             public bool hold;
-            public float start;
+            public float start, end;
         }
 
-        static ActionDef A(PoseState p, float speed, bool hold, float start, params string[] keys) =>
-            new ActionDef { pose = p, keys = keys, speed = speed, hold = hold, start = start };
+        static ActionDef A(PoseState p, float speed, float start, float end, bool hold,
+            params string[] keys) =>
+            new ActionDef { pose = p, keys = keys, speed = speed, hold = hold, start = start, end = end };
 
-        // 手感两板斧（根治"连点有延迟/动作被压缩"）：
-        // ① start 起手偏移——Mixamo 原始攻击片段前 15%~25% 是缓慢的摆架势预备，
+        // 手感三板斧（根治"出招慢、软绵绵、连点糊成一团"）：
+        // ① start 起手偏移——Mixamo 原始攻击片段前 12%~22% 是缓慢的摆架势预备，
         //    从偏移处起播，一按键立刻进入发力挥击相位，出手零迟滞；
-        // ② speed 播放提速——真实格斗的出手是"脆快"的，挥击相位提速后
-        //    在控制器的取消窗口(cancelAt)之前就能看完整记砍中，连点不糊招。
+        // ② end 收招裁剪——片段尾部 20%~30% 是"慢慢走回站姿"的回位段，动作游戏
+        //    里这一段由下一招或移动层直接接管。裁掉它，出招不再拖一条尾巴；
+        // ③ speed 只是**下限**：真正的播放速度由招式的帧数据反推（见 PlayIndex），
+        //    让"发力窗"恰好在这一招的判定窗内播完——招式表说 0.3 秒出一拳，
+        //    画面就真的 0.3 秒打完一拳。此前是固定倍速，片段有效时长（≈0.6~1.0s）
+        //    普遍是招式时长（0.30~0.35s）的两三倍，于是每一击都只播到一半就被下一击
+        //    重置：看起来永远是"慢吞吞地举手、还没打到就换了个动作"。
         static readonly ActionDef[] ActionMap =
         {
-            A(PoseState.Attack,      1.75f,  false, 0.2f,  "great sword slash"),
-            A(PoseState.HeavyAttack, 1.5f,  false, 0.12f, "great sword jump attack", "great sword jump", "great sword high spin attack"),
-            A(PoseState.AttackUp,    1.75f,  false, 0.2f,  "great sword slash (1)", "great sword high spin attack"),
-            A(PoseState.SwordThrust, 1.85f,  false, 0.18f, "stabbing", "stab"),
-            A(PoseState.AttackLeap,  1.55f, false, 0.12f, "great sword jump attack", "great sword jump", "jump attack"),
-            A(PoseState.JumpAttack,  1.6f,  false, 0.15f, "great sword jump attack", "great sword jump", "jump attack"),
-            A(PoseState.AttackSpin,  1.6f,  false, 0.15f, "great sword high spin attack", "spin attack", "great sword slash (1)"),
-            A(PoseState.PunchJab,    1.95f,  false, 0.15f, "lead jab", "jab"),
-            A(PoseState.PunchCross,  1.85f,  false, 0.15f, "cross punch"),
-            A(PoseState.AttackKick,  1.8f, false, 0.18f, "kicking"),
-            A(PoseState.SideKick,    1.8f, false, 0.18f, "side kick"),
-            A(PoseState.SpinKick,    1.65f, false, 0.12f, "spin flip kick", "spin kick"),
-            A(PoseState.JumpKick,    1.7f,  false, 0.12f, "flying kick"),
-            A(PoseState.Sweep,       1.6f,  false, 0.12f, "leg sweep", "spin flip kick"),
-            A(PoseState.Hit,         1.45f, false, 0.1f,  "hit reaction", "great sword impact", "hit"),
+            A(PoseState.Attack,      1.75f, 0.20f, 0.74f, false, "great sword slash"),
+            A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.82f, false, "great sword jump attack", "great sword jump", "great sword high spin attack"),
+            A(PoseState.AttackUp,    1.75f, 0.20f, 0.74f, false, "great sword slash (1)", "great sword high spin attack"),
+            A(PoseState.SwordThrust, 1.85f, 0.18f, 0.72f, false, "stabbing", "stab"),
+            A(PoseState.AttackLeap,  1.55f, 0.12f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
+            A(PoseState.JumpAttack,  1.6f,  0.15f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
+            A(PoseState.AttackSpin,  1.6f,  0.15f, 0.82f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
+            A(PoseState.PunchJab,    1.95f, 0.15f, 0.70f, false, "lead jab", "jab"),
+            A(PoseState.PunchCross,  1.85f, 0.15f, 0.70f, false, "cross punch"),
+            A(PoseState.AttackKick,  1.8f,  0.18f, 0.76f, false, "kicking"),
+            A(PoseState.SideKick,    1.8f,  0.18f, 0.76f, false, "side kick"),
+            A(PoseState.SpinKick,    1.65f, 0.12f, 0.86f, false, "spin flip kick", "spin kick"),
+            A(PoseState.JumpKick,    1.7f,  0.12f, 0.86f, false, "flying kick"),
+            A(PoseState.Sweep,       1.6f,  0.12f, 0.84f, false, "leg sweep", "spin flip kick"),
+            A(PoseState.Hit,         1.45f, 0.10f, 0.78f, false, "hit reaction", "great sword impact", "hit"),
             // 击倒提速：受了重击身体应当干脆地倒下去，而不是慢悠悠飘倒
-            A(PoseState.Knockdown,   1.3f,  true,  0.04f, "knocked down", "sweep fall", "knockdown", "falling back"),
-            A(PoseState.Death,       1.0f,  true,  0f,    "dying", "great sword death", "death"),
-            A(PoseState.Cast,        1.0f,  false, 0f,    "spell casting", "cast"),
+            A(PoseState.Knockdown,   1.3f,  0.04f, 1f,    true,  "knocked down", "sweep fall", "knockdown", "falling back"),
+            A(PoseState.Death,       1.0f,  0f,    1f,    true,  "dying", "great sword death", "death"),
+            A(PoseState.Cast,        1.0f,  0f,    1f,    false, "spell casting", "cast"),
             // ===== 动作库覆盖面补位（下载对应片段放入 Anims/ 后自动生效）=====
             // 每项前面的候选是【专用片段】，末尾候选是没有专用片段时的替代：
             // 格挡=Great Sword Blocking（替代=格斗架势收紧）；
             // 踉跄=Stunned（替代=受击慢放）；蓄力=Great Sword Casting（替代=聚气施法）；
             // 翻滚=Stand To Roll / Forward Roll（无片段时由 HumanoidAnimator 程序化翻滚）；
             // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
-            A(PoseState.Guard,       1.0f,  true,  0f,    "great sword blocking", "blocking", "block", "fighting idle"),
-            A(PoseState.Stagger,     0.55f, false, 0.1f,  "stunned", "dizzy", "stagger", "hit reaction"),
-            A(PoseState.Charge,      0.85f, true,  0f,    "great sword casting", "warming up", "taunt", "charge", "spell casting"),
+            A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "great sword blocking", "blocking", "block", "fighting idle"),
+            A(PoseState.Stagger,     0.55f, 0.10f, 1f,    false, "stunned", "dizzy", "stagger", "hit reaction"),
+            A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword casting", "warming up", "taunt", "charge", "spell casting"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
-            A(PoseState.Dodge,       1.7f,  false, 0.1f,  "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
+            A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
         };
+
+        /// <summary>由帧数据反推播放速度的上限：再快就只剩残影、看不清出的是什么招。
+        /// 3.4 倍下 Mixamo 的 2 秒挥砍片段可在 0.3 秒内打完发力窗，已足够"脆快"。</summary>
+        const float MaxDrivenSpeed = 3.4f;
 
         readonly Animator _animator;
         PlayableGraph _graph;
@@ -102,6 +112,7 @@ namespace AdversityRoad.Combat
         float[] _actionSpeed;
         bool[] _actionHold;
         float[] _actionStart;    // 起手偏移（片段比例）
+        float[] _actionEnd;      // 收招裁剪（片段比例，1=播到底）
         float[] _actionRawLen;   // 片段原始时长（起身反播等按原始长度计算）
         int _actionCount;
         float _playLen;    // 本次播放的有效时长/保持标志（起身反播时与默认不同）
@@ -167,16 +178,21 @@ namespace AdversityRoad.Combat
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
 
             // 解析招式片段；目录中未被映射的片段也全部接入（动作库预览可逐个试播）
-            var actionList = new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start)>();
+            var actionList =
+                new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start, float end)>();
             var connected = new HashSet<AnimationClip>();
             foreach (var m in ActionMap)
             {
                 var clip = Pick(byName, m.keys);
-                if (clip != null) { actionList.Add((m.pose, clip, m.speed, m.hold, m.start)); connected.Add(clip); }
+                if (clip != null)
+                {
+                    actionList.Add((m.pose, clip, m.speed, m.hold, m.start, m.end));
+                    connected.Add(clip);
+                }
             }
             foreach (var kv in byName)
                 if (!connected.Contains(kv.Value))
-                    actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f));
+                    actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
 
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
@@ -188,10 +204,11 @@ namespace AdversityRoad.Combat
             _actionSpeed = new float[Mathf.Max(1, _actionCount)];
             _actionHold = new bool[Mathf.Max(1, _actionCount)];
             _actionStart = new float[Mathf.Max(1, _actionCount)];
+            _actionEnd = new float[Mathf.Max(1, _actionCount)];
             _actionRawLen = new float[Mathf.Max(1, _actionCount)];
             for (int i = 0; i < _actionCount; i++)
             {
-                var (pose, clip, speed, hold, start) = actionList[i];
+                var (pose, clip, speed, hold, start, end) = actionList[i];
                 var cp = AnimationClipPlayable.Create(_graph, clip);
                 cp.SetApplyFootIK(false);
                 cp.SetDuration(clip.length);
@@ -202,11 +219,12 @@ namespace AdversityRoad.Combat
                 if (pose.HasValue) _actionIndex[pose.Value] = i;
                 string ck = Norm(clip.name);
                 if (!_clipIndex.ContainsKey(ck)) _clipIndex[ck] = i;
+                _actionStart[i] = Mathf.Clamp01(start);
+                _actionEnd[i] = Mathf.Clamp(end, _actionStart[i] + 0.1f, 1f);
                 _actionLen[i] = Mathf.Max(0.05f,
-                    clip.length * (1f - Mathf.Clamp01(start)) / Mathf.Max(0.05f, speed));
+                    clip.length * (_actionEnd[i] - _actionStart[i]) / Mathf.Max(0.05f, speed));
                 _actionSpeed[i] = speed;
                 _actionHold[i] = hold;
-                _actionStart[i] = Mathf.Clamp01(start);
                 _actionRawLen[i] = clip.length;
             }
 
@@ -244,11 +262,13 @@ namespace AdversityRoad.Combat
         }
         public void SetReady(bool ready) => _ready = ready;
 
-        /// <summary>触发一次招式（有对应片段才生效，否则维持 locomotion）。</summary>
-        public void PlayAction(PoseState p)
+        /// <summary>触发一次招式（有对应片段才生效，否则维持 locomotion）。
+        /// targetDuration&gt;0 时按【招式帧数据】反推播放速度：这一招在游戏里占多久，
+        /// 画面就在多久之内把发力窗打完——动作与判定从此对得上拍。</summary>
+        public void PlayAction(PoseState p, float targetDuration = 0f)
         {
             if (!Valid || !_actionIndex.TryGetValue(p, out int idx)) return;
-            PlayIndex(idx);
+            PlayIndex(idx, targetDuration);
         }
 
         /// <summary>按片段名试播动作库中任一动作（测试面板的逐个动作预览）。</summary>
@@ -282,17 +302,23 @@ namespace AdversityRoad.Combat
             return 0f;
         }
 
-        void PlayIndex(int idx)
+        void PlayIndex(int idx, float targetDuration = 0f)
         {
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
             var cp = (AnimationClipPlayable)_actions.GetInput(idx);
-            cp.SetSpeed(_actionSpeed[idx]);   // 起身反播可能改过速度，恢复默认
+            // 发力窗（掐头去尾后的片段时长）→ 按招式时长反推播放速度。
+            // 下限是这一招的默认倍速（绝不比现在慢），上限 MaxDrivenSpeed（不糊成残影）。
+            float window = _actionRawLen[idx] * (_actionEnd[idx] - _actionStart[idx]);
+            float speed = _actionSpeed[idx];
+            if (targetDuration > 0.02f && !_actionHold[idx] && window > 0.01f)
+                speed = Mathf.Clamp(window / targetDuration, speed, MaxDrivenSpeed);
+            cp.SetSpeed(speed);
             // 从起手偏移处起播：跳过片段开头缓慢的摆架势，按键即入发力挥击相位
             cp.SetTime(_actionRawLen[idx] * _actionStart[idx]);
             cp.SetDone(false);
             _cur = idx;
             _actionT = 0f;
-            _playLen = _actionLen[idx];
+            _playLen = _actionHold[idx] ? _actionLen[idx] : Mathf.Max(0.05f, window / speed);
             _playHold = _actionHold[idx];
             _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
         }
@@ -352,7 +378,10 @@ namespace AdversityRoad.Combat
             {
                 _actionT += dt;
                 float len = _playLen;
-                float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / 0.07f));
+                // 淡入/淡出时长随招式长短收缩：0.3 秒的快拳若还用固定 0.07/0.12 的过渡，
+                // 有近半程在与移动层混权，拳就"软"了。短招用短过渡，姿态立得住。
+                float fadeInDur = _playHold ? 0.07f : Mathf.Clamp(len * 0.18f, 0.025f, 0.07f);
+                float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / fadeInDur));
                 if (_playHold)
                 {
                     // 保持型（倒地/死亡/格挡）：播完停在最后一帧，等待外部切换姿态
@@ -360,7 +389,8 @@ namespace AdversityRoad.Combat
                 }
                 else
                 {
-                    float fadeOut = Mathf.Clamp01((len - _actionT) / 0.12f);
+                    float fadeOut = Mathf.Clamp01(
+                        (len - _actionT) / Mathf.Clamp(len * 0.28f, 0.04f, 0.12f));
                     _actionW = Mathf.Min(fadeIn, fadeOut);
                     if (_actionT >= len) { _actionW = 0f; _cur = -1; }
                 }

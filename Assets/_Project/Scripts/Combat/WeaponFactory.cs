@@ -99,9 +99,44 @@ namespace AdversityRoad.Combat
             r.sharedMaterial = m;
         }
 
+        /// <summary>给任意兵器（含模型自带兵器）挂一条刃尖拖尾：
+        /// 自动量测渲染包围盒，把拖尾节点放在刃身最长轴的远端（刃尖）。
+        /// 动捕角色用的是模型自带兵器，此前完全没有刀光——挥砍看不见轨迹，
+        /// 力量感少了一大截。</summary>
+        public static TrailRenderer AttachTipTrail(Transform weapon, Material baseMat, Color color)
+        {
+            if (weapon == null) return null;
+            // 已挂过就复用（换装/拔刀会反复调用，不能每次都长出一条新拖尾）
+            var old = weapon.Find(TipName);
+            if (old != null)
+            {
+                var ot = old.GetComponent<TrailRenderer>();
+                if (ot != null) return ot;
+            }
+            // 世界包围盒 → 兵器局部空间，取最长轴的远端作为刃尖
+            Bounds wb = default;
+            bool any = false;
+            foreach (var r in weapon.GetComponentsInChildren<Renderer>())
+            {
+                if (r == null || r is TrailRenderer || r is LineRenderer) continue;
+                if (!any) { wb = r.bounds; any = true; } else wb.Encapsulate(r.bounds);
+            }
+            if (!any) return null;
+            Vector3 localCenter = weapon.InverseTransformPoint(wb.center);
+            Vector3 localExt = weapon.InverseTransformVector(wb.extents);
+            localExt = new Vector3(Mathf.Abs(localExt.x), Mathf.Abs(localExt.y), Mathf.Abs(localExt.z));
+            Vector3 tip = localCenter;
+            if (localExt.y >= localExt.x && localExt.y >= localExt.z) tip.y += localExt.y * 0.92f;
+            else if (localExt.z >= localExt.x) tip.z += localExt.z * 0.92f;
+            else tip.x += localExt.x * 0.92f;
+            return Trail(weapon, tip, color, baseMat);
+        }
+
+        const string TipName = "WeaponTip";
+
         static TrailRenderer Trail(Transform parent, Vector3 localPos, Color color, Material baseMat)
         {
-            var tipGo = new GameObject("WeaponTip");
+            var tipGo = new GameObject(TipName);
             tipGo.transform.SetParent(parent, false);
             tipGo.transform.localPosition = localPos;
             var trail = tipGo.AddComponent<TrailRenderer>();
@@ -110,17 +145,9 @@ namespace AdversityRoad.Combat
             trail.endWidth = 0f;
             trail.minVertexDistance = 0.03f;
             trail.emitting = false;
-            Material m;
-            if (baseMat != null) m = new Material(baseMat);
-            else
-            {
-                var sh = Shader.Find("Universal Render Pipeline/Lit");
-                if (sh == null) sh = Shader.Find("Standard");
-                m = new Material(sh);
-            }
-            m.color = color;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);
-            trail.material = m;
+            // 刀光走【加色半透明】能量材质而不是不透明 Lit：不透明会画成一条实心
+            // 白蓝色带子（像贴了张纸），加色才读作"刃划过空气留下的光"。
+            trail.material = CombatFeedback.EnergyMaterial(color, 0.75f);
             trail.startColor = color;
             trail.endColor = new Color(color.r, color.g, color.b, 0f);
             return trail;
