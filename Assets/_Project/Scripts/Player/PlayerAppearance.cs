@@ -123,6 +123,55 @@ namespace AdversityRoad.Player
             return names.ToArray();
         }
 
+        // ===== 面具微调（每面具持久化）=====
+        // 面具的贴脸位置本来是【量测顶点】算出来的：沿纵向切片量截面宽，
+        // 猫耳这类窄突起会被排除，脸板顶下方 30% 即眼线。但这套量测依赖
+        // Mesh.isReadable——而 .glb 走 glTFast 的 ScriptedImporter，网格默认不可读，
+        // 量测必然失败，于是一路退到"中心上移 0.18 头宽"这个对谁都不准的常数。
+        // 那正是"面具的洞没对准眼睛、眼睛被挡住"的来源：不是算错，是根本没算。
+        //
+        // 结构性修复（Editor/ReadableMeshPostprocessor）只能救 FBX；.glb 这条路
+        // 短期内没有可靠的通用解。所以再给一条**玩家自己能拧的**：上下/前后/大小
+        // 三个微调量，按面具名持久化，戴上即生效。任何面具都能对准，不必等我猜常数。
+        public static float MaskUp { get; private set; }
+        public static float MaskFwd { get; private set; }
+        public static float MaskScale { get; private set; } = 1f;
+
+        string MaskKey(string suffix) => "mask_adj_" + CurrentMask + "_" + suffix;
+
+        void LoadMaskAdjust()
+        {
+            MaskUp = PlayerPrefs.GetFloat(MaskKey("up"), 0f);
+            MaskFwd = PlayerPrefs.GetFloat(MaskKey("fwd"), 0f);
+            MaskScale = PlayerPrefs.GetFloat(MaskKey("scale"), 1f);
+        }
+
+        /// <summary>微调当前面具：dUp/dFwd 以头宽为单位，dScale 为倍率增量。</summary>
+        public void AdjustMask(float dUp, float dFwd, float dScale)
+        {
+            if (string.IsNullOrEmpty(CurrentMask)) return;
+            MaskUp = Mathf.Clamp(MaskUp + dUp, -1.2f, 1.2f);
+            MaskFwd = Mathf.Clamp(MaskFwd + dFwd, -1f, 1f);
+            MaskScale = Mathf.Clamp(MaskScale + dScale, 0.5f, 2f);
+            PlayerPrefs.SetFloat(MaskKey("up"), MaskUp);
+            PlayerPrefs.SetFloat(MaskKey("fwd"), MaskFwd);
+            PlayerPrefs.SetFloat(MaskKey("scale"), MaskScale);
+            PlayerPrefs.Save();
+            ApplyMask();
+        }
+
+        /// <summary>面具微调复位。</summary>
+        public void ResetMaskAdjust()
+        {
+            if (string.IsNullOrEmpty(CurrentMask)) return;
+            MaskUp = 0f; MaskFwd = 0f; MaskScale = 1f;
+            PlayerPrefs.DeleteKey(MaskKey("up"));
+            PlayerPrefs.DeleteKey(MaskKey("fwd"));
+            PlayerPrefs.DeleteKey(MaskKey("scale"));
+            PlayerPrefs.Save();
+            ApplyMask();
+        }
+
         /// <summary>戴上/摘下面具（null/"" = 摘下），重选即替换，持久化。</summary>
         public void EquipMask(string maskName)
         {
@@ -715,6 +764,7 @@ namespace AdversityRoad.Player
                 if (p != null && p.name == CurrentMask) { prefab = p; break; }
             if (prefab == null) return;
 
+            LoadMaskAdjust();
             var mk = Object.Instantiate(prefab, head, false);
             mk.name = EquippedMaskName;
             FitMask(mk.transform, head);
@@ -979,7 +1029,7 @@ namespace AdversityRoad.Player
             float curW = (mk.TransformPoint(lb.center + axisOf(mid) * sz[mid] * 0.5f)
                 - mk.TransformPoint(lb.center - axisOf(mid) * sz[mid] * 0.5f)).magnitude;
             if (curW > 1e-5f)
-                mk.localScale *= Mathf.Clamp(headW / curW, 0.05f, 40f);
+                mk.localScale *= Mathf.Clamp(headW / curW * MaskScale, 0.05f, 40f);
 
             // 朝向：法向→角色前方，纵向→世界上方
             Vector3 nW = mk.TransformDirection(nLocal).normalized;
@@ -1016,7 +1066,8 @@ namespace AdversityRoad.Player
             // 正面完整呈现、不与头穿插（对齐后面具法向已转到角色前方 fwd）。
             float halfDepthW = (mk.TransformPoint(lb.center + axisOf(thin) * sz[thin] * 0.5f)
                 - mk.TransformPoint(lb.center)).magnitude;
-            Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f);
+            Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f)
+                + Vector3.up * (headW * MaskUp) + fwd * (headW * MaskFwd);   // 玩家微调
             mk.position += seat - mk.TransformPoint(anchorLocal);
         }
 

@@ -103,7 +103,9 @@ namespace AdversityRoad.UI
             int bRows = (backpacks.Length + 1 + 2) / 3;
             int wRows = (weapons.Length + 1 + 2) / 3;
             int mRows = (masks.Length + 1 + 2) / 3;
-            float height = 240 + bRows * 88 + wRows * 88 + mRows * 88 + 240;
+            bool hasMask = _appearance != null && !string.IsNullOrEmpty(_appearance.CurrentMask);
+            float adjH = hasMask ? 150f : 0f;   // 面具微调行
+            float height = 240 + bRows * 88 + wRows * 88 + mRows * 88 + adjH + 240;
             _panel = UiUtil.MakePanel(_canvas, "CharacterPanel", new Vector2(1120, height),
                 new Color(0.07f, 0.07f, 0.11f, 0.97f));
 
@@ -129,6 +131,27 @@ namespace AdversityRoad.UI
             string curM = _appearance != null ? _appearance.CurrentMask : "";
             Grid(masks, "不戴面具", curM, y, new Color(0.42f, 0.32f, 0.5f, 0.95f),
                 name => { if (_appearance != null) _appearance.EquipMask(name); Rebuild(); });
+            y -= mRows * 88 + 18;
+
+            // 面具微调：不同面具的眼孔位置差别很大，而 .glb 面具的网格不可读
+            // （glTFast 导入），运行时量不出眼孔线，只能退回一个对谁都不准的固定偏移。
+            // 与其让玩家等一个猜出来的常数，不如把这三个量交给玩家自己拧——
+            // 按面具名各自记住，戴上即生效。
+            if (hasMask)
+            {
+                Section("—— 面具微调（眼孔没对准眼睛时按这里；按面具分别记住） ——",
+                    new Color(0.85f, 0.8f, 1f), ref y, 50);
+                var col = new Color(0.34f, 0.3f, 0.44f, 0.95f);
+                float bw = 150f, gap = 158f, x0 = -474f;
+                AdjBtn("上移", x0 + gap * 0, y, bw, col, () => _appearance.AdjustMask(0.03f, 0, 0));
+                AdjBtn("下移", x0 + gap * 1, y, bw, col, () => _appearance.AdjustMask(-0.03f, 0, 0));
+                AdjBtn("前移", x0 + gap * 2, y, bw, col, () => _appearance.AdjustMask(0, 0.02f, 0));
+                AdjBtn("后移", x0 + gap * 3, y, bw, col, () => _appearance.AdjustMask(0, -0.02f, 0));
+                AdjBtn("放大", x0 + gap * 4, y, bw, col, () => _appearance.AdjustMask(0, 0, 0.05f));
+                AdjBtn("缩小", x0 + gap * 5, y, bw, col, () => _appearance.AdjustMask(0, 0, -0.05f));
+                AdjBtn("复位", x0 + gap * 6, y, bw, new Color(0.42f, 0.3f, 0.3f, 0.95f),
+                    () => _appearance.ResetMaskAdjust());
+            }
 
             var hint = UiUtil.MakeText(_panel.transform, "Hint",
                 "背包库：Resources/Characters/Backpacks/　武器库：Resources/Characters/Weapons/　面具库：Resources/Characters/Masks/\n" +
@@ -142,6 +165,14 @@ namespace AdversityRoad.UI
                 new Vector2(240, 74), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 28);
 
             _panel.SetActive(false);
+        }
+
+        /// <summary>面具微调按钮（点一下走一小步，可连点，即时生效不关面板）。</summary>
+        void AdjBtn(string label, float x, float y, float w, Color col,
+            UnityEngine.Events.UnityAction onClick)
+        {
+            UiUtil.MakeButton(_panel.transform, label, new Vector2(0.5f, 1f),
+                new Vector2(x, y), new Vector2(w, 66), col, onClick, 24);
         }
 
         // ---------- 复用小工具 ----------

@@ -832,9 +832,12 @@ namespace AdversityRoad.AI
                 // 位移驱动的步态会同步迈脚，读作"被打得连退几步"。
                 // 重击不走这里：位移完全交给 KnockFly 与倒地动画同步（否则双重
                 // 位移=先漂移一段再倒下，不真实）
-                // 0.5→0.85：轻连段的击退此前几乎看不见，敌人像钉在地上被挠痒痒
+                // knockback 是【力度记号】(1~16)，不是米数——这里必须换算。
+                // 上一版直接 ×0.85 当米用：巨剑横斩 knockback 4.5 → 一记轻击把人推开
+                // 3.8 米，连招直接脱靶。动作游戏的普通连段推开量在 0.2~0.8 米，
+                // 目的是「打得动」而不是「打飞」——推远了反而接不上下一段。
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * dmg.knockback * 0.85f;
+                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f);
                 StartCoroutine(KnockSlide(kb));
             }
 
@@ -876,14 +879,22 @@ namespace AdversityRoad.AI
                 if (heavyHit)
                 {
                     _downed = true;
-                    bool bigLaunch = dmg.knockback >= 4f || dmg.physicalDamage >= 45f;
+                    // 「击飞」是少数招式的特权，不是重击的默认表现。
+                    // 门槛从 knockback≥4 抬到 ≥8：4 这条线连巨剑横斩(4.5)都算数，
+                    // 于是普通连段每隔几下就把人抛出去一次——既接不上连招，
+                    // 也不是大作的做法（大作里只有专门的吹飞技/终结技才击飞）。
+                    // ≥8 之后只剩旋身空翻踢(9)与成招终结(×1.8)能触发。
+                    bool bigLaunch = dmg.knockback >= 8f || dmg.physicalDamage >= 60f;
                     Vector3 flyDir = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position);
                     if (bigLaunch)
                     {
                         float flyDur = 0.55f;
                         _staggerTimer = Mathf.Max(_staggerTimer, flyDur + 0.6f);
                         if (poser != null) poser.PlayTumble(flyDur);
-                        StartCoroutine(KnockFly(flyDir, 5.5f + dmg.knockback * 0.6f, flyDur));
+                        // 距离同样要换算并封顶：原式 5.5+knockback*0.6 在 knockback=16
+                        // （成招终结的旋身空翻踢）时算出 15 米，人直接飞出视野。
+                        StartCoroutine(KnockFly(flyDir,
+                            Mathf.Clamp(1.6f + dmg.knockback * 0.22f, 1.6f, 4.2f), flyDur));
                     }
                     else
                     {

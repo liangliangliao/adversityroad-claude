@@ -143,11 +143,19 @@ namespace AdversityRoad.Player
                 else if (t >= SheatheAim)
                 {
                     // 对口：右手握位(活)→鞘口(活)——剑尖被引导到鞘口、剑轴对齐鞘轴，
-                    // 两端点都实时跟随（跟手/跟鞘），e=1 时剑尖恰好落在鞘口
-                    float e = Mathf.SmoothStep(0f, 1f, (t - SheatheAim) / (SheatheSlide - SheatheAim));
+                    // 两端点都实时跟随（跟手/跟鞘），e=1 时剑尖恰好落在鞘口。
+                    //
+                    // 【先转正、再平移】：位置与旋转用同一条插值时，中途每一帧剑都
+                    // 既没对准轴、又已经贴到鞘口附近——看上去就是剑横在鞘口上。
+                    // 真实收刀是先把刃立正对准鞘口，再顺着轴推进去。所以让旋转跑得
+                    // 更快（0.6 处即完全对齐），位置照常到 1.0 才到位。
+                    float raw = (t - SheatheAim) / (SheatheSlide - SheatheAim);
+                    float e = Mathf.SmoothStep(0f, 1f, raw);
+                    float eRot = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(raw / 0.6f));
                     WorldPose(_rightHand, _dLP, _dLR, _dLS, out Vector3 hP, out Quaternion hR, out Vector3 hS);
                     WorldPose(_scab, MouthLP(), _sLR, _sLS, out Vector3 mP, out Quaternion mR, out Vector3 mS);
-                    SetBladeWorld(Vector3.Lerp(hP, mP, e), Quaternion.Slerp(hR, mR, e), Vector3.Lerp(hS, mS, e));
+                    SetBladeWorld(Vector3.Lerp(hP, mP, e), Quaternion.Slerp(hR, mR, eRot),
+                        Vector3.Lerp(hS, mS, e));
                 }
 
                 if (_t >= 1f)
@@ -192,8 +200,14 @@ namespace AdversityRoad.Player
         {
             if (_set == null || _lhand == null) return;
             Vector3 palmW = _lhand.TransformPoint(_palmL);
-            bool bladeOut = !_toDrawn || _transferred;
-            Vector3 aimPt = bladeOut ? _blade.TransformPoint(_gripL) : _rightHand.position;
+            // 鞘口该迎向谁，取决于这一下是拔还是收——这里原本一律迎向【剑柄】：
+            //   拔刀时对（手来取柄），收刀时**完全错**——先入鞘的是剑尖不是剑柄。
+            //   鞘口指着剑柄，等于让剑倒着往鞘里怼；随后的对口插值只能把剑整个
+            //   甩过来，画面上就是剑身斜穿鞘口、剑与鞘交叉成十字（截图三）。
+            // 收刀改为迎向剑尖，插入方向与剑轴天然共线。
+            Vector3 aimPt = _toDrawn
+                ? (_transferred ? _blade.TransformPoint(_gripL) : _rightHand.position)
+                : _blade.TransformPoint(_tipL);
             Vector3 aim = aimPt - palmW;
             Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);   // 底→口
             if (aim.sqrMagnitude < 1e-8f || axisW.sqrMagnitude < 1e-10f) return;

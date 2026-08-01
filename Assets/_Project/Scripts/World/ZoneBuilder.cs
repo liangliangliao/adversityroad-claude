@@ -179,6 +179,40 @@ namespace AdversityRoad.World
             BuildWillBridge(ctx);
             BuildFailureExhibit(ctx);
             BuildWillTower(ctx);
+
+            EnsureZoneLighting(ctx);
+        }
+
+        /// <summary>
+        /// 补灯：24 个区域里只有 6 个手工摆了路灯（街道/求职荒原/广场/挑衅路口/饥饿荒巷等），
+        /// 其余 18 个——包括截图里的小题大做审判庭——**一盏灯都没有**。
+        /// 夜里只剩环境光与一盏斜射主光，地面和墙面就糊成一片黑。
+        ///
+        /// 与其在十八个建场函数里逐个手摆，不如统一补一遍：凡是自身半径 60m 内
+        /// 没有任何灯的区域，围着它的出生点补一圈四盏。已经手工布过灯的区域
+        /// （灯就在附近）自动跳过，不会叠加。
+        /// </summary>
+        static void EnsureZoneLighting(WorldContext ctx)
+        {
+            if (ctx.dayNight == null || ctx.playerSpawns == null) return;
+            for (int z = 0; z < ctx.playerSpawns.Length; z++)
+            {
+                Vector3 c = ctx.playerSpawns[z];
+                c.y = 0f;
+                bool hasLamp = false;
+                foreach (var l in ctx.dayNight.lamps)
+                {
+                    if (l == null) continue;
+                    Vector3 lp = l.transform.position; lp.y = 0f;
+                    if ((lp - c).sqrMagnitude < 60f * 60f) { hasLamp = true; break; }
+                }
+                if (hasLamp) continue;
+                // 出生点四周一圈（错开正前方，免得挡住玩家出门的视线）
+                Lamp(ctx, c + new Vector3(-11f, 0, 6f));
+                Lamp(ctx, c + new Vector3(11f, 0, 6f));
+                Lamp(ctx, c + new Vector3(-13f, 0, 26f));
+                Lamp(ctx, c + new Vector3(13f, 0, 26f));
+            }
         }
 
         // ================= 第一区：独居小屋（室内） =================

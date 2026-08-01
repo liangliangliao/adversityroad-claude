@@ -571,6 +571,7 @@ namespace AdversityRoad.Combat
         int _lastFusionVariety;
 
         float _lastExhaustHint = -99f;   // 疲惫提示节流（不刷屏）
+        float _lastGuardFailHint = -99f; // 格挡力竭提示节流
 
         void RaiseSeq() => PushFusionHud(true);
 
@@ -1380,9 +1381,26 @@ namespace AdversityRoad.Combat
                         new Color(1f, 0.4f, 0.1f), 1.3f);
                     GameEvents.RaiseSubtitle("危险攻击不可格挡——看红光就闪避！");
                 }
-                bool blocked = IsGuarding && !backstab && !dmg.unblockable
-                    && _player.Stats.SpendStamina(phys * 0.5f);
+                // 格挡结算：正面 + 非必中 + 体力够 → 减伤 80%。
+                // 体力不够时此前是【静默失败】——玩家举着盾却照吃满伤，
+                // 读作"这个挡按钮根本没用"。现在明确告知，并保留一半减伤，
+                // 让"挡住了但很勉强"和"压根没挡"在手感上分得开。
+                bool guardValid = IsGuarding && !backstab && !dmg.unblockable;
+                bool blocked = guardValid && _player.Stats.SpendStamina(phys * 0.5f);
                 if (blocked) phys *= 0.2f;
+                else if (guardValid)
+                {
+                    phys *= 0.55f;   // 力竭格挡：挡下一部分，但被压制
+                    CombatFeedback.DamageNumber(transform.position, "力竭·格挡被压制",
+                        new Color(1f, 0.75f, 0.35f), 1.15f);
+                    if (Time.time - _lastGuardFailHint > 2.5f)
+                    {
+                        _lastGuardFailHint = Time.time;
+                        GameEvents.RaiseSubtitle("体力见底，挡不住了——先拉开身位喘口气。");
+                    }
+                }
+                else if (IsGuarding && backstab)
+                    GameEvents.RaiseSubtitle("格挡只护正面——被绕到背后了。");
                 // 蓄力气场=防御姿态：受物理伤害大减（敌人也几乎无法近身）
                 bool chargeGuard = _charging;
                 if (chargeGuard) phys *= 0.25f;
