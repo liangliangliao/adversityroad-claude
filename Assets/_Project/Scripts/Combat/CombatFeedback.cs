@@ -225,8 +225,11 @@ namespace AdversityRoad.Combat
         // ---------- 顿帧（打击"分量"的第一来源）----------
         // 卡肉是动作游戏表达力道最有效的手段：刀砍进身体的那一瞬间，画面短暂停住，
         // 玩家才会觉得"这一下砸实了"。两处关键修正：
-        // ① 强度分级——轻拳 0.04s、连段末段 0.07s、重击 0.10s、处决 0.14s，
+        // ① 强度分级——轻拳 0.035s、连段末段 0.06s、重击 0.09s、处决 0.13s，
         //    此前重击与轻击几乎一样，于是所有攻击都读作"挠痒痒"；
+        //    上限从 0.115 收到 0.10、冻结深度从 0.05 放宽到 0.07：一记 0.30 秒的
+        //    轻击里塞 0.115 秒的近乎全停，占了三分之一时长，读出来就是"打着打着
+        //    人不动了"。顿帧要短到只当作"撞击的那一下"，不能长到像掉帧；
         // ② 可续期——此前"正在顿帧中"会直接丢掉新的顿帧请求，而群战/连段里
         //    命中往往密集发生，重击顿帧常被前一记轻击的顿帧吃掉。改为取更晚的
         //    截止时刻续期：每一下都吃得到与自己力度相称的顿挫。
@@ -252,7 +255,7 @@ namespace AdversityRoad.Combat
         {
             _hitStopping = true;
             float prev = Time.timeScale;
-            Time.timeScale = 0.05f;
+            Time.timeScale = 0.07f;
             while (Time.unscaledTime < _hitStopUntil) yield return null;
             if (Time.timeScale < 0.9f) Time.timeScale = prev; // 期间未被面板改动才恢复
             _hitStopping = false;
@@ -260,7 +263,7 @@ namespace AdversityRoad.Combat
 
         /// <summary>按打击力度给顿帧（power01：0=轻拳，1=终结技级）。</summary>
         public static void HitStopByPower(float power01) =>
-            HitStop(Mathf.Lerp(0.04f, 0.115f, Mathf.Clamp01(power01)));
+            HitStop(Mathf.Lerp(0.035f, 0.10f, Mathf.Clamp01(power01)));
 
         // ---------- 命中火花：放射状光条爆开（打击感核心） ----------
 

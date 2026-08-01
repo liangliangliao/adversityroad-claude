@@ -44,22 +44,27 @@ namespace AdversityRoad.Combat
         // 手感三板斧（根治"出招慢、软绵绵、连点糊成一团"）：
         // ① start 起手偏移——Mixamo 原始攻击片段前 12%~22% 是缓慢的摆架势预备，
         //    从偏移处起播，一按键立刻进入发力挥击相位，出手零迟滞；
-        // ② end 收招裁剪——片段尾部 20%~30% 是"慢慢走回站姿"的回位段，动作游戏
-        //    里这一段由下一招或移动层直接接管。裁掉它，出招不再拖一条尾巴；
+        // ② end 收招裁剪——片段尾部 20%~32% 是"慢慢走回站姿"的回位段，动作游戏
+        //    里这一段由下一招或移动层直接接管。裁掉它，出招不再拖一条尾巴。
+        //    巨剑类片段最长，尾巴也裁得最狠：发力窗越短，反推出的倍速要求越低，
+        //    「刃真正扫过的那一瞬」也就越早落在判定窗（windup~windup+open）里——
+        //    否则倍速被可读性上限压住时，判定会明显早于画面上的挥击；
         // ③ speed 只是**下限**：真正的播放速度由招式的帧数据反推（见 PlayIndex），
-        //    让"发力窗"恰好在这一招的判定窗内播完——招式表说 0.3 秒出一拳，
-        //    画面就真的 0.3 秒打完一拳。此前是固定倍速，片段有效时长（≈0.6~1.0s）
-        //    普遍是招式时长（0.30~0.35s）的两三倍，于是每一击都只播到一半就被下一击
-        //    重置：看起来永远是"慢吞吞地举手、还没打到就换了个动作"。
+        //    让发力窗尽量在这一招的窗口内播完。此前是固定倍速，片段有效时长
+        //    （≈0.6~1.0s）普遍是招式时长（0.30~0.35s）的两三倍，于是每一击都只播到
+        //    一半就被下一击重置：看起来永远是"慢吞吞地举手、还没打到就换了个动作"。
+        //    注意反推出的倍速要再过一道【可读性上限】MaxDrivenSpeed——
+        //    短片段（拳腿类 ≈1s）能真的在 0.3 秒内打完一拳；长片段（巨剑类 2 秒以上）
+        //    做不到，会被下一招切在半路。这是刻意的取舍，理由见 MaxDrivenSpeed。
         static readonly ActionDef[] ActionMap =
         {
-            A(PoseState.Attack,      1.75f, 0.20f, 0.74f, false, "great sword slash"),
-            A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.82f, false, "great sword jump attack", "great sword jump", "great sword high spin attack"),
-            A(PoseState.AttackUp,    1.75f, 0.20f, 0.74f, false, "great sword slash (1)", "great sword high spin attack"),
+            A(PoseState.Attack,      1.75f, 0.20f, 0.68f, false, "great sword slash"),
+            A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword jump attack", "great sword jump", "great sword high spin attack"),
+            A(PoseState.AttackUp,    1.75f, 0.20f, 0.68f, false, "great sword slash (1)", "great sword high spin attack"),
             A(PoseState.SwordThrust, 1.85f, 0.18f, 0.72f, false, "stabbing", "stab"),
-            A(PoseState.AttackLeap,  1.55f, 0.12f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
+            A(PoseState.AttackLeap,  1.55f, 0.12f, 0.80f, false, "great sword jump attack", "great sword jump", "jump attack"),
             A(PoseState.JumpAttack,  1.6f,  0.15f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
-            A(PoseState.AttackSpin,  1.6f,  0.15f, 0.82f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
+            A(PoseState.AttackSpin,  1.6f,  0.15f, 0.76f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
             A(PoseState.PunchJab,    1.95f, 0.15f, 0.70f, false, "lead jab", "jab"),
             A(PoseState.PunchCross,  1.85f, 0.15f, 0.70f, false, "cross punch"),
             A(PoseState.AttackKick,  1.8f,  0.18f, 0.76f, false, "kicking"),
@@ -85,9 +90,26 @@ namespace AdversityRoad.Combat
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
         };
 
-        /// <summary>由帧数据反推播放速度的上限：再快就只剩残影、看不清出的是什么招。
-        /// 3.4 倍下 Mixamo 的 2 秒挥砍片段可在 0.3 秒内打完发力窗，已足够"脆快"。</summary>
-        const float MaxDrivenSpeed = 3.4f;
+        /// <summary>
+        /// 由帧数据反推播放速度的【可读性上限】。
+        ///
+        /// 上一版取 3.4——那是按"一定要在招式窗口内把整段发力窗播完"倒推的，
+        /// 但它超过了眼睛能连成动作的极限：30fps 下 3.4 倍意味着相邻两帧之间
+        /// 跳过 0.11 秒的动作数据，肢体位置一跳一跳地闪，大脑读不出"运动"，
+        /// 只读出"位置在变的静止姿势"——这就是"快到看似角色静止"的来源。
+        /// 2.2 倍下每帧推进 0.073 秒，动作仍然连得起来。
+        ///
+        /// 代价要说清楚：长片段（巨剑类 2 秒以上）因此无法在 0.35 秒内播完整个
+        /// 发力窗，会被下一招切断。这是对的——动作游戏里连段本来就是"一刀砍到
+        /// 一半接下一刀"，看得清比播得完重要。
+        /// </summary>
+        const float MaxDrivenSpeed = 2.2f;
+
+        /// <summary>单次出招在画面上至少要占的时间（≈30fps 下 5-6 帧）。
+        /// 技能连招里 0.14 秒一段的节拍若原样反推，动作只剩三四帧就换下一个，
+        /// 同样会读成"抖了一下"而不是"打了一下"。低于此值的节拍按此值给动画，
+        /// 动作因此会略微溢出节拍、被下一段切断——连续，但不空转。</summary>
+        const float MinShownMotion = 0.18f;
 
         readonly Animator _animator;
         PlayableGraph _graph;
@@ -311,7 +333,11 @@ namespace AdversityRoad.Combat
             float window = _actionRawLen[idx] * (_actionEnd[idx] - _actionStart[idx]);
             float speed = _actionSpeed[idx];
             if (targetDuration > 0.02f && !_actionHold[idx] && window > 0.01f)
-                speed = Mathf.Clamp(window / targetDuration, speed, MaxDrivenSpeed);
+            {
+                // 节拍再短，动画也按 MinShownMotion 给（短于此就看不成一个动作）
+                float shown = Mathf.Max(targetDuration, MinShownMotion);
+                speed = Mathf.Clamp(window / shown, speed, MaxDrivenSpeed);
+            }
             cp.SetSpeed(speed);
             // 从起手偏移处起播：跳过片段开头缓慢的摆架势，按键即入发力挥击相位
             cp.SetTime(_actionRawLen[idx] * _actionStart[idx]);
@@ -380,7 +406,9 @@ namespace AdversityRoad.Combat
                 float len = _playLen;
                 // 淡入/淡出时长随招式长短收缩：0.3 秒的快拳若还用固定 0.07/0.12 的过渡，
                 // 有近半程在与移动层混权，拳就"软"了。短招用短过渡，姿态立得住。
-                float fadeInDur = _playHold ? 0.07f : Mathf.Clamp(len * 0.18f, 0.025f, 0.07f);
+                // 下限 0.04（原 0.025）：过渡太短会让连段每一段都"啪"地硬切上来，
+                // 硬切同样读作卡顿而不是快——快要靠动作本身，不能靠切换。
+                float fadeInDur = _playHold ? 0.07f : Mathf.Clamp(len * 0.18f, 0.04f, 0.07f);
                 float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / fadeInDur));
                 if (_playHold)
                 {

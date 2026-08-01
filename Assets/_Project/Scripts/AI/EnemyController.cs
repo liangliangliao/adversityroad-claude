@@ -814,7 +814,7 @@ namespace AdversityRoad.AI
             // 处决命中：仪式感反馈——横幅「处决」+ 强顿帧 + 短慢镜 + 能量爆发
             if (execution)
             {
-                CombatFeedback.HitStop(0.15f);
+                CombatFeedback.HitStop(0.13f);
                 CombatFeedback.SlowMo(0.4f, 0.16f);
                 CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近

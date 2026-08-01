@@ -344,6 +344,14 @@ namespace AdversityRoad.Combat
                     return;
                 }
                 if (_depth >= 1 && _stageT >= 0.1f) { QiShou(); return; }
+                // 动作锁期间【不再重入蓄力】——「快速按重键的巨剑跳劈看起来完全不动」
+                // 的直接原因：轻击有这道门（下面 358 行进缓冲），重击一直没有，
+                // 于是每按一次重键都无条件 StartCharge，把正在演的跳劈/旋风斩从
+                // 第 0 帧切成蓄力姿态。连点时角色就在「蓄力第 0 帧 ↔ 跳劈第 0 帧」
+                // 之间来回跳，两个姿态都还没动起来就被换掉，看上去像定住了；
+                // 顺带每按一次还白扣 6 点体力、把 HeavyCombo 协程打断在半路。
+                // 恢复相位（CanCancelRecovery）仍可取消接下一发，连发手感不受影响。
+                if (_fsm.IsActionLocked && !_fsm.CanCancelRecovery) return;
                 MoveIntent(out _heavyDirFwd, out _heavyDirSide);
                 StartCharge();
                 return;
@@ -523,8 +531,15 @@ namespace AdversityRoad.Combat
                 : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
             // 招式分工：剑系主司「击退」（重兵器大幅推开、打断敌人突进），
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，帧数更短、削韧更高）。
-            float knock = (nextDepth >= 2 ? 2f : 1f) + (recipeHit ? 5f : 0f);
-            if (btn == AttackBtn.Kick) knock += 3.5f;
+            //
+            // 击退改从【招式规格表】读，不再用一条与招式无关的算式拼。
+            // 旧式子只看「第几段 + 是不是剑」，于是同为剑系的突刺和旋风绝斩击退一样大，
+            // 而判定框、伤害、削韧却都是按 MoveTable 各招独立给的——
+            // 「看到的轨迹」和「打出的力度」对不上就是从这里来的。
+            // 现在轨迹(判定形状)、伤害、削韧、击退四项全部出自同一行规格：
+            // 直拳 1.0 → 侧踹 2.0 → 突刺 3.0 → 横斩/撩斩 4.5 → 旋风绝斩 6.5 → 旋身空翻踢 9.0，
+            // 成招终结再 ×1.8。招式越大，推得越远，所见即所得。
+            float knock = MoveTable.Get(playPose).knockback * (recipeHit ? 1.8f : 1f);
             // ===== 自由融合加成（不局限于预设配方）=====
             // 只要这一串里用到的【元素种类】够多，就自动成招——伤害按种类阶梯上升，
             // 招名由实际打出的元素动态生成。拳→跃→剑→术→闪 这种没人预设过的串法，
@@ -792,19 +807,20 @@ namespace AdversityRoad.Combat
         IEnumerator RanWu(float charge01)
         {
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
-            _fsm.RequestState(CombatState.Finisher, 1.5f);
-            _player.SetInvincible(1.6f);
-            CombatFeedback.UltimateShot(1.5f);   // 镜头拉近看清连段
+            _fsm.RequestState(CombatState.Finisher, 1.6f);
+            _player.SetInvincible(1.7f);
+            CombatFeedback.UltimateShot(1.6f);   // 镜头拉近看清连段
             // 大幅剑技串成连段：节奏留给动作本体，每击只配一道收敛的刀光，
             // 收招才一次中等能量爆发 + 短时缓——特效点到为止，不糊住招式。
-            // 节拍收紧到 0.22~0.26 秒一击（原 0.27~0.32）：超必杀该是一串**急促**的
-            // 连斩，而不是四记各自演完的独立招式；每段的动画也压进各自的节拍里。
+            // 节拍 0.25~0.28 秒一击（原始 0.27~0.32，上一版一度压到 0.22 又收回来）：
+            // 0.22 秒一刀在 30fps 上只剩六七帧，四刀连起来读成"抖了四下"而不是"砍了四刀"。
+            // 超必杀要的是急促，不是看不清——0.25 已经明显快于原始节拍，且每一刀都立得住。
             var seq = new (PoseState pose, float dmg, float posture, float knock, float wait, Color arc)[]
             {
-                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.23f, new Color(0.6f, 0.85f, 1f)),
-                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.26f, new Color(0.7f, 0.9f, 1f)),
-                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.22f, new Color(0.8f, 0.92f, 1f)),
-                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.38f, new Color(0.55f, 0.8f, 1f)),
+                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.25f, new Color(0.6f, 0.85f, 1f)),
+                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.28f, new Color(0.7f, 0.9f, 1f)),
+                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.25f, new Color(0.8f, 0.92f, 1f)),
+                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.40f, new Color(0.55f, 0.8f, 1f)),
             };
             float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
             for (int i = 0; i < seq.Length; i++)
@@ -813,7 +829,7 @@ namespace AdversityRoad.Combat
                 PlayPose(s.pose, s.wait);
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
-                // 判定窗必须短于节拍（0.08+0.13=0.21s < 最短 0.22s 一拍）：
+                // 判定窗必须短于节拍（0.08+0.13=0.21s < 最短 0.25s 一拍）：
                 // 否则下一段的 OpenHitboxTimed 会把上一段还没开完的判定协程掐掉，
                 // 乱舞就会"演了四刀只结算两刀"——看着华丽却打不痛人。
                 OpenHitboxTimed(0.08f, 0.13f, baseDmg * s.dmg, s.posture, s.knock, false,

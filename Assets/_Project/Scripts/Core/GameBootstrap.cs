@@ -391,7 +391,7 @@ namespace AdversityRoad.Core
             dingxin.willCost = 25;
             dingxin.mentalRestore = 45;
             dingxin.cooldown = 12;
-            dingxin.castLockTime = 1.12f;
+            dingxin.castLockTime = 1.25f;
             dingxin.isSteadyHeartGuard = true;
             exec.equippedSkills.Add(dingxin);
 
@@ -431,7 +431,7 @@ namespace AdversityRoad.Core
             huozhong.description = "燃火·三段突进斩：点火解冻→火色双突进斩→上撩火浪终结。恢复行动力、意势+1——动力是被行动召回的。";
             huozhong.staminaCost = 6;
             huozhong.cooldown = 10;
-            huozhong.castLockTime = 1.25f;
+            huozhong.castLockTime = 1.3f;
             huozhong.isFiveMinuteSpark = true;
             exec.equippedSkills.Add(huozhong);
 
@@ -442,7 +442,7 @@ namespace AdversityRoad.Core
             budu.description = "镜界·退身斩：镜环展开护心（抵消下一次心理攻击）→后空翻拉开身位→掷出镜界气刃。无法确认的事，不当成事实。";
             budu.staminaCost = 8;
             budu.cooldown = 14;
-            budu.castLockTime = 1.0f;
+            budu.castLockTime = 1.1f;
             budu.isMindShield = true;
             exec.equippedSkills.Add(budu);
 
