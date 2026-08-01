@@ -8,6 +8,8 @@ namespace AdversityRoad.World
     public class PedestrianWanderer : MonoBehaviour
     {
         public float wanderRadius = 18f;
+        /// <summary>程序化人形动画：按 NavMesh 实际移速喂步态（不喂就一直站着滑行）。</summary>
+        public Combat.HumanoidAnimator anim;
 
         NavMeshAgent _agent;
         Vector3 _home;
@@ -23,6 +25,14 @@ namespace AdversityRoad.World
         void Update()
         {
             if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+            // 步态：把实际移速折算成 0-1 喂给骨骼动画，行人才是"走"而不是"滑"
+            if (anim != null)
+            {
+                float v = _agent.velocity.magnitude;
+                anim.SetLocomotion(Mathf.Clamp01(v / 3.2f), false, true, v);
+            }
+
             if (Time.time < _nextPick) return;
             if (_agent.pathPending || _agent.remainingDistance > 0.8f) return;
 

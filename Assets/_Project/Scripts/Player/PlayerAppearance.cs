@@ -1428,6 +1428,28 @@ namespace AdversityRoad.Player
             Vector3 midP = mid != null ? mid.position : wrist + hand.forward * 0.1f;
             palm = Vector3.Lerp(wrist, midP, 0.55f);          // 掌心（略偏向指根）
 
+            // 【柄心外移到掌面之外】——"手插进剑柄里"的根因就在这一行的缺失。
+            // palm 是掌【内部】的一个点；把柄心直接对到它，柄轴就从手掌中间穿过去，
+            // 手与柄互相嵌套，无论手指怎么卷曲都读作"手插在剑柄上"而不是"握住"。
+            // 真实握持是：柄贴在掌面上，四指绕过去合拢。所以要沿【掌面法向】
+            // 把柄心推出去大约半个柄粗（≈0.32 拳宽）。
+            // 法向 = 柄轴 × 手掌纵向，符号用拇指定（拇指恒在握持侧）。
+            {
+                Vector3 across = (idx != null && pky != null)
+                    ? (idx.position - pky.position) : hand.right;
+                Vector3 along = midP - wrist;
+                Vector3 n = Vector3.Cross(across.normalized, along.normalized);
+                if (n.sqrMagnitude > 1e-6f)
+                {
+                    n.Normalize();
+                    if (thb != null && Vector3.Dot(n, thb.position - palm) < 0f) n = -n;
+                    float w = (idx != null && pky != null)
+                        ? (idx.position - pky.position).magnitude
+                        : Mathf.Max(0.06f, (midP - wrist).magnitude);
+                    palm += n * (w * 0.32f);
+                }
+            }
+
             // 柄轴 = 横穿手掌（小指根→食指根）——握拳时刀柄正穿过蜷曲四指
             if (idx != null && pky != null)
             {

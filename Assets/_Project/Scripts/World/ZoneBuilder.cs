@@ -2286,16 +2286,33 @@ namespace AdversityRoad.World
                         4f, UnityEngine.AI.NavMesh.AllAreas))
                     pos = navHit.position + Vector3.up * 1f;
                 else continue;
-                var ped = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                ped.name = "Pedestrian";
+                // 行人此前就是一个【胶囊基元】——"完全没有人样"是字面意义上的：
+                // 那真的只是 CreatePrimitive(Capsule) 涂了个随机颜色。
+                // 改用项目里已有的程序化人形骨骼（HumanoidRig，玩家无模型时的同一套
+                // 兜底），十几个方块拼出头/躯干/四肢，手机上开销可忽略，
+                // 但一眼就是个人；再挂 SimpleAnimator 让他们走路时摆臂迈腿。
+                var ped = new GameObject("Pedestrian");
                 ped.transform.position = pos;
-                ped.transform.localScale = new Vector3(0.8f, 0.9f, 0.8f);
-                Paint(ctx, ped, new Color(
-                    0.4f + (float)rng.NextDouble() * 0.5f,
-                    0.4f + (float)rng.NextDouble() * 0.5f,
-                    0.4f + (float)rng.NextDouble() * 0.5f));
-                ped.AddComponent<UnityEngine.AI.NavMeshAgent>();
-                ped.AddComponent<PedestrianWanderer>();
+
+                var visual = new GameObject("Visual").transform;
+                visual.SetParent(ped.transform, false);
+                var rig = Combat.HumanoidRig.Build(visual, PedestrianLook(rng), ctx.mat);
+
+                // 用 HumanoidAnimator（驱动各关节的那个）而不是 SimpleAnimator
+                //（后者只整体倾斜 visual，没有 rig 字段，对方块骨骼等于没动）
+                var anim = ped.AddComponent<Combat.HumanoidAnimator>();
+                anim.visual = visual;
+                anim.rig = rig;
+
+                // NavMeshAgent 自己不需要碰撞体，但行人要能被兵器判定扫到/挡住镜头，
+                // 补一个与原胶囊等效的碰撞体
+                var col = ped.AddComponent<CapsuleCollider>();
+                col.height = 1.8f; col.radius = 0.32f; col.center = new Vector3(0, -0.1f, 0);
+
+                var agent = ped.AddComponent<UnityEngine.AI.NavMeshAgent>();
+                agent.radius = 0.32f;
+                agent.height = 1.8f;
+                ped.AddComponent<PedestrianWanderer>().anim = anim;
             }
 
             var carRng = new System.Random(23);
@@ -2446,6 +2463,24 @@ namespace AdversityRoad.World
                     Decoration(ctx, "Window", wp + new Vector3(0, 0, facing * 0.04f),
                         new Vector3(1.4f, 1.1f, 0.1f), new Color(0.95f, 0.9f, 0.6f));
                 }
+        }
+
+        /// <summary>随机行人外观：肤色/衣裤/鞋各自小幅随机，路人之间看得出差别。</summary>
+        static Combat.HumanoidRig.Config PedestrianLook(System.Random rng)
+        {
+            float R() => (float)rng.NextDouble();
+            return new Combat.HumanoidRig.Config
+            {
+                skin = Color.Lerp(new Color(0.94f, 0.78f, 0.64f), new Color(0.55f, 0.40f, 0.30f), R()),
+                top = new Color(0.25f + R() * 0.5f, 0.25f + R() * 0.5f, 0.3f + R() * 0.5f),
+                bottom = new Color(0.18f + R() * 0.3f, 0.18f + R() * 0.3f, 0.22f + R() * 0.35f),
+                shoes = new Color(0.14f + R() * 0.15f, 0.14f + R() * 0.15f, 0.16f + R() * 0.15f),
+                hair = Color.Lerp(new Color(0.08f, 0.07f, 0.07f), new Color(0.35f, 0.24f, 0.14f), R()),
+                eye = new Color(0.1f, 0.1f, 0.12f),
+                hasHat = R() < 0.18f,
+                hatColor = new Color(0.3f + R() * 0.4f, 0.3f + R() * 0.35f, 0.3f + R() * 0.35f),
+                bulk = 0.86f + R() * 0.3f
+            };
         }
 
         static void Lamp(WorldContext ctx, Vector3 basePos)
