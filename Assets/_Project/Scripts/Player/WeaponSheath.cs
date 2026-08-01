@@ -70,8 +70,10 @@ namespace AdversityRoad.Player
         // 收刀: [0,0.42]右手持剑（左手同时把鞘横置到位）
         //       [0.42,0.72]剑先转到与鞘轴共线、再把剑尖送到鞘口
         //       [0.72,1]   沿鞘轴推进到底
-        const float DrawSlide = 0.28f, DrawHand = 0.50f, DrawGrab = 0.72f;
-        const float SheatheAim = 0.42f, SheatheSlide = 0.72f;
+        // 交接点（占总时长比例）：踩在动画里手真正碰到柄 / 剑尖进鞘口的那一拍。
+        // 只剩这两个数需要对——不再有任何轨迹插值要调。
+        const float DrawGrab = 0.42f;       // 拔刀：手抓住柄
+        const float SheatheSlide = 0.68f;   // 收刀：剑尖入鞘口
 
         /// <summary>在拔刀/收刀之间切换，用 dur 秒过渡（与动画时长同步）。</summary>
         public void Toggle(float dur)
@@ -103,66 +105,41 @@ namespace AdversityRoad.Player
                 float t = Mathf.Clamp01(_t);
                 AimScabbard();   // 鞘始终钉在左手掌心，鞘口迎向剑柄（横向呈鞘）
 
-                if (_toDrawn)
+                // ================= 过渡：让【动画】主导，程序只做一次交接 =================
+                //
+                // 动作库里本来就有 `Draw Sword 2` 与 `Sheathing Sword` 两段真实拔/收刀
+                // 动画——手臂怎么伸向剑柄、怎么送回鞘口，全都是作者做好的。
+                // 之前的实现却在同一时间【另外算了一条剑的轨迹】：把剑从"鞘口位姿"
+                // 插值到"右手握位"。两套东西各算各的，从不一致，于是：
+                //   · 剑沿着一条谁也没设计过的弧线飞出去（插值出来的中间位姿）；
+                //   · 手明明还没到，剑已经在动 → 读作"没握住就拔出来了"；
+                //   · 插值终点与手的真实位置对不上，最后一帧只能瞬移过去 → "突然飞到鞘口"。
+                //
+                // 所以正确做法是**减法**：不再插值任何轨迹，剑在交接点之前老老实实待在
+                // 原属主（鞘里 / 右手里）身上，到点一次性换属主。中间那段"拔出/送入"的
+                // 观感由动画本身承担——它本来就画好了。
+                bool grabbed = _toDrawn ? t >= DrawGrab : t < SheatheSlide;
+                if (grabbed)
                 {
-                    if (t < DrawSlide)
+                    // 剑归右手：跟着手走（拔刀后半程 / 收刀前半程）
+                    if (_blade.parent != _rightHand)
                     {
-                        if (_blade.parent == _scab)
-                        { _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS; }
+                        _blade.SetParent(_rightHand, false);
+                        _addGrip?.Invoke(_rightHand);     // 五指合拢握柄
                     }
-                    else if (t < DrawHand)
-                    {
-                        // 沿鞘轴滑出：座位→鞘口（纯轴向，剑始终在鞘管里）
-                        float e = Mathf.SmoothStep(0f, 1f, (t - DrawSlide) / (DrawHand - DrawSlide));
-                        _blade.localRotation = _sLR; _blade.localScale = _sLS;
-                        _blade.localPosition = Vector3.Lerp(_sLP, MouthLP(), e);
-                    }
-                    else if (!_transferred)
-                    {
-                        // 鞘口(活)→右手握位(活)：两端点都实时跟随，t=DrawGrab 时与手位
-                        // 完全一致，交接零跳变
-                        float e = Mathf.SmoothStep(0f, 1f, Mathf.Min(1f, (t - DrawHand) / (DrawGrab - DrawHand)));
-                        WorldPose(_scab, MouthLP(), _sLR, _sLS, out Vector3 mP, out Quaternion mR, out Vector3 mS);
-                        WorldPose(_rightHand, _dLP, _dLR, _dLS, out Vector3 hP, out Quaternion hR, out Vector3 hS);
-                        SetBladeWorld(Vector3.Lerp(mP, hP, e), Quaternion.Slerp(mR, hR, e), Vector3.Lerp(mS, hS, e));
-                        if (t >= DrawGrab)
-                        {
-                            _transferred = true;
-                            _blade.SetParent(_rightHand, false);
-                            _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
-                            _addGrip?.Invoke(_rightHand);
-                        }
-                    }
+                    _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
                 }
-                else if (t >= SheatheSlide)
+                else
                 {
-                    // 末段：沿鞘轴滑入——剑尖已在鞘口，纯轴向推到座位（真实入鞘轨迹）
+                    // 剑归鞘：静静待在鞘中（拔刀前半程 / 收刀后半程）
                     if (_blade.parent != _scab)
                     {
-                        _removeGrip?.Invoke(_rightHand);    // 手放开，剑顺鞘管滑到底
-                        _blade.SetParent(_scab, true);
+                        _removeGrip?.Invoke(_rightHand);
+                        _blade.SetParent(_scab, false);
                     }
-                    float e = Mathf.SmoothStep(0f, 1f, (t - SheatheSlide) / (1f - SheatheSlide));
-                    _blade.localRotation = _sLR; _blade.localScale = _sLS;
-                    _blade.localPosition = Vector3.Lerp(MouthLP(), _sLP, e);
+                    _blade.localPosition = _sLP; _blade.localRotation = _sLR; _blade.localScale = _sLS;
                 }
-                else if (t >= SheatheAim)
-                {
-                    // 对口：右手握位(活)→鞘口(活)——剑尖被引导到鞘口、剑轴对齐鞘轴，
-                    // 两端点都实时跟随（跟手/跟鞘），e=1 时剑尖恰好落在鞘口。
-                    //
-                    // 【先转正、再平移】：位置与旋转用同一条插值时，中途每一帧剑都
-                    // 既没对准轴、又已经贴到鞘口附近——看上去就是剑横在鞘口上。
-                    // 真实收刀是先把刃立正对准鞘口，再顺着轴推进去。所以让旋转跑得
-                    // 更快（0.6 处即完全对齐），位置照常到 1.0 才到位。
-                    float raw = (t - SheatheAim) / (SheatheSlide - SheatheAim);
-                    float e = Mathf.SmoothStep(0f, 1f, raw);
-                    float eRot = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(raw / 0.6f));
-                    WorldPose(_rightHand, _dLP, _dLR, _dLS, out Vector3 hP, out Quaternion hR, out Vector3 hS);
-                    WorldPose(_scab, MouthLP(), _sLR, _sLS, out Vector3 mP, out Quaternion mR, out Vector3 mS);
-                    SetBladeWorld(Vector3.Lerp(hP, mP, e), Quaternion.Slerp(hR, mR, eRot),
-                        Vector3.Lerp(hS, mS, e));
-                }
+                _transferred = _toDrawn && grabbed;
 
                 if (_t >= 1f)
                 {
