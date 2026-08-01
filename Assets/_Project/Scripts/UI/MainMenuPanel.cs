@@ -57,20 +57,24 @@ namespace AdversityRoad.UI
 
             _titleText = UiUtil.MakeText(_root.transform, "Title", "逆 境 之 路", 96,
                 TextAnchor.MiddleCenter, new Color(0.96f, 0.86f, 0.45f));
-            UiUtil.SetRect(_titleText, new Vector2(0.5f, 1f), new Vector2(0, -200), new Vector2(1400, 130));
+            UiUtil.SetRect(_titleText, new Vector2(0.5f, 1f), new Vector2(0, -96), new Vector2(1400, 100));
             _titleText.fontStyle = FontStyle.Bold;
 
             _hintText = UiUtil.MakeText(_root.transform, "Hint",
-                "看见弱点 → 面对困境 → 主动战斗 → 失败复盘 → 强化意志 → 再次挑战", 26,
+                "看见弱点 → 面对困境 → 主动战斗\n失败复盘 → 强化意志 → 再次挑战", 22,
                 TextAnchor.MiddleCenter, new Color(0.72f, 0.76f, 0.84f));
-            UiUtil.SetRect(_hintText, new Vector2(0.5f, 1f), new Vector2(0, -300), new Vector2(1400, 40));
+            UiUtil.SetRect(_hintText, new Vector2(0.5f, 1f), new Vector2(0, -172), new Vector2(1500, 66));
 
             var host = new GameObject("Buttons", typeof(RectTransform));
             host.transform.SetParent(_root.transform, false);
+            // 按钮区【锚在顶部】、自上而下排：原来锚在中心、用 -40 的绝对偏移，
+            // 而标题/说明锚在顶部——两组元素从相反的边算起，画布一变矮就必然互相
+            // 压上去（实机：说明文字正好穿过第一个按钮）。统一从顶部往下流，
+            // 高度再由 PanelFit 之外的整体缩放兜底。
             var hrt = host.GetComponent<RectTransform>();
-            hrt.anchorMin = hrt.anchorMax = new Vector2(0.5f, 0.5f);
-            hrt.anchoredPosition = new Vector2(0, -40);
-            hrt.sizeDelta = new Vector2(560, 520);
+            hrt.anchorMin = hrt.anchorMax = new Vector2(0.5f, 1f);
+            hrt.anchoredPosition = new Vector2(0, -232);
+            hrt.sizeDelta = new Vector2(560, 480);
             _btnHost = host.transform;
 
             var version = UiUtil.MakeText(_root.transform, "Ver",
@@ -90,7 +94,7 @@ namespace AdversityRoad.UI
         Button MakeEntry(string label, int index, System.Action action, Color color)
         {
             return UiUtil.MakeButton(_btnHost, label, new Vector2(0.5f, 1f),
-                new Vector2(0, -34 - index * 96), new Vector2(520, 78), color,
+                new Vector2(0, -18 - index * 86), new Vector2(520, 70), color,
                 () => action?.Invoke(), 30);
         }
 
@@ -104,8 +108,8 @@ namespace AdversityRoad.UI
             _isTitle = true;
             AtTitle = true;
             _titleText.text = "逆 境 之 路";
-            _titleText.fontSize = 96;
-            _hintText.text = "看见弱点 → 面对困境 → 主动战斗 → 失败复盘 → 强化意志 → 再次挑战";
+            _titleText.fontSize = 72;
+            _hintText.text = "看见弱点 → 面对困境 → 主动战斗\n失败复盘 → 强化意志 → 再次挑战";
             ClearButtons();
 
             var story = StoryManager.Instance;
@@ -130,7 +134,7 @@ namespace AdversityRoad.UI
             _isTitle = false;
             AtTitle = false;
             _titleText.text = "暂 停";
-            _titleText.fontSize = 72;
+            _titleText.fontSize = 58;
             _hintText.text = "喘口气。回去的时候，还是从最小的一步开始。";
             ClearButtons();
 
@@ -150,7 +154,7 @@ namespace AdversityRoad.UI
         void ShowHelp()
         {
             _titleText.text = "操 作 说 明";
-            _titleText.fontSize = 60;
+            _titleText.fontSize = 52;
             _hintText.text =
                 "触屏：左摇杆移动，右侧拳/剑/重/闪/挡/跳；「术」+核心键=技能；「锁」锁定目标\n" +
                 "键盘：WASD 移动，左键=拳，E=剑，右键长按=蓄力，空格=跳，Shift=闪避，Ctrl=格挡，1-6=技能\n" +

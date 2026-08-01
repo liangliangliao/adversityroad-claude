@@ -40,6 +40,9 @@ namespace AdversityRoad.Core
             go.transform.SetParent(parent, false);
             SetRect(go.GetComponent<Image>(), new Vector2(0.5f, 0.5f), Vector2.zero, size);
             go.GetComponent<Image>().color = color;
+            // 自适应：面板尺寸按 1080 参考系写死，超宽屏上画布只有 ≈864 单位高，
+            // 装不下就整体等比缩小（只对直接挂在 Canvas 下的顶层面板生效，见 PanelFit）
+            go.AddComponent<UI.PanelFit>();
             return go;
         }
 

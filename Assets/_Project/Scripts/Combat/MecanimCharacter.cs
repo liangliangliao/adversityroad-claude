@@ -102,10 +102,20 @@ namespace AdversityRoad.Combat
             var hips = FindBone(model.transform, "hips");
             var ankleL = FindBone(model.transform, "leftfoot");
             var ankleR = FindBone(model.transform, "rightfoot");
-            var footL = FindBone(model.transform, "lefttoe");
-            if (footL == null) footL = ankleL;
-            var footR = FindBone(model.transform, "righttoe");
-            if (footR == null) footR = ankleR;
+            // 脚尖骨：不同来源的骨架命名差别很大（toe / toebase / toe_end / ball）。
+            // 找不到时**绝不能退回脚踝自己**——HumanoidAnimator.LevelAnkle 的第一行就是
+            // `if (ankle == toe) return;`，退回脚踝等于让"脚掌放平"整条逻辑静默失效。
+            // 角色贰与角色壹共用同一套动作数据却只有贰翘鞋尖，正是因为贰缺 toe 骨：
+            // 问题不在动画数据，在**骨架命名**——放平根本没跑。
+            // 这里再多试几种命名，最后退到脚踝的第一个子节点（几乎总是脚尖）。
+            var footL = FindBone(model.transform, "lefttoe")
+                     ?? FindBone(model.transform, "lefttoebase")
+                     ?? FindBone(model.transform, "leftball")
+                     ?? FirstChild(ankleL);
+            var footR = FindBone(model.transform, "righttoe")
+                     ?? FindBone(model.transform, "righttoebase")
+                     ?? FindBone(model.transform, "rightball")
+                     ?? FirstChild(ankleR);
             poser.SetMocapRoot(model.transform, hips, footL, footR, groundLocalY, ankleL, ankleR);
 
             // ---- 兵器（修复"手里多一把方块武器"）----
@@ -132,6 +142,10 @@ namespace AdversityRoad.Combat
                 : null;
             return true;
         }
+
+        /// <summary>取第一个子节点（脚踝下面通常就是脚尖）；无子节点返回 null。</summary>
+        static Transform FirstChild(Transform t) =>
+            t != null && t.childCount > 0 ? t.GetChild(0) : null;
 
         /// <summary>异源骨架对齐（glb/其他来源角色沿用默认动作库的关键）：
         /// 动作片段按「骨骼路径」绑定（如 Armature/mixamorig:Hips/…）。glb 角色的骨名

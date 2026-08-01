@@ -2312,6 +2312,11 @@ namespace AdversityRoad.World
                 var agent = ped.AddComponent<UnityEngine.AI.NavMeshAgent>();
                 agent.radius = 0.32f;
                 agent.height = 1.8f;
+                // NavMeshAgent 会把 transform 原点**吸附到导航面**，出生时给的 +1m 抬升
+                // 会被立刻抹掉。而 HumanoidRig 的骨架是以腰为原点、脚在 -1 左右，
+                // 于是整个下半身埋进地里（实机截图：路人只露上半身）。
+                // baseOffset 正是为此存在的：告诉 Agent「我的原点离脚底有多高」。
+                agent.baseOffset = 1f;
                 ped.AddComponent<PedestrianWanderer>().anim = anim;
             }
 

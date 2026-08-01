@@ -62,6 +62,38 @@ namespace AdversityRoad.Player
         Transform _platform;
         Vector3 _platformLastPos;
 
+        // ===== 掉出世界兜底 =====
+        // 出生点/传送点偶尔会落在几何体外或寻路烘焙完成前的空档，人一路掉下去，
+        // 画面只剩天空与雾——既没有死亡判定（不掉血），也没有任何出口。
+        // 与其继续追查每一个可能的落点错误，不如先兜住结果：**低于世界底面就捞回来**。
+        // 这是所有开放场景都会加的一条保险，成本只有一次 y 比较。
+        const float WorldFloorY = -25f;
+        Vector3 _lastSafePos;
+        float _safeStamp;
+
+        void FallGuard()
+        {
+            if (_cc == null) return;
+            // 记录最近一次"站在实地上"的位置，作为捞回目标（每 0.4s 记一次足够）
+            if (_cc.isGrounded && transform.position.y > WorldFloorY + 5f &&
+                Time.time - _safeStamp > 0.4f)
+            {
+                _safeStamp = Time.time;
+                _lastSafePos = transform.position;
+            }
+            if (transform.position.y > WorldFloorY) return;
+
+            Vector3 back = _lastSafePos.sqrMagnitude > 0.01f
+                ? _lastSafePos : transform.position + Vector3.up * 30f;
+            back.y += 1.2f;
+            _cc.enabled = false;
+            transform.position = back;
+            _cc.enabled = true;
+            _vy = 0f;
+            _hVel = Vector3.zero;
+            Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
+        }
+
         void CarryByPlatform()
         {
             if (_cc == null) return;
@@ -69,9 +101,14 @@ namespace AdversityRoad.Player
             if (_cc.isGrounded)
             {
                 // 从腰部往下扫一个略小于胶囊半径的球：命中脚下的实体碰撞体
-                if (Physics.SphereCast(transform.position + Vector3.up * 0.7f,
+                // 起点/长度必须按胶囊体算：角色 transform 原点在胶囊【中部】，
+                // 上一版从 +0.7（胸口）只往下扫 1.3m，最远到 -0.6——而脚底在 -1.0，
+                // 射线**从来没够到过地面**，所以车顶承载一直不生效。
+                Vector3 castO = transform.position + _cc.center + Vector3.up * 0.1f;
+                float castLen = _cc.height * 0.5f + 0.5f;
+                if (Physics.SphereCast(castO,
                         Mathf.Max(0.1f, _cc.radius * 0.85f), Vector3.down,
-                        out RaycastHit hit, 1.3f, ~0, QueryTriggerInteraction.Ignore))
+                        out RaycastHit hit, castLen, ~0, QueryTriggerInteraction.Ignore))
                 {
                     var t = hit.collider != null ? hit.collider.transform : null;
                     if (t != null && !t.IsChildOf(transform)) found = t;
@@ -288,6 +325,7 @@ namespace AdversityRoad.Player
             float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
             _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
             CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
+            FallGuard();                // 掉出世界的兜底捞回
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
             // 快速灵活转身：目标夹角越大转得越快
