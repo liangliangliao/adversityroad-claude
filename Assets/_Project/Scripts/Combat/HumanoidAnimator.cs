@@ -124,10 +124,20 @@ namespace AdversityRoad.Combat
         void LateUpdate()
         {
             if (!Mecanim || !_hipsPin || _hips == null || _mocapModel == null) return;
-            Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
-            lp.x = _hipsBindLP.x;
-            lp.z = _hipsBindLP.z;
-            _hips.position = _mocapModel.TransformPoint(lp);
+
+            // 髋骨 XZ 锚定是为【走跑片段自带水平位移】准备的（把模型钉回胶囊体）。
+            // 但**倒地与死亡本身就是靠髋骨水平移动完成的**——人向前扑倒、侧身躺下，
+            // 髋在水平面上会走出大半个身位。把它钉住，身体就永远倒不下去，
+            // 停在下蹲到一半的姿势上，看着像卡死（实机反馈的"半蹲没彻底躺平"）。
+            // 这两个姿态放行，让动作自己把身体放平。
+            bool freeHips = _pose == PoseState.Death || _pose == PoseState.Knockdown;
+            if (!freeHips)
+            {
+                Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
+                lp.x = _hipsBindLP.x;
+                lp.z = _hipsBindLP.z;
+                _hips.position = _mocapModel.TransformPoint(lp);
+            }
 
             // 双脚贴地校准：动作数据把髋骨抬到【动作骨架】的高度，体型腿长不同的
             // 角色会踮脚悬空/陷地。持续量测最低脚的局部高度，平滑修正模型整体 Y。

@@ -528,7 +528,7 @@ namespace AdversityRoad.Combat
             var fire = new Color(1f, 0.6f, 0.2f);
 
             // 点火：先解冻/解减速（先能动，才谈得上突进）
-            _player.MoveSpeedMultiplier = 1f;
+            _player.ClearAllSlow();   // 燃火·点火解冻：明确的全面解除
             var frozen = GetComponent<FrozenDebuff>();
             bool unfroze = frozen != null;
             if (frozen != null) Destroy(frozen);

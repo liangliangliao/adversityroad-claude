@@ -96,14 +96,14 @@ namespace AdversityRoad.Combat
         {
             if (_player == null) { Destroy(this); return; }
             if (Time.time >= _until) { Destroy(this); return; }
-            _player.MoveSpeedMultiplier = Mathf.Min(_player.MoveSpeedMultiplier, slowTo);
+            _player.SetSlow(this, slowTo);
             _player.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Procrastination,
                 actionDrainPerSec * Time.deltaTime);
         }
 
         void OnDestroy()
         {
-            if (_player != null) _player.MoveSpeedMultiplier = 1f;
+            if (_player != null) _player.ClearSlow(this);
         }
     }
 

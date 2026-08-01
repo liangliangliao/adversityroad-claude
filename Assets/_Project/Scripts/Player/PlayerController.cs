@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Combat;
 using AdversityRoad.Mobile;
@@ -52,7 +53,55 @@ namespace AdversityRoad.Player
         Vector3 _hVel;   // 平滑后的水平速度
 
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
-        public float MoveSpeedMultiplier { get; set; } = 1f;
+        // ===== 移速减益：按【来源】登记，每帧取最小 =====
+        //
+        // 原来这是一个所有人共写的标量：拖延沼泽、冻结 debuff、法庭束缚、责任球、
+        // 技能解冻五个系统各自 `Min(cur, x)` 压低、各自无条件写回 `1f`。两个后果：
+        //   ① 两个减益重叠时，**先退出的那个会顺手替另一个解除**（写 1f 是无条件的）；
+        //   ② 某个来源的 OnTriggerExit / OnDestroy 没跑到（被传送出触发体是典型情形），
+        //      倍率就**永久卡低**——玩家从此只能慢走，且没有任何办法恢复。
+        //
+        // 改成登记制：谁减速谁登记，解除时只撤自己那一条，最终倍率 = 所有在册来源
+        // 取最小。关键收益是**自愈**：来源对象一旦被销毁（组件没了、触发体没了），
+        // 下一帧就会因为 Unity 的空判定被自动清掉，不再需要谁"记得"去解除。
+        readonly Dictionary<Object, float> _slowSources = new Dictionary<Object, float>();
+        readonly List<Object> _slowDead = new List<Object>();
+
+        /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
+        public float MoveSpeedMultiplier
+        {
+            get
+            {
+                float m = 1f;
+                _slowDead.Clear();
+                foreach (var kv in _slowSources)
+                {
+                    if (kv.Key == null) { _slowDead.Add(kv.Key); continue; }   // 来源已销毁：自愈
+                    if (kv.Value < m) m = kv.Value;
+                }
+                foreach (var d in _slowDead) _slowSources.Remove(d);
+                return Mathf.Clamp(m, 0.05f, 1f);
+            }
+            // 兼容旧写法：写 1 视为"清空我造成的减速"，写小于 1 视为一条匿名减益。
+            // 新代码请直接用 SetSlow / ClearSlow，把来源说清楚。
+            set { if (value >= 0.999f) ClearAllSlow(); else SetSlow(this, value); }
+        }
+
+        /// <summary>登记一条移速减益（同一来源重复登记即覆盖）。</summary>
+        public void SetSlow(Object source, float mult)
+        {
+            if (source == null) return;
+            _slowSources[source] = Mathf.Clamp(mult, 0.05f, 1f);
+        }
+
+        /// <summary>撤销某个来源的减益（只撤自己这一条，不影响别人）。</summary>
+        public void ClearSlow(Object source)
+        {
+            if (source != null) _slowSources.Remove(source);
+        }
+
+        /// <summary>清空全部减益（「燃火·解冻」这类明确的全面解除才用）。</summary>
+        public void ClearAllSlow() => _slowSources.Clear();
 
         // ===== 移动平台承载 =====
         // CharacterController 不会自动跟随脚下移动的物体：车在动、脚下的碰撞体在动，

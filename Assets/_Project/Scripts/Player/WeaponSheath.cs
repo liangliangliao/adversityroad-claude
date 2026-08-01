@@ -63,8 +63,15 @@ namespace AdversityRoad.Player
         // 剑没有任何"自由飘移"段，也不可能斜穿鞘壁：
         //   拔刀: [0,0.30]剑留鞘中 → [0.30,0.55]沿鞘轴滑出到鞘口 → [0.55,0.80]鞘口→手(双活端) → 交接右手
         //   收刀: [0,0.50]随手 → [0.50,0.75]手(活)→鞘口(活)对口 → [0.75,1]沿鞘轴滑入到座
-        const float DrawSlide = 0.30f, DrawHand = 0.55f, DrawGrab = 0.80f;
-        const float SheatheAim = 0.50f, SheatheSlide = 0.75f;
+        // 拔刀: [0,0.28]左手横置呈鞘（剑仍在鞘中，柄朝右手）
+        //       [0.28,0.50]剑沿鞘轴滑到鞘口（柄完全送出，正对右手）
+        //       [0.50,0.72]鞘口→右手握位，双端实时跟随 → 交接，右手合指握柄
+        //       [0.72,1]   剑随右手抽离
+        // 收刀: [0,0.42]右手持剑（左手同时把鞘横置到位）
+        //       [0.42,0.72]剑先转到与鞘轴共线、再把剑尖送到鞘口
+        //       [0.72,1]   沿鞘轴推进到底
+        const float DrawSlide = 0.28f, DrawHand = 0.50f, DrawGrab = 0.72f;
+        const float SheatheAim = 0.42f, SheatheSlide = 0.72f;
 
         /// <summary>在拔刀/收刀之间切换，用 dur 秒过渡（与动画时长同步）。</summary>
         public void Toggle(float dur)
@@ -206,7 +213,26 @@ namespace AdversityRoad.Player
         /// 调快一点以免摇晃；对准完全交给剑那一侧——剑先转到与鞘轴共线、
         /// 再把剑尖送到鞘口、最后沿轴推进去。这也正是人真实收刀的顺序。
         /// </summary>
-        void AimScabbard() => CarryScabbard(26f);
+        void AimScabbard()
+        {
+            if (_set == null || _lhand == null || _visual == null) return;
+            Vector3 palmW = _lhand.TransformPoint(_palmL);
+
+            // 【横置呈鞘】——固定姿势，不追剑。
+            // 上一版让鞘去"指向剑尖/剑柄"，结果鞘被甩成任意角度（实机：横在腰前
+            // 连成一条长线）。真实的拔/收刀是：左手先把鞘**横到身前**，
+            // 鞘口朝右手那一侧；右手在这条固定的轴上握柄、拔出或插入。
+            // 关键是这个姿势【与剑的位置无关】，所以稳定、可预期，
+            // 剑那一侧的对准也就有了一个不动的靶子。
+            Vector3 want = (_visual.right * 0.86f + _visual.forward * 0.40f
+                            + Vector3.up * 0.26f).normalized;
+            Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);
+            if (axisW.sqrMagnitude < 1e-10f) return;
+            Quaternion target = Quaternion.FromToRotation(axisW.normalized, want) * _set.rotation;
+            _set.rotation = Quaternion.Slerp(_set.rotation, target,
+                1f - Mathf.Exp(-18f * Time.deltaTime));
+            _set.position += palmW - _scab.TransformPoint(_midPt);   // 鞘中点钉左掌
+        }
 
         static void WorldPose(Transform parent, Vector3 lp, Quaternion lr, Vector3 ls,
             out Vector3 pos, out Quaternion rot, out Vector3 scl)

@@ -192,16 +192,16 @@ namespace AdversityRoad.Combat
             if (_player == null) { Destroy(this); return; }
             if (Time.time >= _until)
             {
-                _player.MoveSpeedMultiplier = 1f;
+                _player.ClearSlow(this);
                 Destroy(this);
                 return;
             }
-            _player.MoveSpeedMultiplier = _speedMult;
+            _player.SetSlow(this, _speedMult);
         }
 
         void OnDestroy()
         {
-            if (_player != null) _player.MoveSpeedMultiplier = 1f;
+            if (_player != null) _player.ClearSlow(this);
         }
     }
 }
