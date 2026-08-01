@@ -33,6 +33,25 @@ namespace AdversityRoad.Core
             Time.timeScale = 1f;
         }
 
+        /// <summary>兜底看门狗：只要玩家已经没血，就一定要把复盘面板弹出来。
+        ///
+        /// 「倒地后一直卡住、过不下去」的成因是死亡面板依赖 `OnPlayerDied` 这一个事件，
+        /// 而该事件只在 `PlayerStats.TakePhysicalDamage` 里抛。任何别的途径把血打到 0
+        /// （道具/机制/未来新增的伤害源直接改 hp），事件就不会来；而 `CombatState.Death`
+        /// 是**不可退出**的终态（`RequestState` 对 Death 直接 return false），
+        /// 于是角色永远躺在那里，玩家只能杀进程。
+        /// 状态（死了）比事件（死亡那一刻）可靠——这里按状态兜底。</summary>
+        Player.PlayerController _pc;
+        float _nextDeathCheck;
+
+        void Update()
+        {
+            if (_deathShown || Time.unscaledTime < _nextDeathCheck) return;
+            _nextDeathCheck = Time.unscaledTime + 0.5f;   // 每秒两次足够，别每帧全场搜
+            if (_pc == null) _pc = FindObjectOfType<Player.PlayerController>();
+            if (_pc != null && _pc.Stats != null && _pc.Stats.IsDead) HandlePlayerDied("watchdog");
+        }
+
         void HandlePlayerDied(string reason)
         {
             if (_deathShown) return;

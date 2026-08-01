@@ -137,14 +137,25 @@ namespace AdversityRoad.Combat
                 // 脚掌放平：站/走/跑/格挡等直立姿态都放平——不依赖 CharacterController
                 // 的 isGrounded(静止时常误报 false 导致放平时断时续、鞋尖又翘起)，
                 // 只要不是翻滚/击倒/腾空的动作姿态就恒定放平，脚不再翘尖。
-                bool upright = _pose == PoseState.Idle || _pose == PoseState.Guard;
+                // 放平适用范围从「只有待机/格挡」扩到【一切贴地的常规姿态】。
+                // 鞋尖上翘的成因是异源骨骼的脚踝 rest 朝向不同，Mixamo 的脚踝旋转
+                // 数据套上去会让脚尖持续上翘——那是**每一帧**都在发生的，不只在待机。
+                // 原来只在 Idle/Guard 放平，于是走一步、出一拳、被打一下脚尖就翘回去，
+                // 停下来才平——读作"角色贰的鞋老是翘着"。只排除翻滚/击倒/死亡/腾空
+                // （那些姿态里脚本来就不该贴地）。
+                bool upright = _grounded &&
+                    _pose != PoseState.Dodge && _pose != PoseState.Knockdown &&
+                    _pose != PoseState.Death && _pose != PoseState.JumpAttack &&
+                    _pose != PoseState.JumpKick && _pose != PoseState.AttackLeap;
                 if (upright)
                 {
                     LevelAnkle(_ankleL, _footL);
                     LevelAnkle(_ankleR, _footR);
                 }
-                // 脚底高度校准仍需真正贴地时才更新目标（腾空/翻滚沿用上次值）
-                bool calibrate = _grounded && upright;
+                // 脚底高度校准仍只在【静立姿态】更新目标：出招/受击时脚离地是正常的，
+                // 拿那些帧去量最低脚会把整个模型上下拽（腾空/翻滚沿用上次值）
+                bool calibrate = _grounded &&
+                    (_pose == PoseState.Idle || _pose == PoseState.Guard);
                 if (calibrate)
                 {
                     float minY = float.MaxValue;

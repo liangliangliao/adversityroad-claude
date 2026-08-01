@@ -54,6 +54,40 @@ namespace AdversityRoad.Player
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         public float MoveSpeedMultiplier { get; set; } = 1f;
 
+        // ===== 移动平台承载 =====
+        // CharacterController 不会自动跟随脚下移动的物体：车在动、脚下的碰撞体在动，
+        // 而角色的世界坐标是自己算出来的，于是"跳上车顶后车开走、人留在原地"。
+        // Unity 从来没有内建这个——所有第三人称游戏都得自己补：每帧记住脚下那个
+        // 物体的位移，原样加到角色身上。
+        Transform _platform;
+        Vector3 _platformLastPos;
+
+        void CarryByPlatform()
+        {
+            if (_cc == null) return;
+            Transform found = null;
+            if (_cc.isGrounded)
+            {
+                // 从腰部往下扫一个略小于胶囊半径的球：命中脚下的实体碰撞体
+                if (Physics.SphereCast(transform.position + Vector3.up * 0.7f,
+                        Mathf.Max(0.1f, _cc.radius * 0.85f), Vector3.down,
+                        out RaycastHit hit, 1.3f, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    var t = hit.collider != null ? hit.collider.transform : null;
+                    if (t != null && !t.IsChildOf(transform)) found = t;
+                }
+            }
+
+            if (found != null && found == _platform)
+            {
+                Vector3 delta = found.position - _platformLastPos;
+                // 只跟随合理幅度的位移：平台被瞬移/重生时不要把角色一起甩飞
+                if (delta.sqrMagnitude > 1e-8f && delta.sqrMagnitude < 25f) _cc.Move(delta);
+            }
+            _platform = found;
+            if (found != null) _platformLastPos = found.position;
+        }
+
         /// <summary>本帧摇杆的世界方向（相机相对，零向量=未推杆）。
         /// 技能连招据此判断玩家是否正在主动引导方向，从而让出自动吸附。</summary>
         public Vector3 StickWorldDir { get; private set; }
@@ -253,6 +287,7 @@ namespace AdversityRoad.Player
             Vector3 targetVel = moveDir * speed;
             float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
             _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
+            CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
             // 快速灵活转身：目标夹角越大转得越快

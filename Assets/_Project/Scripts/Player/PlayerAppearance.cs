@@ -877,8 +877,12 @@ namespace AdversityRoad.Player
             // 座位偏移：胸骨中心在躯干内部，外移【躯干半厚+0.34 包厚】——背板贴紧背表面
             // （略微嵌入=“融合一体”的贴合感）、肩带环嵌向双肩；抬升让包顶到肩线。
             // 实际摆位交给 BackpackRig 每帧执行（含随双肩连线的躯干扭转）。
+            // 后移量收紧：0.85 躯干半厚 + 0.34 包厚，在包体较厚（packD 量到的是
+            // 包的"鼓面深度"）时会把整包推离后背半个身位——截图里背包明显浮在
+            // 身后一段距离、没有贴住。背包本来就该微微嵌进后背才读作"背着"，
+            // 所以两项系数都下调，并对总量按身高封顶（再厚的包也不许离背太远）。
             float torsoHalf = bodyH * 0.07f;
-            float backOff = torsoHalf * 0.85f + packD * 0.34f;
+            float backOff = Mathf.Min(torsoHalf * 0.55f + packD * 0.20f, bodyH * 0.075f);
             float liftOff = bodyH * 0.12f - packH * 0.5f;
 
             bp.gameObject.AddComponent<BackpackRig>().Setup(visualRoot,
