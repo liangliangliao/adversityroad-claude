@@ -92,37 +92,11 @@ namespace AdversityRoad.Combat
             new ComboStage { pose = PoseState.AttackSpin,  dmg = 2.0f,  posture = 28, lunge = 0.6f, windup = 0.10f, open = 0.22f, length = 0.46f, cancelAt = 0.32f },
         };
 
-        enum AttackBtn { None, Punch, Kick }
-
-        // 组合技配方（e：武术技能不是一键生成，而是玩家打出来的组合）
-        struct Recipe
-        {
-            public string seq;    // P=拳 K=腿
-            public string name;
-            public float mult;
-            public int cost;      // 释放绝招所需意势（越复杂越强，需能量积累）
-            public PoseState pose;   // 成招的专属终结动作（从动作库中重新定位）
-        }
-
-        // 复杂度越高伤害越强、消耗意势越多——大绝招不可无限使用。
-        // 全部只用界面上真实存在的键（拳/剑）按顺序连点打出（P=拳 K=剑）；
-        // 终结动作取自动作库最具杀伤力的片段：旋风斩/裂地跳劈/飞踢/旋身空翻踢。
-        static readonly Recipe[] Recipes =
-        {
-            // 顶级绝招（需 2 势）
-            new Recipe { seq = "PPKK", name = "龙卷·旋风绝斩", mult = 2.8f, cost = 2, pose = PoseState.AttackSpin },
-            new Recipe { seq = "KKPP", name = "踏空·裂地跳劈", mult = 2.7f, cost = 2, pose = PoseState.AttackLeap },
-            new Recipe { seq = "PKPK", name = "拳剑·惊鸿飞踢", mult = 2.6f, cost = 2, pose = PoseState.JumpKick },
-            // 基础连招（无消耗）：三段收一个动作库大招
-            new Recipe { seq = "PPP",  name = "连环拳脚·空翻踢", mult = 1.6f, cost = 0, pose = PoseState.SpinKick },
-            new Recipe { seq = "KKK",  name = "三连斩·大回旋", mult = 1.7f, cost = 0, pose = PoseState.AttackSpin },
-            new Recipe { seq = "PPK",  name = "拳影·裂地跳劈", mult = 1.5f, cost = 0, pose = PoseState.AttackLeap },
-            new Recipe { seq = "KKP",  name = "双斩·惊鸿飞踢", mult = 1.5f, cost = 0, pose = PoseState.JumpKick },
-        };
+        enum AttackBtn { None, Punch, Kick, Heavy }
 
         /// <summary>
         /// 跨元素配方：在【自由融合链】上匹配，而不是只看拳/剑序列。
-        /// 与上面的 Recipes 的本质区别——这里的字母表包含**全部**基础动作与系统：
+        /// 与绝招表的本质区别——这里的字母表包含**全部**基础动作与系统：
         /// P拳 K剑 H重 J跃 D闪 S术 G架。所以「跳→剑」「闪→拳」「术→重」这类
         /// 跨系统的串法才可能成招，而不是被当成互不相干的两个动作。
         /// </summary>
@@ -130,29 +104,30 @@ namespace AdversityRoad.Combat
         {
             public string tail;      // 融合链尾的代号串
             public string name;
-            public float mult;
-            public int cost;
-            public PoseState pose;
+            public float mult;       // 纯伤害加成（不再改招式、不再改帧数）
         }
 
         // 「放开限制」的具体兑现：跳跃、闪避、技能、格挡都能与拳剑重互相接续成招。
         // 排在前面的优先（长串优先于短串，避免长招被短招吃掉）。
         static readonly FusionRecipe[] FusionRecipes =
         {
-            // ---- 四元及以上：跨越三大系统的高阶融合（需意势）----
-            new FusionRecipe { tail = "JSK", name = "踏云术斩·天倾一击", mult = 3.0f, cost = 2, pose = PoseState.AttackLeap },
-            new FusionRecipe { tail = "DSP", name = "影遁术拳·无相连环", mult = 2.8f, cost = 2, pose = PoseState.SpinKick },
-            new FusionRecipe { tail = "JHK", name = "踏空三叠·裂地崩斩", mult = 2.7f, cost = 1, pose = PoseState.AttackSpin },
-            new FusionRecipe { tail = "GPK", name = "架打连环·后发先至", mult = 2.5f, cost = 1, pose = PoseState.SwordThrust },
+            // 倍率整体下调：融招从「换成一个专属大招（×2.5~3.0）」降级为
+            // 「你按的那一下额外增伤」之后，原倍率就成了白送的三倍伤害。
+            // 现在的量级参照融合种类加成（×1.15~×2.25），保持同一个数量级。
+            // ---- 四元及以上：跨越三大系统的高阶衔接 ----
+            new FusionRecipe { tail = "JSK", name = "踏云术斩·天倾一击", mult = 1.9f },
+            new FusionRecipe { tail = "DSP", name = "影遁术拳·无相连环", mult = 1.85f },
+            new FusionRecipe { tail = "JHK", name = "踏空三叠·裂地崩斩", mult = 1.8f },
+            new FusionRecipe { tail = "GPK", name = "架打连环·后发先至", mult = 1.75f },
 
             // ---- 三元/二元：无消耗的日常跨系统衔接（鼓励随手串）----
-            new FusionRecipe { tail = "SK",  name = "术后追斩·势不可挡", mult = 1.7f, cost = 0, pose = PoseState.AttackUp },
-            new FusionRecipe { tail = "SP",  name = "术后贯拳·气随身走", mult = 1.6f, cost = 0, pose = PoseState.PunchCross },
-            new FusionRecipe { tail = "DK",  name = "闪身突刺·后发制人", mult = 1.8f, cost = 0, pose = PoseState.SwordThrust },
-            new FusionRecipe { tail = "DP",  name = "闪身重拳·借势反打", mult = 1.6f, cost = 0, pose = PoseState.PunchCross },
-            new FusionRecipe { tail = "JK",  name = "踏空斩·凌云一式", mult = 1.9f, cost = 0, pose = PoseState.AttackLeap },
-            new FusionRecipe { tail = "JP",  name = "惊鸿飞踢·踏虚而至", mult = 1.7f, cost = 0, pose = PoseState.JumpKick },
-            new FusionRecipe { tail = "GK",  name = "架后反斩", mult = 1.5f, cost = 0, pose = PoseState.AttackUp },
+            new FusionRecipe { tail = "DK",  name = "闪身突刺·后发制人", mult = 1.35f },
+            new FusionRecipe { tail = "JK",  name = "踏空斩·凌云一式", mult = 1.35f },
+            new FusionRecipe { tail = "SK",  name = "术后追斩·势不可挡", mult = 1.3f },
+            new FusionRecipe { tail = "JP",  name = "惊鸿飞踢·踏虚而至", mult = 1.3f },
+            new FusionRecipe { tail = "SP",  name = "术后贯拳·气随身走", mult = 1.25f },
+            new FusionRecipe { tail = "DP",  name = "闪身重拳·借势反打", mult = 1.25f },
+            new FusionRecipe { tail = "GK",  name = "架后反斩", mult = 1.2f },
             // 「重→剑」已移除：重键按下去的常规结果是【蓄力】（动作锁 0.8~2.05s），
             // 把它排进主攻击连招里，中间必然横着一段蓄力，怎么调都不可能连贯。
             // 重击要入连招，走的是指令技（前/后/左右+重）与切手技那条即时路径，
@@ -290,6 +265,8 @@ namespace AdversityRoad.Combat
             if (innerAura != null && innerAura.activeSelf != (_momentum >= 3))
                 innerAura.SetActive(_momentum >= 3);
 
+            TrackDirFlick();
+
             // ---- 输入 ----
             bool desktop = !Application.isMobilePlatform;
             bool mouseOverUI = UnityEngine.EventSystems.EventSystem.current != null
@@ -338,14 +315,17 @@ namespace AdversityRoad.Combat
 
             if (heavyDown)
             {
-                // 跳+重＝空袭跳劈：同样占用滞空额度（否则空中可无限重砸）
+                // 跳+重＝天坠·陨星踏（绝招表）：同样占用滞空额度（否则空中可无限重砸）；
+                // 绝招在共享冷却里时退回普通空袭劈，不让这一按变成"什么都没发生"
                 if (!_cc.isGrounded)
                 {
                     if (_airActs >= MaxAirActs) return;
                     _airActs++;
-                    AirLeapAttack();
+                    if (!TrySpecial(AttackBtn.Heavy)) AirLeapAttack();
                     return;
                 }
+                // 蹲+重＝镇岳·裂地踏（绝招）。站立时这一句必然落空，蓄力手感不受影响
+                if (_player.IsCrouched && TrySpecial(AttackBtn.Heavy)) return;
                 if (_depth >= 1 && _stageT >= 0.1f) { QiShou(); return; }
                 // 动作锁期间【不再重入蓄力】——「快速按重键的巨剑跳劈看起来完全不动」
                 // 的直接原因：轻击有这道门（下面 358 行进缓冲），重击一直没有，
@@ -388,21 +368,218 @@ namespace AdversityRoad.Combat
             }
         }
 
+        // ==================== 绝招表（7 招 + 1 必杀）====================
+        //
+        // 【为什么重做】原来绝招靠"连点拳剑凑出序列"（PPKK / KKPP …），这条路子
+        // 在成熟动作游戏里没人用，因为它同时踩两个坑：乱按也能中（两键来回按就成招），
+        // 想放又放不出（记不住四位序列、还必须在连段窗口内接上）。
+        // 大作的通行做法是【独立触发 + 资源门槛】：一条能一次学会的语法，
+        // 加上"想放就一定放得出、但要付代价"。
+        //
+        // 本作统一成一条规则：**方向 / 姿态 + 攻击键**。玩家只需要记住
+        // "推一个方向（或蹲、或跳）再按剑/重"，七招全部落在这一条语法里：
+        //
+        //   前 + 剑   踏空·裂地跳劈   1势  10×   单体最高爆发
+        //   蹲 + 重   镇岳·裂地踏     1势   9×   原地震地，范围最大
+        //   左/右+剑  龙卷·旋风绝斩   1势   8×   被围时清场（360°）
+        //   蹲 + 剑   崩山·扫堂连环   1势   7×   削韧最高，专破架势
+        //   跳 + 重   天坠·陨星踏     免费 6.5×  空中砸落地
+        //   跳 + 剑   空裂·凌空斩     免费  5×   追打浮空目标
+        //   后 + 剑   惊鸿·飞踢       免费  4×   打断突进 + 拉开身位
+        //   ─────────────────────────────────────────────────
+        //   满3势 长按重→松开  觉醒·乱舞  必杀 16~21×（四段合计）
+        //
+        // 三条刻意的设计约束：
+        //   ① 伤害梯度拉开且单调（普攻 1~2× / 指令技 ≈3× / 蓄力二连 6~8× /
+        //      绝招 4~10× / 必杀 16~21×），
+        //      玩家能从数字上一眼看出谁强——"招很多但不知道哪个厉害"必须在数值层解决；
+        //   ② 每招有且只有一个不重叠的职责（爆发 / 清场 / 削韧 / 打断 / 位移 / 空中），
+        //      有职责重叠就说明该砍掉一招，而不是再加一招；
+        //   ③ 免费的三招都是低伤害的功能招，1 势的四招才是伤害招——
+        //      资源花在"打伤害"上，不花在"活下来"上。
+        //
+        // 突刺（SwordThrust）已从绝招表中移除：它的起手与收招都偏长，
+        // 放在需要即时兑现的绝招位上必然读作"慢半拍"，改回轻连段第三下与前+重指令技。
+        struct Special
+        {
+            public string name;
+            public string input;     // 触发写法（招式面板直接展示，玩家不必猜）
+            public PoseState pose;
+            public MoveToken token;  // 计入自由融合链的元素（剑系/重系）
+            public int cost;         // 意势
+            public float mult;       // 相对 baseDamage
+            public float posture, knock, lockTime, windup, open, lunge, shape;
+            public string role;      // 职责（招式面板展示，也提醒设计不要重叠）
+        }
+
+        static readonly Special SpAirSplit = new Special {
+            name = "踏空·裂地跳劈", input = "前 + 剑", pose = PoseState.AttackLeap,
+            token = MoveToken.Sword, cost = 1, mult = 10f,
+            posture = 40f, knock = 3f, lockTime = 1.05f, windup = 0.12f, open = 0.24f,
+            lunge = 1.4f, shape = 1.35f, role = "单体最高爆发·抓破绽/收人头就用它" };
+        static readonly Special SpQuake = new Special {
+            name = "镇岳·裂地踏", input = "蹲 + 重", pose = PoseState.HeavyAttack,
+            token = MoveToken.Heavy, cost = 1, mult = 9f,
+            posture = 38f, knock = 5f, lockTime = 0.95f, windup = 0.12f, open = 0.26f,
+            lunge = 0.6f, shape = 1.55f, role = "原地震地·范围最大，一次打断多个目标" };
+        static readonly Special SpTornado = new Special {
+            name = "龙卷·旋风绝斩", input = "左/右 + 剑", pose = PoseState.AttackSpin,
+            token = MoveToken.Sword, cost = 1, mult = 8f,
+            posture = 34f, knock = 6.5f, lockTime = 0.9f, windup = 0.1f, open = 0.26f,
+            lunge = 0.5f, shape = 1.5f, role = "被围时清场·360° 全身命中" };
+        static readonly Special SpSweep = new Special {
+            name = "崩山·扫堂连环", input = "蹲 + 剑", pose = PoseState.Sweep,
+            token = MoveToken.Sword, cost = 1, mult = 7f,
+            posture = 44f, knock = 2f, lockTime = 0.85f, windup = 0.1f, open = 0.26f,
+            lunge = 0.3f, shape = 1.4f, role = "削韧最高·专破举盾/架势敌人" };
+        static readonly Special SpMeteor = new Special {
+            name = "天坠·陨星踏", input = "跳 + 重", pose = PoseState.AttackLeap,
+            token = MoveToken.Heavy, cost = 0, mult = 6.5f,
+            posture = 32f, knock = 4f, lockTime = 0.7f, windup = 0.12f, open = 0.3f,
+            lunge = 0.9f, shape = 1.3f, role = "从空中砸落地·免费，跳跃后的主力收招" };
+        static readonly Special SpAirSlash = new Special {
+            name = "空裂·凌空斩", input = "跳 + 剑", pose = PoseState.JumpAttack,
+            token = MoveToken.Sword, cost = 0, mult = 5f,
+            posture = 26f, knock = 3f, lockTime = 0.65f, windup = 0.1f, open = 0.22f,
+            lunge = 0.8f, shape = 1.2f, role = "空中追打浮空目标·免费" };
+        static readonly Special SpBlowKick = new Special {
+            name = "惊鸿·飞踢", input = "后 + 剑", pose = PoseState.JumpKick,
+            token = MoveToken.Sword, cost = 0, mult = 4f,
+            posture = 30f, knock = 9f, lockTime = 0.58f, windup = 0.08f, open = 0.2f,
+            lunge = 2.2f, shape = 1.15f, role = "打断敌人突进 + 拉开身位·免费" };
+
+        /// <summary>绝招总表（招式面板按此顺序展示——伤害从高到低排，一眼看出谁最强）。</summary>
+        static readonly Special[] AllSpecials =
+        {
+            SpAirSplit, SpQuake, SpTornado, SpSweep, SpMeteor, SpAirSlash, SpBlowKick,
+        };
+
+        /// <summary>供招式表读取的只读绝招条目。</summary>
+        public struct SpecialInfo
+        {
+            public string name, input, role;
+            public int cost;
+            public float mult;
+        }
+
+        /// <summary>招式面板用：把绝招表原样交出去，说明书与战斗判定同源。</summary>
+        public static SpecialInfo[] SpecialTable()
+        {
+            var list = new SpecialInfo[AllSpecials.Length];
+            for (int i = 0; i < AllSpecials.Length; i++)
+            {
+                var sp = AllSpecials[i];
+                list[i] = new SpecialInfo {
+                    name = sp.name, input = sp.input, role = sp.role,
+                    cost = sp.cost, mult = sp.mult };
+            }
+            return list;
+        }
+
+        /// <summary>绝招路由：方向/姿态 + 键 → 对应绝招。没匹配上返回 false，照常走连段。</summary>
+        bool TrySpecial(AttackBtn btn)
+        {
+            MoveIntent(out float fwd, out float side);
+            bool hasDir = Mathf.Max(Mathf.Abs(fwd), Mathf.Abs(side)) > 0.35f;
+            bool air = !_cc.isGrounded;
+            bool crouch = _player.IsCrouched;
+
+            Special sp;
+            if (btn == AttackBtn.Kick)
+            {
+                if (air) sp = SpAirSlash;                       // 跳 + 剑
+                else if (crouch) sp = SpSweep;                  // 蹲 + 剑
+                // 方向招要求「刚推出去的方向」（见 TrackDirFlick）：
+                // 一直推着方向跑的时候按剑，走的仍是普通连段
+                else if (!hasDir || !DirFresh) return false;
+                else if (Mathf.Abs(fwd) >= Mathf.Abs(side))
+                    sp = fwd > 0 ? SpAirSplit : SpBlowKick;     // 前/后 + 剑
+                else sp = SpTornado;                            // 左/右 + 剑
+            }
+            else if (btn == AttackBtn.Heavy)
+            {
+                if (air) sp = SpMeteor;                         // 跳 + 重
+                else if (crouch) sp = SpQuake;                  // 蹲 + 重
+                else return false;                              // 站立重键仍是蓄力/指令技
+            }
+            else return false;
+
+            if (_specialCd > 0f) return false;                  // 共享冷却，防连发
+            if (sp.cost > 0 && !TrySpendMomentum(sp.cost))
+            {
+                // 放不出来【不吞掉这一下】：返回 false 后调用方会照常打出普通招，
+                // 绝不会出现"按了没反应"。提示节流 3 秒，免得连打时刷屏。
+                if (Time.time - _lastSpecialFailHint > 3f)
+                {
+                    _lastSpecialFailHint = Time.time;
+                    GameEvents.RaiseSubtitle("意势不足，「" + sp.name + "」放不出来（需 "
+                        + sp.cost + " 势；命中 / 完美闪避 / 蓄力都能积攒）");
+                }
+                return false;
+            }
+            CastSpecial(sp);
+            return true;
+        }
+
+        void CastSpecial(Special sp)
+        {
+            _specialCd = sp.cost > 0 ? 1.6f : 0.8f;
+            EndCombo();
+            Fusion.Push(sp.token);
+            _fsm.RequestState(CombatState.HeavyAttack, sp.lockTime);
+            _fsm.InCombat = true;
+            PlayPose(sp.pose, Mathf.Min(sp.lockTime * 0.62f, 0.44f));
+            FaceAndLunge(sp.lunge);
+            if (sp.pose == PoseState.AttackLeap || sp.pose == PoseState.JumpAttack)
+                _player.ForceFall(-13f);
+
+            float dmg = baseDamage * sp.mult * CritMult() * Fusion.FusionMult;
+            var arc = sp.cost > 0 ? new Color(1f, 0.72f, 0.28f) : new Color(0.7f, 0.9f, 1f);
+            CombatFeedback.SwingArc(transform, true, arc);
+            CombatFeedback.RecipeBurst(transform.position, arc);
+            if (sp.cost > 0) CombatFeedback.SlowMo(0.45f, 0.14f);
+            GameEvents.RaiseSkillBanner("绝招「" + sp.name + "」");
+            OpenHitboxTimed(sp.windup, sp.open, dmg, sp.posture, sp.knock, false,
+                sp.pose, sp.shape);
+            // 取消窗必须开在【判定窗走完之后】。此前是同帧直接置位，
+            // 等于绝招从第 0 帧起就能被自己的下一次连打取消掉——
+            // 花掉一点意势却只看见起手就没了，正是"绝招放了跟没放一样"的成因。
+            if (_specialCancelRoutine != null) StopCoroutine(_specialCancelRoutine);
+            _specialCancelRoutine = StartCoroutine(OpenSpecialCancel(sp.windup + sp.open));
+        }
+
+        Coroutine _specialCancelRoutine;
+
+        /// <summary>绝招判定窗走完后开放收招取消：接下一手不必等整段动作播完。</summary>
+        IEnumerator OpenSpecialCancel(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (_fsm.Current == CombatState.HeavyAttack) _fsm.CanCancelRecovery = true;
+        }
+
         void StartAttack(AttackBtn pressed)
         {
             if (!_cc.isGrounded)
             {
-                // 空中连段：一次滞空可打两段（大作通用的 air combo）。
-                // 第一段是起手（飞踢 / 空袭下劈），第二段是**滞空派生**——
-                // 跳跃因此不再是"跳起来只能打一下"，而是能与拳剑串成空中组合技。
+                // 空中连段：一次滞空最多两段（大作通用的 air combo）。
+                // 空中绝招（跳+剑）也【占额度】——否则冷却一到就能在空中无限刷，
+                // 滞空刷伤害是这类系统最典型的漏洞。
                 if (_airActs >= MaxAirActs) return;
+                if (TrySpecial(pressed)) { _airActs++; return; }
                 _airActs++;
                 Fusion.Push(pressed == AttackBtn.Kick ? MoveToken.Sword : MoveToken.Punch);
                 if (_airActs >= 2) { AirFollowUp(pressed); return; }
                 if (pressed == AttackBtn.Kick) JumpAttack(); else JumpKickAttack();
                 return;
             }
-            // 蹲伏派生：蹲+拳=扫堂腿（贴地环扫），蹲+剑=低位突刺（下段直线戳击）
+
+            // 绝招优先于连段：方向/蹲姿明确时先查绝招表。
+            // 查不到（没推方向 / 冷却中 / 意势不够）就照常走下面的连段与蹲伏派生，
+            // 玩家按下去一定有反应，不会出现"按了没动静"。
+            if (TrySpecial(pressed)) return;
+
+            // 蹲伏派生：蹲+拳=扫堂腿（贴地环扫）。
+            // 蹲+剑 已升格为绝招「崩山·扫堂连环」，这里是它冷却/势不够时的退化版。
             if (_player.IsCrouched)
             {
                 Fusion.Push(pressed == AttackBtn.Kick ? MoveToken.Sword : MoveToken.Punch);
@@ -413,6 +590,38 @@ namespace AdversityRoad.Combat
             _seq = "";
             NextStage(pressed);
         }
+
+        // ---- 方向输入的「新鲜度」：绝招要的是【推方向这个动作】，不是【方向被按着】----
+        //
+        // 这一步不做的话，"方向 + 剑 = 绝招"会立刻毁掉普通连段：玩家追着敌人跑时
+        // 摇杆一直推在前方，于是每一次按剑都被判成前+剑绝招——普通连段实际上再也打不出来，
+        // 意势也会被瞬间抽干、然后一路刷"意势不足"。
+        // 格斗游戏里方向从来都是**事件**而不是状态（归中→推出→按键），这里照搬：
+        // 只有「刚推出去（或刚换了方向）」的 0.4 秒内按键才算绝招指令。
+        // 于是规则对玩家是这样的：跑着砍＝连段；想放绝招就把摇杆回一下、朝目标一推、立刻按剑。
+        const float DirFlickWindow = 0.4f;
+        const float DirDeadzone = 0.35f;
+        float _dirFreshAt = -99f;
+        Vector2 _lastDir;
+
+        void TrackDirFlick()
+        {
+            Vector2 mv = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"))
+                         + MobileInput.Move;
+            if (mv.sqrMagnitude < DirDeadzone * DirDeadzone)
+            {
+                _lastDir = Vector2.zero;   // 回中：下一次推出去就是一次新的方向指令
+                return;
+            }
+            Vector2 dir = mv.normalized;
+            // 从静止推出，或方向转过 ~50° 以上（Dot < 0.64）＝一次新的方向指令
+            if (_lastDir == Vector2.zero || Vector2.Dot(_lastDir, dir) < 0.64f)
+                _dirFreshAt = Time.time;
+            _lastDir = dir;
+        }
+
+        /// <summary>方向指令是否还在有效窗口内（绝招的四个方向招要求这个）。</summary>
+        bool DirFresh => Time.time - _dirFreshAt <= DirFlickWindow;
 
         /// <summary>移动输入相对角色朝向的前后/左右分量（八向指令技判定）。</summary>
         void MoveIntent(out float fwd, out float side)
@@ -465,77 +674,32 @@ namespace AdversityRoad.Combat
 
             float dmg = baseDamage * s.dmg * CritMult() * (exhausted ? 0.6f : 1f);
 
-            // 组合技识别：打出配方即触发「招式」——冲击波+时缓+大增伤+击飞
-            // 高级绝招（cost>0）需消耗意势能量；能量不足则退化为普通连段
-            bool recipeHit = false;
+            // 预设配方（PPKK / KKPP 这类连点凑序列）已整体移除：
+            // 绝招改由「方向/姿态 + 键」独立触发（见上方绝招表），
+            // 连段这条线只负责"打得顺"，不再兼职成招——两套触发规则同时跑，
+            // 玩家就无法预测下一下会打出什么，这正是"绝招繁多却说不清"的来源。
             PoseState playPose = s.pose;
-            foreach (var r in Recipes)
-            {
-                if (_seq.EndsWith(r.seq))
-                {
-                    if (r.cost > 0 && !TrySpendMomentum(r.cost))
-                    {
-                        GameEvents.RaiseSubtitle("意势不足，「" + r.name + "」未能成招（需 " + r.cost + " 势）");
-                        break;
-                    }
-                    dmg *= r.mult;
-                    recipeHit = true;
-                    playPose = r.pose;   // 成招：改播该绝招的专属终结动作（动作库大招）
-                    // 成招不该比普通段【更难接】。此前把帧数据改写成
-                    // length 0.5 / cancelAt 0.36——取消窗比普通轻击(0.155~0.195)
-                    // 几乎翻倍，于是"打出融招"的奖励反而是全游戏最长的一段僵直，
-                    // 读作"融招一出来就卡住"。终结动作只需要略长的存在感，
-                    // 不需要额外的收招惩罚：0.40 / 0.22。
-                    _cur.length = 0.40f;
-                    _cur.cancelAt = 0.22f;
-                    _cur.open = Mathf.Max(_cur.open, 0.20f);
-                    _seq = "";
-                    GameEvents.RaiseSkillBanner("绝招「" + r.name + "」");
-                    CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
-                    if (r.cost > 0) CombatFeedback.SlowMo(0.4f, 0.18f);
-                    break;
-                }
-            }
 
-            // ===== 跨元素配方：跳/闪/术/架 与拳剑重的互相接续 =====
-            // 拳剑序列没成招时，再看【融合链】——上一手是跳跃、闪避、技能还是格挡，
-            // 都能与这一手接成有名字的招。这才是"不局限于现有技能"的实处。
-            if (!recipeHit)
+            // ===== 融招：降级为【纯伤害加成】，不再变招式、不再改帧数据 =====
+            // 它的价值本来就是"鼓励你换着手段串"，不该是第二套招式表——
+            // 两套触发规则同时跑，玩家根本无法预测下一下会打出什么。
+            // 现在只加伤害并报一次名，动作仍然是你按的那一下，连段节奏完全不受影响。
+            foreach (var fr in FusionRecipes)
             {
-                foreach (var fr in FusionRecipes)
-                {
-                    if (!Fusion.TailIs(fr.tail)) continue;
-                    if (fr.cost > 0 && !TrySpendMomentum(fr.cost))
-                    {
-                        GameEvents.RaiseSubtitle("意势不足，「" + fr.name + "」未能成招（需 " + fr.cost + " 势）");
-                        break;
-                    }
-                    dmg *= fr.mult;
-                    recipeHit = true;
-                    playPose = fr.pose;
-                    _cur.length = 0.40f;      // 同上：融招不额外加收招惩罚
-                    _cur.cancelAt = 0.22f;
-                    _cur.open = Mathf.Max(_cur.open, 0.20f);
-                    _seq = "";
-                    Fusion.ConsumeTail(fr.tail.Length);   // 用掉这一串，避免同串反复触发
-                    GameEvents.RaiseSkillBanner("融招「" + fr.name + "」");
-                    CombatFeedback.RecipeBurst(transform.position, new Color(0.75f, 0.95f, 1f));
-                    if (fr.cost > 0)
-                    {
-                        CombatFeedback.SlowMo(0.4f, 0.18f);
-                        CombatFeedback.CloseUp(0.85f, 0.65f);   // 高阶融招与预设绝招同级
-                    }
-                    break;
-                }
+                if (!Fusion.TailIs(fr.tail)) continue;
+                dmg *= fr.mult;
+                Fusion.ConsumeTail(fr.tail.Length);
+                GameEvents.RaiseSkillBanner("融招「" + fr.name + "」×" + fr.mult.ToString("0.0"));
+                CombatFeedback.RecipeBurst(transform.position, new Color(0.75f, 0.95f, 1f));
+                break;
             }
 
             _fsm.RequestState(CombatState.LightAttack, _cur.length);
             PlayPose(playPose, _cur.length);
             FaceAndLunge(s.lunge);
 
-            CombatFeedback.SwingArc(transform, nextDepth >= 2 || recipeHit,
-                recipeHit ? new Color(1f, 0.6f, 0.2f)
-                : btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
+            CombatFeedback.SwingArc(transform, nextDepth >= 2,
+                btn == AttackBtn.Kick ? new Color(1f, 0.65f, 0.4f) : new Color(0.45f, 0.75f, 1f));
             // 招式分工：剑系主司「击退」（重兵器大幅推开、打断敌人突进），
             // 拳系主司「快攻」（低击退但出手快、可高频衔接，帧数更短、削韧更高）。
             //
@@ -545,13 +709,13 @@ namespace AdversityRoad.Combat
             // 「看到的轨迹」和「打出的力度」对不上就是从这里来的。
             // 现在轨迹(判定形状)、伤害、削韧、击退四项全部出自同一行规格：
             // 直拳 1.0 → 侧踹 2.0 → 突刺 3.0 → 横斩/撩斩 4.5 → 旋风绝斩 6.5 → 旋身空翻踢 9.0，
-            // 成招终结再 ×1.8。招式越大，推得越远，所见即所得。
-            float knock = MoveTable.Get(playPose).knockback * (recipeHit ? 1.8f : 1f);
+            // 招式越大，推得越远，所见即所得。
+            float knock = MoveTable.Get(playPose).knockback;
             // ===== 自由融合加成（不局限于预设配方）=====
             // 只要这一串里用到的【元素种类】够多，就自动成招——伤害按种类阶梯上升，
             // 招名由实际打出的元素动态生成。拳→跃→剑→术→闪 这种没人预设过的串法，
             // 一样能打出五元融合。奖励的是临场把各种手段串起来的能力，而不是背招表。
-            if (Fusion.FusionReady && !recipeHit)
+            if (Fusion.FusionReady)
             {
                 float fm = Fusion.FusionMult;
                 if (fm > 1.01f)
@@ -570,7 +734,7 @@ namespace AdversityRoad.Combat
 
             // 疲惫时不积意势（体力的代价体现在这里，而不是"打不出招"）
             OpenHitboxTimed(_cur.windup, _cur.open, dmg, _cur.posture, knock, !exhausted,
-                playPose, recipeHit ? 1.3f : 1f);
+                playPose);
         }
 
         /// <summary>自由融合链：一切基础动作与技能共用的元素池（跳/闪/技能由各自系统推入）。</summary>
@@ -579,6 +743,7 @@ namespace AdversityRoad.Combat
 
         float _lastExhaustHint = -99f;   // 疲惫提示节流（不刷屏）
         float _lastGuardFailHint = -99f; // 格挡力竭提示节流
+        float _lastSpecialFailHint = -99f; // 绝招意势不足提示节流
 
         void RaiseSeq() => PushFusionHud(true);
 
@@ -728,7 +893,7 @@ namespace AdversityRoad.Combat
             _fsm.RequestState(CombatState.HeavyAttack, 0.36f);
             PlayPose(PoseState.SwordThrust, 0.34f);
             FaceAndLunge(2.6f);
-            float dmg = heavyDamage * 0.85f * CritMult();
+            float dmg = heavyDamage * 1.45f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.9f, 0.95f, 0.6f));
             CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
             CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f,
@@ -745,7 +910,7 @@ namespace AdversityRoad.Combat
             _fsm.RequestState(CombatState.HeavyAttack, 0.4f);
             PlayPose(PoseState.SpinKick, 0.38f);
             FaceAndLunge(0.4f);
-            float dmg = heavyDamage * 0.7f * CritMult();
+            float dmg = heavyDamage * 1.25f * CritMult();
             CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.5f, 0.25f));
             OpenHitboxTimed(0.14f, 0.28f, dmg, 34f, 9f, false, PoseState.SpinKick, 1.1f);
             GameEvents.RaiseSkillBanner("「旋身空翻踢」");
@@ -760,14 +925,16 @@ namespace AdversityRoad.Combat
                               + transform.forward * 0.4f;
             GlideMove(lateral, 0.14f);
             ApplyAttackFacing();
-            float dmg = heavyDamage * 0.75f * CritMult();
+            float dmg = heavyDamage * 1.35f * CritMult();
             CombatFeedback.SwingArc(transform, true, new Color(0.7f, 1f, 0.7f));
             CombatFeedback.Shake(0.4f);
             OpenHitboxTimed(0.16f, 0.3f, dmg, 20f, 3f, false, PoseState.AttackSpin);
             GameEvents.RaiseSkillBanner(right ? "「右旋风斩」" : "「左旋风斩」");
         }
 
-        /// <summary>跳+重：空袭跳劈（动作库 Great Sword Jump Attack）——凌空砸地。</summary>
+        /// <summary>空袭跳劈（动作库 Great Sword Jump Attack）——凌空砸地。
+        /// 现在是「跳+重＝天坠·陨星踏」在共享冷却里的退化版：绝招放不出时至少还有这一下，
+        /// 而不是按了没反应。</summary>
         void AirLeapAttack()
         {
             Fusion.Push(MoveToken.Heavy);
@@ -830,7 +997,13 @@ namespace AdversityRoad.Combat
                 (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.22f, new Color(0.8f, 0.92f, 1f)),
                 (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.36f, new Color(0.55f, 0.8f, 1f)),
             };
-            float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
+            // 四段系数合计 6.1；本行的基数决定整套的量级。
+            // 原为 (0.7 + 0.25×蓄力)：满蓄合计仅约 ×12 基础伤害，
+            // 而 1 势就能放的裂地跳劈已经是 ×10 —— 花光 3 势 + 蓄力 + 1.45 秒硬直
+            // 换来的收益几乎看不出差别，"哪个最强"自然说不清。
+            // 改为 (1.25 + 0.4×蓄力)：合计 ×16（不蓄力）~ ×21（满蓄），
+            // 稳稳压住绝招上限，且蓄力时长的收益也变得可感知。
+            float baseDmg = heavyDamage * (1.25f + 0.4f * charge01);
             for (int i = 0; i < seq.Length; i++)
             {
                 var s = seq[i];
