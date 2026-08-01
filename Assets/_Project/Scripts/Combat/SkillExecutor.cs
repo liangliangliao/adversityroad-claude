@@ -360,14 +360,17 @@ namespace AdversityRoad.Combat
                 // 「蓄力」这个 hold 姿态——动画停在最后一帧不动，三环 0.42 秒里
                 // 人物完全静止，只有光环在扩散。这是"技能看起来不动"的实例之一。
                 // 现在每环打一记旋身，三环＝三次旋转把搅扰荡开，动作与演出对得上。
-                Pose(PoseState.AttackSpin, 0.2f);
+                // 三环换着打：连着播同一个片段＝同一段动作反复从头来，读作"抖"而不是"连"。
+                // 旋斩→撩斩→旋斩，三个不同轨迹串起来才像一套连招。
+                var ringPose = i == 1 ? PoseState.AttackUp : PoseState.AttackSpin;
+                Pose(ringPose, 0.2f);
                 CombatFeedback.ShockRing(transform.position, ringColor, 5.5f - i * 1.4f);
                 CombatFeedback.HitSpark(transform.position + Vector3.up * 1.1f, ringColor, 4);
-                Strike(PoseState.AttackSpin, 10f + i * 4f, 16f, 2.5f, 0.02f, 0.12f, 1.2f, "player_skill_dingxin");
+                Strike(ringPose, 10f + i * 4f, 16f, 2.5f, 0.02f, 0.12f, 1.2f, "player_skill_dingxin");
                 foreach (var e in FindObjectsOfType<AI.EnemyController>())
                     e.Repel(transform.position, 4.5f, 5f, 0.16f);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.5f);
-                yield return new WaitForSeconds(0.18f);
+                yield return new WaitForSeconds(0.16f);
             }
             if (!ComboAlive()) yield break;
 
@@ -411,11 +414,13 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < 3 && ComboAlive(); i++)
             {
                 FaceTarget();
-                Pose(PoseState.SpinKick, 0.2f);
+                // 旋踢→侧踹→旋踢：三段各有各的轨迹，清场读作"踢了三下"而不是"转了三圈"
+                var kickPose = i == 1 ? PoseState.SideKick : PoseState.SpinKick;
+                Pose(kickPose, 0.2f);
                 Glide(transform.forward * 0.7f, 0.12f);
                 CombatFeedback.SwingArc(transform, i >= 1, cyan);
-                Strike(PoseState.SpinKick, 14f + i * 5f, 18f, 3f, 0.06f, 0.14f, 1.25f, "player_skill_huishou");
-                yield return new WaitForSeconds(0.18f);
+                Strike(kickPose, 14f + i * 5f, 18f, 3f, 0.06f, 0.14f, 1.25f, "player_skill_huishou");
+                yield return new WaitForSeconds(0.16f);
             }
             if (!ComboAlive()) yield break;
 
@@ -427,7 +432,7 @@ namespace AdversityRoad.Combat
             _player.Stats.RestoreAxis(Personalization.WeaknessAxis.NoiseSensitivity, 32f);
             _player.Stats.ReduceRumination(15f);
             Core.GameAudio.Play(Core.GameAudio.Sfx.Parry, 0.7f);
-            yield return new WaitForSeconds(0.18f);
+            yield return new WaitForSeconds(0.16f);
             if (!ComboAlive()) yield break;
 
             // 终结段「回身斩」：环身大范围收势一斩 + 短时缓
@@ -458,7 +463,7 @@ namespace AdversityRoad.Combat
             Pose(PoseState.AttackUp, 0.2f);
             CombatFeedback.SwingArc(transform, true, green);
             Strike(PoseState.AttackUp, 20f, 22f, 4f, 0.07f, 0.14f, 1.15f, "player_skill_guihuan");
-            yield return new WaitForSeconds(0.18f);
+            yield return new WaitForSeconds(0.16f);
             if (!ComboAlive()) yield break;
 
             // 段2：横斩接力（承上启下的连贯挥击）
@@ -467,7 +472,7 @@ namespace AdversityRoad.Combat
             Glide(transform.forward * 0.8f, 0.1f);
             CombatFeedback.SwingArc(transform, false, green);
             Strike(PoseState.Attack, 22f, 18f, 3f, 0.06f, 0.14f, 1.2f, "player_skill_guihuan");
-            yield return new WaitForSeconds(0.18f);
+            yield return new WaitForSeconds(0.16f);
             if (!ComboAlive()) yield break;
 
             // 段3：旋身反震——清过度负责、责任球全数打回、好人墙整圈震破
@@ -480,7 +485,7 @@ namespace AdversityRoad.Combat
             foreach (var ball in FindObjectsOfType<ResponsibilityBall>())
                 if (ball.isFalse) { ball.ForceReturn(); returned++; }
             int walls = CageWall.BreakAll();
-            yield return new WaitForSeconds(0.19f);
+            yield return new WaitForSeconds(0.17f);
             if (!ComboAlive()) yield break;
 
             // 段4：弓步突刺——把「不属于我的」钉还回去
@@ -489,7 +494,7 @@ namespace AdversityRoad.Combat
             Glide(transform.forward * 1.6f, 0.12f);
             CombatFeedback.SwingArc(transform, false, green);
             Strike(PoseState.SwordThrust, 28f, 20f, 3f, 0.06f, 0.14f, 1.25f, "player_skill_guihuan");
-            yield return new WaitForSeconds(0.18f);
+            yield return new WaitForSeconds(0.16f);
             if (!ComboAlive()) yield break;
 
             // 段5：界域震地波终结 + 边界回补
@@ -535,12 +540,14 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < 3 && ComboAlive(); i++)
             {
                 FaceTarget();
-                Pose(PoseState.SwordThrust, 0.2f);
+                // 突刺→横斩→突刺：突进途中夹一记横扫，三连不再是同一记戳刺重播
+                var dashPose = i == 1 ? PoseState.Attack : PoseState.SwordThrust;
+                Pose(dashPose, 0.2f);
                 Glide(transform.forward * 2.2f, 0.13f);
                 CombatFeedback.SwingArc(transform, i == 2, fire);
                 CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f, fire, 5);
-                Strike(PoseState.SwordThrust, 22f + i * 5f, 16f, 2.5f, 0.05f, 0.13f, 1.2f, "player_skill_huozhong");
-                yield return new WaitForSeconds(0.18f);
+                Strike(dashPose, 22f + i * 5f, 16f, 2.5f, 0.05f, 0.13f, 1.2f, "player_skill_huozhong");
+                yield return new WaitForSeconds(0.16f);
             }
             if (!ComboAlive()) yield break;
 
@@ -601,13 +608,14 @@ namespace AdversityRoad.Combat
             Pose(PoseState.SpinKick, 0.2f);
             Glide(-transform.forward * 1.8f, 0.16f);
             CombatFeedback.SwingArc(transform, false, blue);
-            yield return new WaitForSeconds(0.18f);
+            yield return new WaitForSeconds(0.16f);
             if (!ComboAlive()) yield break;
 
             // 双镜界气刃连发：命中削韧（把"猜测"逐一钉回原地）
             for (int i = 0; i < 2 && ComboAlive(); i++)
             {
-                Pose(PoseState.Attack, 0.18f);
+                // 两记气刃一横斩一撩斩，掷出的姿势不重复
+                Pose(i == 0 ? PoseState.Attack : PoseState.AttackUp, 0.18f);
                 Vector3 origin = transform.position + Vector3.up * 1.2f + transform.forward * 0.7f;
                 Projectile.Launch(transform, origin, transform.forward, new DamageInfo
                 {
@@ -615,7 +623,7 @@ namespace AdversityRoad.Combat
                     attackerId = "player_skill_budu"
                 }, 18f, blue, null, 1.1f);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.6f);
-                yield return new WaitForSeconds(0.18f);
+                yield return new WaitForSeconds(0.16f);
             }
             if (!ComboAlive()) yield break;
 

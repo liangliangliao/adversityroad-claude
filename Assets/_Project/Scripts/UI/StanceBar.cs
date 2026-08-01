@@ -15,6 +15,10 @@ namespace AdversityRoad.UI
         static readonly Color Off = new Color(0.18f, 0.2f, 0.28f, 0.9f);
         static readonly Color On = new Color(0.85f, 0.6f, 0.25f, 0.98f);
 
+        // 与 GameBootstrap.HudLayout 的 StanceY / MantraY 对齐（状态区背板下方两行）
+        const float StanceY = -290f;
+        const float MantraY = -338f;
+
         readonly Button[] _btns = new Button[StanceSystem.Defs.Length];
         Text _mantra;
 
@@ -29,19 +33,27 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas, StanceSystem stance)
         {
+            // 五枚姿态按钮排一行；心法【另起一行】。
+            // 此前心法文字与按钮同在 y=-366：文字框 x 180~940、按钮 x 25~499，
+            // 两者重叠 300 多像素——截图里"起步"按钮上糊着"边界心法：…"就是这个。
             var defs = StanceSystem.Defs;
             for (int i = 0; i < defs.Length; i++)
             {
                 int idx = i;
                 var btn = UiUtil.MakeButton(canvas, defs[i].name, new Vector2(0, 1),
-                    new Vector2(70 + i * 96, -366), new Vector2(90, 54), Off,
-                    () => { if (stance != null) stance.SetStance(idx); }, 24);
+                    new Vector2(62 + i * 86, StanceY), new Vector2(80, 44), Off,
+                    () => { if (stance != null) stance.SetStance(idx); }, 22);
                 _btns[i] = btn;
             }
 
-            _mantra = UiUtil.MakeText(canvas, "StanceMantra", "", 22,
+            _mantra = UiUtil.MakeText(canvas, "StanceMantra", "", 20,
                 TextAnchor.MiddleLeft, new Color(1f, 0.88f, 0.6f));
-            UiUtil.SetRect(_mantra, new Vector2(0, 1), new Vector2(560, -366), new Vector2(760, 40));
+            var mrt = UiUtil.SetRect(_mantra, new Vector2(0, 1),
+                new Vector2(22, MantraY), new Vector2(720, 32));
+            mrt.pivot = new Vector2(0, 0.5f);
+            var outline = _mantra.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0, 0, 0, 0.85f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
 
             GameEvents.OnStanceChanged += OnStance;
             // 初始高亮（StanceSystem.Start 可能已在本帧之前广播过，这里兜底刷新一次）

@@ -807,9 +807,9 @@ namespace AdversityRoad.Combat
         IEnumerator RanWu(float charge01)
         {
             GameEvents.RaiseSkillBanner("超必杀「觉醒·乱舞」");
-            _fsm.RequestState(CombatState.Finisher, 1.6f);
-            _player.SetInvincible(1.7f);
-            CombatFeedback.UltimateShot(1.6f);   // 镜头拉近看清连段
+            _fsm.RequestState(CombatState.Finisher, 1.45f);
+            _player.SetInvincible(1.55f);
+            CombatFeedback.UltimateShot(1.45f);   // 镜头拉近看清连段
             // 大幅剑技串成连段：节奏留给动作本体，每击只配一道收敛的刀光，
             // 收招才一次中等能量爆发 + 短时缓——特效点到为止，不糊住招式。
             // 节拍 0.25~0.28 秒一击（原始 0.27~0.32，上一版一度压到 0.22 又收回来）：
@@ -817,10 +817,10 @@ namespace AdversityRoad.Combat
             // 超必杀要的是急促，不是看不清——0.25 已经明显快于原始节拍，且每一刀都立得住。
             var seq = new (PoseState pose, float dmg, float posture, float knock, float wait, Color arc)[]
             {
-                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.25f, new Color(0.6f, 0.85f, 1f)),
-                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.28f, new Color(0.7f, 0.9f, 1f)),
-                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.25f, new Color(0.8f, 0.92f, 1f)),
-                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.40f, new Color(0.55f, 0.8f, 1f)),
+                (PoseState.AttackUp,    1.0f, 16f,  8f, 0.22f, new Color(0.6f, 0.85f, 1f)),
+                (PoseState.AttackSpin,  1.2f, 18f, 10f, 0.24f, new Color(0.7f, 0.9f, 1f)),
+                (PoseState.SwordThrust, 1.3f, 16f,  6f, 0.22f, new Color(0.8f, 0.92f, 1f)),
+                (PoseState.AttackLeap,  2.6f, 42f, 12f, 0.36f, new Color(0.55f, 0.8f, 1f)),
             };
             float baseDmg = heavyDamage * (0.7f + 0.25f * charge01);
             for (int i = 0; i < seq.Length; i++)
@@ -829,10 +829,10 @@ namespace AdversityRoad.Combat
                 PlayPose(s.pose, s.wait);
                 FaceAndLunge(0.3f);
                 CombatFeedback.SwingArc(transform, true, s.arc);
-                // 判定窗必须短于节拍（0.08+0.13=0.21s < 最短 0.25s 一拍）：
+                // 判定窗必须短于节拍（0.07+0.12=0.19s < 最短 0.22s 一拍）：
                 // 否则下一段的 OpenHitboxTimed 会把上一段还没开完的判定协程掐掉，
                 // 乱舞就会"演了四刀只结算两刀"——看着华丽却打不痛人。
-                OpenHitboxTimed(0.08f, 0.13f, baseDmg * s.dmg, s.posture, s.knock, false,
+                OpenHitboxTimed(0.07f, 0.12f, baseDmg * s.dmg, s.posture, s.knock, false,
                     s.pose, i == seq.Length - 1 ? 1.3f : 1.05f);
                 // 每击落点一道小型地面冲击环（震地感），终结一击放大招级爆发
                 CombatFeedback.ShockRing(transform.position + transform.forward * 1.1f,

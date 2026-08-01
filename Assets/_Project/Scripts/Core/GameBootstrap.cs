@@ -31,6 +31,7 @@ namespace AdversityRoad.Core
         PlayerController _player;
         PlayerAppearance _appearance;
         BattleFlowController _battleFlow;
+        MainMenuPanel _mainMenu;
         GameObject _currentChapterEnemy;
 
         void Start()
@@ -60,7 +61,14 @@ namespace AdversityRoad.Core
             SpawnShadowGuardianIfEarned();
             BuildHUD();
             SetupChapterQuest();
-            ShowChapterIntro();
+            // 章节开场白挂到「进入世界」之后：开场页是标题，不是剧情弹窗，
+            // 否则剧情面板会盖在标题上（两个模态同时开着，还互相抢 timeScale）
+            if (_mainMenu != null)
+            {
+                _mainMenu.onEnterWorld = ShowChapterIntro;
+                _mainMenu.ShowTitle();   // 置顶：BuildHUD 里后建的面板不能压在标题之上
+            }
+            else ShowChapterIntro();
 
             // 回访提醒：若有隔天未确认的现实行动承诺，稍后温和提示去「行动」面板确认
             if (ActionSystem.DuePendingCount > 0) Invoke(nameof(NudgeActions), 5f);
@@ -752,27 +760,35 @@ namespace AdversityRoad.Core
             vImg.raycastTarget = false;
             hud.vignette = vImg;
 
-            hud.hpBar        = CreateBar(canvasGo.transform, "HP",   0, new Color(0.85f, 0.2f, 0.2f));
-            hud.willBar      = CreateBar(canvasGo.transform, "意志", 1, new Color(0.95f, 0.75f, 0.2f));
-            hud.focusBar     = CreateBar(canvasGo.transform, "专注", 2, new Color(0.2f, 0.7f, 0.95f));
-            hud.selfWorthBar = CreateBar(canvasGo.transform, "自尊", 3, new Color(0.6f, 0.4f, 0.9f));
-            hud.boundaryBar  = CreateBar(canvasGo.transform, "边界", 4, new Color(0.3f, 0.8f, 0.5f));
-            hud.actionPowerBar = CreateBar(canvasGo.transform, "行动", 5, new Color(0.95f, 0.5f, 0.3f));
-            hud.ruminationBar = CreateBar(canvasGo.transform, "反刍", 6, new Color(0.55f, 0.2f, 0.5f));
+            // ================= 左上角状态区（重排：主次分明 + 有背板可读）=================
+            // 旧布局把 9 条属性条一模一样地竖排成一摞：HP 与「刺痛」同宽同高同款，
+            // 主次完全不分；条上没有数字，血量只能靠目测一截颜色；又没有背板，
+            // 浅色场景下白色小字直接糊在背景里看不见——这三条正是「HP 看不清」的成因。
+            // 现在：HP 单独做成醒目主条（带 168 / 200 读数），其余八项心理值缩成
+            // 两列小条，整块压在半透明深色背板上。占地更小，读得更清。
+            MakeVitalsPlate(canvasGo.transform);
+
+            hud.hpBar = CreateHpBar(canvasGo.transform);
+            hud.willBar      = CreateMiniBar(canvasGo.transform, "意志", 0, new Color(0.95f, 0.75f, 0.2f));
+            hud.focusBar     = CreateMiniBar(canvasGo.transform, "专注", 1, new Color(0.2f, 0.7f, 0.95f));
+            hud.selfWorthBar = CreateMiniBar(canvasGo.transform, "自尊", 2, new Color(0.6f, 0.4f, 0.9f));
+            hud.boundaryBar  = CreateMiniBar(canvasGo.transform, "边界", 3, new Color(0.3f, 0.8f, 0.5f));
+            hud.actionPowerBar = CreateMiniBar(canvasGo.transform, "行动", 4, new Color(0.95f, 0.5f, 0.3f));
+            hud.ruminationBar = CreateMiniBar(canvasGo.transform, "反刍", 5, new Color(0.55f, 0.2f, 0.5f));
             hud.ruminationBar.SetValue(0, 100); // 反刍从空开始（越满越糟）
-            hud.drainBar      = CreateBar(canvasGo.transform, "消耗", 7, new Color(0.8f, 0.45f, 0.2f));
+            hud.drainBar      = CreateMiniBar(canvasGo.transform, "消耗", 6, new Color(0.8f, 0.45f, 0.2f));
             hud.drainBar.SetValue(0, 100);      // 关系消耗从空开始（越满越糟）
-            hud.fairnessPainBar = CreateBar(canvasGo.transform, "刺痛", 8, new Color(0.85f, 0.25f, 0.25f));
+            hud.fairnessPainBar = CreateMiniBar(canvasGo.transform, "刺痛", 7, new Color(0.85f, 0.25f, 0.25f));
             hud.fairnessPainBar.SetValue(0, 100); // 公平刺痛从空开始（越满越糟，三档规则）
 
-            // 意势点（黑神话棍势式资源）：属性条下方三枚圆点（让位给新增的刺痛条，整体下移）
+            // 意势点（黑神话棍势式资源）：状态区正下方三枚圆点
             hud.momentumPips = new Image[3];
             for (int i = 0; i < 3; i++)
             {
                 var pip = new GameObject("MomentumPip" + i, typeof(Image));
                 pip.transform.SetParent(canvasGo.transform, false);
                 UiUtil.SetRect(pip.GetComponent<Image>(), new Vector2(0, 1),
-                    new Vector2(40 + i * 46, -344), new Vector2(30, 30));
+                    new Vector2(38 + i * 40, HudLayout.MomentumY), new Vector2(26, 26));
                 var img = pip.GetComponent<Image>();
                 img.color = new Color(1f, 1f, 1f, 0.18f);
                 img.raycastTarget = false;
@@ -783,13 +799,16 @@ namespace AdversityRoad.Core
             hud.cineTop = MakeCineBar(canvasGo.transform, true);
             hud.cineBottom = MakeCineBar(canvasGo.transform, false);
 
-            // 连段序列显示（拳·拳·腿 → 提示玩家配方进度）
-            var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 30,
+            // 连段序列显示（融合链 → 提示玩家配方进度）：与意势点同一行，但错开到右侧。
+            // 此前两者都摆在 x=0~400、y=-344，字直接压在圆点上（截图里那摊看不清的重叠）。
+            var comboText = UiUtil.MakeText(canvasGo.transform, "ComboText", "", 28,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.4f));
-            UiUtil.SetRect(comboText, new Vector2(0, 1), new Vector2(200, -344), new Vector2(400, 36));
+            var ctRt = UiUtil.SetRect(comboText, new Vector2(0, 1),
+                new Vector2(HudLayout.ComboX, HudLayout.MomentumY), new Vector2(520, 34));
+            ctRt.pivot = new Vector2(0, 0.5f);
             hud.comboText = comboText;
 
-            // 姿态条（属性条下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
+            // 姿态条（状态区下方一排五枚：起步/边界/定心/事实/意志，点选或 Tab/F 切换）
             StanceBar.Create(canvasGo.transform, _player.GetComponent<StanceSystem>());
 
             var qText = UiUtil.MakeText(canvasGo.transform, "QuestText", "", 26,
@@ -826,41 +845,20 @@ namespace AdversityRoad.Core
             var ccColor = comboCount.color; ccColor.a = 0f; comboCount.color = ccColor;
             hud.comboCountText = comboCount;
 
-            // 右上角功能按钮 + 面板
+            // ================= 功能入口：十三个按钮 → 一枚「菜单」 =================
+            // 旧布局把这些按钮三行平铺在右上角，横向一直排到屏幕中线，正好压在顶部的
+            // 主线任务文字上（截图里"招式/画像"盖住任务行的那处重叠）。而且它们大多是
+            // 低频入口（复盘/图鉴/命题审核/测试），却占着战斗中最该留白的视野区域。
+            // 大作的做法是 HUD 只留一个入口，功能收进菜单页——照办。
             var spawnerPanel = EnemySpawnerPanel.Create(canvasGo.transform, SpawnEnemyNearPlayer);
             var promptPanel = PromptConfigPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "敌人+", new Vector2(1, 1), new Vector2(-95, -42),
-                new Vector2(150, 64), new Color(0.6f, 0.25f, 0.2f, 0.8f), spawnerPanel.Toggle, 26);
-            UiUtil.MakeButton(canvasGo.transform, "AI台词", new Vector2(1, 1), new Vector2(-265, -42),
-                new Vector2(150, 64), new Color(0.25f, 0.35f, 0.6f, 0.8f), promptPanel.Toggle, 26);
             var characterPanel = CharacterPanel.Create(canvasGo.transform, _appearance);
-            UiUtil.MakeButton(canvasGo.transform, "角色", new Vector2(1, 1), new Vector2(-435, -42),
-                new Vector2(150, 64), new Color(0.3f, 0.5f, 0.4f, 0.8f),
-                characterPanel.Toggle, 26);
             var aiLogPanel = AiLogPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "日志", new Vector2(1, 1), new Vector2(-605, -42),
-                new Vector2(150, 64), new Color(0.4f, 0.4f, 0.3f, 0.8f), aiLogPanel.Toggle, 26);
             var profilePanel = ProfilePanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "画像", new Vector2(1, 1), new Vector2(-775, -42),
-                new Vector2(150, 64), new Color(0.5f, 0.35f, 0.55f, 0.8f), profilePanel.Toggle, 26);
             var movesPanel = MovesPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "招式", new Vector2(1, 1), new Vector2(-945, -42),
-                new Vector2(150, 64), new Color(0.55f, 0.45f, 0.25f, 0.8f), movesPanel.Toggle, 26);
-            UiUtil.MakeButton(canvasGo.transform, "视角", new Vector2(1, 1), new Vector2(-95, -116),
-                new Vector2(150, 64), new Color(0.35f, 0.45f, 0.55f, 0.8f), () =>
-                {
-                    var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
-                    if (cam != null) cam.CyclePreset();
-                }, 26);
             var debugPanel = DebugMovesPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "测试", new Vector2(1, 1), new Vector2(-265, -116),
-                new Vector2(150, 64), new Color(0.45f, 0.35f, 0.5f, 0.8f), debugPanel.Toggle, 26);
             var settingsPanel = SettingsPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "设置", new Vector2(1, 1), new Vector2(-435, -116),
-                new Vector2(150, 64), new Color(0.4f, 0.4f, 0.45f, 0.8f), settingsPanel.Toggle, 26);
             var reflectionPanel = ReflectionPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "复盘", new Vector2(1, 1), new Vector2(-605, -116),
-                new Vector2(150, 64), new Color(0.35f, 0.45f, 0.4f, 0.8f), reflectionPanel.Toggle, 26);
 
             // 安全屋枢纽：复盘 / 技能树 / 装备套装 / 敌人图鉴 / 旧事档案 / 关卡传送
             var growthPanel = GrowthPanel.Create(canvasGo.transform);
@@ -871,21 +869,40 @@ namespace AdversityRoad.Core
             var missionBoardPanel = MissionBoardPanel.Create(canvasGo.transform);
             var actionTrackerPanel = ActionTrackerPanel.Create(canvasGo.transform);
             var quizPanel = QuizPanel.Create(canvasGo.transform);
+            var quizReviewPanel = QuizReviewPanel.Create(canvasGo.transform);
             var safeHousePanel = SafeHousePanel.Create(canvasGo.transform,
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
                 levelSelectPanel, missionBoardPanel, actionTrackerPanel, quizPanel);
-            UiUtil.MakeButton(canvasGo.transform, "安全屋", new Vector2(1, 1), new Vector2(-775, -116),
-                new Vector2(150, 64), new Color(0.5f, 0.42f, 0.25f, 0.85f), safeHousePanel.Toggle, 26);
-            // 传送直达按钮：跨区域章节（如第八章回噪声街区）不再靠走路找入口
-            UiUtil.MakeButton(canvasGo.transform, "传送", new Vector2(1, 1), new Vector2(-945, -116),
-                new Vector2(150, 64), new Color(0.3f, 0.45f, 0.6f, 0.85f), levelSelectPanel.Toggle, 26);
-            // 答题练习：休养生息题库随时可练（战斗中能量失衡时会自动触发）
-            UiUtil.MakeButton(canvasGo.transform, "答题", new Vector2(1, 1), new Vector2(-605, -190),
-                new Vector2(150, 64), new Color(0.3f, 0.55f, 0.45f, 0.85f), quizPanel.OpenPractice, 26);
-            // AI 命题审核：开关 AI 自动命题、逐条定夺候选题能否长期入库
-            var quizReviewPanel = QuizReviewPanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "命题审核", new Vector2(1, 1), new Vector2(-775, -190),
-                new Vector2(150, 64), new Color(0.5f, 0.4f, 0.3f, 0.85f), quizReviewPanel.Toggle, 24);
+
+            var sysMenu = SystemMenuPanel.Create(canvasGo.transform);
+            sysMenu.Add("养成", "安全屋", safeHousePanel.Toggle);
+            sysMenu.Add("养成", "复盘", reflectionPanel.Toggle);
+            sysMenu.Add("养成", "答题", quizPanel.OpenPractice);
+            sysMenu.Add("探索", "传送", levelSelectPanel.Toggle);
+            sysMenu.Add("探索", "招式", movesPanel.Toggle);
+            sysMenu.Add("角色", "角色", characterPanel.Toggle);
+            sysMenu.Add("角色", "画像", profilePanel.Toggle);
+            sysMenu.Add("系统", "设置", settingsPanel.Toggle);
+            sysMenu.Add("系统", "视角", () =>
+            {
+                var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+                if (cam != null) cam.CyclePreset();
+            });
+            sysMenu.Add("调试", "刷敌人", spawnerPanel.Toggle);
+            sysMenu.Add("调试", "招式测试", debugPanel.Toggle);
+            sysMenu.Add("调试", "AI 台词", promptPanel.Toggle);
+            sysMenu.Add("调试", "AI 日志", aiLogPanel.Toggle);
+            sysMenu.Add("调试", "命题审核", quizReviewPanel.Toggle);
+            sysMenu.Build();
+
+            // 右上角只留两枚：菜单 + 暂停。其余视野全部还给战斗画面。
+            UiUtil.MakeButton(canvasGo.transform, "≡ 菜单", new Vector2(1, 1), new Vector2(-100, -44),
+                new Vector2(160, 64), new Color(0.22f, 0.25f, 0.32f, 0.92f), sysMenu.Toggle, 28);
+
+            var mainMenu = MainMenuPanel.Create(canvasGo.transform, settingsPanel);
+            _mainMenu = mainMenu;
+            UiUtil.MakeButton(canvasGo.transform, "暂停", new Vector2(1, 1), new Vector2(-268, -44),
+                new Vector2(140, 64), new Color(0.22f, 0.25f, 0.32f, 0.92f), mainMenu.ShowPause, 28);
 
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
@@ -948,34 +965,121 @@ namespace AdversityRoad.Core
             return rt;
         }
 
-        StatBar CreateBar(Transform parent, string label, int index, Color fillColor)
+        /// <summary>左上角状态区的版面常量（一处改，全部跟着走；不再各处硬写 y 值互相压）。</summary>
+        static class HudLayout
         {
-            float y = -30 - index * 34;
+            public const float PlateX = 16f;      // 背板左边距
+            public const float PlateW = 360f;     // 背板宽
+            public const float HpY = -26f;        // 主血条顶
+            public const float HpH = 38f;         // 主血条高（比心理小条高一倍多，主次分明）
+            public const float MiniTop = -78f;    // 心理小条区顶
+            public const float MiniH = 20f;       // 小条高
+            public const float MiniStep = 27f;    // 小条行距
+            public const float MiniW = 168f;      // 小条宽（两列）
+            public const float MiniColStep = 176f;
+            public const float PlateH = 226f;     // 背板高 = 主条 + 四行小条 + 内边距
+            public const float MomentumY = -244f; // 意势点行（背板正下方）
+            public const float ComboX = 172f;     // 融合链文字起点（错开意势点，不再重叠）
+            public const float StanceY = -290f;   // 姿态按钮行
+            public const float MantraY = -338f;   // 心法文字行（自己一行，不压在按钮上）
+        }
 
+        /// <summary>状态区背板：半透明深色垫底。
+        /// 没有背板时，白色小字直接压在明亮场景上（截图里的黄昏天空）几乎读不出来。</summary>
+        void MakeVitalsPlate(Transform parent)
+        {
+            var go = new GameObject("VitalsPlate", typeof(Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0, 1);
+            rt.pivot = new Vector2(0, 1);
+            rt.anchoredPosition = new Vector2(HudLayout.PlateX - 8f, -10f);
+            rt.sizeDelta = new Vector2(HudLayout.PlateW + 16f, HudLayout.PlateH);
+            var img = go.GetComponent<Image>();
+            img.color = new Color(0.04f, 0.05f, 0.07f, 0.55f);
+            img.raycastTarget = false;
+        }
+
+        /// <summary>主血条：高、带描边、带「168 / 200」读数——一眼能读出还剩多少。</summary>
+        StatBar CreateHpBar(Transform parent)
+        {
+            var root = new GameObject("Bar_HP", typeof(RectTransform));
+            root.transform.SetParent(parent, false);
+            var rt = root.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0, 1);
+            rt.pivot = new Vector2(0, 1);
+            rt.anchoredPosition = new Vector2(HudLayout.PlateX, HudLayout.HpY);
+            rt.sizeDelta = new Vector2(HudLayout.PlateW, HudLayout.HpH);
+
+            var slider = BuildSlider(root.transform, new Vector2(0, 0), new Vector2(0, 0),
+                new Color(0.85f, 0.18f, 0.18f));
+
+            // 标签与读数都压在条内（左「生命」右「168 / 200」），并配深色描边保证任何背景下可读
+            var lt = UiUtil.MakeText(root.transform, "Label", "生命", 20,
+                TextAnchor.MiddleLeft, new Color(1f, 0.92f, 0.92f));
+            var lrt = UiUtil.SetRect(lt, new Vector2(0, 0.5f), new Vector2(12, 0), new Vector2(120, 30));
+            lrt.pivot = new Vector2(0, 0.5f);
+            AddOutline(lt);
+
+            var vt = UiUtil.MakeText(root.transform, "Value", "", 20,
+                TextAnchor.MiddleRight, Color.white);
+            var vrt = UiUtil.SetRect(vt, new Vector2(1, 0.5f), new Vector2(-12, 0), new Vector2(200, 30));
+            vrt.pivot = new Vector2(1, 0.5f);
+            AddOutline(vt);
+
+            var bar = root.AddComponent<StatBar>();
+            bar.slider = slider;
+            bar.valueText = vt;
+            return bar;
+        }
+
+        /// <summary>心理属性小条：两列四行，占地只有主血条的一半，不与 HP 抢注意力。</summary>
+        StatBar CreateMiniBar(Transform parent, string label, int index, Color fillColor)
+        {
+            int col = index % 2, row = index / 2;
             var root = new GameObject("Bar_" + label, typeof(RectTransform));
             root.transform.SetParent(parent, false);
             var rt = root.GetComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0, 1);
-            rt.anchorMax = new Vector2(0, 1);
+            rt.anchorMin = rt.anchorMax = new Vector2(0, 1);
             rt.pivot = new Vector2(0, 1);
-            rt.anchoredPosition = new Vector2(20, y);
-            rt.sizeDelta = new Vector2(320, 26);
+            rt.anchoredPosition = new Vector2(HudLayout.PlateX + col * HudLayout.MiniColStep,
+                HudLayout.MiniTop - row * HudLayout.MiniStep);
+            rt.sizeDelta = new Vector2(HudLayout.MiniW, HudLayout.MiniH);
 
-            var lt = UiUtil.MakeText(root.transform, "Label", label, 18, TextAnchor.MiddleLeft, Color.white);
+            var lt = UiUtil.MakeText(root.transform, "Label", label, 16,
+                TextAnchor.MiddleLeft, new Color(0.92f, 0.94f, 1f));
             var lrt = lt.GetComponent<RectTransform>();
             lrt.anchorMin = Vector2.zero;
             lrt.anchorMax = new Vector2(0, 1);
             lrt.pivot = new Vector2(0, 0.5f);
             lrt.anchoredPosition = Vector2.zero;
-            lrt.sizeDelta = new Vector2(60, 0);
+            lrt.sizeDelta = new Vector2(44, 0);
+            AddOutline(lt);
 
+            var slider = BuildSlider(root.transform, new Vector2(48, 3), new Vector2(0, -3), fillColor);
+            var bar = root.AddComponent<StatBar>();
+            bar.slider = slider;
+            return bar;
+        }
+
+        /// <summary>文字描边：HUD 文字要在任何场景亮度下都读得出来（黄昏天空下白字会糊）。</summary>
+        static void AddOutline(Text t)
+        {
+            var o = t.gameObject.AddComponent<Outline>();
+            o.effectColor = new Color(0, 0, 0, 0.85f);
+            o.effectDistance = new Vector2(1.5f, -1.5f);
+        }
+
+        /// <summary>条形 Slider 本体（背景 + 填充），offsetMin/Max 决定它在父物体里的内缩。</summary>
+        Slider BuildSlider(Transform parent, Vector2 offsetMin, Vector2 offsetMax, Color fillColor)
+        {
             var sliderGo = new GameObject("Slider", typeof(RectTransform), typeof(Slider));
-            sliderGo.transform.SetParent(root.transform, false);
+            sliderGo.transform.SetParent(parent, false);
             var srt = sliderGo.GetComponent<RectTransform>();
             srt.anchorMin = new Vector2(0, 0);
             srt.anchorMax = new Vector2(1, 1);
-            srt.offsetMin = new Vector2(65, 4);
-            srt.offsetMax = new Vector2(0, -4);
+            srt.offsetMin = offsetMin;
+            srt.offsetMax = offsetMax;
 
             var bg = new GameObject("Background", typeof(Image));
             bg.transform.SetParent(sliderGo.transform, false);
@@ -1012,10 +1116,7 @@ namespace AdversityRoad.Core
             slider.minValue = 0;
             slider.maxValue = 1;
             slider.value = 1;
-
-            var bar = root.AddComponent<StatBar>();
-            bar.slider = slider;
-            return bar;
+            return slider;
         }
 
         // ================= 任务与剧情 =================
@@ -1056,7 +1157,7 @@ namespace AdversityRoad.Core
             if (story.AllCleared)
             {
                 _battleFlow.ShowStory("自由修炼",
-                    "主线已完结。\n用右上角「敌人+」添加任意类型与难度的心魔，继续磨炼自己。",
+                    "主线已完结。\n用「菜单 → 调试 → 刷敌人」添加任意类型与难度的心魔，继续磨炼自己。",
                     "开始");
                 return;
             }

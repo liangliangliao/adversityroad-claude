@@ -61,17 +61,17 @@ namespace AdversityRoad.Combat
             A(PoseState.Attack,      1.75f, 0.20f, 0.68f, false, "great sword slash"),
             A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword jump attack", "great sword jump", "great sword high spin attack"),
             A(PoseState.AttackUp,    1.75f, 0.20f, 0.68f, false, "great sword slash (1)", "great sword high spin attack"),
-            A(PoseState.SwordThrust, 1.85f, 0.18f, 0.72f, false, "stabbing", "stab"),
+            A(PoseState.SwordThrust, 1.85f, 0.18f, 0.66f, false, "stabbing", "stab"),
             A(PoseState.AttackLeap,  1.55f, 0.12f, 0.80f, false, "great sword jump attack", "great sword jump", "jump attack"),
             A(PoseState.JumpAttack,  1.6f,  0.15f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
-            A(PoseState.AttackSpin,  1.6f,  0.15f, 0.76f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
-            A(PoseState.PunchJab,    1.95f, 0.15f, 0.70f, false, "lead jab", "jab"),
-            A(PoseState.PunchCross,  1.85f, 0.15f, 0.70f, false, "cross punch"),
-            A(PoseState.AttackKick,  1.8f,  0.18f, 0.76f, false, "kicking"),
-            A(PoseState.SideKick,    1.8f,  0.18f, 0.76f, false, "side kick"),
-            A(PoseState.SpinKick,    1.65f, 0.12f, 0.86f, false, "spin flip kick", "spin kick"),
-            A(PoseState.JumpKick,    1.7f,  0.12f, 0.86f, false, "flying kick"),
-            A(PoseState.Sweep,       1.6f,  0.12f, 0.84f, false, "leg sweep", "spin flip kick"),
+            A(PoseState.AttackSpin,  1.6f,  0.15f, 0.72f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
+            A(PoseState.PunchJab,    1.95f, 0.15f, 0.64f, false, "lead jab", "jab"),
+            A(PoseState.PunchCross,  1.85f, 0.15f, 0.64f, false, "cross punch"),
+            A(PoseState.AttackKick,  1.8f,  0.18f, 0.70f, false, "kicking"),
+            A(PoseState.SideKick,    1.8f,  0.18f, 0.70f, false, "side kick"),
+            A(PoseState.SpinKick,    1.65f, 0.12f, 0.78f, false, "spin flip kick", "spin kick"),
+            A(PoseState.JumpKick,    1.7f,  0.12f, 0.80f, false, "flying kick"),
+            A(PoseState.Sweep,       1.6f,  0.12f, 0.80f, false, "leg sweep", "spin flip kick"),
             A(PoseState.Hit,         1.45f, 0.10f, 0.78f, false, "hit reaction", "great sword impact", "hit"),
             // 击倒提速：受了重击身体应当干脆地倒下去，而不是慢悠悠飘倒
             A(PoseState.Knockdown,   1.3f,  0.04f, 1f,    true,  "knocked down", "sweep fall", "knockdown", "falling back"),
@@ -97,13 +97,16 @@ namespace AdversityRoad.Combat
         /// 但它超过了眼睛能连成动作的极限：30fps 下 3.4 倍意味着相邻两帧之间
         /// 跳过 0.11 秒的动作数据，肢体位置一跳一跳地闪，大脑读不出"运动"，
         /// 只读出"位置在变的静止姿势"——这就是"快到看似角色静止"的来源。
-        /// 2.2 倍下每帧推进 0.073 秒，动作仍然连得起来。
+        /// 2.6 倍下每帧推进 0.087 秒，动作仍然连得起来（2.2 偏保守，实测可以再快）。
+        /// 真正让"快"和"顺"同时成立的不是这个数，而是**发力窗裁得更短**：
+        /// 只演核心一击、把摆架势和回位都交给上下一招，观感上快得多，
+        /// 每帧推进量却不增加——提倍速会闪，裁窗口不会。
         ///
         /// 代价要说清楚：长片段（巨剑类 2 秒以上）因此无法在 0.35 秒内播完整个
         /// 发力窗，会被下一招切断。这是对的——动作游戏里连段本来就是"一刀砍到
         /// 一半接下一刀"，看得清比播得完重要。
         /// </summary>
-        const float MaxDrivenSpeed = 2.2f;
+        const float MaxDrivenSpeed = 2.6f;
 
         /// <summary>单次出招在画面上至少要占的时间（≈30fps 下 5-6 帧）。
         /// 技能连招里 0.14 秒一段的节拍若原样反推，动作只剩三四帧就换下一个，
