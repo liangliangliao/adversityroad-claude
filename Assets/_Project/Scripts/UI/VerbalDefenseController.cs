@@ -31,6 +31,7 @@ namespace AdversityRoad.UI
 
         /// <summary>攻防进行中（休养生息答题等模态系统据此避让）。</summary>
         public bool IsActive => _active;
+        Text _srcTag;
         int _correctIndex;
         string _bestLine;
         WeaknessAxis _axis;
@@ -53,34 +54,39 @@ namespace AdversityRoad.UI
             // 横跨 x 210~1710、纵跨 y 100~400——把「挡」「剑」和半个「拳」全压在下面，
             // 弹出言语攻防时玩家等于没法防守。现在收到 920×236 并整体左移上抬，
             // 落在 x 260~1180、y 502~738 的空白带里：按钮全部露出，摇杆也不挡。
-            _panel = UiUtil.MakePanel(canvas, "VerbalDefensePanel", new Vector2(920, 236),
+            _panel = UiUtil.MakePanel(canvas, "VerbalDefensePanel", new Vector2(820, 200),
                 new Color(0.06f, 0.05f, 0.1f, 0.92f));
             UiUtil.SetRect(_panel.GetComponent<Image>(), new Vector2(0.5f, 0f),
-                new Vector2(-240, 620), new Vector2(920, 236));
+                new Vector2(-260, 600), new Vector2(820, 200));
 
-            var tag = UiUtil.MakeText(_panel.transform, "Tag", "言语攻防 · 选择你的回应", 20,
+            var tag = UiUtil.MakeText(_panel.transform, "Tag", "言语攻防 · 选择你的回应", 18,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.6f, 0.55f));
-            UiUtil.SetRect(tag, new Vector2(0.5f, 1f), new Vector2(0, -22), new Vector2(880, 28));
+            UiUtil.SetRect(tag, new Vector2(0.5f, 1f), new Vector2(0, -16), new Vector2(790, 22));
 
-            _lineText = UiUtil.MakeText(_panel.transform, "EnemyLine", "", 24,
+            // 来源标签：内部/外部 + AI/本地
+            _srcTag = UiUtil.MakeText(_panel.transform, "SrcTag", "", 16,
+                TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
+            UiUtil.SetRect(_srcTag, new Vector2(0.5f, 1f), new Vector2(0, -36), new Vector2(790, 20));
+
+            _lineText = UiUtil.MakeText(_panel.transform, "EnemyLine", "", 21,
                 TextAnchor.MiddleCenter, new Color(1f, 0.85f, 0.85f));
-            UiUtil.SetRect(_lineText, new Vector2(0.5f, 1f), new Vector2(0, -60), new Vector2(890, 42));
+            UiUtil.SetRect(_lineText, new Vector2(0.5f, 1f), new Vector2(0, -64), new Vector2(795, 40));
 
             // 三枚横排选项按钮
             for (int i = 0; i < 3; i++)
             {
                 int idx = i; // 闭包捕获
                 var btn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 0f),
-                    new Vector2(-296 + i * 296, 74), new Vector2(286, 78),
-                    new Color(0.2f, 0.22f, 0.3f, 0.96f), () => OnChoice(idx), 20);
+                    new Vector2(-264 + i * 264, 62), new Vector2(254, 68),
+                    new Color(0.2f, 0.22f, 0.3f, 0.96f), () => OnChoice(idx), 18);
                 _btnLabels[i] = btn.GetComponentInChildren<Text>();
             }
 
             // 倒计时条（横向填充，非缩放时间驱动）
-            var barBg = UiUtil.MakePanel(_panel.transform, "TimerBg", new Vector2(880, 10),
+            var barBg = UiUtil.MakePanel(_panel.transform, "TimerBg", new Vector2(790, 8),
                 new Color(0, 0, 0, 0.5f));
             UiUtil.SetRect(barBg.GetComponent<Image>(), new Vector2(0.5f, 0f),
-                new Vector2(0, 24), new Vector2(880, 10));
+                new Vector2(0, 20), new Vector2(790, 8));
             var fillGo = new GameObject("TimerFill", typeof(Image));
             fillGo.transform.SetParent(barBg.transform, false);
             _timerFill = fillGo.GetComponent<RectTransform>();
@@ -115,7 +121,21 @@ namespace AdversityRoad.UI
             var (opts, correct, best) = ResponseLibrary.GetChoices(axis);
             _correctIndex = correct;
             _bestLine = best;
-            _lineText.text = "『" + enemyName + "』：" + enemyLine;
+            // 来源标注（两个维度，玩家必须能分清）：
+            //   ① 内部 / 外部——这句话是【自己脑子里的声音】还是【外面的心魔在说】。
+            //      这是本作的核心区分：对内的要"不认同"，对外的要"不接招"，
+            //      两者的正确应对完全不同，混在一起玩家就无从判断该用哪套。
+            //      enemy == null 即脑内回声（InnerVoiceSystem 就是这么调的）。
+            //   ② AI 现编 / 本地写死——语气稳定性与可信度不同，
+            //      玩家有权知道屏幕上这句是模型这一次的发挥还是设计好的台词。
+            bool inner = enemy == null;
+            string src = AI.DialogueLibrary.LastFromAI ? "AI 生成" : "本地台词";
+            if (_srcTag != null)
+            {
+                _srcTag.text = (inner ? "内部 · 脑内回声" : "外部 · 心魔喊话") + "　|　" + src;
+                _srcTag.color = inner ? new Color(0.75f, 0.7f, 1f) : new Color(1f, 0.7f, 0.55f);
+            }
+            _lineText.text = (inner ? "【内】" : "【外】") + "『" + enemyName + "』：" + enemyLine;
             for (int i = 0; i < 3; i++)
                 if (_btnLabels[i] != null) _btnLabels[i].text = opts[i];
 

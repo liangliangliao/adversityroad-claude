@@ -65,8 +65,18 @@ namespace AdversityRoad.Combat
                 dur = heavy ? 0.42f : 0.26f
             });
 
-            // 部位标签贴在接触点旁：连击同一部位就连续弹出，次数所见即所得
-            CombatFeedback.HitPartLabel(contact, "·" + label, new Color(1f, 0.55f, 0.35f));
+            // 部位标签贴在接触点旁：连击同一部位就连续弹出，次数所见即所得。
+            // 按部位分色 + 头部标「会心」：一眼读出"打中了哪里、这一下值不值"
+            // （头部本就吃 1.35 倍伤害、腿部削韧 1.4 倍，见 EnemyController 的部位结算）。
+            bool head = label == "头部";
+            bool leg = label == "左腿" || label == "右腿";
+            Color labelCol = head ? new Color(1f, 0.72f, 0.2f)
+                : leg ? new Color(0.6f, 0.85f, 1f)
+                : new Color(1f, 0.62f, 0.45f);
+            CombatFeedback.HitPartLabel(contact,
+                head ? "会心 · 头部" : "· " + label, labelCol);
+            // 命中部位再补一簇同色火花：打在头上和打在腿上，画面反馈不该长得一样
+            CombatFeedback.HitSpark(contact - Vector3.up * 1.2f, labelCol, head ? 8 : 5);
         }
 
         static void Consider(Transform b, string name, float strength, Vector3 contact,

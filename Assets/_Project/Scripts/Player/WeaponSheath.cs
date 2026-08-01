@@ -28,7 +28,6 @@ namespace AdversityRoad.Player
         bool _anim; float _t, _dur; bool _toDrawn;
         bool _transferred;                                  // 拔刀：剑已交接到右手
         bool _seatCapture;                                  // （保留位：分段边界一次性动作标记）
-        Quaternion _setStartR;                              // 呈鞘渐入起点（世界）
 
         // 自然携持（每帧强制）：左手提鞘、鞘身竖直微前倾、鞘中点贴掌心
         Transform _set, _lhand, _visual;
@@ -76,7 +75,7 @@ namespace AdversityRoad.Player
             _dur = Mathf.Max(0.25f, dur);
             _t = 0f; _anim = true;
             _transferred = false; _seatCapture = false;
-            if (_set != null) { _setStartR = _set.rotation; }
+            // （_setStartR 已弃用：过渡期间不再对鞘做任何"转过去对准"的插值）
         }
 
         /// <summary>鞘口姿态（鞘本地）：座位姿态沿鞘轴外移一个鞘长——剑尖恰在鞘口。</summary>
@@ -193,29 +192,21 @@ namespace AdversityRoad.Player
             }
         }
 
-        /// <summary>呈鞘（过渡期间）：鞘中点【始终钉在左手掌心】（鞘绝不离开左手、
-        /// 绝不跟着剑跑），仅把鞘口方向迎向剑柄（剑未出鞘时迎向来取剑的右手）——
-        /// 左手横托剑鞘、右手精准拔/收，鞘口与剑的对准由双手动画自然完成。</summary>
-        void AimScabbard()
-        {
-            if (_set == null || _lhand == null) return;
-            Vector3 palmW = _lhand.TransformPoint(_palmL);
-            // 鞘口该迎向谁，取决于这一下是拔还是收——这里原本一律迎向【剑柄】：
-            //   拔刀时对（手来取柄），收刀时**完全错**——先入鞘的是剑尖不是剑柄。
-            //   鞘口指着剑柄，等于让剑倒着往鞘里怼；随后的对口插值只能把剑整个
-            //   甩过来，画面上就是剑身斜穿鞘口、剑与鞘交叉成十字（截图三）。
-            // 收刀改为迎向剑尖，插入方向与剑轴天然共线。
-            Vector3 aimPt = _toDrawn
-                ? (_transferred ? _blade.TransformPoint(_gripL) : _rightHand.position)
-                : _blade.TransformPoint(_tipL);
-            Vector3 aim = aimPt - palmW;
-            Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);   // 底→口
-            if (aim.sqrMagnitude < 1e-8f || axisW.sqrMagnitude < 1e-10f) return;
-            Quaternion target = Quaternion.FromToRotation(axisW.normalized, aim.normalized) * _set.rotation;
-            float ramp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_t / 0.3f));
-            _set.rotation = Quaternion.Slerp(_setStartR, target, ramp);
-            _set.position += palmW - _scab.TransformPoint(_midPt);   // 鞘中点钉掌心
-        }
+        /// <summary>
+        /// 过渡期间的持鞘：**鞘不去追剑**。
+        ///
+        /// 真实的拔/收刀是「鞘稳在胯侧不动，剑去找鞘」，而不是「鞘甩过去接剑」。
+        /// 旧实现做的恰恰是后者：`FromToRotation(鞘轴, 指向剑尖)` 把整套鞘转到
+        /// 「从左掌指向剑尖」的方向上——而收刀时剑在右手、举在身前，
+        /// 于是鞘被甩成**水平横在腰前**，鞘与剑首尾相接连成一条三倍身宽的长线
+        /// （实机截图正是如此）。把鞘口迎向剑柄还是剑尖只是在错误里换了个方向，
+        /// 两种都不对：**鞘根本就不该转**。
+        ///
+        /// 现在过渡期间沿用自然携持姿态（竖提于左胯、鞘口朝上偏前），只把收敛速度
+        /// 调快一点以免摇晃；对准完全交给剑那一侧——剑先转到与鞘轴共线、
+        /// 再把剑尖送到鞘口、最后沿轴推进去。这也正是人真实收刀的顺序。
+        /// </summary>
+        void AimScabbard() => CarryScabbard(26f);
 
         static void WorldPose(Transform parent, Vector3 lp, Quaternion lr, Vector3 ls,
             out Vector3 pos, out Quaternion rot, out Vector3 scl)
@@ -237,7 +228,7 @@ namespace AdversityRoad.Player
 
         /// <summary>每帧自然携持：鞘轴(鞘底→鞘口)对齐"竖直微前倾"、鞘中点贴左手掌心。
         /// 旋转带平滑（呈鞘结束后柔和转回竖提）；绕竖轴朝向仍随手转动。</summary>
-        void CarryScabbard()
+        void CarryScabbard(float rate = 12f)
         {
             if (_set == null || _lhand == null) return;
             Vector3 axisW = _scab.TransformPoint(_mouthPt) - _scab.TransformPoint(_botPt);
@@ -248,7 +239,7 @@ namespace AdversityRoad.Player
             Vector3 want = (Vector3.up * 0.92f + fwd.normalized * 0.39f).normalized;
             Quaternion target = Quaternion.FromToRotation(axisW.normalized, want) * _set.rotation;
             _set.rotation = Quaternion.Slerp(_set.rotation, target,
-                1f - Mathf.Exp(-12f * Time.deltaTime));
+                1f - Mathf.Exp(-rate * Time.deltaTime));
             _set.position += _lhand.TransformPoint(_palmL) - _scab.TransformPoint(_midPt);
         }
     }

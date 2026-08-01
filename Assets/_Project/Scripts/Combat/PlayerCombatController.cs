@@ -153,7 +153,10 @@ namespace AdversityRoad.Combat
             new FusionRecipe { tail = "JK",  name = "踏空斩·凌云一式", mult = 1.9f, cost = 0, pose = PoseState.AttackLeap },
             new FusionRecipe { tail = "JP",  name = "惊鸿飞踢·踏虚而至", mult = 1.7f, cost = 0, pose = PoseState.JumpKick },
             new FusionRecipe { tail = "GK",  name = "架后反斩", mult = 1.5f, cost = 0, pose = PoseState.AttackUp },
-            new FusionRecipe { tail = "HK",  name = "重斩接锋·崩势", mult = 1.5f, cost = 0, pose = PoseState.SwordThrust },
+            // 「重→剑」已移除：重键按下去的常规结果是【蓄力】（动作锁 0.8~2.05s），
+            // 把它排进主攻击连招里，中间必然横着一段蓄力，怎么调都不可能连贯。
+            // 重击要入连招，走的是指令技（前/后/左右+重）与切手技那条即时路径，
+            // 它们本来就会 Push(Heavy)，仍可与 JHK 这类含跳跃的长串组合。
         };
 
         PlayerController _player;
@@ -478,10 +481,14 @@ namespace AdversityRoad.Combat
                     dmg *= r.mult;
                     recipeHit = true;
                     playPose = r.pose;   // 成招：改播该绝招的专属终结动作（动作库大招）
-                    // 终结动作给足施展窗口（比普通段稍长），但同样收紧到大作区间（≈0.5s）
-                    _cur.length = 0.5f;
-                    _cur.cancelAt = 0.36f;
-                    _cur.open = Mathf.Max(_cur.open, 0.24f);
+                    // 成招不该比普通段【更难接】。此前把帧数据改写成
+                    // length 0.5 / cancelAt 0.36——取消窗比普通轻击(0.155~0.195)
+                    // 几乎翻倍，于是"打出融招"的奖励反而是全游戏最长的一段僵直，
+                    // 读作"融招一出来就卡住"。终结动作只需要略长的存在感，
+                    // 不需要额外的收招惩罚：0.40 / 0.22。
+                    _cur.length = 0.40f;
+                    _cur.cancelAt = 0.22f;
+                    _cur.open = Mathf.Max(_cur.open, 0.20f);
                     _seq = "";
                     GameEvents.RaiseSkillBanner("绝招「" + r.name + "」");
                     CombatFeedback.RecipeBurst(transform.position, new Color(1f, 0.85f, 0.3f));
@@ -506,9 +513,9 @@ namespace AdversityRoad.Combat
                     dmg *= fr.mult;
                     recipeHit = true;
                     playPose = fr.pose;
-                    _cur.length = 0.5f;
-                    _cur.cancelAt = 0.36f;
-                    _cur.open = Mathf.Max(_cur.open, 0.24f);
+                    _cur.length = 0.40f;      // 同上：融招不额外加收招惩罚
+                    _cur.cancelAt = 0.22f;
+                    _cur.open = Mathf.Max(_cur.open, 0.20f);
                     _seq = "";
                     Fusion.ConsumeTail(fr.tail.Length);   // 用掉这一串，避免同串反复触发
                     GameEvents.RaiseSkillBanner("融招「" + fr.name + "」");
@@ -1191,6 +1198,46 @@ namespace AdversityRoad.Combat
             weaponHitbox.onHit = null;
         }
 
+        /// <summary>
+        /// 【可学习的固定规则】读招成功 → 攻击者必定进入破绽。
+        ///
+        /// 大型动作游戏让玩家产生"我变强了"的感觉，靠的不是随机，而是一条
+        /// **每次都成立、且可以被自己发现**的因果链：
+        ///     看见前摇 → 在正确时机闪避/格挡 → 对方硬直 → free 输出 → 打断它的连段
+        /// 只要这条链有一次不成立，玩家就会归因于运气，从此不再尝试。
+        /// 所以这里【不掷随机数、不看敌人等级、不设概率】：完美闪避、精准格挡、
+        /// 定心格挡，三者任一成立，来袭者一律吃 1.6 秒破绽（Boss 也一样），
+        /// 破绽期本就吃 1.6~2.8 倍伤害（见 EnemyController），奖励自然给足。
+        ///
+        /// 玩家能学到的规则因此是确定的三句话：
+        ///   ① 红光（不可格挡）只能闪；
+        ///   ② 普通攻击可以在挥出的一刻按「挡」精准接下，零伤害并打出破绽；
+        ///   ③ 破绽期是你的输出窗口，重击/绝招收益最大。
+        /// </summary>
+        void PunishAttacker(DamageInfo dmg, string how)
+        {
+            var attacker = FindAttacker(dmg);
+            if (attacker == null) return;
+            attacker.ForceBreak(1.6f);
+            GameEvents.RaiseSkillBanner(how + "！破绽——猛攻");
+        }
+
+        /// <summary>按来袭方位找出攻击者（attackerId 优先，否则取来袭点最近的敌人）。</summary>
+        AI.EnemyController FindAttacker(DamageInfo dmg)
+        {
+            AI.EnemyController best = null;
+            float bestD = 9f;
+            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                if (!string.IsNullOrEmpty(dmg.attackerId) && e.profile != null &&
+                    e.profile.enemyId == dmg.attackerId) return e;
+                float d = (e.transform.position - dmg.sourcePosition).sqrMagnitude;
+                if (d < bestD * bestD) { bestD = Mathf.Sqrt(d); best = e; }
+            }
+            return best;
+        }
+
         public void AddMomentum(int n) => SetMomentum(_momentum + n);
 
         /// <summary>技能消耗意势（能量门槛）：足够则扣除返回 true。</summary>
@@ -1320,6 +1367,7 @@ namespace AdversityRoad.Combat
                     _critNext = true;
                     AddMomentum(1);
                     if (Dyn() != null) _dynamics.OnPerfectDodge();
+                    PunishAttacker(dmg, "完美闪避");   // 固定规则：读招成功 → 对方露出破绽
                     CombatFeedback.SlowMo(0.3f, 0.35f);
                     CombatFeedback.CloseUp(0.7f, 0.5f);   // 读招成功：短促轻推，配合时缓
                     GameEvents.RaiseSubtitle("完美闪避！意势+1，下一击必暴击");
@@ -1345,6 +1393,7 @@ namespace AdversityRoad.Combat
                         _player.Stats.focus + parryFocusRestore);
                     GameEvents.RaiseMentalStatChanged("focus", _player.Stats.focus, _player.Stats.maxFocus);
                     Fusion.Push(MoveToken.Guard);   // 招架成功也是连招元素
+                    PunishAttacker(dmg, "定心格挡");
                     GameEvents.RaiseSubtitle("定心格挡！心理攻击被化解，专注恢复。");
                     Core.GameAudio.Play(Core.GameAudio.Sfx.Parry);
                 }
@@ -1387,7 +1436,20 @@ namespace AdversityRoad.Combat
                 // 让"挡住了但很勉强"和"压根没挡"在手感上分得开。
                 bool guardValid = IsGuarding && !backstab && !dmg.unblockable;
                 bool blocked = guardValid && _player.Stats.SpendStamina(phys * 0.5f);
-                if (blocked) phys *= 0.2f;
+                // 精准格挡（按下「挡」后 0.2s 内接住）：完全免伤 + 对方必定破绽。
+                // 这是本作最该被学会的一条规则——它必须**每次都成立**，
+                // 玩家才可能通过反复尝试发现它、依赖它。
+                bool perfectParry = blocked && _parryTimer > 0f;
+                if (perfectParry)
+                {
+                    phys = 0f;
+                    PunishAttacker(dmg, "精准格挡");
+                    AddMomentum(1);
+                    CombatFeedback.WeaponClash(transform.position + transform.forward * 0.8f
+                        + Vector3.up * 1.2f);
+                    CombatFeedback.SlowMo(0.35f, 0.22f);
+                }
+                else if (blocked) phys *= 0.2f;
                 else if (guardValid)
                 {
                     phys *= 0.55f;   // 力竭格挡：挡下一部分，但被压制

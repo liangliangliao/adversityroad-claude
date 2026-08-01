@@ -116,7 +116,7 @@ namespace AdversityRoad.Combat
             tm.text = text;
             tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tm.fontSize = 46;
-            tm.characterSize = 0.048f;
+            tm.characterSize = 0.058f;   // 放大一档：部位反馈是打击确认的一部分，要读得到
             tm.anchor = TextAnchor.MiddleLeft;
             tm.color = color;
             var r = go.GetComponent<MeshRenderer>();

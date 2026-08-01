@@ -41,6 +41,9 @@ namespace AdversityRoad.Player
 
         public bool IsDead => hp <= 0;
 
+        /// <summary>单次物理伤害占最大生命的上限（0.25 = 一击最多掉四分之一）。</summary>
+        public const float MaxSingleHitRatio = 0.25f;
+
         /// <summary>关系消耗过高：技能冷却 ×1.5（见 SkillExecutor）。</summary>
         public bool IsOverDrained => relationshipDrain >= 70f;
 
@@ -97,6 +100,16 @@ namespace AdversityRoad.Player
 
         public void TakePhysicalDamage(float dmg)
         {
+            // ===== 单次伤害上限（可玩性规则）=====
+            // Boss 的重招（基础 22 × 精英招 1.5 × 背刺 1.4 ≈ 46）能一口气打掉近半条命，
+            // 玩家还没读懂这一招就已经死了一半——这不是难度，是**不可学习**。
+            // 主流动作游戏普遍给单次伤害封顶（常见 20~30% 最大生命），理由很实际：
+            //   ① 死亡至少需要四次失误，玩家有时间在同一场战斗里认出招式并改打法；
+            //   ② 保证"看红光→闪避"这类规则有被验证的机会，学习才成立；
+            //   ③ 秒杀会把战斗变成背板与运气，而不是技巧。
+            // 上限只压【单次】，连续挨打照样会死——惩罚仍在，只是变得可读。
+            dmg = Mathf.Min(dmg, maxHp * MaxSingleHitRatio);
+
             float before = hp;
             hp = Mathf.Max(0, hp - dmg);
 

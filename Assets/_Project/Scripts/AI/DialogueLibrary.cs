@@ -92,8 +92,15 @@ namespace AdversityRoad.AI
 
         static readonly Random Rng = new Random();
 
+        /// <summary>最近一次 GetTaunt 取到的台词是否来自 AI（云端/自定义 Provider）。
+        /// 玩家有权知道屏幕上这句话是**模型现编的**还是**本地写死的**——
+        /// 二者的可信度与语气稳定性完全不同，混在一起会让人分不清
+        /// 「这是设计好的剧情」还是「这是模型这一次的发挥」。</summary>
+        public static bool LastFromAI { get; private set; }
+
         public static string GetTaunt(WeaknessAxis axis, string zoneId)
         {
+            LastFromAI = false;
             var cfg = AIPromptConfig.Load();
             string global = cfg.globalPrompt;
             string scene = cfg.GetScenePrompt(zoneId);
@@ -101,14 +108,14 @@ namespace AdversityRoad.AI
             // 云端台词池：预取缓存即取即用，池空时无缝回退本地模板（零延迟）
             if (CloudDialogueService.Instance != null &&
                 CloudDialogueService.Instance.TryGetLine(axis, zoneId, out string cloudLine))
-                return cloudLine;
+            { LastFromAI = true; return cloudLine; }
 
             if (CloudProvider != null)
             {
                 try
                 {
                     string cloud = CloudProvider(axis, zoneId, global, scene);
-                    if (!string.IsNullOrEmpty(cloud)) return cloud;
+                    if (!string.IsNullOrEmpty(cloud)) { LastFromAI = true; return cloud; }
                 }
                 catch { /* 云端失败回退本地 */ }
             }
