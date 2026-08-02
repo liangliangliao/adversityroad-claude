@@ -910,6 +910,9 @@ namespace AdversityRoad.Core
             // 能量分级警告：偏低/告急字幕 + 低生命红屏脉冲 + 生命垂危休整答题弹窗
             VitalAlertController.Create(canvasGo.transform, quizPanel);
 
+            // 威胁指示器：把画面外/背后敌人的攻击前摇画到屏幕边缘（预告，不是事后报告）
+            ThreatIndicator.Create(canvasGo.transform);
+
             // 第五阶段：画像驱动的个性化遭遇战
             var director = new GameObject("EncounterDirector").AddComponent<EncounterDirector>();
             director.spawner = SpawnEnemy;

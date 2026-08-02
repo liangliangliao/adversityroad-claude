@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace AdversityRoad.Core
 {
@@ -22,6 +23,7 @@ namespace AdversityRoad.Core
         public static event Action<int, string, string> OnStanceChanged; // 战斗姿态切换（序号/名称/心法）
         public static event Action OnGoalChanged;               // 今日目标钉下/完成（目标板系统）
         public static event Action OnLifeThreatened;            // 生命穿越垂危线/濒死守护触发（强制弹出垂危决策）
+        public static event Action<Vector3> OnPlayerHurtFrom;   // 玩家被击中（参数：攻击者世界坐标，供来袭方向指示）
 
         public static void RaisePlayerHpChanged(float cur, float max) => OnPlayerHpChanged?.Invoke(cur, max);
         public static void RaiseMentalStatChanged(string stat, float cur, float max) => OnMentalStatChanged?.Invoke(stat, cur, max);
@@ -40,5 +42,6 @@ namespace AdversityRoad.Core
         public static void RaiseStanceChanged(int index, string name, string mantra) => OnStanceChanged?.Invoke(index, name, mantra);
         public static void RaiseGoalChanged() => OnGoalChanged?.Invoke();
         public static void RaiseLifeThreatened() => OnLifeThreatened?.Invoke();
+        public static void RaisePlayerHurtFrom(Vector3 attackerPos) => OnPlayerHurtFrom?.Invoke(attackerPos);
     }
 }

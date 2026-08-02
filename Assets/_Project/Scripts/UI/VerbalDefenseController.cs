@@ -49,44 +49,50 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            // 版面约束（1920×1080 参考系）：右下触屏按钮簇最左缘 x≈1189（「挡」），
-            // 左下摇杆占 x 100~420、y 100~420。旧面板 1500×300 摆在 y=250 的正中，
-            // 横跨 x 210~1710、纵跨 y 100~400——把「挡」「剑」和半个「拳」全压在下面，
-            // 弹出言语攻防时玩家等于没法防守。现在收到 920×236 并整体左移上抬，
-            // 落在 x 260~1180、y 502~738 的空白带里：按钮全部露出，摇杆也不挡。
-            _panel = UiUtil.MakePanel(canvas, "VerbalDefensePanel", new Vector2(820, 200),
-                new Color(0.06f, 0.05f, 0.1f, 0.92f));
-            UiUtil.SetRect(_panel.GetComponent<Image>(), new Vector2(0.5f, 0f),
-                new Vector2(-260, 600), new Vector2(820, 200));
+            // 版面（锚在【右上角】，坐标相对右上角）：
+            // 上一版摆在屏幕左上偏中，正好压在战斗视野的正中偏左——玩家反馈
+            // "这个位置容易遮挡战斗视野"。挪到右上角，并与已有元素逐个对齐核对过：
+            //   · 「暂停」占右侧 x[-338,-198]、上方 y[-12,-76]；「≡菜单」占 x[-180,-20]
+            //     → 面板顶边压到 -92，整块在这两枚按钮【之下】；
+            //   · 触屏「跳」键圆心在右下 (-100, 680)、半径 56，即左缘 x=-156
+            //     → 面板右缘停在 -176，留 20 单位间隙，永远不压到它；
+            //   · 面板底边 -288，而「术」键顶缘在距顶 358 处 → 中间还空着 70 单位；
+            //   · 左缘 x=-936，HUD 生命/能量条锚在屏幕左侧，两者之间隔着整个屏幕中央。
+            // 于是这块面板与屏幕上任何已有文字/按钮都不重叠，也不再挡住正前方视野。
+            const float W = 760f, H = 196f;
+            _panel = UiUtil.MakePanel(canvas, "VerbalDefensePanel", new Vector2(W, H),
+                new Color(0.06f, 0.05f, 0.1f, 0.94f));
+            UiUtil.SetRect(_panel.GetComponent<Image>(), new Vector2(1f, 1f),
+                new Vector2(-(176f + W * 0.5f), -(92f + H * 0.5f)), new Vector2(W, H));
 
             var tag = UiUtil.MakeText(_panel.transform, "Tag", "言语攻防 · 选择你的回应", 18,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.6f, 0.55f));
-            UiUtil.SetRect(tag, new Vector2(0.5f, 1f), new Vector2(0, -16), new Vector2(790, 22));
+            UiUtil.SetRect(tag, new Vector2(0.5f, 1f), new Vector2(0, -15), new Vector2(730, 22));
 
             // 来源标签：内部/外部 + AI/本地
             _srcTag = UiUtil.MakeText(_panel.transform, "SrcTag", "", 16,
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
-            UiUtil.SetRect(_srcTag, new Vector2(0.5f, 1f), new Vector2(0, -36), new Vector2(790, 20));
+            UiUtil.SetRect(_srcTag, new Vector2(0.5f, 1f), new Vector2(0, -35), new Vector2(730, 20));
 
-            _lineText = UiUtil.MakeText(_panel.transform, "EnemyLine", "", 21,
+            _lineText = UiUtil.MakeText(_panel.transform, "EnemyLine", "", 20,
                 TextAnchor.MiddleCenter, new Color(1f, 0.85f, 0.85f));
-            UiUtil.SetRect(_lineText, new Vector2(0.5f, 1f), new Vector2(0, -64), new Vector2(795, 40));
+            UiUtil.SetRect(_lineText, new Vector2(0.5f, 1f), new Vector2(0, -62), new Vector2(736, 40));
 
-            // 三枚横排选项按钮
+            // 三枚横排选项按钮（宽度按面板收窄同步缩到 232，间距 244——仍在面板内）
             for (int i = 0; i < 3; i++)
             {
                 int idx = i; // 闭包捕获
                 var btn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 0f),
-                    new Vector2(-264 + i * 264, 62), new Vector2(254, 68),
-                    new Color(0.2f, 0.22f, 0.3f, 0.96f), () => OnChoice(idx), 18);
+                    new Vector2(-244 + i * 244, 58), new Vector2(232, 62),
+                    new Color(0.2f, 0.22f, 0.3f, 0.96f), () => OnChoice(idx), 17);
                 _btnLabels[i] = btn.GetComponentInChildren<Text>();
             }
 
             // 倒计时条（横向填充，非缩放时间驱动）
-            var barBg = UiUtil.MakePanel(_panel.transform, "TimerBg", new Vector2(790, 8),
+            var barBg = UiUtil.MakePanel(_panel.transform, "TimerBg", new Vector2(730, 8),
                 new Color(0, 0, 0, 0.5f));
             UiUtil.SetRect(barBg.GetComponent<Image>(), new Vector2(0.5f, 0f),
-                new Vector2(0, 20), new Vector2(790, 8));
+                new Vector2(0, 18), new Vector2(730, 8));
             var fillGo = new GameObject("TimerFill", typeof(Image));
             fillGo.transform.SetParent(barBg.transform, false);
             _timerFill = fillGo.GetComponent<RectTransform>();

@@ -144,6 +144,9 @@ namespace AdversityRoad.Combat
         ComboStage _cur;
         string _seq = "";             // 本次连段的拳腿序列（组合技识别）
         AttackBtn _buffered = AttackBtn.None;
+
+        /// <summary>是否有仍在有效期内的排队攻击（翻滚收势取消据此判断玩家想接手）。</summary>
+        public bool HasBufferedAttack => _buffered != AttackBtn.None && BufferAlive();
         float _bufferedAt;            // 输入缓冲时间戳
         bool _bufferedQueued;         // 按下时是否正处于动作锁（排队意图 vs 即时意图）
 
@@ -435,12 +438,12 @@ namespace AdversityRoad.Combat
         static readonly Special SpMeteor = new Special {
             name = "天坠·陨星踏", input = "跳 + 重", pose = PoseState.AttackLeap,
             token = MoveToken.Heavy, cost = 0, mult = 6.5f,
-            posture = 32f, knock = 4f, lockTime = 0.7f, windup = 0.12f, open = 0.3f,
+            posture = 32f, knock = 4f, lockTime = 0.58f, windup = 0.1f, open = 0.26f,
             lunge = 0.9f, shape = 1.3f, role = "从空中砸落地·免费，跳跃后的主力收招" };
         static readonly Special SpAirSlash = new Special {
             name = "空裂·凌空斩", input = "跳 + 剑", pose = PoseState.JumpAttack,
             token = MoveToken.Sword, cost = 0, mult = 5f,
-            posture = 26f, knock = 3f, lockTime = 0.65f, windup = 0.1f, open = 0.22f,
+            posture = 26f, knock = 3f, lockTime = 0.52f, windup = 0.08f, open = 0.2f,
             lunge = 0.8f, shape = 1.2f, role = "空中追打浮空目标·免费" };
         static readonly Special SpBlowKick = new Special {
             name = "惊鸿·飞踢", input = "后 + 剑", pose = PoseState.JumpKick,
@@ -544,17 +547,24 @@ namespace AdversityRoad.Combat
             // 取消窗必须开在【判定窗走完之后】。此前是同帧直接置位，
             // 等于绝招从第 0 帧起就能被自己的下一次连打取消掉——
             // 花掉一点意势却只看见起手就没了，正是"绝招放了跟没放一样"的成因。
-            if (_specialCancelRoutine != null) StopCoroutine(_specialCancelRoutine);
-            _specialCancelRoutine = StartCoroutine(OpenSpecialCancel(sp.windup + sp.open));
+            ScheduleCancel(sp.windup + sp.open, CombatState.HeavyAttack);
         }
 
         Coroutine _specialCancelRoutine;
 
-        /// <summary>绝招判定窗走完后开放收招取消：接下一手不必等整段动作播完。</summary>
-        IEnumerator OpenSpecialCancel(float delay)
+        /// <summary>判定窗走完后开放收招取消：接下一手不必等整段动作播完。
+        /// 只在仍处于同一个状态时才开窗——中途被打断/换招就不该再开。</summary>
+        IEnumerator OpenCancelAfter(float delay, CombatState during)
         {
             yield return new WaitForSeconds(delay);
-            if (_fsm.Current == CombatState.HeavyAttack) _fsm.CanCancelRecovery = true;
+            if (_fsm.Current == during) _fsm.CanCancelRecovery = true;
+        }
+
+        /// <summary>排一个"判定窗结束即可取消"的开窗（同一时刻只保留最后一个）。</summary>
+        void ScheduleCancel(float delay, CombatState during)
+        {
+            if (_specialCancelRoutine != null) StopCoroutine(_specialCancelRoutine);
+            _specialCancelRoutine = StartCoroutine(OpenCancelAfter(delay, during));
         }
 
         void StartAttack(AttackBtn pressed)
@@ -938,17 +948,18 @@ namespace AdversityRoad.Combat
         void AirLeapAttack()
         {
             Fusion.Push(MoveToken.Heavy);
-            _fsm.RequestState(CombatState.HeavyAttack, 0.44f);
+            _fsm.RequestState(CombatState.HeavyAttack, 0.38f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.AttackLeap, 0.42f);
+            PlayPose(PoseState.AttackLeap, 0.34f);
             ApplyAttackFacing();
             _player.ForceFall(-14f);
             float dmg = heavyDamage * 1.1f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.72f, 0.3f));
-            OpenHitboxTimed(0.14f, 0.34f, dmg, 30f, 3f, false, PoseState.AttackLeap, 1.1f);
+            OpenHitboxTimed(0.1f, 0.28f, dmg, 30f, 3f, false, PoseState.AttackLeap, 1.1f);
             CombatFeedback.ShockRing(transform.position + transform.forward * 0.9f,
                 new Color(1f, 0.72f, 0.3f), 3f);
             GameEvents.RaiseSkillBanner("「空袭·裂地跳劈」");
+            ScheduleCancel(0.38f, CombatState.HeavyAttack);
         }
 
         /// <summary>切手技：连段中轻点重击派生的快速反击（撩斩上挑）。</summary>
@@ -1036,15 +1047,22 @@ namespace AdversityRoad.Combat
 
         // ================= 空中 / 蹲伏攻击 =================
 
+        // 【空中招整体提速】玩家反馈"跟跳组合的动作要快，动作前以及完成后都不要有停顿"。
+        // 三处一起改才有效，少一处都还是会读作卡：
+        //   ① 前摇（windup）压短——落刀更快；
+        //   ② 动作锁（RequestState 的时长）压短——不再干等；
+        //   ③ 判定窗一走完就开取消窗——收招可被下一手打断，串得起来。
+        // 只压 ① 而不动 ③，玩家仍要等一整段收招，照样是"完成后有停顿"。
         void JumpAttack()
         {
-            _fsm.RequestState(CombatState.LightAttack, 0.55f);
+            _fsm.RequestState(CombatState.LightAttack, 0.42f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.JumpAttack, 0.5f);
+            PlayPose(PoseState.JumpAttack, 0.36f);
             _player.ForceFall(-13f);
             float dmg = baseDamage * 1.5f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(0.6f, 0.8f, 1f));
-            OpenHitboxTimed(0.18f, 0.4f, dmg, 22f, 2.5f, true, PoseState.JumpAttack);
+            OpenHitboxTimed(0.12f, 0.3f, dmg, 22f, 2.5f, true, PoseState.JumpAttack);
+            ScheduleCancel(0.42f, CombatState.LightAttack);
         }
 
         // ---- 空中连段计数（落地清零，见 Update）----
@@ -1062,9 +1080,9 @@ namespace AdversityRoad.Combat
             bool blade = pressed == AttackBtn.Kick;
             var pose = blade ? PoseState.AttackSpin : PoseState.SpinKick;
             var spec = MoveTable.Variant(blade ? "空中回旋绝斩" : "空中连环踢");
-            _fsm.RequestState(CombatState.LightAttack, 0.5f);
+            _fsm.RequestState(CombatState.LightAttack, 0.4f);
             _fsm.InCombat = true;
-            PlayPose(pose, 0.46f);
+            PlayPose(pose, 0.32f);
             ApplyAttackFacing();
             // 剑向滞空续航（浮空斩要打得完），拳向压地收招（干净利落地落回来）
             if (blade) _player.ForceFall(-2.5f); else _player.ForceFall(-15f);
@@ -1075,21 +1093,23 @@ namespace AdversityRoad.Combat
             if (weaponHitbox != null) weaponHitbox.SetShape(spec.Size, spec.center);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(
-                HitboxWindow(0.12f, 0.32f, dmg, spec.postureMult, spec.knockback, true));
+                HitboxWindow(0.09f, 0.26f, dmg, spec.postureMult, spec.knockback, true));
+            ScheduleCancel(0.35f, CombatState.LightAttack);
             GameEvents.RaiseSkillBanner(blade ? "空中「回旋绝斩」" : "空中「连环踢」");
         }
 
         /// <summary>跳+腿：飞踢（KOF 跳踢），带前冲与击退。</summary>
         void JumpKickAttack()
         {
-            _fsm.RequestState(CombatState.LightAttack, 0.5f);
+            _fsm.RequestState(CombatState.LightAttack, 0.38f);
             _fsm.InCombat = true;
-            PlayPose(PoseState.JumpKick, 0.46f);
+            PlayPose(PoseState.JumpKick, 0.32f);
             GlideMove(transform.forward * 1.2f, 0.16f);
             _player.ForceFall(-9f);
             float dmg = baseDamage * 1.4f * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.4f));
-            OpenHitboxTimed(0.15f, 0.36f, dmg, 26f, 4f, true, PoseState.JumpKick);
+            OpenHitboxTimed(0.1f, 0.28f, dmg, 26f, 4f, true, PoseState.JumpKick);
+            ScheduleCancel(0.38f, CombatState.LightAttack);
         }
 
         /// <summary>蹲+腿：扫堂腿（贴地 360° 环扫，高削韧）。</summary>
@@ -1550,6 +1570,15 @@ namespace AdversityRoad.Combat
 
             // 死亡归因：记录最近对玩家造成伤害的心魔（供失败诊断）
             if (!string.IsNullOrEmpty(dmg.attackerId)) Core.FailureLog.NoteHit(dmg.attackerId);
+
+            // 来袭方向广播（威胁指示器用）：挨打时至少要知道该往哪转身。
+            // 背后/画面外打过来的那一下，玩家在屏幕上是【完全没有信息】的，
+            // 这正是"毫无理由就掉血"的直接体感来源。
+            {
+                var src = FindAttacker(dmg);
+                Vector3 from = src != null ? src.transform.position : dmg.sourcePosition;
+                if (from.sqrMagnitude > 1e-6f) GameEvents.RaisePlayerHurtFrom(from);
+            }
 
             if (dmg.mentalDamage > 0)
             {

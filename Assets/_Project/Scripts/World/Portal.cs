@@ -5,7 +5,21 @@ using AdversityRoad.Player;
 namespace AdversityRoad.World
 {
     /// <summary>
-    /// 区域传送门：玩家走入后传送到目标区域；未解锁章节的区域会被剧情锁住。
+    /// 区域传送门：玩家【站在门里停留一小会儿】才会传送；未解锁章节的区域会被剧情锁住。
+    ///
+    /// 【为什么不是"碰到就走"】
+    /// 反复出现的"一边移动一边打着打着突然跳到另一个场景"，根因是传送用的是
+    /// OnTriggerEnter——碰一下就走。而战斗中玩家的位移根本不受自己完全控制：
+    /// 翻滚 10m/s、绝招突进 2.6m、被击退、敌人把你顶开……任何一次擦过门框
+    /// 都会被判成"我要换区域"。冷却和"必须先走出去"只能防重复触发，
+    /// 防不住这种**误触**——因为误触本来就是一次合法的首次进入。
+    ///
+    /// 大型动作游戏对区域切换的通行做法是三条一起上，这里全部照做：
+    ///   ① 要【停留】：站进门里连续 DwellTime 秒才生效，擦过去不算；
+    ///   ② 要【慢】：高速穿过（翻滚/突进/被击飞）期间计时不累积，一旦提速就清零；
+    ///   ③ 【战斗中不放行】：附近还有活着且已经盯上你的敌人时，门直接不开，
+    ///      并明确告诉玩家为什么——这同时避免了"打到一半被传走、回来敌人全没了"。
+    /// 另外全程显示进度提示，玩家永远知道"再站 0.6 秒就会过去"，不会被偷袭式传送。
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class Portal : MonoBehaviour
@@ -14,36 +28,70 @@ namespace AdversityRoad.World
         public Vector3 targetPosition;
         public string targetName = "";
 
+        /// <summary>需要连续停留的时间：短到不烦人，长到擦不过去。</summary>
+        const float DwellTime = 0.75f;
+
+        /// <summary>判定"这不是在正常走路"的速度上限（m/s）。跑步 ≈6，翻滚 10+，突进更快。</summary>
+        const float WalkThroughSpeed = 7.5f;
+
+        /// <summary>战斗封锁半径：这个范围内有盯上你的活敌人就不放行。</summary>
+        const float CombatLockRadius = 22f;
+
         static float _lastTeleport = -10f;
 
         // 刚被传送过来的玩家：必须先【走出】这扇门的触发体，这扇门才会再次生效。
-        //
-        // 「有时会突然从一个场景跳到另一个场景」的成因：传送是**碰到就走**的，
-        // 而落点常常就在门框附近——落地那一刻若仍压在某扇门（可能是回程门）的
-        // 触发体里，原来只有一个 1.5 秒的全局冷却挡着；冷却一过，任何一次
-        // 走位/闪避的微小抖动让 OnTriggerEnter 再次触发，人就被弹去了别的区域。
-        // 冷却是「防连击」，不是「防误触」——真正该判的是"你有没有离开过这扇门"。
         bool _armed = true;
+        float _dwell;
+        Vector3 _lastPlayerPos;
+        bool _tracking;
+        float _lastHint = -99f;
 
         void Awake() => GetComponent<Collider>().isTrigger = true;
 
         void OnTriggerExit(Collider other)
         {
-            if (other.GetComponentInParent<PlayerController>() != null) _armed = true;
+            if (other.GetComponentInParent<PlayerController>() == null) return;
+            _armed = true;
+            _dwell = 0f;
+            _tracking = false;
         }
 
         void OnTriggerEnter(Collider other)
         {
-            if (Time.time - _lastTeleport < 1.5f) { _armed = false; return; }
+            if (other.GetComponentInParent<PlayerController>() == null) return;
+            // 刚被传送过来就压在门里 → 本扇门先失效，等玩家自己走出去再说
+            if (Time.time - _lastTeleport < 1.5f) _armed = false;
+            _dwell = 0f;
+            _tracking = false;
+        }
+
+        void OnTriggerStay(Collider other)
+        {
+            if (!_armed) return;
             var player = other.GetComponentInParent<PlayerController>();
             if (player == null) return;
-            // 落点压在门里 → 本扇门先失效，等玩家自己走出去再说
-            if (!_armed) return;
 
+            // ---- ② 高速穿过不算停留：翻滚/突进/被击退期间计时清零 ----
+            Vector3 pos = player.transform.position;
+            if (!_tracking) { _lastPlayerPos = pos; _tracking = true; }
+            float speed = Time.deltaTime > 1e-4f
+                ? Vector3.Distance(pos, _lastPlayerPos) / Time.deltaTime : 0f;
+            _lastPlayerPos = pos;
+            if (speed > WalkThroughSpeed || player.IsDodging) { _dwell = 0f; return; }
+
+            // ---- ③ 战斗中不放行 ----
+            if (EnemyEngaged(pos))
+            {
+                _dwell = 0f;
+                Hint("战斗未了——先解决眼前的敌人，才能离开这片区域。");
+                return;
+            }
+
+            // ---- 剧情锁 ----
             var story = StoryManager.Instance;
             if (story != null && !story.ZoneUnlocked(targetZoneIndex))
             {
-                // 找到解锁该区域的子章，明确告诉玩家这扇门什么时候开
+                _dwell = 0f;
                 string when = "先完成当前子章的试炼";
                 foreach (var ch in StoryManager.Chapters)
                     if (ch.zoneIndex == targetZoneIndex)
@@ -51,12 +99,50 @@ namespace AdversityRoad.World
                         when = "主线推进到【" + ch.title + "】时开启";
                         break;
                     }
-                GameEvents.RaiseSubtitle("此路通往【" + targetName + "】，现在被心魔封锁——" + when + "。");
+                Hint("此路通往【" + targetName + "】，现在被心魔封锁——" + when + "。");
                 return;
             }
 
+            // ---- ① 停留计时：全程给可见进度，绝不"突然"发生 ----
+            _dwell += Time.deltaTime;
+            if (_dwell < DwellTime)
+            {
+                Hint("站定 " + (DwellTime - _dwell).ToString("0.0") + " 秒即前往【" + targetName + "】…", 0.35f);
+                return;
+            }
+
+            Teleport(player);
+        }
+
+        /// <summary>附近是否还有活着且已经进入战斗状态的敌人。</summary>
+        static bool EnemyEngaged(Vector3 pos)
+        {
+            foreach (var e in Object.FindObjectsByType<AI.EnemyController>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                // 待机/巡逻的敌人还没发现你，不该锁门；只有真正咬上来的才算交战
+                if (e == null || e.State == AI.EnemyState.Dead ||
+                    e.State == AI.EnemyState.Idle || e.State == AI.EnemyState.Patrol)
+                    continue;
+                if (Vector3.SqrMagnitude(e.transform.position - pos)
+                    <= CombatLockRadius * CombatLockRadius) return true;
+            }
+            return false;
+        }
+
+        void Hint(string msg, float interval = 1.5f)
+        {
+            if (Time.time - _lastHint < interval) return;
+            _lastHint = Time.time;
+            GameEvents.RaiseSubtitle(msg);
+        }
+
+        void Teleport(PlayerController player)
+        {
             _lastTeleport = Time.time;
             _armed = false;
+            _dwell = 0f;
+            _tracking = false;
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             player.transform.position = targetPosition;

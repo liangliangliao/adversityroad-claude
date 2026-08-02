@@ -32,8 +32,18 @@ namespace AdversityRoad.Player
 
         [Header("闪避（翻跟头）")]
         public float dodgeSpeed = 10f;
-        public float dodgeDuration = 0.35f;
-        public float dodgeIFrames = 0.25f;
+        public float dodgeDuration = 0.32f;
+        // 无敌帧不再是一个独立的短常数，而是【按翻滚时长的比例】给（见下方 IFrameRatio）。
+        // 旧配置 0.25s 固定值配上 0.42~0.70s 的滚翻片段，意味着后半段整整
+        // 0.2~0.45 秒里：人被锁在翻滚里动不了、判定框却已经能打到你。
+        // 玩家反馈的"闪避太慢、很容易闪避失败还是被打到"就是这一段。
+        public float dodgeIFrames = 0.28f;
+
+        /// <summary>无敌帧占整个翻滚时长的比例：滚动主体全程无敌，只有收势的尾巴可被打中。</summary>
+        const float IFrameRatio = 0.72f;
+
+        /// <summary>翻滚可被攻击/再次翻滚打断的起点（占总时长比例）：过了这里就能接下一手。</summary>
+        const float DodgeCancelAt = 0.62f;
         public float dodgeStaminaCost = 20f;
 
         public PlayerStats Stats = new PlayerStats();
@@ -48,6 +58,7 @@ namespace AdversityRoad.Player
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
+        float _dodgeDur = 0.32f; // 本次翻滚的总时长（取消窗按它的比例算）
         Vector3 _dodgeDir;
         Vector3 _lastPos;
         Vector3 _hVel;   // 平滑后的水平速度
@@ -245,7 +256,17 @@ namespace AdversityRoad.Player
                 _dodgeTimer -= dt;
                 _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
-                return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次（连续翻滚）
+                // 【收势取消】：滚动主体走完（>62%）之后，攻击/跳/再次翻滚可以立刻打断收势。
+                // 此前必须把整段滚翻播完才能做别的事——"闪完还要等一下才打得出来"，
+                // 于是玩家的体感是闪避又慢又亏。大作里翻滚的收招帧都是可取消的。
+                if (_dodgeTimer > 0f && _dodgeTimer < _dodgeDur * (1f - DodgeCancelAt) &&
+                    (_inputBuf.Has("Dodge", DodgeBufferWindow) || _inputBuf.Has("Jump", JumpBufferWindow) ||
+                     (_pcc != null && _pcc.HasBufferedAttack)))
+                {
+                    _dodgeTimer = 0f;
+                    if (_combat != null) _combat.RequestState(CombatState.Locomotion);
+                }
+                if (_dodgeTimer > 0f) return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次
             }
 
             bool dodgePressed = _inputBuf.Has("Dodge", DodgeBufferWindow);
@@ -348,6 +369,12 @@ namespace AdversityRoad.Player
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
                 // 有专用翻滚片段时：闪避时长匹配片段（完整呈现整个滚翻动作），
                 // 总位移保持恒定（速度反比时长），无片段沿用默认参数
+                // 翻滚时长：**不再迁就片段长度**。
+                // 之前是 clip×0.85 夹到 [0.42,0.70]——一段 0.8 秒的滚翻片段会让翻滚
+                // 整整锁 0.68 秒，比大作里的翻滚（0.35~0.5s）慢一半，敌人一套连招
+                // 打完你还在地上滚。现在固定夹到 [0.30,0.42]，片段由 PlayableAnimator
+                // 按时长驱动加速播完（本作动作系统本来就是时长驱动的），
+                // 动作照样完整演，只是演得跟得上战斗节奏。
                 float dur = dodgeDuration;
                 _dodgeSpd = dodgeSpeed;
                 if (_anim != null)
@@ -355,12 +382,16 @@ namespace AdversityRoad.Player
                     float clipLen = _anim.ActionClipLength(PoseState.Dodge);
                     if (clipLen > 0.1f)
                     {
-                        dur = Mathf.Clamp(clipLen * 0.85f, 0.42f, 0.7f);
+                        dur = Mathf.Clamp(clipLen * 0.55f, 0.30f, 0.42f);
                         _dodgeSpd = dodgeSpeed * dodgeDuration / dur;   // 位移总量不变
                     }
                 }
+                _dodgeDur = dur;
                 _dodgeTimer = dur;
-                _iframeTimer = dodgeIFrames;
+                if (_anim != null) _anim.DodgeDuration = dur;   // 动画按同一时长播完
+                // 无敌帧覆盖滚动主体（72%），只留收势尾巴可被打中：
+                // "读招成功却还是被打到"必须是玩家读错了，而不是系统没给够帧。
+                _iframeTimer = Mathf.Max(dodgeIFrames, dur * IFrameRatio);
                 if (_combat != null) _combat.RequestState(CombatState.Dodge);
                 return;
             }

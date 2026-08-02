@@ -54,6 +54,18 @@ namespace AdversityRoad.AI
         Material _dangerRingMat;  // 红圈材质（危险攻击时染更亮的橙红）
         bool _perilous;           // 本次攻击为「危险攻击」：不可格挡，只能闪避（大作红光警示）
 
+        /// <summary>起手前摇下限（秒）：对玩家的可反应性承诺，任何敌人都不得低于此值。</summary>
+        public const float MinWindup = 0.5f;
+
+        /// <summary>连击追加段的前摇（秒）：比起手短，但绝不为零。</summary>
+        public const float ComboWindup = 0.34f;
+
+        /// <summary>是否正处于攻击前摇（威胁指示器据此在屏幕边缘标出看不见的敌人）。</summary>
+        public bool Telegraphing => _telegraphing;
+
+        /// <summary>本次前摇是否为不可格挡的危险攻击。</summary>
+        public bool PerilousTelegraph => _telegraphing && _perilous;
+
         static readonly Color TeleNormal = new Color(0.9f, 0.15f, 0.1f);
         static readonly Color TelePerilous = new Color(1f, 0.35f, 0f);
         bool _telegraphing;       // 是否处于前摇（脉冲放大红圈/警示，让读招更醒目）
@@ -124,11 +136,18 @@ namespace AdversityRoad.AI
             _dangerRing.transform.localScale = new Vector3(2.6f, 0.03f, 2.6f);
             _dangerRingBaseScale = _dangerRing.transform.localScale;
             var rr = _dangerRing.GetComponent<MeshRenderer>();
-            Material m = baseMaterial != null ? new Material(baseMaterial)
-                : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-            m.color = new Color(0.9f, 0.15f, 0.1f);
+            // 【必须用 Unlit】：红圈是给玩家看的警示 UI，不是场景里的一块地板。
+            // 之前跟着敌人的 Lit 材质走，夜间/暗巷关卡里环境光一低，红圈就跟着变成
+            // 一圈几乎看不见的深褐色——玩家反馈的"看不清敌人的状况、突然就掉血"
+            // 有一半是这么来的：警示确实亮了，只是在那种光照下看不见。
+            // Unlit 不受光照影响，白天黑夜一样醒目；再关掉投影与接收阴影，避免它自己发黑。
+            Material m = new Material(
+                Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+            m.color = TeleNormal;
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
             rr.sharedMaterial = m;
+            rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rr.receiveShadows = false;
             _dangerRingMat = m;
             _dangerRing.SetActive(false);
         }
@@ -476,8 +495,12 @@ namespace AdversityRoad.AI
 
             // 前摇（等级越高越短，越难反应）：头顶「！/危」跳动 + 脚下红圈脉冲 + 警示音
             // = 明确读招/闪避窗口，蓄势姿态先行，判定框随后才开。
-            float windup = Mathf.Lerp(0.7f, 0.42f, profile.aggression);
-            if (_perilous) windup += 0.12f;   // 危险攻击前摇略长：给足闪避反应窗口
+            // 前摇下限 MinWindup 是【对玩家的硬承诺】：无论敌人多凶，
+            // 从亮警示到判定框开启至少有这么久，玩家总有反应余地。
+            // 上一版最快只有 0.42s——扣掉人的视觉反应（~0.25s）和翻滚起始帧，
+            // 高攻击性精英的招几乎是不可躲的，读作"没有征兆"。
+            float windup = Mathf.Max(MinWindup, Mathf.Lerp(0.75f, 0.5f, profile.aggression));
+            if (_perilous) windup += 0.15f;   // 危险攻击前摇更长：给足闪避反应窗口
             ShowTelegraph(true, _perilous);
             GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.5f, _perilous ? 0.02f : 0.08f);
             if (poser != null) poser.SetPose(PoseState.Charge);
@@ -529,7 +552,15 @@ namespace AdversityRoad.AI
                 var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
                 _attackPose = pool[Random.Range(0, pool.Length)];
                 FaceTarget();
-                Invoke(nameof(OpenAttackHitbox), 0.26f);
+                // 【连击段同样要有前摇】——此前这里直接排 OpenAttackHitbox，
+                // 也就是说敌人一套连招里只有第一下亮「！」，第二、三下是**零征兆**打到脸上。
+                // 玩家反馈的"毫无理由、毫无征兆就掉血"，绝大多数就是这两下。
+                // 连击段的前摇比起手短（保留连招的压迫感），但绝不为零：
+                // 本作对玩家的承诺是「任何一次会造成伤害的攻击，出手前必定有可见警示」。
+                _perilous = false;   // 连击段不做不可格挡（不可格挡只出现在有完整前摇的起手）
+                ShowTelegraph(true, false);
+                GameAudio.Play(GameAudio.Sfx.Alert, 0.4f, 0.12f);
+                Invoke(nameof(OpenAttackHitbox), ComboWindup);
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
             else

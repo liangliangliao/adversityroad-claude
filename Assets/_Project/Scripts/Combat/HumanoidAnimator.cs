@@ -220,6 +220,9 @@ namespace AdversityRoad.Combat
         string _lastMoveName;
         float _lastMoveNameAt;
 
+        /// <summary>下一次翻滚姿态的目标时长（由 PlayerController 按实际翻滚时长写入；0=按片段原速）。</summary>
+        public float DodgeDuration { get; set; }
+
         public void SetPose(PoseState p) => SetPose(p, 0f);
 
         /// <summary>设招。duration&gt;0 = 这一招在战斗逻辑里占用的时长——
@@ -866,7 +869,11 @@ namespace AdversityRoad.Combat
                 case CombatState.LightAttack: SetPose(PoseState.Attack); break;
                 case CombatState.HeavyAttack:
                 case CombatState.Finisher: SetPose(PoseState.HeavyAttack); break;
-                case CombatState.Dodge: SetPose(PoseState.Dodge); break;
+                // 翻滚走【时长驱动】：PlayerController 会把本次翻滚的实际时长写进
+                // DodgeDuration，片段按这个时长加速播完。不这么做的话，
+                // 逻辑上翻滚 0.35 秒就结束了，动画却还在按片段原速演 0.8 秒，
+                // 于是"人已经能动了，画面还在滚"——读作闪避迟钝。
+                case CombatState.Dodge: SetPose(PoseState.Dodge, DodgeDuration); break;
                 case CombatState.HitReaction: SetPose(PoseState.Hit); break;
                 case CombatState.MentalStagger: SetPose(PoseState.Stagger); break;
                 case CombatState.Knockdown: SetPose(PoseState.Knockdown); break;

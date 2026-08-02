@@ -73,7 +73,13 @@ namespace AdversityRoad.Player
         // 交接点（占总时长比例）：踩在动画里手真正碰到柄 / 剑尖进鞘口的那一拍。
         // 只剩这两个数需要对——不再有任何轨迹插值要调。
         const float DrawGrab = 0.42f;       // 拔刀：手抓住柄
-        const float SheatheSlide = 0.68f;   // 收刀：剑尖入鞘口
+        const float SheatheAim = 0.30f;     // 收刀：右手开始转腕，把剑尖对准鞘口
+        const float SheatheSlide = 0.68f;   // 收刀：剑尖抵到鞘口，交给鞘
+        const float SheatheSeat = 0.92f;    // 收刀：沿鞘轴推到底（入座）
+
+        /// <summary>转腕对准的最大角度：超过这个量就不是"稍微弯一下手腕"，
+        /// 而是把剑拧到人做不出来的姿势了。</summary>
+        const float MaxWristBend = 60f;
 
         /// <summary>在拔刀/收刀之间切换，用 dur 秒过渡（与动画时长同步）。</summary>
         public void Toggle(float dur)
@@ -128,10 +134,32 @@ namespace AdversityRoad.Player
                         _addGrip?.Invoke(_rightHand);     // 五指合拢握柄
                     }
                     _blade.localPosition = _dLP; _blade.localRotation = _dLR; _blade.localScale = _dLS;
+                    // 【收刀新增的一段：右手转腕，把剑尖对准鞘口】
+                    // 之前收刀是"手里举着剑 → 到点剑突然出现在鞘口"，中间少的就是这个动作。
+                    // 注意仍然【不做世界轨迹插值】（那正是上一版剑乱飞的原因）：
+                    // 剑始终挂在右手上、握位一点不动，只绕【握把点】旋转——
+                    // 看上去就是右手稍微弯一下、把剑尖调过去，跟真人收刀的顺序一致。
+                    if (!_toDrawn && t >= SheatheAim)
+                        AimBladeAtMouth(Mathf.InverseLerp(SheatheAim, SheatheSlide, t));
+                }
+                else if (!_toDrawn && t < SheatheSeat)
+                {
+                    // 收刀第二段：剑尖已抵在鞘口，沿【鞘轴】推进去。
+                    // 两个端点都是鞘本地坐标且共线，所以这段插值不可能歪、不可能穿壁——
+                    // 它就是"推进去"这一个动作本身。
+                    if (_blade.parent != _scab)
+                    {
+                        _removeGrip?.Invoke(_rightHand);
+                        _blade.SetParent(_scab, false);
+                    }
+                    float e = Mathf.InverseLerp(SheatheSlide, SheatheSeat, t);
+                    _blade.localPosition = Vector3.Lerp(MouthLP(), _sLP, e * e * (3f - 2f * e));
+                    _blade.localRotation = _sLR;
+                    _blade.localScale = _sLS;
                 }
                 else
                 {
-                    // 剑归鞘：静静待在鞘中（拔刀前半程 / 收刀后半程）
+                    // 剑归鞘：静静待在鞘中（拔刀前半程 / 收刀入座后）
                     if (_blade.parent != _scab)
                     {
                         _removeGrip?.Invoke(_rightHand);
@@ -211,22 +239,37 @@ namespace AdversityRoad.Player
             _set.position += palmW - _scab.TransformPoint(_midPt);   // 鞘中点钉左掌
         }
 
-        static void WorldPose(Transform parent, Vector3 lp, Quaternion lr, Vector3 ls,
-            out Vector3 pos, out Quaternion rot, out Vector3 scl)
+        /// <summary>
+        /// 收刀对准段：绕【握把点】旋转剑身，让剑尖指向鞘口——读作"右手转腕对准"。
+        ///
+        /// e=0 时完全是动画给的握姿（不干预），e=1 时剑轴与鞘轴共线、剑尖正对鞘口，
+        /// 于是下一段"沿鞘轴推入"的起点与这一段的终点天然连得上，不会再有跳变。
+        /// 中途的朝向在【指向鞘口】与【与鞘轴共线】之间过渡：先把尖端摆过去（对口），
+        /// 再摆正到能插进去的角度（进刀），正是真人收刀的两拍。
+        /// 整体旋转量被 MaxWristBend 夹住：宁可对不太准，也不要拧出一个人做不出的手腕。
+        /// </summary>
+        void AimBladeAtMouth(float e)
         {
-            pos = parent.TransformPoint(lp);
-            rot = parent.rotation * lr;
-            scl = Vector3.Scale(parent.lossyScale, ls);
-        }
+            e = Mathf.Clamp01(e);
+            e = e * e * (3f - 2f * e);                       // 缓入缓出，别在起点猛地一拧
+            Vector3 gripW = _blade.TransformPoint(_gripL);
+            Vector3 tipW = _blade.TransformPoint(_tipL);
+            Vector3 cur = tipW - gripW;
+            if (cur.sqrMagnitude < 1e-8f) return;
 
-        void SetBladeWorld(Vector3 pos, Quaternion rot, Vector3 worldScale)
-        {
-            _blade.SetPositionAndRotation(pos, rot);
-            Vector3 ps = _blade.parent != null ? _blade.parent.lossyScale : Vector3.one;
-            _blade.localScale = new Vector3(
-                Mathf.Approximately(ps.x, 0f) ? worldScale.x : worldScale.x / ps.x,
-                Mathf.Approximately(ps.y, 0f) ? worldScale.y : worldScale.y / ps.y,
-                Mathf.Approximately(ps.z, 0f) ? worldScale.z : worldScale.z / ps.z);
+            Vector3 mouthW = _scab.TransformPoint(_mouthPt);
+            Vector3 botW = _scab.TransformPoint(_botPt);
+            Vector3 toMouth = mouthW - gripW;                // ① 剑尖指向鞘口
+            Vector3 alongScab = botW - mouthW;               // ② 与鞘轴共线（插入方向）
+            if (toMouth.sqrMagnitude < 1e-8f || alongScab.sqrMagnitude < 1e-8f) return;
+
+            Vector3 want = Vector3.Slerp(toMouth.normalized, alongScab.normalized, e).normalized;
+            Quaternion full = Quaternion.FromToRotation(cur.normalized, want);
+            Quaternion capped = Quaternion.RotateTowards(Quaternion.identity, full, MaxWristBend);
+            Quaternion delta = Quaternion.Slerp(Quaternion.identity, capped, e);
+
+            _blade.rotation = delta * _blade.rotation;
+            _blade.position += gripW - _blade.TransformPoint(_gripL);   // 握把点钉在手里不动
         }
 
         /// <summary>每帧自然携持：鞘轴(鞘底→鞘口)对齐"竖直微前倾"、鞘中点贴左手掌心。
