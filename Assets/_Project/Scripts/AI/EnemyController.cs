@@ -764,22 +764,45 @@ namespace AdversityRoad.AI
                 }
             }
 
-            // ---- 对攻：敌人正处于出招前摇时被打 = 双方硬碰硬，都掉血；
-            //      攻击力高的一方受伤更小、给对方造成更大伤害（必中技不触发对攻反伤）----
-            if (_telegraphing && _player != null && !dmg.unblockable)
+            // ---- 打断前摇：敌人在出招前摇里被打中，出招被打断 ----
+            //
+            // 【这里原来是本作最严重的一处设计错误】
+            // 旧逻辑是"对攻"：只要在敌人前摇期间打中它，就【无条件反弹一份伤害给玩家】。
+            // 它同时踩了三个大忌，玩家的"防不胜防、做什么防御都没用"基本全出自这里：
+            //   ① 这份伤害【躲不掉】。它由玩家自己的攻击触发，而玩家正在出招——
+            //      既不可能同时按住格挡，也不在翻滚无敌帧里。跳、闪、挡一个都用不上。
+            //   ② 这份伤害【看不出来源】。玩家的招式判定框长达 2~4 米，站在三米外
+            //      挥一刀照样触发，于是屏幕上就是"离得老远突然掉血"。
+            //   ③ 它【惩罚了游戏自己教的东西】。全套读招系统（前摇警示、危险攻击、
+            //      威胁指示器）都在教玩家"看见前摇就抢攻"，抢攻却要挨一下无法规避的伤害。
+            //
+            // 成熟动作游戏在这一格的通行规则是相反的：**打中前摇＝打断它**，这就是读招的奖励；
+            // 精英/首领可以有霸体（轻击打不断），但那时它的攻击【依然带着完整前摇打出来】，
+            // 玩家仍然能闪能挡——风险始终是可规避的，而不是凭空扣血。照此重写：
+            // 破绽期要在【打断之前】就判定完：下面的打断会把敌人推进 Stagger，
+            // 如果之后再看 State，等于"每一次成功打断都算处决"——处决横幅与慢镜会满屏刷，
+            // 且把削韧破防这条正经循环的收益冲淡。处决只认真正靠削韧打出来的破绽。
+            bool wasStaggered = State == EnemyState.Stagger;
+
+            if (_telegraphing && !dmg.unblockable)
             {
-                var pc = _player.GetComponent<PlayerCombatController>();
-                if (pc != null)
+                // 霸体：精英/首领对轻击不吃打断（但重击/绝招仍打得断）
+                bool superArmor = (profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
+                                  && !DamageResolver.IsHeavy(dmg);
+                Vector3 mid = _player != null
+                    ? (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f
+                    : transform.position + Vector3.up * 1.3f;
+                if (superArmor)
                 {
-                    bool playerStronger = dmg.physicalDamage >= profile.physicalDamage;
-                    pc.TakeHit(new DamageInfo
-                    {
-                        physicalDamage = profile.physicalDamage * (playerStronger ? 0.35f : 0.75f),
-                        sourcePosition = transform.position
-                    });
-                    Vector3 mid = (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f;
-                    CombatFeedback.DamageNumber(mid, "对攻！", new Color(1f, 0.6f, 0.2f), 1.5f);
-                    CombatFeedback.WeaponClash(mid);   // 双方兵器硬碰硬：撞击火花
+                    // 打不断：明确告诉玩家"这一下没能打断，它的招还会出来"——
+                    // 招还带着前摇，所以仍然躲得掉，玩家知道该准备闪了
+                    CombatFeedback.DamageNumber(mid, "霸体·未打断", new Color(0.8f, 0.8f, 0.85f), 1.1f);
+                }
+                else
+                {
+                    ForceBreak(0.9f);   // 出招被打断 + 短硬直：读招抢攻的正收益
+                    CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
+                    CombatFeedback.WeaponClash(mid);
                 }
             }
 
@@ -802,7 +825,7 @@ namespace AdversityRoad.AI
             // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
             bool execHeavy = DamageResolver.IsHeavy(dmg);
             bool execution = false;
-            if (State == EnemyState.Stagger)
+            if (wasStaggered)
             {
                 if (execHeavy)
                 {

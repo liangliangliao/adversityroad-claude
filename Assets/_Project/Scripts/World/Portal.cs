@@ -19,7 +19,8 @@ namespace AdversityRoad.World
     ///   ② 要【慢】：高速穿过（翻滚/突进/被击飞）期间计时不累积，一旦提速就清零；
     ///   ③ 【战斗中不放行】：附近还有活着且已经盯上你的敌人时，门直接不开，
     ///      并明确告诉玩家为什么——这同时避免了"打到一半被传走、回来敌人全没了"。
-    /// 另外全程显示进度提示，玩家永远知道"再站 0.6 秒就会过去"，不会被偷袭式传送。
+    /// 停留时间刻意压到 0.2 秒（≈6 帧）：正常走进门几乎无感，挡住的只是"擦过去"那一帧。
+    /// 真正拦住误触的是 ② 和 ③——它们不需要玩家等，所以门不该有等待感。
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class Portal : MonoBehaviour
@@ -28,8 +29,14 @@ namespace AdversityRoad.World
         public Vector3 targetPosition;
         public string targetName = "";
 
-        /// <summary>需要连续停留的时间：短到不烦人，长到擦不过去。</summary>
-        const float DwellTime = 0.75f;
+        /// <summary>需要连续停留的时间。
+        ///
+        /// 上一版设成 0.75 秒，玩家立刻反馈"通关进下一关为什么要站定几秒"——
+        /// 是对的：正常走进门本来就该立刻过去，等待感只该出现在**不正常**的进入方式上。
+        /// 误触本来也不是靠"等得久"挡住的，真正挡住它的是下面两条（高速穿过不计时、
+        /// 战斗中不放行）。所以停留时间只要够长到滤掉"一帧擦过"就行：
+        /// 0.2 秒 ≈ 6 帧，走进去几乎无感，而任何一次翻滚/突进都会先被速度门槛拦下。</summary>
+        const float DwellTime = 0.2f;
 
         /// <summary>判定"这不是在正常走路"的速度上限（m/s）。跑步 ≈6，翻滚 10+，突进更快。</summary>
         const float WalkThroughSpeed = 7.5f;
@@ -103,13 +110,11 @@ namespace AdversityRoad.World
                 return;
             }
 
-            // ---- ① 停留计时：全程给可见进度，绝不"突然"发生 ----
+            // ---- ① 停留计时 ----
+            // 0.2 秒内不再刷任何提示：正常走进门应当是"走过去就到了"，
+            // 弹一句"站定 0.1 秒"只会让玩家以为这里有个需要等待的机关。
             _dwell += Time.deltaTime;
-            if (_dwell < DwellTime)
-            {
-                Hint("站定 " + (DwellTime - _dwell).ToString("0.0") + " 秒即前往【" + targetName + "】…", 0.35f);
-                return;
-            }
+            if (_dwell < DwellTime) return;
 
             Teleport(player);
         }

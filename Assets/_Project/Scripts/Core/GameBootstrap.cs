@@ -654,6 +654,8 @@ namespace AdversityRoad.Core
             hurt.AddComponent<Hurtbox>();
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
+            // 敌人侧判定容差收紧（见 Hitbox.pad）：宽容度该给玩家，不该给敌人
+            ec.attackHitbox.pad = 0.04f;
 
             // Boss 专属行为组件：把方案里的关卡机制落到对应心魔身上
             switch (type)

@@ -52,6 +52,10 @@ namespace AdversityRoad.Combat
         [Header("倒地")]
         public float knockdownThreshold = 20f;
 
+        /// <summary>受击后的无敌时长：够按下一次闪/挡，不够白嫖一整套连招。</summary>
+        const float PostHitGrace = 0.45f;
+        const float PostHitGraceBlocked = 0.2f;
+
         [Header("状态可视化（运行时注入）")]
         public GameObject guardShield;
         public GameObject innerAura;
@@ -1615,12 +1619,17 @@ namespace AdversityRoad.Combat
             {
                 float phys = dmg.physicalDamage;
                 // 敌方偷袭：从背后被打 = 趁其不备，1.4 倍伤害且格挡无效（格挡只护正面）
+                // 背刺判定收窄：原来 Dot>0.35 等于把身后 138° 的整个扇区都算背刺，
+                // 被围住时总有一个敌人落在里面——玩家举着盾却一直"挡不住"，
+                // 因为系统认定他一直在被背刺。改成 Dot>0.6（身后约 106°），
+                // 正面与两侧都在格挡的保护范围内，与大作的"盾护前方 180°"一致。
+                // 倍率也从 1.4 降到 1.15：被绕后应该是"挡不住"，不该额外变成"打得更痛"。
                 Vector3 fromSrc = transform.position - dmg.sourcePosition; fromSrc.y = 0;
                 bool backstab = fromSrc.sqrMagnitude > 0.01f &&
-                    Vector3.Dot(transform.forward, fromSrc.normalized) > 0.35f;
+                    Vector3.Dot(transform.forward, fromSrc.normalized) > 0.6f;
                 if (backstab)
                 {
-                    phys *= 1.4f;
+                    phys *= 1.15f;
                     CombatFeedback.DamageNumber(transform.position, "被偷袭！",
                         new Color(1f, 0.45f, 0.2f), 1.25f);
                 }
@@ -1637,11 +1646,17 @@ namespace AdversityRoad.Combat
                 // 读作"这个挡按钮根本没用"。现在明确告知，并保留一半减伤，
                 // 让"挡住了但很勉强"和"压根没挡"在手感上分得开。
                 bool guardValid = IsGuarding && !backstab && !dmg.unblockable;
-                bool blocked = guardValid && _player.Stats.SpendStamina(phys * 0.5f);
                 // 精准格挡（按下「挡」后 0.2s 内接住）：完全免伤 + 对方必定破绽。
-                // 这是本作最该被学会的一条规则——它必须**每次都成立**，
-                // 玩家才可能通过反复尝试发现它、依赖它。
-                bool perfectParry = blocked && _parryTimer > 0f;
+                // 【不再要求体力】——这是纯粹的时机技，本作最该被学会的一条规则，
+                // 必须**每次都成立**。此前它写成 `blocked && _parryTimer > 0`，
+                // 也就是体力不够时时机对了也白搭，而且没有任何提示：
+                // 玩家做对了却看不到回报，自然会得出"挡根本没用"的结论。
+                bool perfectParry = guardValid && _parryTimer > 0f;
+                // 普通格挡的体力开销：从 伤害×0.5（首领一下就吃掉 22 点）
+                // 改成 小额定值 + 轻微随伤害缩放，重击顶多 14 点。
+                // 体力回复是 22/秒，于是"一直挡"依然会被压垮，但"该挡的时候挡得住"。
+                bool blocked = !perfectParry && guardValid &&
+                               _player.Stats.SpendStamina(6f + phys * 0.16f);
                 if (perfectParry)
                 {
                     phys = 0f;
@@ -1673,6 +1688,14 @@ namespace AdversityRoad.Combat
                 bool skillArmor = _fsm.Current == CombatState.Finisher;
                 if (skillArmor) phys *= 0.6f;
                 _player.Stats.TakePhysicalDamage(phys);
+                // ---- 受击后短暂无敌（大作通行的 post-hit grace）----
+                // 没有这一格的时候，被三个敌人围住＝必死，而且跟操作水平无关：
+                // 甲的判定框刚打完、乙的紧接着就开，玩家在硬直里根本没有一帧可以
+                // 按闪或按挡。玩家说的"做任何防御都无效、必须被必杀"，一半来自这里。
+                // 给一小段无敌（挡住时更短——挡住本来就没进硬直），
+                // 保证任何时候至少还有一次做出反应的机会。
+                _player.SetInvincible(blocked ? PostHitGraceBlocked : PostHitGrace);
+
                 // 心理能量动态：挨打的挫感落到意志/专注/反刍（格挡住的不算）
                 if (!blocked && Dyn() != null)
                     _dynamics.OnHitTaken(phys, backstab, phys >= knockdownThreshold);

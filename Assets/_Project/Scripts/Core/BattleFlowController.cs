@@ -61,9 +61,27 @@ namespace AdversityRoad.Core
             StartCoroutine(ShowDeathDelayed());
         }
 
+        /// <summary>倒地死亡动作实际需要多久播完（秒）。
+        ///
+        /// 之前这里写死 2.4 秒。而动作库里的 `Dying` 片段本身就有 3~4 秒，
+        /// 于是 2.4 秒一到面板弹出、`Time.timeScale = 0` 把整个世界冻住——
+        /// 角色正好停在倒了一半的姿势上。玩家看到的"倒地死亡卡住、没有完整倒地动画、
+        /// 复盘界面提早弹出"其实是同一件事：**面板比动作先到**。
+        /// 现在直接问动画系统这段要播多久（ActionClipLength 返回的就是裁剪与倍速之后
+        /// 的实际时长），播完再留半秒让画面沉一下。没有片段时（程序化倒地）沿用旧的 2.4 秒。
+        /// </summary>
+        static float DeathAnimSeconds()
+        {
+            var pc = FindObjectOfType<Player.PlayerController>();
+            var anim = pc != null ? pc.GetComponent<Combat.HumanoidAnimator>() : null;
+            float len = anim != null ? anim.ActionClipLength(Combat.PoseState.Death) : 0f;
+            return Mathf.Clamp(len > 0.1f ? len + 0.6f : 2.4f, 2.0f, 6.5f);
+        }
+
         IEnumerator ShowDeathDelayed()
         {
-            yield return new WaitForSecondsRealtime(2.4f);
+            // 用非缩放时间等待：期间 timeScale 仍是 1，倒地动作照常播完
+            yield return new WaitForSecondsRealtime(DeathAnimSeconds());
 
             // 个性化失败诊断：为什么这次输了 + 针对性策略（围绕心理数值轴）
             var pc = FindObjectOfType<Player.PlayerController>();
