@@ -4,56 +4,115 @@ using AdversityRoad.Player;
 
 namespace AdversityRoad.World
 {
+    /// <summary>门的角色：每个关卡只有两扇门——回上一关、去下一关。</summary>
+    public enum PortalRole { Back, Forward }
+
     /// <summary>
-    /// 区域传送门：玩家【站在门里停留一小会儿】才会传送；未解锁章节的区域会被剧情锁住。
+    /// 区域传送门。
+    ///
+    /// 【目标由章节顺序解析，不再写死】
+    /// 以前每扇门都硬编码一个目标区域编号，结果是训练武馆同时开着通往噪声街区、
+    /// 两元赌桌、独居小屋的三扇门，其中大半根本不是当前关卡的相邻关——
+    /// 玩家既进不去（剧情锁），显示出来也没有意义。
+    /// 现在门只记两件事：**它在哪个区（homeZone）**、**它是回头门还是向前门（role）**；
+    /// 具体通向哪一关，在玩家踏进来的那一刻按 StoryManager 的章节顺序算。
+    /// 好处有三：
+    ///   ① 门永远只指向章节序列里的相邻关，不会再冒出无意义的门；
+    ///   ② 同一个区被多个章节复用时（噪声街区就出现两次），
+    ///      门会按玩家当前进度指向正确的那一对邻居；
+    ///   ③ 以后调整章节顺序不用再回来改二十几处坐标。
     ///
     /// 【为什么不是"碰到就走"】
-    /// 反复出现的"一边移动一边打着打着突然跳到另一个场景"，根因是传送用的是
-    /// OnTriggerEnter——碰一下就走。而战斗中玩家的位移根本不受自己完全控制：
-    /// 翻滚 10m/s、绝招突进 2.6m、被击退、敌人把你顶开……任何一次擦过门框
-    /// 都会被判成"我要换区域"。冷却和"必须先走出去"只能防重复触发，
-    /// 防不住这种**误触**——因为误触本来就是一次合法的首次进入。
-    ///
-    /// 大型动作游戏对区域切换的通行做法是三条一起上，这里全部照做：
-    ///   ① 要【停留】：站进门里连续 DwellTime 秒才生效，擦过去不算；
-    ///   ② 要【慢】：高速穿过（翻滚/突进/被击飞）期间计时不累积，一旦提速就清零；
-    ///   ③ 【战斗中不放行】：附近还有活着且已经盯上你的敌人时，门直接不开，
-    ///      并明确告诉玩家为什么——这同时避免了"打到一半被传走、回来敌人全没了"。
-    /// 停留时间刻意压到 0.2 秒（≈6 帧）：正常走进门几乎无感，挡住的只是"擦过去"那一帧。
-    /// 真正拦住误触的是 ② 和 ③——它们不需要玩家等，所以门不该有等待感。
+    /// 战斗中玩家的位移不完全受自己控制：翻滚 10m/s、绝招突进、被击退……
+    /// 任何一次擦过门框都会被判成"我要换区域"。所以加了三道门槛：
+    ///   ① 站进门里连续 DwellTime 秒才生效（0.2 秒，走进去几乎无感）；
+    ///   ② 高速穿过（翻滚/突进/被击飞）期间计时不累积；
+    ///   ③ 附近还有咬着你的活敌人时不放行，并说明原因。
     /// </summary>
     [RequireComponent(typeof(Collider))]
     public class Portal : MonoBehaviour
     {
-        public int targetZoneIndex;
-        public Vector3 targetPosition;
-        public string targetName = "";
+        /// <summary>这扇门所在的区域编号（由 ZoneBuilder 建门时写入）。</summary>
+        public int homeZone;
 
-        /// <summary>需要连续停留的时间。
-        ///
-        /// 上一版设成 0.75 秒，玩家立刻反馈"通关进下一关为什么要站定几秒"——
-        /// 是对的：正常走进门本来就该立刻过去，等待感只该出现在**不正常**的进入方式上。
-        /// 误触本来也不是靠"等得久"挡住的，真正挡住它的是下面两条（高速穿过不计时、
-        /// 战斗中不放行）。所以停留时间只要够长到滤掉"一帧擦过"就行：
-        /// 0.2 秒 ≈ 6 帧，走进去几乎无感，而任何一次翻滚/突进都会先被速度门槛拦下。</summary>
-        const float DwellTime = 0.2f;
+        /// <summary>回头门 / 向前门。</summary>
+        public PortalRole role = PortalRole.Forward;
 
-        /// <summary>判定"这不是在正常走路"的速度上限（m/s）。跑步 ≈6，翻滚 10+，突进更快。</summary>
-        const float WalkThroughSpeed = 7.5f;
+        /// <summary>门顶标牌（随解析结果刷新，玩家总能看清这扇门通向哪一关）。</summary>
+        public TextMesh sign;
 
-        /// <summary>战斗封锁半径：这个范围内有盯上你的活敌人就不放行。</summary>
-        const float CombatLockRadius = 22f;
+        /// <summary>门框发光片（无效门会被隐藏，不留一扇进不去的空门）。</summary>
+        public GameObject glow;
+
+        const float DwellTime = 0.2f;        // 停留时间：只滤掉"擦过去那一帧"
+        const float WalkThroughSpeed = 7.5f; // 超过这个速度就不是在正常走路
+        const float CombatLockRadius = 22f;  // 这个范围内有交战敌人就不放行
 
         static float _lastTeleport = -10f;
 
-        // 刚被传送过来的玩家：必须先【走出】这扇门的触发体，这扇门才会再次生效。
         bool _armed = true;
         float _dwell;
         Vector3 _lastPlayerPos;
         bool _tracking;
         float _lastHint = -99f;
+        int _signZone = -99;
 
         void Awake() => GetComponent<Collider>().isTrigger = true;
+
+        /// <summary>
+        /// 按章节顺序解析这扇门的目标。
+        /// 同一个区可能在章节序列里出现多次（噪声街区出现两次），
+        /// 取【离玩家当前进度最近的那一次出场】作为基准，邻居才对得上玩家的实际处境。
+        /// </summary>
+        bool Resolve(out int zone, out string label)
+        {
+            zone = -1; label = "";
+            var chapters = StoryManager.Chapters;
+            if (chapters == null || chapters.Length == 0) return false;
+
+            var story = StoryManager.Instance;
+            int cur = story != null ? Mathf.Clamp(story.Chapter, 0, chapters.Length - 1) : 0;
+
+            int best = -1, bestDist = int.MaxValue;
+            for (int i = 0; i < chapters.Length; i++)
+            {
+                if (chapters[i].zoneIndex != homeZone) continue;
+                int d = Mathf.Abs(i - cur);
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+            if (best < 0) return false;
+
+            int target = role == PortalRole.Back ? best - 1 : best + 1;
+            if (target < 0 || target >= chapters.Length) return false;
+
+            zone = chapters[target].zoneIndex;
+            label = ZoneBuilder.ZoneNameOf(zone);
+            return true;
+        }
+
+        float _nextSignCheck;
+
+        void Update()
+        {
+            // 标牌只在解析结果变化时重写（章节推进后门的去向会变）。
+            // 全世界有四十多扇门，没必要每帧都去遍历章节表——每半秒查一次足够。
+            if (sign == null || Time.unscaledTime < _nextSignCheck) return;
+            _nextSignCheck = Time.unscaledTime + 0.5f;
+            bool ok = Resolve(out int z, out string name);
+            if (z == _signZone) return;
+            _signZone = z;
+            if (!ok)
+            {
+                sign.text = role == PortalRole.Back ? "起点" : "尽头";
+                sign.color = new Color(0.55f, 0.55f, 0.6f);
+                if (glow != null) glow.SetActive(false);
+                return;
+            }
+            sign.text = (role == PortalRole.Back ? "← " : "→ ") + name;
+            sign.color = role == PortalRole.Back
+                ? new Color(0.85f, 0.85f, 0.7f) : new Color(0.7f, 0.95f, 1f);
+            if (glow != null) glow.SetActive(true);
+        }
 
         void OnTriggerExit(Collider other)
         {
@@ -78,7 +137,9 @@ namespace AdversityRoad.World
             var player = other.GetComponentInParent<PlayerController>();
             if (player == null) return;
 
-            // ---- ② 高速穿过不算停留：翻滚/突进/被击退期间计时清零 ----
+            if (!Resolve(out int targetZone, out string targetName)) return;   // 尽头门：不响应
+
+            // ---- ② 高速穿过不算停留 ----
             Vector3 pos = player.transform.position;
             if (!_tracking) { _lastPlayerPos = pos; _tracking = true; }
             float speed = Time.deltaTime > 1e-4f
@@ -96,27 +157,18 @@ namespace AdversityRoad.World
 
             // ---- 剧情锁 ----
             var story = StoryManager.Instance;
-            if (story != null && !story.ZoneUnlocked(targetZoneIndex))
+            if (story != null && !story.ZoneUnlocked(targetZone))
             {
                 _dwell = 0f;
-                string when = "先完成当前子章的试炼";
-                foreach (var ch in StoryManager.Chapters)
-                    if (ch.zoneIndex == targetZoneIndex)
-                    {
-                        when = "主线推进到【" + ch.title + "】时开启";
-                        break;
-                    }
-                Hint("此路通往【" + targetName + "】，现在被心魔封锁——" + when + "。");
+                Hint("此路通往【" + targetName + "】，现在被心魔封锁——先打完当前这一关。");
                 return;
             }
 
-            // ---- ① 停留计时 ----
-            // 0.2 秒内不再刷任何提示：正常走进门应当是"走过去就到了"，
-            // 弹一句"站定 0.1 秒"只会让玩家以为这里有个需要等待的机关。
+            // ---- ① 停留计时（0.2 秒内不刷任何提示：走进门应当就是走过去就到了）----
             _dwell += Time.deltaTime;
             if (_dwell < DwellTime) return;
 
-            Teleport(player);
+            Teleport(player, targetZone, targetName);
         }
 
         /// <summary>附近是否还有活着且已经进入战斗状态的敌人。</summary>
@@ -142,19 +194,21 @@ namespace AdversityRoad.World
             GameEvents.RaiseSubtitle(msg);
         }
 
-        void Teleport(PlayerController player)
+        void Teleport(PlayerController player, int targetZone, string targetName)
         {
             _lastTeleport = Time.time;
             _armed = false;
             _dwell = 0f;
             _tracking = false;
+            // 落点统一取该区的玩家出生点——那里由 ZoneBuilder 保证脚下有实地
+            // （见 EnsureSpawnPads），不会再出现"进下一关掉进深渊"。
+            Vector3 dest = ZoneBuilder.PlayerSpawnOf(targetZone);
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
-            player.transform.position = targetPosition;
+            player.transform.position = dest;
             if (cc != null) cc.enabled = true;
-            ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(targetZoneIndex);
-            if (!string.IsNullOrEmpty(targetName))
-                GameEvents.RaiseSubtitle("—— 进入 " + targetName + " ——");
+            ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(targetZone);
+            GameEvents.RaiseSubtitle("—— 进入 " + targetName + " ——");
         }
     }
 }

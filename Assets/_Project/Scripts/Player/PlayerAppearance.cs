@@ -496,6 +496,40 @@ namespace AdversityRoad.Player
             foreach (var t in adopt) t.SetParent(scab, true);
         }
 
+        /// <summary>
+        /// 量一端的截面半径：取靠近 endL 的那 18% 长度内的顶点，
+        /// 求它们到鞘轴的平均垂距。刀鞘从鞘口向鞘尾收细，所以这个值大的一端就是鞘口。
+        ///
+        /// 之所以不用"顶点数量"或"包围盒宽度"：前者受布线密度影响，
+        /// 后者会把挂环、鞘铊之类的附件算进去。垂距的平均值只描述鞘管本身有多粗。
+        /// 顶点不可读（模型未开 Read/Write）时返回 0，调用处会退回长轴约定。
+        /// </summary>
+        static float EndRadius(Transform tubeT, Mesh mesh, Vector3 endL, Vector3 otherL)
+        {
+            if (mesh == null || !mesh.isReadable) return 0f;
+            var verts = mesh.vertices;
+            if (verts == null || verts.Length < 12) return 0f;
+
+            Vector3 axis = otherL - endL;
+            float len = axis.magnitude;
+            if (len < 1e-6f) return 0f;
+            axis /= len;
+            float band = len * 0.18f;
+
+            double sum = 0; int n = 0;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector3 d = verts[i] - endL;
+                float along = Vector3.Dot(d, axis);
+                if (along < 0f || along > band) continue;
+                sum += (d - axis * along).magnitude;   // 到轴线的垂距
+                n++;
+            }
+            if (n < 6) return 0f;
+            // 换算到世界尺度，两端才可比（同一网格同一缩放，其实只影响可读性）
+            return (float)(sum / n) * Mathf.Abs(tubeT.lossyScale.x);
+        }
+
         /// <summary>刃身中轴精修：篮状护手等单侧突出的附件会把包围盒长轴挤离真实刃轴
         /// （插鞘后在鞘口处能看出几厘米错位="没精准插入"）。取刃段（柄→尖 50%~99% 区间，
         /// 远离护手）顶点按轴向切片求每片质心、以首末质心拟合刃身中轴线。
@@ -623,9 +657,20 @@ namespace AdversityRoad.Player
             bool gripAtA = DecideGripEnd(blade, bb, ba0, ba1);
             Vector3 gripL = gripAtA ? ba0 : ba1, tipL = gripAtA ? ba1 : ba0;
 
-            // 鞘轴取【鞘管网格自身包围盒】（排除挂环，紧致=真实鞘管中轴）；
-            // 鞘口端沿用长轴高端约定（与整体包围盒方向对齐取向）
+            // ================= 鞘口是哪一端 =================
+            //
+            // 【原来这里根本没有判定】：直接写 `mouthL = sa1, botL = sa0`——
+            // 也就是"包围盒长轴的高端就当成鞘口"。这只是一个坐标约定，
+            // 和模型哪一头真的开着口毫无关系；一旦模型的朝向与约定相反，
+            // 剑就会被送向**鞘底**那一端。玩家说的"收剑时还是没找到剑鞘入口、
+            // 是盲目插入的、剑鞘入口位置在哪里还没搞清楚"，说的正是这件事。
+            //
+            // 鞘口在物理上有一个稳定可测的特征：**刀鞘从鞘口向鞘尾收细**。
+            // 鞘口要让整个刃身连同护手根部进去，必然是最粗的一端；鞘尾封死、通常还带铊，
+            // 明显更细。于是只要量一下两端的截面半径，粗的那端就是鞘口——
+            // 这个判据与模型的坐标朝向、导入设置、缩放都无关。
             Vector3 mouthL = sa1, botL = sa0;
+            string mouthDiag = "鞘口判定：无鞘管网格，沿用长轴约定";
             {
                 Transform tubeT = null; Mesh tubeMesh = null; int tubeV = 0;
                 foreach (var mf3 in scab.GetComponentsInChildren<MeshFilter>(true))
@@ -639,10 +684,31 @@ namespace AdversityRoad.Player
                     LongAxisEnds(tubeMesh.bounds, out Vector3 t0, out Vector3 t1);
                     Vector3 e0 = scab.InverseTransformPoint(tubeT.TransformPoint(t0));
                     Vector3 e1 = scab.InverseTransformPoint(tubeT.TransformPoint(t1));
-                    Vector3 boxDir = sa1 - sa0;
-                    bool e1IsMouth = Vector3.Dot(e1 - e0, boxDir) >= 0f;
-                    mouthL = e1IsMouth ? e1 : e0;
-                    botL = e1IsMouth ? e0 : e1;
+
+                    float r0 = EndRadius(tubeT, tubeMesh, t0, t1);   // 靠 t0 那一端的截面半径
+                    float r1 = EndRadius(tubeT, tubeMesh, t1, t0);   // 靠 t1 那一端的截面半径
+                    bool clear = Mathf.Max(r0, r1) > 1e-6f &&
+                                 Mathf.Abs(r0 - r1) / Mathf.Max(r0, r1) > 0.08f;
+                    if (clear)
+                    {
+                        bool e1IsMouth = r1 > r0;               // 粗的那端＝鞘口
+                        mouthL = e1IsMouth ? e1 : e0;
+                        botL = e1IsMouth ? e0 : e1;
+                        mouthDiag = "鞘口判定：取较粗一端（" +
+                            (e1IsMouth ? "高端" : "低端") + "，半径 " +
+                            Mathf.Max(r0, r1).ToString("F3") + " vs " +
+                            Mathf.Min(r0, r1).ToString("F3") + "）";
+                    }
+                    else
+                    {
+                        // 两端一样粗（等径直筒鞘）：退回长轴约定，并如实说明
+                        Vector3 boxDir = sa1 - sa0;
+                        bool e1IsMouth = Vector3.Dot(e1 - e0, boxDir) >= 0f;
+                        mouthL = e1IsMouth ? e1 : e0;
+                        botL = e1IsMouth ? e0 : e1;
+                        mouthDiag = "鞘口判定：两端等粗（" + r0.ToString("F3") + " / " +
+                            r1.ToString("F3") + "），沿用长轴约定";
+                    }
                 }
             }
 
@@ -700,9 +766,10 @@ namespace AdversityRoad.Player
             Vector3 scabCtrW = scab.TransformPoint(sb.center);
             float scabLenW = (scab.TransformPoint(sa1) - scab.TransformPoint(sa0)).magnitude;
             bool seated = scabLenW > 1e-4f && (bladeCtrW - scabCtrW).magnitude < scabLenW * 0.35f;
-            _sheathDiag = seated
+            _sheathDiag = (seated
                 ? "剑已入鞘（左手持鞘，按「拔刀」出鞘）"
-                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长";
+                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长")
+                + "\n" + mouthDiag;
             Core.GameEvents.RaiseSubtitle(_sheathDiag);
 
             if (_sheath != null) Destroy(_sheath);
