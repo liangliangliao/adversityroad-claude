@@ -131,6 +131,9 @@ namespace AdversityRoad.Player
         Vector3 _lastSafePos;
         float _safeStamp;
 
+        /// <summary>相对落差兜底：比"最近站稳的地方"低这么多就算掉出去了。</summary>
+        const float FallCatchDrop = 12f;
+
         void FallGuard()
         {
             if (_cc == null) return;
@@ -141,7 +144,14 @@ namespace AdversityRoad.Player
                 _safeStamp = Time.time;
                 _lastSafePos = transform.position;
             }
-            if (transform.position.y > WorldFloorY) return;
+            // 捞回条件从"掉到世界底板（y=-25）"改成"绝对底板 **或** 比刚才站稳处低 12 米"。
+            // 只看绝对底板的问题是：各区地板都在 y≈0，从边缘掉下去要坠落约 2.2 秒才够到
+            // -25——那两秒钟玩家看到的就是自己在无尽虚空里往下掉（"掉进深渊"）。
+            // 12 米约合 1.5 秒内触发，且远高于任何正常跳跃/落差，不会误捞。
+            bool belowFloor = transform.position.y <= WorldFloorY;
+            bool longDrop = _vy < -1f && _lastSafePos.sqrMagnitude > 0.01f &&
+                            transform.position.y <= _lastSafePos.y - FallCatchDrop;
+            if (!belowFloor && !longDrop) return;
 
             Vector3 back = _lastSafePos.sqrMagnitude > 0.01f
                 ? _lastSafePos : transform.position + Vector3.up * 30f;

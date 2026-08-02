@@ -289,8 +289,10 @@ namespace AdversityRoad.World
                 Box(ctx, "TrainingPost", o + new Vector3(-14 + i * 3, 1f, -14),
                     new Vector3(0.5f, 2f, 0.5f), new Color(0.6f, 0.45f, 0.3f));
 
-            MakePortal(ctx, o + new Vector3(-24f, 0, 0), 0, ctx.playerSpawns[0]);
-            MakePortal(ctx, o + new Vector3(24f, 0, 0), 2, ctx.playerSpawns[2]);
+            // 门往里收到 ±21（地板边缘在 ±25）：加上门前地台后，门口前后左右都还有余量，
+            // 站定等待期间怎么走都不会走出地板。
+            MakePortal(ctx, o + new Vector3(-21f, 0, 0), 0, ctx.playerSpawns[0]);
+            MakePortal(ctx, o + new Vector3(21f, 0, 0), 2, ctx.playerSpawns[2]);
             // 武馆后门 → 两元赌桌（公平与承诺线 其一，序章通关后解锁）
             MakePortal(ctx, o + new Vector3(0f, 0, 22), 9, ctx.playerSpawns[9]);
         }
@@ -2666,6 +2668,17 @@ namespace AdversityRoad.World
             var mr = signGo.GetComponent<MeshRenderer>();
             if (tm.font != null) mr.material = tm.font.material;
             signGo.AddComponent<FaceCamera>();
+
+            // 【门前地台】——每扇门下面都保证有实地可站。
+            // 传送改成「站定 0.75 秒才走」之后暴露了一个一直存在的关卡问题：
+            // 训练武馆的东西两扇门开在 x=±24，而武馆地板只到 ±25，触发体 3 米宽
+            // （±[22.5, 25.5]）有半米悬在虚空上。以前是碰到就传走，玩家没机会站在那儿；
+            // 现在要站定，人往门里再走一步就直接掉下去了——玩家反馈的"进武馆掉进深渊"。
+            // 与其逐个去挪 24 个区、几十扇门的坐标（挪一次就要重新核对一次），
+            // 不如让 MakePortal 自己铺一块比触发体更大的地台：任何门口从此都踩得住。
+            // 地台压在 y=-0.25、厚 0.5，与各区地板同高，视觉上就是门前的一块石板。
+            Box(ctx, "PortalPad", basePos + new Vector3(0, -0.25f, 0),
+                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f));
 
             var trigger = new GameObject("PortalTrigger");
             trigger.transform.SetParent(root.transform, false);
