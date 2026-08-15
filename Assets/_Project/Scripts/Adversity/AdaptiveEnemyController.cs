@@ -222,16 +222,19 @@ namespace AdversityRoad.Adversity
                     line = "它摆好了架势不出手——它想让你先落招。";
                     break;
             }
+            // 武术类型一并报出来：玩家要学的是"怎么应对这一类打法"，不是背单个敌人
+            string martial = MartialArchetypeCatalog.Describe(_enemy.archetype);
             if (isNemesis)
             {
                 var n = NemesisSystem.Find(nemesisArchetype);
                 string rank = n != null ? n.RankLabel() : "宿敌";
-                GameEvents.RaiseSubtitle("【" + rank + "·" + name + "】" + line +
+                GameEvents.RaiseSubtitle("【" + rank + "·" + name + "】" + martial + " " + line +
                     "（它记得你们上次的每一场）");
             }
             else
             {
-                GameEvents.RaiseSubtitle("【" + TierLabel(tier) + "·" + name + "】" + line);
+                GameEvents.RaiseSubtitle("【" + TierLabel(tier) + "·" + name + "】" +
+                    martial + " " + line);
             }
             MarkTelegraph();
         }

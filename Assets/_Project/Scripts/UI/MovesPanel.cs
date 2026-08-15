@@ -261,6 +261,54 @@ namespace AdversityRoad.UI
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 动作语法页（方案 10.6）：Startup/Active/Recovery/Tracking/Poise/GuardDamage/
+        /// CancelWindow/ParryWindow/DodgeWindow/Telegraph 全部公开。
+        /// 公开它们本身就是一种承诺——Boss 不靠"看不清"变难，只靠"要求更高"变难。
+        /// </summary>
+        static string BuildGrammarText()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("◤ 动作语法（帧数据）——可读、可学、可反制的技术定义 ◢\n");
+            sb.Append("  起手＝可读窗口   判定＝命中持续   收招＝被惩罚的窗口\n");
+            sb.Append("  追踪＝出招后还能修正多少朝向   霸体＝会不会被打断   削盾＝对格挡的破坏\n");
+            sb.Append("  弹反/闪避＝判定生效前还剩多少时间可以反制   预警＝是否带可学习的 Telegraph\n\n");
+
+            sb.Append("── 玩家 ──\n");
+            foreach (var kv in Combat.MoveGrammarTable.All(false))
+                sb.Append("  ").Append(Pad(kv.Key.ToString(), 16))
+                  .Append(kv.Value.Summary()).Append('\n');
+
+            sb.Append("\n── 敌人 ──\n");
+            foreach (var kv in Combat.MoveGrammarTable.All(true))
+                sb.Append("  ").Append(Pad(kv.Key.ToString(), 16))
+                  .Append(kv.Value.Summary()).Append('\n');
+
+            var bad = Combat.MoveGrammarTable.AuditUnreadableHeavyMoves(true);
+            sb.Append("\n  ※ 公平性自检（重招必须可读）：")
+              .Append(bad.Count == 0 ? "全部通过 ✓" : string.Join("、", bad.ToArray()));
+            sb.Append("\n  ※ 敌人的所有危险攻击一律带预警——这是硬性规则，不是难度选项。");
+            return sb.ToString();
+        }
+
+        /// <summary>敌方武术类型页（方案 10.5）。</summary>
+        static string BuildArchetypeText()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("◤ 敌方武术类型：十种打法，十种考验 ◢\n");
+            sb.Append("  敌人不该只是「血量不同的同一个人」。每一类有自己的动作语言，\n");
+            sb.Append("  也各自考验你的一项能力——你学会的不是「怎么打这个敌人」，\n");
+            sb.Append("  而是「怎么应对这一类打法」，这才带得走。\n\n");
+            foreach (var a in AI.MartialArchetypeCatalog.All)
+            {
+                sb.Append("  【").Append(a.name).Append("】").Append(a.moveLanguage).Append('\n');
+                sb.Append("      主要考验：").Append(a.mainTest).Append('\n');
+            }
+            sb.Append("\n  ※ 武术类型只调整出手频率、交战距离、移速与心理压强这些**公开可读**的参数，\n");
+            sb.Append("     而且只在敌人生成时调一次——绝不在攻击过程中偷偷改判定。");
+            return sb.ToString();
+        }
+
         /// <summary>等宽对齐：中文按两格宽计（Unity 内置字体下近似对齐即可）。</summary>
         static string Pad(string s, int width)
         {
@@ -284,6 +332,7 @@ namespace AdversityRoad.UI
             "招 式 表 · 基本键", "招 式 表 · 绝招与必杀", "招 式 表 · 派生与连段",
             "招 式 表 · 读招与闪避", "招 式 表 · 自由融合", "招 式 表 · 输入仲裁",
             "招 式 表 · 玩家数据", "招 式 表 · 敌人数据",
+            "招 式 表 · 动作语法", "招 式 表 · 敌方武术类型",
         };
 
         static string PageText(int page)
@@ -297,7 +346,9 @@ namespace AdversityRoad.UI
                 case 4: return FusionText;
                 case 5: return ArbitrationText;
                 case 6: return BuildPlayerSpecText();
-                default: return BuildEnemySpecText();
+                case 7: return BuildEnemySpecText();
+                case 8: return BuildGrammarText();
+                default: return BuildArchetypeText();
             }
         }
 

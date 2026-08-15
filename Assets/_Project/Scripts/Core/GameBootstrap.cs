@@ -606,6 +606,9 @@ namespace AdversityRoad.Core
         GameObject SpawnEnemy(EnemyType type, EnemyTier tier, Vector3 pos, bool uniqueId)
         {
             var profile = EnemyCatalog.Create(type, tier, uniqueId);
+            // 敌方武术类型（方案 10.5）：拳/腿/擒拿/刀/棍/重武器/刺客/防反/协同/心理混合。
+            // 只在生成时调一次出手频率、交战距离、移速与心理压强——这些都是玩家看得见的量。
+            var archetype = MartialArchetypeCatalog.Apply(profile, type);
             float scale = EnemyCatalog.TierScale(tier);
 
             var root = new GameObject(profile.enemyId);
@@ -672,6 +675,7 @@ namespace AdversityRoad.Core
             var ec = root.AddComponent<EnemyController>();
             ec.profile = profile;
             ec.poser = poser;
+            ec.archetype = archetype.kind;
 
             ec.statusBar = EnemyStatusBar.Create(root.transform, profile.displayName, 3.8f);
 
