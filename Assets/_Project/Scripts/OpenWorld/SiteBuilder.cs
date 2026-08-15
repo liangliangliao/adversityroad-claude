@@ -561,17 +561,11 @@ namespace AdversityRoad.OpenWorld
                         (float)rng.NextDouble() * 40f - 20f, 1f, (float)rng.NextDouble() * 30f - 15f);
                     if (!NavMesh.SamplePosition(want, out var hit, 8f, NavMesh.AllAreas)) continue;
 
-                    var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    go.name = "Npc_" + SiteKitCatalog.NpcRoleName(npc.roleType);
+                    // 和城区市民、经典关卡路人同一套人形骨骼——AI 生成的场景不能一走进去
+                    // 就掉档成胶囊人，那等于告诉玩家"这块地方是临时糊的"
+                    var go = ZoneBuilder.MakeHumanoidNpc(ctx,
+                        "Npc_" + SiteKitCatalog.NpcRoleName(npc.roleType), hit.position, rng);
                     go.transform.SetParent(inst.root.transform, true);
-                    go.transform.position = hit.position + Vector3.up * 1f;
-                    go.transform.localScale = new Vector3(0.8f, 0.9f, 0.8f);
-                    if (ctx != null)
-                        ZoneBuilder.Paint(ctx, go, new Color(
-                            0.42f + (float)rng.NextDouble() * 0.4f,
-                            0.45f + (float)rng.NextDouble() * 0.35f,
-                            0.5f + (float)rng.NextDouble() * 0.35f));
-                    go.AddComponent<NavMeshAgent>();
 
                     Vector3 station = hit.position;
                     Vector3 roam = inst.origin + new Vector3(

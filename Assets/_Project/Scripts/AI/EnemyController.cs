@@ -72,10 +72,10 @@ namespace AdversityRoad.AI
         Vector3 _dangerRingBaseScale;
         float _telegraphT;
 
-        /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
         /// <summary>敌方武术类型（方案 10.5）：决定它的动作语言与它考验玩家的那一项能力。</summary>
         [HideInInspector] public MartialArchetype archetype = MartialArchetype.Fist;
 
+        /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
         [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
         [HideInInspector] public Material baseMaterial;
 

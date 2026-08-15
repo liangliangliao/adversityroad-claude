@@ -943,7 +943,19 @@ namespace AdversityRoad.Core
                 reflectionPanel, growthPanel, equipmentPanel, codexPanel, archivePanel,
                 levelSelectPanel, missionBoardPanel, actionTrackerPanel, quizPanel);
 
+            // ---- V2.0 Goal UI（方案 17.2）：目标前台化，复杂系统后台化 ----
+            // 「前台化」指的是**目标本身**（HUD 常驻目标行 + 一枚专属按钮），
+            // 不是再往右上角铺四枚按钮——那正是上面刚收拾掉的乱象。
+            // 所以旅程图/逆境史/逆境图谱一律进菜单，并且「目标」组排在菜单第一位。
+            var goalOsPanel = GoalOSPanel.Create(canvasGo.transform);
+            var journeyPanel = JourneyMapPanel.Create(canvasGo.transform);
+            var historyPanel = AdversityHistoryPanel.Create(canvasGo.transform);
+            var advProfilePanel = AdversityProfilePanel.Create(canvasGo.transform);
+
             var sysMenu = SystemMenuPanel.Create(canvasGo.transform);
+            sysMenu.Add("目标", "目标", goalOsPanel.Toggle);
+            sysMenu.Add("目标", "旅程图", journeyPanel.Toggle);
+            sysMenu.Add("目标", "逆境史", historyPanel.Toggle);
             sysMenu.Add("养成", "安全屋", safeHousePanel.Toggle);
             sysMenu.Add("养成", "复盘", reflectionPanel.Toggle);
             sysMenu.Add("养成", "答题", quizPanel.OpenPractice);
@@ -951,6 +963,7 @@ namespace AdversityRoad.Core
             sysMenu.Add("探索", "招式", movesPanel.Toggle);
             sysMenu.Add("角色", "角色", characterPanel.Toggle);
             sysMenu.Add("角色", "画像", profilePanel.Toggle);
+            sysMenu.Add("角色", "逆境图谱", advProfilePanel.Toggle);
             sysMenu.Add("系统", "设置", settingsPanel.Toggle);
             sysMenu.Add("系统", "视角", () =>
             {
@@ -964,7 +977,7 @@ namespace AdversityRoad.Core
             sysMenu.Add("调试", "命题审核", quizReviewPanel.Toggle);
             sysMenu.Build();
 
-            // 右上角只留两枚：菜单 + 暂停。其余视野全部还给战斗画面。
+            // 右上角只留三枚：菜单 + 暂停 + 目标。其余视野全部还给战斗画面。
             UiUtil.MakeButton(canvasGo.transform, "≡ 菜单", new Vector2(1, 1), new Vector2(-100, -44),
                 new Vector2(160, 64), new Color(0.22f, 0.25f, 0.32f, 0.92f), sysMenu.Toggle, 28);
 
@@ -973,19 +986,10 @@ namespace AdversityRoad.Core
             UiUtil.MakeButton(canvasGo.transform, "暂停", new Vector2(1, 1), new Vector2(-268, -44),
                 new Vector2(140, 64), new Color(0.22f, 0.25f, 0.32f, 0.92f), mainMenu.ShowPause, 28);
 
-            // ---- V2.0 Goal UI（方案 17.2）：目标前台化，复杂系统后台化 ----
-            var goalOsPanel = GoalOSPanel.Create(canvasGo.transform);
-            var journeyPanel = JourneyMapPanel.Create(canvasGo.transform);
-            var historyPanel = AdversityHistoryPanel.Create(canvasGo.transform);
-            var advProfilePanel = AdversityProfilePanel.Create(canvasGo.transform);
-            UiUtil.MakeButton(canvasGo.transform, "目标", new Vector2(1, 1), new Vector2(-95, -190),
-                new Vector2(150, 64), new Color(0.6f, 0.5f, 0.2f, 0.85f), goalOsPanel.Toggle, 26);
-            UiUtil.MakeButton(canvasGo.transform, "旅程", new Vector2(1, 1), new Vector2(-265, -190),
-                new Vector2(150, 64), new Color(0.25f, 0.45f, 0.5f, 0.85f), journeyPanel.Toggle, 26);
-            UiUtil.MakeButton(canvasGo.transform, "逆境史", new Vector2(1, 1), new Vector2(-435, -190),
-                new Vector2(150, 64), new Color(0.5f, 0.28f, 0.3f, 0.85f), historyPanel.Toggle, 24);
-            UiUtil.MakeButton(canvasGo.transform, "图谱", new Vector2(1, 1), new Vector2(-945, -190),
-                new Vector2(150, 64), new Color(0.42f, 0.35f, 0.55f, 0.85f), advProfilePanel.Toggle, 26);
+            // 目标是 V2.0 的最高层主线，值得 HUD 上一枚专属入口——但只要一枚，
+            // 且排在「菜单」正下方，不去挤顶部那行主线任务文字。
+            UiUtil.MakeButton(canvasGo.transform, "目标", new Vector2(1, 1), new Vector2(-100, -120),
+                new Vector2(160, 64), new Color(0.52f, 0.44f, 0.20f, 0.92f), goalOsPanel.Toggle, 28);
 
             // 家中物件 → 面板（方案 17.3：菜单功能由房间物件承载，而不是一屏按钮）
             HomeFixture.Open = kind =>

@@ -43,11 +43,13 @@ namespace AdversityRoad.UI
         public void Add(string group, string label, System.Action action) =>
             _entries.Add(new Entry { group = group, label = label, action = action });
 
-        // 分组顺序：常用在前，调试在最后
-        static readonly string[] GroupOrder = { "养成", "探索", "角色", "系统", "调试" };
+        // 分组顺序：常用在前，调试在最后。
+        // V2.0 起「目标」排在第一位——目标是最高层主线，玩家打开菜单第一眼就该看到它。
+        static readonly string[] GroupOrder = { "目标", "养成", "探索", "角色", "系统", "调试" };
 
         static readonly Dictionary<string, Color> GroupColor = new Dictionary<string, Color>
         {
+            { "目标", new Color(0.52f, 0.44f, 0.20f, 0.96f) },
             { "养成", new Color(0.42f, 0.34f, 0.20f, 0.96f) },
             { "探索", new Color(0.20f, 0.34f, 0.45f, 0.96f) },
             { "角色", new Color(0.32f, 0.24f, 0.40f, 0.96f) },
@@ -60,7 +62,9 @@ namespace AdversityRoad.UI
             if (_built) return;
             _built = true;
 
-            _panel = UiUtil.MakePanel(_canvas, "SystemMenuPanel", new Vector2(1000, 880),
+            // 高度按"六组 + 七行按钮"算足：装不下的部分不会滚动，只会被裁掉，
+            // 所以宁可留高再交给 PanelFit 整体缩放，也不能让最后一组掉出面板。
+            _panel = UiUtil.MakePanel(_canvas, "SystemMenuPanel", new Vector2(1000, 1120),
                 new Color(0.06f, 0.07f, 0.10f, 0.985f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "菜 单", 40,

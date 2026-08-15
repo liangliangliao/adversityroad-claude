@@ -2549,8 +2549,39 @@ namespace AdversityRoad.World
                 }
         }
 
+        /// <summary>
+        /// 造一个"看得出是人"的 NPC 躯体：程序化人形骨骼 + 关节动画 + 碰撞体 + NavMeshAgent。
+        ///
+        /// 开放城区的市民、AI 现场生成场景里的 NPC 与经典关卡的路人共用这一套。
+        /// 各建各的会立刻露馅：同一条街上一半是方块人、一半是纯色胶囊——
+        /// 而胶囊正是上面 SpawnLife 注释里刚被判过死刑的那种"完全没有人样"。
+        /// </summary>
+        public static GameObject MakeHumanoidNpc(WorldContext ctx, string name,
+            Vector3 groundPos, System.Random rng)
+        {
+            var go = new GameObject(name);
+            go.transform.position = groundPos + Vector3.up * 1f;
+
+            var visual = new GameObject("Visual").transform;
+            visual.SetParent(go.transform, false);
+            var rig = Combat.HumanoidRig.Build(visual, PedestrianLook(rng), ctx != null ? ctx.mat : null);
+
+            var anim = go.AddComponent<Combat.HumanoidAnimator>();
+            anim.visual = visual;
+            anim.rig = rig;
+
+            var col = go.AddComponent<CapsuleCollider>();
+            col.height = 1.8f; col.radius = 0.32f; col.center = new Vector3(0, -0.1f, 0);
+
+            var agent = go.AddComponent<UnityEngine.AI.NavMeshAgent>();
+            agent.radius = 0.32f;
+            agent.height = 1.8f;
+            agent.baseOffset = 1f;   // 骨架原点在腰、脚底在 -1，不补这一米就半身入地
+            return go;
+        }
+
         /// <summary>随机行人外观：肤色/衣裤/鞋各自小幅随机，路人之间看得出差别。</summary>
-        static Combat.HumanoidRig.Config PedestrianLook(System.Random rng)
+        public static Combat.HumanoidRig.Config PedestrianLook(System.Random rng)
         {
             float R() => (float)rng.NextDouble();
             return new Combat.HumanoidRig.Config

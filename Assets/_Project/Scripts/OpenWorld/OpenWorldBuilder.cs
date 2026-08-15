@@ -430,15 +430,10 @@ namespace AdversityRoad.OpenWorld
                 if (!UnityEngine.AI.NavMesh.SamplePosition(home, out var hit, 6f,
                         UnityEngine.AI.NavMesh.AllAreas)) continue;
 
-                var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                go.name = "Citizen_" + CityNpc.KindLabel(kinds[i]);
-                go.transform.position = hit.position + Vector3.up * 1f;
-                go.transform.localScale = new Vector3(0.8f, 0.9f, 0.8f);
-                ZoneBuilder.Paint(ctx, go, new Color(
-                    0.4f + (float)rng.NextDouble() * 0.45f,
-                    0.42f + (float)rng.NextDouble() * 0.4f,
-                    0.45f + (float)rng.NextDouble() * 0.4f));
-                go.AddComponent<UnityEngine.AI.NavMeshAgent>();
+                // 市民和经典关卡的路人共用同一套人形骨骼：城区是 V2.0 的主舞台，
+                // 这里站着一排纯色胶囊，整个"模拟真实世界"就先垮在观感上
+                var go = ZoneBuilder.MakeHumanoidNpc(ctx,
+                    "Citizen_" + CityNpc.KindLabel(kinds[i]), hit.position, rng);
 
                 Vector3 work = (i % 2 == 0 ? off.center : com.center) +
                     new Vector3((float)(rng.NextDouble() * 16 - 8), 0, (float)(rng.NextDouble() * 12 - 6));

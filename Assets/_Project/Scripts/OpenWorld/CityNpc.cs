@@ -34,6 +34,7 @@ namespace AdversityRoad.OpenWorld
 
         NavMeshAgent _agent;
         DayNightCycle _clock;
+        Combat.HumanoidAnimator _anim;
         int _phase = -1;
         float _nextCheck;
         bool _flagged;
@@ -54,11 +55,21 @@ namespace AdversityRoad.OpenWorld
             _agent = GetComponent<NavMeshAgent>();
             _agent.speed = Random.Range(1.3f, 2.6f);
             _clock = FindObjectOfType<DayNightCycle>();
+            _anim = GetComponent<Combat.HumanoidAnimator>();
         }
 
         void Update()
         {
             if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return;
+
+            // 步态：把 NavMesh 的实际移速折算成 0-1 喂给骨骼动画，
+            // 不喂就是一具站姿僵直、贴着地面平移的躯体（"滑行的人"）
+            if (_anim != null)
+            {
+                float v = _agent.velocity.magnitude;
+                _anim.SetLocomotion(Mathf.Clamp01(v / 3.2f), false, true, v);
+            }
+
             if (Time.time < _nextCheck) return;
             _nextCheck = Time.time + 2.5f;
 
