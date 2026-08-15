@@ -861,6 +861,13 @@ namespace AdversityRoad.Core
             UiUtil.SetRect(beaconT, new Vector2(1, 1), new Vector2(-40, -260), new Vector2(560, 32));
             hud.beaconText = beaconT;
 
+            // 当前关卡目标（只在 AI 生成场景里出现）：顶部居中，压在主线任务行下面。
+            // 进场字幕会滚走，而"还剩几个、打谁"必须随时抬头就能看见。
+            var objT = UiUtil.MakeText(canvasGo.transform, "ObjectiveText", "", 24,
+                TextAnchor.MiddleCenter, new Color(1f, 0.86f, 0.45f));
+            UiUtil.SetRect(objT, new Vector2(0.5f, 1f), new Vector2(0, -92), new Vector2(1200, 34));
+            hud.objectiveText = objT;
+
             // 常驻三条 + 情境七条：所有条建好后再初始化布局
             hud.SetupContextualBars();
 

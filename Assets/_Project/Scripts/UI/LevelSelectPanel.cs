@@ -80,6 +80,7 @@ namespace AdversityRoad.UI
             if (cc != null) cc.enabled = false;
             player.transform.position = ZoneBuilder.PlayerSpawnOf(zone);
             if (cc != null) cc.enabled = true;
+            player.NotifyTeleported();
             player.MoveSpeedMultiplier = 1f;
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
 

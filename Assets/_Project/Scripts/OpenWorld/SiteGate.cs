@@ -152,6 +152,7 @@ namespace AdversityRoad.OpenWorld
                     ch.site != null ? ch.site.internalLines : null);
                 GoalOS.NoteChapterAttempt(ch.chapterId);
                 ShowRules(ch);
+                SiteObjective.Attach(inst, ch);   // 顶部常驻目标行：打谁、还剩几个
             }
             return true;
         }
@@ -187,6 +188,7 @@ namespace AdversityRoad.OpenWorld
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
 
             AI.DialogueLibrary.ClearChapterLines();
+            UI.HUDController.SetObjective("");
             _hasReturn = false;
             _returnZoneId = "";
             _insideChapterId = "";
@@ -199,6 +201,7 @@ namespace AdversityRoad.OpenWorld
             if (cc != null) cc.enabled = false;
             player.transform.position = to;
             if (cc != null) cc.enabled = true;
+            player.NotifyTeleported();
         }
     }
 
@@ -223,6 +226,63 @@ namespace AdversityRoad.OpenWorld
             SiteGate.ExitToCity();
             ProceduralQuestAssembler.DespawnChapter(_chapterId);
             Destroy(gameObject);
+        }
+    }
+
+    /// <summary>
+    /// 关卡目标行：站在生成场景里时，顶部常驻显示"打谁 · 还剩几个"。
+    ///
+    /// 玩家的原话是"敌人在哪里呢？怎么挑战关卡呢？"——那不是敌人没生成，
+    /// 是**没人告诉他要干什么、还差多少**。进场那两句字幕几秒就滚没了，
+    /// 而目标必须是随时抬头就能确认的一行字。剩余数归零时直接指出下一步。
+    /// </summary>
+    public class SiteObjective : MonoBehaviour
+    {
+        SiteInstance _site;
+        string _chapterId = "";
+        string _title = "";
+        float _next;
+
+        public static void Attach(SiteInstance site, GoalChapterData ch)
+        {
+            if (site == null || site.root == null) return;
+            var o = site.root.GetComponent<SiteObjective>() ?? site.root.AddComponent<SiteObjective>();
+            o._site = site;
+            o._chapterId = ch.chapterId;
+            o._title = ch.site != null && !string.IsNullOrEmpty(ch.site.siteName)
+                ? ch.site.siteName : ch.chapterName;
+            o._next = 0f;
+        }
+
+        void OnDisable() => UI.HUDController.SetObjective("");
+
+        void Update()
+        {
+            if (Time.time < _next) return;
+            _next = Time.time + 0.5f;
+
+            // 只在玩家真的站在这处场景里时显示——回到城里就该收起来
+            if (!SiteGate.InsideSite || SiteGate.InsideChapterId != _chapterId)
+            { UI.HUDController.SetObjective(""); return; }
+
+            int alive = 0;
+            string bossName = "";
+            foreach (var e in _site.root.GetComponentsInChildren<AI.EnemyController>(false))
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                alive++;
+                if (e.GetComponent<ChapterGateEnemy>() != null && e.profile != null)
+                    bossName = e.profile.displayName;
+            }
+
+            if (alive == 0)
+            {
+                UI.HUDController.SetObjective("◆ " + _title + " —— 这里清空了，从来路走出去");
+                return;
+            }
+            UI.HUDController.SetObjective("◆ " + _title + " —— " +
+                (string.IsNullOrEmpty(bossName) ? "击败挡路的" : "击败【" + bossName + "】") +
+                " · 剩余 " + alive);
         }
     }
 

@@ -96,6 +96,12 @@ namespace AdversityRoad.OpenWorld
             float scale = bp.sizeHint == "large" ? 1.35f : bp.sizeHint == "small" ? 0.75f : 1f;
             float w = 60f * scale, d = 46f * scale;
 
+            // ---- 周边街区：先把"这地方在城市里"建出来 ----
+            // 只建一个盒子的话，玩家推门进去看到的是悬在黑里的一间房——
+            // 那不是"模拟真实世界的场景"，那是一个测试关。先铺地、再起楼、再点灯。
+            BuildSurroundings(inst, kind, rng, w, d);
+            yield return null;
+
             // ---- 地面与外壳 ----
             Box(inst, "Site_Floor", new Vector3(0, -0.25f, 0), new Vector3(w + 8f, 0.5f, d + 8f), Floor);
             if (kind.indoor)
@@ -140,10 +146,28 @@ namespace AdversityRoad.OpenWorld
             SpawnNpcs(inst, bp, rng, ctx);
 
             _live[chapter.chapterId] = inst;
+
+            // 建完点一遍数：构件/灯/落点脚下有没有地。
+            // 这处场景在 x=20000 之外，出问题时截图只有一片黑，光看画面判断不了
+            // 是"没建出来"还是"建出来了但没光"——所以把可验证的数字打进日志。
+            int parts = inst.root.GetComponentsInChildren<Renderer>(true).Length;
+            int lamps = inst.root.GetComponentsInChildren<Light>(true).Length;
+            Physics.SyncTransforms();
+            bool grounded = Physics.Raycast(inst.playerSpawn + Vector3.up * 2f, Vector3.down,
+                out RaycastHit gh, 30f, ~0, QueryTriggerInteraction.Ignore);
             Core.CloudDialogueService.AddLog("场景已生成：" + bp.siteName + "（" + kind.name + "·" +
-                SiteKitCatalog.LayoutName(bp.layout) + "）房间 " + bp.rooms.Count +
-                " · NPC " + bp.npcs.Count + " · seed " + chapter.assemblySeed +
-                " → 动态区域 #" + inst.zoneIndex);
+                SiteKitCatalog.LayoutName(bp.layout) + "）构件 " + parts + " · 灯 " + lamps +
+                " · 房间 " + bp.rooms.Count + " · NPC " + bp.npcs.Count +
+                " · 落点" + (grounded ? "脚下有地(" + gh.collider.name + ")" : "⚠ 脚下悬空") +
+                " · seed " + chapter.assemblySeed + " → 动态区域 #" + inst.zoneIndex);
+
+            // 落点悬空是致命的（玩家一进去就往下掉），当场补一块台子，不留到实机再炸
+            if (!grounded)
+                Box(inst, "GroundPad_Spawn",
+                    inst.root.transform.InverseTransformPoint(inst.playerSpawn) +
+                        new Vector3(0, -1.35f, 0),
+                    new Vector3(10f, 0.6f, 10f), Floor);
+
             onDone?.Invoke(inst);
         }
 
@@ -516,21 +540,50 @@ namespace AdversityRoad.OpenWorld
                 default: c = new Color(0.85f, 0.92f, 1f); intensity = 1.0f; break;   // indoor_cold
             }
 
-            int lights = kind.indoor ? 4 : 2;
-            for (int i = 0; i < lights; i++)
-            {
-                var go = new GameObject("SiteLight" + i);
-                go.transform.SetParent(inst.root.transform, false);
-                go.transform.localPosition = new Vector3(
-                    (i % 2 == 0 ? -1 : 1) * w * 0.22f, kind.indoor ? 3.6f : 6f,
-                    (i < 2 ? -1 : 1) * d * 0.22f);
-                var l = go.AddComponent<Light>();
-                l.type = LightType.Point;
-                l.range = kind.indoor ? 26f : 40f;
-                l.intensity = intensity;
-                l.color = c;
-                if (bp.ambience == "flicker") go.AddComponent<SiteFlicker>();
-            }
+            // 灯按网格铺满，而不是四个角各放一盏。
+            //
+            // 室内场景有天花板，主光（太阳）一点都照不进来——可见度**全部**由这些点光承担。
+            // 原来一间 60×46 的屋子只放四盏 range=26 的灯，中段和四周直接是黑的，
+            // 玩家走进去看到的就是"一片黑乎乎，什么都没有"。
+            // URP 每个物体最多取 4 盏附加光，所以铺得密不会更贵，只会让每块地板
+            // 都能挑到离它最近的那几盏。
+            float step = kind.indoor ? 15f : 24f;
+            int nx = Mathf.Max(2, Mathf.CeilToInt(w / step));
+            int nz = Mathf.Max(2, Mathf.CeilToInt(d / step));
+            int idx = 0;
+            for (int ix = 0; ix < nx; ix++)
+                for (int iz = 0; iz < nz; iz++)
+                {
+                    float fx = (ix + 0.5f) / nx - 0.5f;
+                    float fz = (iz + 0.5f) / nz - 0.5f;
+                    var go = new GameObject("SiteLight" + idx++);
+                    go.transform.SetParent(inst.root.transform, false);
+                    go.transform.localPosition = new Vector3(
+                        fx * w * 0.95f, kind.indoor ? 3.7f : 7f, fz * d * 0.95f);
+                    var l = go.AddComponent<Light>();
+                    l.type = LightType.Point;
+                    l.range = kind.indoor ? step * 1.9f : step * 2.4f;
+                    l.intensity = intensity;
+                    l.color = c;
+                    if (bp.ambience == "flicker") go.AddComponent<SiteFlicker>();
+
+                    // 看得见的灯具：光源本身不可见时，天花板会显得"莫名其妙地亮"
+                    if (kind.indoor)
+                        Deco(inst, "CeilPanel", go.transform.localPosition + new Vector3(0, 0.45f, 0),
+                            new Vector3(2.4f, 0.12f, 1.2f), c);
+                }
+
+            // 补一盏斜向平行光：纯点光下墙面明暗过渡很硬，物体读不出体积。
+            // 只作用于这处场景的观感，不参与主世界昼夜。
+            var fillGo = new GameObject("SiteFill");
+            fillGo.transform.SetParent(inst.root.transform, false);
+            fillGo.transform.localPosition = new Vector3(0, 12f, 0);
+            fillGo.transform.localRotation = Quaternion.Euler(52f, 34f, 0f);
+            var fill = fillGo.AddComponent<Light>();
+            fill.type = LightType.Directional;
+            fill.intensity = kind.indoor ? 0.35f : 0.9f;
+            fill.color = c;
+            fill.shadows = LightShadows.None;
         }
 
         static void BuildEntranceMarker(SiteInstance inst, SiteBlueprint bp)
@@ -598,6 +651,70 @@ namespace AdversityRoad.OpenWorld
             var go = Box(inst, name, local, size, color);
             Object.DestroyImmediate(go.GetComponent<Collider>());
             return go;
+        }
+
+        /// <summary>
+        /// 场景外围：一大片地面 + 一圈临街楼 + 路灯 + 一条路。
+        ///
+        /// 三件事各自解决一个实机问题：
+        /// ① **大地面**——比场景本体大得多，且往下厚 1 米。玩家被打飞、跳出护栏、
+        ///    或者落点差了几米时，脚下依然是实地，不会掉进虚空反复触发兜底；
+        /// ② **临街楼**——玩家问"建筑在哪"，答案不能是"只有一间房"。围一圈带亮窗的楼，
+        ///    这地方才像坐落在城市里，而不是漂在黑里；
+        /// ③ **路灯**——室外场景的可见度全靠它。没有灯的夜间户外场景就是纯黑一片。
+        /// </summary>
+        static void BuildSurroundings(SiteInstance inst, SiteKitCatalog.SiteKindInfo kind,
+            System.Random rng, float w, float d)
+        {
+            float gw = w + 150f, gd = d + 150f;
+
+            // ① 大地面（厚 1m，往下压到 -1，任何落点都踩得住）
+            Box(inst, "Ground", new Vector3(0, -1f, 0), new Vector3(gw, 1f, gd),
+                new Color(0.24f, 0.25f, 0.27f));
+
+            // 一条穿过场景南侧的路：让"外面"有方向感，不是一块空地
+            Deco(inst, "Road", new Vector3(0, -0.44f, -d / 2f - 26f), new Vector3(gw, 0.08f, 14f),
+                new Color(0.17f, 0.17f, 0.19f));
+            for (int i = -6; i <= 6; i++)
+                Deco(inst, "RoadLine", new Vector3(i * 11f, -0.4f, -d / 2f - 26f),
+                    new Vector3(5f, 0.06f, 0.4f), new Color(0.78f, 0.76f, 0.6f));
+
+            // ② 临街楼：四边各起几栋，高度随机但确定（同 seed 同结果）
+            float hw = w / 2f + 26f, hd = d / 2f + 26f;
+            for (int i = 0; i < 14; i++)
+            {
+                float t = (i + 0.5f) / 14f;
+                bool alongX = i % 2 == 0;
+                float along = (t * 2f - 1f) * (alongX ? hw : hd) * 1.25f;
+                float side = (i % 4 < 2 ? 1f : -1f) * (alongX ? hd : hw);
+                Vector3 at = alongX ? new Vector3(along, 0, side) : new Vector3(side, 0, along);
+
+                float bh = 12f + (float)rng.NextDouble() * 26f;
+                float bw = 12f + (float)rng.NextDouble() * 10f;
+                float bd = 12f + (float)rng.NextDouble() * 10f;
+                var tint = new Color(0.26f + (float)rng.NextDouble() * 0.12f,
+                                     0.27f + (float)rng.NextDouble() * 0.12f,
+                                     0.31f + (float)rng.NextDouble() * 0.14f);
+                Box(inst, "Block", at + new Vector3(0, bh / 2f, 0), new Vector3(bw, bh, bd), tint);
+
+                // 亮窗：楼要"有人住"才像城市。只做贴面装饰片，不参与碰撞与寻路
+                int rows = Mathf.Clamp(Mathf.FloorToInt(bh / 4f), 2, 7);
+                for (int r = 0; r < rows; r++)
+                    for (int c = -1; c <= 1; c++)
+                    {
+                        if (rng.NextDouble() < 0.35) continue;   // 有些窗是黑的，才不像贴图
+                        float zf = at.z > 0 ? -bd / 2f - 0.12f : bd / 2f + 0.12f;
+                        Deco(inst, "Win", at + new Vector3(c * bw * 0.28f, 3f + r * 4f, zf),
+                            new Vector3(bw * 0.18f, 1.5f, 0.1f), new Color(0.95f, 0.85f, 0.55f));
+                    }
+            }
+
+            // ③ 路灯：绕场一圈，室外场景的可见度全靠它们
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i / 8f * Mathf.PI * 2f;
+                Lamp(inst, new Vector3(Mathf.Cos(a) * (w / 2f + 14f), 0, Mathf.Sin(a) * (d / 2f + 14f)));
+            }
         }
 
         static void Shell(SiteInstance inst, float w, float d, float h)

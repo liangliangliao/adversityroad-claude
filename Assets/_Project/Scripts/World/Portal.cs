@@ -228,6 +228,7 @@ namespace AdversityRoad.World
             if (cc != null) cc.enabled = false;
             player.transform.position = dest;
             if (cc != null) cc.enabled = true;
+            player.NotifyTeleported();   // 清掉上一关的"最近站稳点"，免得刚落地就被拽回去
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(targetZone);
             GameEvents.RaiseSubtitle("—— 进入 " + targetName + " ——");
         }

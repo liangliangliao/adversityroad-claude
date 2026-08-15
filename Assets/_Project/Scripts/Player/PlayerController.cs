@@ -153,15 +153,61 @@ namespace AdversityRoad.Player
                             transform.position.y <= _lastSafePos.y - FallCatchDrop;
             if (!belowFloor && !longDrop) return;
 
-            Vector3 back = _lastSafePos.sqrMagnitude > 0.01f
-                ? _lastSafePos : transform.position + Vector3.up * 30f;
+            // 捞回目标必须是**脚下确实有地**的地方，否则就是把人从虚空捞进虚空：
+            // 旧版在 _lastSafePos 还没记下来时用 `当前位置 + 30m`——那儿同样没有地，
+            // 于是掉 12m→捞高 30m→再掉，字幕一遍遍刷"脚下踩空了"，永远出不来。
+            // 这正是玩家看到的死循环。
+            Vector3 back;
+            if (HasGroundUnder(_lastSafePos)) back = _lastSafePos;
+            else
+            {
+                // 退到当前区域的出生点：那里由 ZoneBuilder.EnsureSpawnPads 保证有实地
+                back = World.ZoneBuilder.PlayerSpawnOf(
+                    World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId));
+                // 连这一关的入口都悬空（生成场景没建成之类）——回独居小屋。
+                // 那是全世界唯一一处**一定**踩得住的地方，宁可把人送远，
+                // 也绝不能让他继续困在虚空里反复掉。
+                if (!HasGroundUnder(back)) back = World.ZoneBuilder.PlayerSpawnOf(0);
+                _lastSafePos = back;   // 同时把"安全点"本身修正掉，不然下一次又回到虚空
+                Core.GameEvents.RaiseSubtitle("刚才那块地不存在——已经把你送回安全的落点。");
+                Snap(back);
+                return;
+            }
+
             back.y += 1.2f;
+            Snap(back);
+            Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
+        }
+
+        void Snap(Vector3 to)
+        {
             _cc.enabled = false;
-            transform.position = back;
+            transform.position = to + Vector3.up * 0.2f;
             _cc.enabled = true;
             _vy = 0f;
             _hVel = Vector3.zero;
-            Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
+        }
+
+        /// <summary>这个点下方 30 米内有没有实地（有就敢往那儿捞人）。</summary>
+        static bool HasGroundUnder(Vector3 p)
+        {
+            if (p.sqrMagnitude < 0.01f) return false;
+            return Physics.Raycast(p + Vector3.up * 2f, Vector3.down, 30f,
+                ~0, QueryTriggerInteraction.Ignore);
+        }
+
+        /// <summary>
+        /// 传送之后必须调用：清掉上一处的"最近站稳点"。
+        ///
+        /// 不清的话，人刚被传到新关卡、还没落地就触发一次兜底，会被**拽回上一关**——
+        /// 表现成"刚进去就被弹出来"，比掉进虚空更让人摸不着头脑。
+        /// </summary>
+        public void NotifyTeleported()
+        {
+            _lastSafePos = Vector3.zero;
+            _safeStamp = 0f;
+            _vy = 0f;
+            _hVel = Vector3.zero;
         }
 
         void CarryByPlatform()

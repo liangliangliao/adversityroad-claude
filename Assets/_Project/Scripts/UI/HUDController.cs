@@ -42,6 +42,23 @@ namespace AdversityRoad.UI
         public Text stressText;     // 压力阶段 + 逆转窗口提示（情境出现）
         public Text beaconText;     // 目标灯塔方向（弱化箭头，只给方向与距离）
 
+        /// <summary>
+        /// 当前关卡目标（只在 AI 生成场景里出现）。
+        ///
+        /// 玩家问"怎么挑战关卡"，说明进场那两句字幕根本不够——字幕会滚走，
+        /// 而"我现在到底该干什么、还剩几个"必须是**随时抬头就能看到**的。
+        /// </summary>
+        public Text objectiveText;
+
+        static HUDController _inst;
+
+        /// <summary>设置关卡目标行；传空字符串即隐藏（离开生成场景时调用）。</summary>
+        public static void SetObjective(string text)
+        {
+            if (_inst == null || _inst.objectiveText == null) return;
+            _inst.objectiveText.text = text ?? "";
+        }
+
         float _vignetteAlpha;
         Color _vignetteColor = Color.red;
         float _subtitleHideAt;
@@ -55,6 +72,7 @@ namespace AdversityRoad.UI
 
         void OnEnable()
         {
+            _inst = this;
             GameEvents.OnPlayerHpChanged += OnHp;
             GameEvents.OnStaminaChanged += OnStamina;
             GameEvents.OnMentalStatChanged += OnMental;
