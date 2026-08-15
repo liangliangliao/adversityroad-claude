@@ -207,13 +207,19 @@ namespace AdversityRoad.Goals
                     break;
             }
 
+            // 室内外用不同的入口陈设：露天场景摆一道门框反而穿帮
+            bool indoor = Kind(siteKind).indoor;
+            var entry = new SiteRoom
+            {
+                name = "入口", purpose = "先看清这地方是什么样子", sizeHint = "medium",
+                props = indoor
+                    ? new List<string> { "door_frame", "sign", "plant" }
+                    : new List<string> { "fence", "sign", "bench" }
+            };
+
             return new List<SiteRoom>
             {
-                new SiteRoom
-                {
-                    name = "入口", purpose = "先看清这地方是什么样子", sizeHint = "medium",
-                    props = new List<string> { "door_frame", "sign", "plant" }
-                },
+                entry,
                 mid,
                 new SiteRoom
                 {

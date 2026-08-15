@@ -91,7 +91,10 @@ namespace AdversityRoad.UI
 
         void Refresh()
         {
-            foreach (var b in _buttons) if (b != null) Destroy(b);
+            // 先隐藏再销毁：Destroy 要到帧末才生效，只 Destroy 的话
+            // 旧格子会和刚建好的新格子在同一帧里叠着渲染一次
+            foreach (var b in _buttons)
+                if (b != null) { b.SetActive(false); Destroy(b); }
             _buttons.Clear();
 
             var story = StoryManager.Instance;
