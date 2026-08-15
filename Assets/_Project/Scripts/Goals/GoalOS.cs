@@ -160,7 +160,7 @@ namespace AdversityRoad.Goals
                 }
         }
 
-        /// <summary>章节通关：消除它挂着的障碍，并检查里程碑是否可以推进。</summary>
+        /// <summary>章节通关：消除它挂着的障碍、推进该阶段的游戏内关键行动，并检查里程碑。</summary>
         public static void ChapterCleared(string chapterId)
         {
             var g = Active;
@@ -169,8 +169,34 @@ namespace AdversityRoad.Goals
             if (ch == null || ch.cleared) return;
             ch.cleared = true;
             ch.clearedAtUtc = DateTime.UtcNow.ToString("o");
+
+            // 打赢一关就是"这个阶段的关键行动做到了一次"——游戏内行动由世界推进。
+            // 章节挂的里程碑已经翻页时，退而推进任意一条待办的游戏内行动，
+            // 免得某个既没章节也没障碍的阶段把整条旅程卡死。
+            if (!CompleteNextAction(g, ch.linkedMilestoneId, false))
+                CompleteNextAction(g, "", false);
+
             if (!string.IsNullOrEmpty(ch.primaryObstacle)) RemoveObstacle(ch.primaryObstacle);
             else AfterProgress(g);
+        }
+
+        /// <summary>
+        /// 推进某个里程碑名下的下一条未完成关键行动。
+        /// realWorld=true 只推进"现实行动"（必须由玩家自己打卡，游戏不替他做）；
+        /// false 只推进游戏内行动。找不到就返回 false。
+        /// </summary>
+        static bool CompleteNextAction(GoalData g, string milestoneId, bool realWorld)
+        {
+            foreach (var a in g.criticalActions)
+            {
+                if (a.done || a.realWorld != realWorld) continue;
+                if (!string.IsNullOrEmpty(milestoneId) && a.linkedMilestoneId != milestoneId) continue;
+                a.done = true;
+                a.doneAtUtc = DateTime.UtcNow.ToString("o");
+                GameEvents.RaiseSubtitle("关键行动完成：" + a.label);
+                return true;
+            }
+            return false;
         }
 
         public static void NoteChapterAttempt(string chapterId)
@@ -287,6 +313,20 @@ namespace AdversityRoad.Goals
             var s = S();
             s.realityLog.Insert(0, DateTime.Now.ToString("MM-dd HH:mm") + "  " + line);
             if (s.realityLog.Count > 60) s.realityLog.RemoveRange(60, s.realityLog.Count - 60);
+
+            // 现实行动只能由玩家自己打卡推进——游戏内的进度不能替代它，但会为它让路：
+            // 打了卡，这个阶段的现实行动就算做到了，里程碑才可能真正翻页。
+            var g = Active;
+            if (g != null && !g.completed)
+            {
+                var cur = g.CurrentMilestone();
+                if (CompleteNextAction(g, cur != null ? cur.milestoneId : "", true) ||
+                    CompleteNextAction(g, "", true))
+                {
+                    AfterProgress(g);
+                    return;
+                }
+            }
             Persist();
         }
 
