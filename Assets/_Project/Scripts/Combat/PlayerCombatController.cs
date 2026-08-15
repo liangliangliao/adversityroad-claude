@@ -1602,6 +1602,10 @@ namespace AdversityRoad.Combat
                     PunishAttacker(dmg, "定心格挡");
                     GameEvents.RaiseSubtitle("定心格挡！心理攻击被化解，专注恢复。");
                     Core.GameAudio.Play(Core.GameAudio.Sfx.Parry);
+                    // V2.0：精准格挡是可观察的优势样本，也是濒临崩溃下的逆转触发条件
+                    Adversity.PlayerBehaviorAnalyzer.NoteParrySuccess();
+                    if (Adversity.ResolveSystem.Instance != null)
+                        Adversity.ResolveSystem.Instance.NoteQualityAction("一次精准格挡");
                 }
                 else if (mindShield != null && mindShield.TryConsume())
                 {
@@ -1611,7 +1615,13 @@ namespace AdversityRoad.Combat
                 {
                     if (IsGuarding) mental *= (1f - guardMentalReduction);
                     bool staggered = _player.Stats.TakeMentalDamage(dmg.mentalAxis, mental);
-                    if (staggered) _fsm.TriggerMentalStagger();
+                    if (staggered)
+                    {
+                        // 心理硬直 = 压力状态机里的「短暂失守」：跪一下、掉锁定，但只有几秒
+                        if (Adversity.StressStateMachine.Instance != null)
+                            Adversity.StressStateMachine.Instance.TriggerBreakdown();
+                        else _fsm.TriggerMentalStagger();
+                    }
                 }
             }
 

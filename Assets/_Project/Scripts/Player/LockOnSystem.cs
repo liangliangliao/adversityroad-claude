@@ -36,6 +36,9 @@ namespace AdversityRoad.Player
 
         public Transform CurrentTarget { get; private set; }
 
+        /// <summary>解除锁定（短暂失守 / 战略撤退 / 拒绝被低价值目标拖入时调用）。</summary>
+        public void Release() => CurrentTarget = null;
+
         PlayerController _player;
         float _nextScan;
         bool _wasLocked;
