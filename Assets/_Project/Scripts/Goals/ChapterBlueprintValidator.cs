@@ -80,6 +80,11 @@ namespace AdversityRoad.Goals
             if (bp.assemblySeed == 0)
                 bp.assemblySeed = Mathf.Abs((bp.chapterName + bp.linkedMilestoneId).GetHashCode());
 
+            // 场景蓝图：清洗到已批准 Kit 内，并过滤台词。没有场景的 AI 章节不允许进入世界——
+            // 那样它又退回成"在固定关卡里换敌人"，正是 V2.0 要解决的问题。
+            if (!ValidateSite(bp, out string siteIssue))
+            { reason = "场景蓝图不可用：" + siteIssue; return Fail(bp, reason); }
+
             // ---------- 安全性（未通过直接拒绝） ----------
             bp.safetyCompliance = ScoreSafety(bp, goal, out string safetyIssue);
             if (bp.safetyCompliance < 1f)
@@ -110,6 +115,108 @@ namespace AdversityRoad.Goals
             bp.validated = true;
             bp.rejectReason = "";
             return true;
+        }
+
+        // ================= 场景蓝图校验 =================
+
+        /// <summary>
+        /// AI 只能从已批准的 Kit / 道具库 / 角色类型库里挑，写错的一律换成同类默认值。
+        /// 台词经过去识别化，并逐条检查禁令与玩家禁用主题。
+        /// </summary>
+        static bool ValidateSite(GoalChapterData bp, out string issue)
+        {
+            issue = "";
+            if (bp.site == null) bp.site = new SiteBlueprint();
+            var s = bp.site;
+
+            if (s.rooms == null) s.rooms = new List<SiteRoom>();
+            if (s.npcs == null) s.npcs = new List<SiteNpc>();
+            if (s.rules == null) s.rules = new List<string>();
+            if (s.externalLines == null) s.externalLines = new List<string>();
+            if (s.internalLines == null) s.internalLines = new List<string>();
+            if (s.interactables == null) s.interactables = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(s.siteName)) s.siteName = bp.chapterName;
+            if (s.siteName.Length > 16) s.siteName = s.siteName.Substring(0, 16);
+
+            if (!SiteKitCatalog.IsKind(s.siteKind))
+                s.siteKind = SiteKitCatalog.Kinds[0].id;
+            if (!SiteKitCatalog.IsLayout(s.layout)) s.layout = "rooms";
+            if (!SiteKitCatalog.IsAmbience(s.ambience)) s.ambience = "indoor_cold";
+            if (s.sizeHint != "small" && s.sizeHint != "large") s.sizeHint = "medium";
+
+            // 房间：至少一个，最多六个；道具清洗到库内
+            for (int i = s.rooms.Count - 1; i >= 0; i--)
+            {
+                var r = s.rooms[i];
+                if (r == null) { s.rooms.RemoveAt(i); continue; }
+                if (r.props == null) r.props = new List<string>();
+                for (int j = r.props.Count - 1; j >= 0; j--)
+                    if (!SiteKitCatalog.IsProp(r.props[j])) r.props.RemoveAt(j);
+                if (string.IsNullOrWhiteSpace(r.name)) r.name = "房间 " + (i + 1);
+                if (r.name.Length > 12) r.name = r.name.Substring(0, 12);
+                if (r.sizeHint != "small" && r.sizeHint != "large") r.sizeHint = "medium";
+            }
+            if (s.rooms.Count == 0)
+            { issue = "没有任何房间/区块"; return false; }
+            if (s.rooms.Count > 6) s.rooms.RemoveRange(6, s.rooms.Count - 6);
+
+            // NPC：角色类型必须在库内，数量封顶
+            for (int i = s.npcs.Count - 1; i >= 0; i--)
+            {
+                var n = s.npcs[i];
+                if (n == null || !SiteKitCatalog.IsNpcRole(n.roleType)) { s.npcs.RemoveAt(i); continue; }
+                n.count = Mathf.Clamp(n.count, 1, 6);
+                if (n.behavior != "station" && n.behavior != "patrol") n.behavior = "wander";
+                n.line = CleanLine(n.line, out bool nBad);
+                if (nBad) n.line = "";
+            }
+            if (s.npcs.Count > 5) s.npcs.RemoveRange(5, s.npcs.Count - 5);
+
+            // 台词：去识别化 + 禁令 + 玩家禁用主题
+            if (!CleanLines(s.externalLines, out issue)) return false;
+            if (!CleanLines(s.internalLines, out issue)) return false;
+
+            for (int i = s.rules.Count - 1; i >= 0; i--)
+            {
+                s.rules[i] = CleanLine(s.rules[i], out bool bad);
+                if (bad || string.IsNullOrWhiteSpace(s.rules[i])) s.rules.RemoveAt(i);
+            }
+            if (s.rules.Count > 5) s.rules.RemoveRange(5, s.rules.Count - 5);
+            if (s.rules.Count == 0) s.rules.Add(bp.successCondition);
+
+            return true;
+        }
+
+        static bool CleanLines(List<string> lines, out string issue)
+        {
+            issue = "";
+            for (int i = lines.Count - 1; i >= 0; i--)
+            {
+                lines[i] = CleanLine(lines[i], out bool bad);
+                if (bad || string.IsNullOrWhiteSpace(lines[i])) lines.RemoveAt(i);
+            }
+            if (lines.Count > 10) lines.RemoveRange(10, lines.Count - 10);
+            return true;
+        }
+
+        /// <summary>单句清洗：去识别化 → 长度封顶 → 禁令与禁用主题命中即丢弃。</summary>
+        static string CleanLine(string raw, out bool bad)
+        {
+            bad = false;
+            if (string.IsNullOrWhiteSpace(raw)) { bad = true; return ""; }
+            string line = Personalization.SafetyFilter.Anonymize(raw.Trim());
+            if (line.Length > 28) line = line.Substring(0, 28);
+
+            foreach (var b in BannedContent)
+                if (line.Contains(b)) { bad = true; return ""; }
+
+            var safety = GameManager.Instance != null ? GameManager.Instance.safety : null;
+            if (safety != null && safety.recoveryMode) { bad = true; return ""; }
+            if (safety != null && safety.disabledThemes != null)
+                foreach (var t in safety.disabledThemes)
+                    if (!string.IsNullOrEmpty(t) && line.Contains(t)) { bad = true; return ""; }
+            return line;
         }
 
         static bool Fail(GoalChapterData bp, string reason)

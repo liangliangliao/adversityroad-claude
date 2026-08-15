@@ -292,7 +292,25 @@ namespace AdversityRoad.Goals
             sb.Append("每个元素字段：chapterName(不超过12个汉字)、linkedMilestoneId、primaryObstacle、");
             sb.Append("secondaryObstacle、worldDistrictId、externalEnemies(数组)、internalEnemies(数组)、");
             sb.Append("bossArchetype、physicalMechanics(数组)、mentalMechanics(数组)、successCondition、");
-            sb.Append("failureConsequence、safetyTags(数组)、assemblySeed(整数)。");
+            sb.Append("failureConsequence、safetyTags(数组)、assemblySeed(整数)、site(对象)。");
+
+            // —— site：这一章自己的那个地方（V2.0 的关键，不能省） ——
+            sb.Append("site 字段（必填，决定这一章会被现场建成什么样的场景）：");
+            sb.Append("siteName(场景名,不超过8个汉字)、siteKind、layout、ambience、sizeHint(small/medium/large)、");
+            sb.Append("rooms(数组,2-5个,每个含 name(不超过6个汉字)/purpose/sizeHint/props(数组))、");
+            sb.Append("npcs(数组,0-4个,每个含 roleType/count(1-4)/behavior(wander|station|patrol)/line(一句非攻击性的环境台词))、");
+            sb.Append("rules(数组,2-4条,用玩家能读懂的一句话说清这一关怎么玩)、");
+            sb.Append("externalLines(数组,3-6句,敌人会喊的压力台词,每句不超过20字)、");
+            sb.Append("internalLines(数组,3-6句,玩家脑内回声,每句不超过20字)、");
+            sb.Append("interactables(数组,场景里的关键可交互物名称)。");
+            sb.Append("siteKind 只能取：")
+              .Append(string.Join("/", SiteKitCatalog.AllKindIds().ToArray())).Append("。");
+            sb.Append("layout 只能取：").Append(string.Join("/", SiteKitCatalog.Layouts)).Append("。");
+            sb.Append("ambience 只能取：").Append(string.Join("/", SiteKitCatalog.Ambiences)).Append("。");
+            sb.Append("props 只能取：").Append(string.Join("/", SiteKitCatalog.Props)).Append("。");
+            sb.Append("roleType 只能取：").Append(string.Join("/", SiteKitCatalog.NpcRoles)).Append("。");
+            sb.Append("台词必须是虚构的压力表达，不得包含现实操控教程、真实姓名、住址、联系方式，");
+            sb.Append("不得出现报复、羞辱特定真实个体、自伤或仇恨内容。");
             sb.Append("worldDistrictId 只能取：").Append(string.Join("/", ChapterModuleLibrary.AllDistrictIds().ToArray())).Append("。");
             sb.Append("physicalMechanics 只能取：")
               .Append(string.Join("/", ChapterModuleLibrary.AllMechanicIds(true).ToArray())).Append("，且至少一个。");
@@ -334,6 +352,11 @@ namespace AdversityRoad.Goals
 
             sb.Append("。每个章节必须捕捉这个目标特有的行动链、资源瓶颈、现实环境和失败方式，");
             sb.Append("而不是通用的心理标签；linkedMilestoneId 与 primaryObstacle 必须使用上面给出的 id。");
+            sb.Append("site 要描述一个**这个目标专属的真实生活场景**：");
+            sb.Append("如果目标是发布软件，那可能是堆满需求便签的工位区或凌晨的机房；");
+            sb.Append("如果目标是找工作，那可能是招聘大厅或一间只有一张桌子的面试室；");
+            sb.Append("房间名、道具、NPC 角色类型、环境台词都要贴着这个目标写，");
+            sb.Append("让玩家一走进去就认得出「这是我那件事」。");
             return sb.ToString();
         }
 
@@ -389,6 +412,7 @@ namespace AdversityRoad.Goals
             if (b.physicalMechanics == null) b.physicalMechanics = new List<string>();
             if (b.mentalMechanics == null) b.mentalMechanics = new List<string>();
             if (b.safetyTags == null) b.safetyTags = new List<string>();
+            if (b.site == null) b.site = new SiteBlueprint();
             b.cleared = false;
             b.attempts = 0;
             b.legacyZoneIndex = -1;

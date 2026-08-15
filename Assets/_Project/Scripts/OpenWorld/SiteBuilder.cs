@@ -1,0 +1,687 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.AI;
+using Unity.AI.Navigation;
+using AdversityRoad.Goals;
+using AdversityRoad.World;
+
+namespace AdversityRoad.OpenWorld
+{
+    /// <summary>一次生成出来的场景实例（运行时对象，可整体卸载）。</summary>
+    public class SiteInstance
+    {
+        public string chapterId;
+        public string siteId;
+        public int zoneIndex = -1;
+        public GameObject root;
+        public Vector3 origin;
+        public Vector3 playerSpawn;
+        public Vector3 exitPoint;
+        public readonly List<Vector3> enemySpawns = new List<Vector3>();
+        public readonly List<Vector3> propAnchors = new List<Vector3>();
+        public SiteBlueprint blueprint;
+    }
+
+    /// <summary>
+    /// Site Builder：把 AI 的场景蓝图**在运行时建成一个真的能走进去的地方**。
+    ///
+    /// 这是 V2.0 与"只有 24 个固定场景"的分界线：
+    /// 玩家输入的目标不同 → AI 描述的地方不同 → 这里生成的建筑、房间、道具、
+    /// 灯光、NPC、敌人与规则就都不同。场景不预先存在，它是为这个目标临时长出来的。
+    ///
+    /// 三条硬约束（方案 5.4 / 19.5 / 19.6）：
+    /// 1. AI 只给语义（类型/布局/房间/道具/角色类型/氛围），坐标一律由引擎决定；
+    /// 2. 相同 assemblySeed 必须生成完全相同的场景——Bug 才可复现，验收才有意义；
+    /// 3. 生成完立刻在本场景范围内烘焙 NavMesh，绝不放出未经导航验证的几何。
+    /// </summary>
+    public static class SiteBuilder
+    {
+        /// <summary>动态场景的世界坐标区：远离 V1 的 25 个静态区域，互不干扰。</summary>
+        const float SiteOriginX = 20000f;
+        const float SiteSpacing = 600f;
+
+        static int _nextSlot;
+        static readonly Dictionary<string, SiteInstance> _live = new Dictionary<string, SiteInstance>();
+
+        static readonly Color Floor = new Color(0.46f, 0.45f, 0.44f);
+        static readonly Color Wall = new Color(0.7f, 0.68f, 0.63f);
+        static readonly Color Trim = new Color(0.32f, 0.33f, 0.36f);
+
+        public static IEnumerable<SiteInstance> Live => _live.Values;
+
+        public static SiteInstance Find(string chapterId) =>
+            chapterId != null && _live.TryGetValue(chapterId, out var s) ? s : null;
+
+        // ================= 生成 =================
+
+        /// <summary>
+        /// 按蓝图生成场景。相同 seed → 相同结果。
+        /// 生成后注册为一个**动态区域**，传送/存档/雾色/剧情锁都能像原生区域一样对待它。
+        /// </summary>
+        public static SiteInstance Build(GoalChapterData chapter, WorldContext ctx)
+        {
+            if (chapter == null || chapter.site == null || chapter.site.IsEmpty) return null;
+            if (_live.TryGetValue(chapter.chapterId, out var existing) && existing.root != null)
+                return existing;
+
+            var bp = chapter.site;
+            var kind = SiteKitCatalog.Kind(bp.siteKind);
+            var rng = new System.Random(chapter.assemblySeed);
+
+            var inst = new SiteInstance
+            {
+                chapterId = chapter.chapterId,
+                siteId = "site_" + chapter.chapterId,
+                origin = new Vector3(SiteOriginX + _nextSlot * SiteSpacing, 0f, 0f),
+                blueprint = bp
+            };
+            _nextSlot++;
+
+            inst.root = new GameObject("Site_" + bp.siteName);
+            inst.root.transform.position = inst.origin;
+
+            float scale = bp.sizeHint == "large" ? 1.35f : bp.sizeHint == "small" ? 0.75f : 1f;
+            float w = 60f * scale, d = 46f * scale;
+
+            // ---- 地面与外壳 ----
+            Box(inst, "Site_Floor", new Vector3(0, -0.25f, 0), new Vector3(w + 8f, 0.5f, d + 8f), Floor);
+            if (kind.indoor)
+            {
+                Shell(inst, w, d, 4.2f);
+                Ceiling(inst, w, d, 4.2f);
+            }
+            else
+            {
+                Shell(inst, w, d, 2.2f);   // 户外用矮护栏围出可玩边界
+            }
+
+            // ---- 布局 ----
+            switch (bp.layout)
+            {
+                case "corridor": BuildCorridor(inst, bp, rng, w, d); break;
+                case "maze": BuildMaze(inst, bp, rng, w, d); break;
+                case "hall": BuildHall(inst, bp, rng, w, d); break;
+                case "openblock": BuildOpenBlock(inst, bp, rng, w, d); break;
+                case "courtyard": BuildCourtyard(inst, bp, rng, w, d); break;
+                default: BuildRooms(inst, bp, rng, w, d); break;
+            }
+
+            // ---- 灯光与氛围 ----
+            ApplyAmbience(inst, bp, kind, w, d);
+
+            // ---- 出入口 ----
+            inst.playerSpawn = inst.origin + new Vector3(0, 1.1f, -d / 2 + 4f);
+            inst.exitPoint = inst.origin + new Vector3(0, 0, -d / 2 + 1.5f);
+            BuildEntranceMarker(inst, bp);
+
+            // ---- 注册为动态区域（可传送、有名字、有雾色） ----
+            inst.zoneIndex = ZoneBuilder.RegisterDynamicZone(inst.siteId, bp.siteName, inst.playerSpawn);
+
+            // ---- 本场景独立烘焙导航（不碰主世界的 NavMesh） ----
+            BakeNav(inst);
+
+            // ---- 人与敌人（导航好了才放） ----
+            SpawnNpcs(inst, bp, rng, ctx);
+
+            _live[chapter.chapterId] = inst;
+            Core.CloudDialogueService.AddLog("场景已生成：" + bp.siteName + "（" + kind.name + "·" +
+                SiteKitCatalog.LayoutName(bp.layout) + "）房间 " + bp.rooms.Count +
+                " · NPC " + bp.npcs.Count + " · seed " + chapter.assemblySeed +
+                " → 动态区域 #" + inst.zoneIndex);
+            return inst;
+        }
+
+        /// <summary>卸载一个生成出来的场景（章节通关或玩家离开后回收）。</summary>
+        public static void Unload(string chapterId)
+        {
+            if (chapterId == null || !_live.TryGetValue(chapterId, out var inst)) return;
+            if (inst.root != null) Object.Destroy(inst.root);
+            _live.Remove(chapterId);
+        }
+
+        public static void UnloadAll()
+        {
+            foreach (var kv in _live)
+                if (kv.Value.root != null) Object.Destroy(kv.Value.root);
+            _live.Clear();
+        }
+
+        // ================= 布局生成器 =================
+
+        /// <summary>房间群：中央走廊两侧开房间——办公层、公寓、病房区最常见的形状。</summary>
+        static void BuildRooms(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            int count = Mathf.Max(2, Mathf.Min(bp.rooms.Count, 6));
+            float corridorW = 6f;
+            float roomD = (d - corridorW) / 2f - 2f;
+            float roomW = (w - 4f) / Mathf.Ceil(count / 2f);
+
+            for (int i = 0; i < count; i++)
+            {
+                bool north = i % 2 == 0;
+                int col = i / 2;
+                float cx = -w / 2f + 2f + roomW * (col + 0.5f);
+                float cz = north ? (corridorW / 2f + roomD / 2f) : -(corridorW / 2f + roomD / 2f);
+                var room = bp.rooms[i % bp.rooms.Count];
+                BuildRoomBox(inst, room, new Vector3(cx, 0, cz), new Vector2(roomW - 1.5f, roomD),
+                    north, rng);
+            }
+
+            // 走廊地面标线
+            Deco(inst, "CorridorLine", new Vector3(0, 0.06f, 0), new Vector3(w - 4f, 0.04f, 0.3f),
+                new Color(0.8f, 0.78f, 0.7f));
+            inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.25f, 1.1f, 0));
+            inst.enemySpawns.Add(inst.origin + new Vector3(-w * 0.2f, 1.1f, 0));
+        }
+
+        /// <summary>长廊：一条走不完的通道，两侧是门——无限代付走廊那一类的通用形状。</summary>
+        static void BuildCorridor(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            float hallW = 9f;
+            Box(inst, "Wall", new Vector3(0, 2.1f, hallW / 2f), new Vector3(w, 4.2f, 0.5f), Wall);
+            Box(inst, "Wall", new Vector3(0, 2.1f, -hallW / 2f), new Vector3(w, 4.2f, 0.5f), Wall);
+
+            int doors = Mathf.Max(4, Mathf.Min(bp.rooms.Count * 2, 10));
+            for (int i = 0; i < doors; i++)
+            {
+                float x = -w / 2f + 4f + (w - 8f) * i / Mathf.Max(1, doors - 1);
+                bool north = i % 2 == 0;
+                float z = north ? hallW / 2f - 0.4f : -hallW / 2f + 0.4f;
+                Deco(inst, "DoorFrame", new Vector3(x, 1.4f, z), new Vector3(1.8f, 2.8f, 0.18f), Trim);
+                var room = bp.rooms.Count > 0 ? bp.rooms[i % bp.rooms.Count] : null;
+                Sign(inst, new Vector3(x, 3.1f, z), room != null ? room.name : "门");
+                if (room != null && room.props.Count > 0)
+                    BuildProp(inst, room.props[i % room.props.Count],
+                        new Vector3(x, 0, north ? hallW / 2f - 2.2f : -hallW / 2f + 2.2f), rng);
+            }
+            for (int i = 0; i < 3; i++)
+                inst.enemySpawns.Add(inst.origin + new Vector3(-w / 4f + i * w / 4f, 1.1f, 0));
+        }
+
+        /// <summary>迷宫：分叉与死路——「需求迷宫」「概念迷环」这类障碍的通用形状。</summary>
+        static void BuildMaze(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            int cols = 7, rows = 5;
+            float cw = w / cols, ch = d / rows;
+            for (int x = 0; x < cols; x++)
+                for (int z = 0; z < rows; z++)
+                {
+                    if ((x + z) % 2 != 0) continue;
+                    if (rng.Next(100) < 30) continue;      // 留出通路
+                    float px = -w / 2f + cw * (x + 0.5f);
+                    float pz = -d / 2f + ch * (z + 0.5f);
+                    bool horizontal = rng.Next(2) == 0;
+                    Box(inst, "Wall", new Vector3(px, 1.6f, pz),
+                        horizontal ? new Vector3(cw * 0.9f, 3.2f, 0.5f)
+                                   : new Vector3(0.5f, 3.2f, ch * 0.9f), Wall);
+                }
+
+            int propIdx = 0;
+            foreach (var room in bp.rooms)
+                foreach (var p in room.props)
+                {
+                    float px = -w / 2f + 4f + (float)rng.NextDouble() * (w - 8f);
+                    float pz = -d / 2f + 4f + (float)rng.NextDouble() * (d - 8f);
+                    BuildProp(inst, p, new Vector3(px, 0, pz), rng);
+                    if (propIdx++ > 12) break;
+                }
+            inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, d / 4f));
+            inst.enemySpawns.Add(inst.origin + new Vector3(w / 4f, 1.1f, -d / 4f));
+        }
+
+        /// <summary>大厅：一个开阔空间 + 立柱 + 中央焦点——Boss 战与集会场景。</summary>
+        static void BuildHall(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            for (int x = -1; x <= 1; x++)
+                for (int z = -1; z <= 1; z++)
+                {
+                    if (x == 0 && z == 0) continue;
+                    BuildProp(inst, "pillar", new Vector3(x * w * 0.28f, 0, z * d * 0.28f), rng);
+                }
+
+            if (bp.rooms.Count > 0)
+            {
+                var focus = bp.rooms[0];
+                Deco(inst, "Dais", new Vector3(0, 0.15f, d * 0.22f), new Vector3(12f, 0.3f, 8f),
+                    new Color(0.38f, 0.36f, 0.4f));
+                Sign(inst, new Vector3(0, 3.4f, d * 0.22f), focus.name);
+                foreach (var p in focus.props)
+                    BuildProp(inst, p, new Vector3((float)rng.NextDouble() * 8f - 4f, 0, d * 0.22f), rng);
+            }
+            for (int i = 1; i < bp.rooms.Count && i < 4; i++)
+            {
+                float ang = i * Mathf.PI * 2f / 4f;
+                Vector3 at = new Vector3(Mathf.Cos(ang) * w * 0.3f, 0, Mathf.Sin(ang) * d * 0.3f);
+                foreach (var p in bp.rooms[i].props) BuildProp(inst, p, at, rng);
+                Sign(inst, at + Vector3.up * 3f, bp.rooms[i].name);
+            }
+            inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, d * 0.18f));
+            inst.enemySpawns.Add(inst.origin + new Vector3(-8f, 1.1f, 0));
+            inst.enemySpawns.Add(inst.origin + new Vector3(8f, 1.1f, 0));
+        }
+
+        /// <summary>开放街区：户外——路面、人行道、两侧建筑、路灯。</summary>
+        static void BuildOpenBlock(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            Deco(inst, "Road", new Vector3(0, 0.03f, 0), new Vector3(w, 0.04f, 10f),
+                new Color(0.19f, 0.19f, 0.21f));
+            for (float x = -w / 2f + 4f; x < w / 2f; x += 7f)
+                Deco(inst, "Lane", new Vector3(x, 0.06f, 0), new Vector3(2.6f, 0.04f, 0.3f), Color.white);
+            Deco(inst, "Sidewalk", new Vector3(0, 0.06f, 8f), new Vector3(w, 0.08f, 6f),
+                new Color(0.55f, 0.55f, 0.57f));
+            Deco(inst, "Sidewalk", new Vector3(0, 0.06f, -8f), new Vector3(w, 0.08f, 6f),
+                new Color(0.55f, 0.55f, 0.57f));
+
+            int n = Mathf.Max(3, Mathf.Min(bp.rooms.Count, 6));
+            for (int i = 0; i < n; i++)
+            {
+                float x = -w / 2f + 6f + (w - 12f) * i / Mathf.Max(1, n - 1);
+                bool north = i % 2 == 0;
+                float z = north ? d / 2f - 8f : -d / 2f + 8f;
+                float h = 8f + (float)rng.NextDouble() * 10f;
+                Box(inst, "Building", new Vector3(x, h / 2f, z), new Vector3(11f, h, 10f),
+                    new Color(0.45f + (float)rng.NextDouble() * 0.2f, 0.44f, 0.46f));
+                Deco(inst, "ShopGlass", new Vector3(x, 1.7f, z + (north ? -5.1f : 5.1f)),
+                    new Vector3(7.5f, 2.6f, 0.12f), new Color(0.65f, 0.8f, 0.95f));
+                var room = bp.rooms.Count > 0 ? bp.rooms[i % bp.rooms.Count] : null;
+                if (room != null)
+                {
+                    Sign(inst, new Vector3(x, 4.2f, z + (north ? -5.3f : 5.3f)), room.name);
+                    foreach (var p in room.props)
+                        BuildProp(inst, p, new Vector3(x + (float)rng.NextDouble() * 4f - 2f, 0,
+                            north ? z - 7f : z + 7f), rng);
+                }
+                Lamp(inst, new Vector3(x, 0, north ? 8f : -8f));
+            }
+            inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.2f, 1.1f, 0));
+            inst.enemySpawns.Add(inst.origin + new Vector3(-w * 0.25f, 1.1f, 6f));
+        }
+
+        /// <summary>围合院落：四面建筑围出一个中庭——最适合"被围观"「被评价」的空间。</summary>
+        static void BuildCourtyard(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            float inner = 0.55f;
+            Box(inst, "Building", new Vector3(0, 5f, d * inner / 2f + 6f), new Vector3(w, 10f, 10f), Wall);
+            Box(inst, "Building", new Vector3(0, 5f, -(d * inner / 2f + 6f)), new Vector3(w, 10f, 10f), Wall);
+            Box(inst, "Building", new Vector3(w * inner / 2f + 6f, 5f, 0), new Vector3(10f, 10f, d), Wall);
+            Box(inst, "Building", new Vector3(-(w * inner / 2f + 6f), 5f, 0), new Vector3(10f, 10f, d), Wall);
+
+            Deco(inst, "Yard", new Vector3(0, 0.05f, 0), new Vector3(w * inner, 0.06f, d * inner),
+                new Color(0.42f, 0.44f, 0.4f));
+
+            int i = 0;
+            foreach (var room in bp.rooms)
+            {
+                float ang = i * Mathf.PI * 2f / Mathf.Max(1, bp.rooms.Count);
+                Vector3 at = new Vector3(Mathf.Cos(ang) * w * 0.2f, 0, Mathf.Sin(ang) * d * 0.2f);
+                Sign(inst, at + Vector3.up * 2.6f, room.name);
+                foreach (var p in room.props) BuildProp(inst, p, at, rng);
+                i++;
+            }
+            inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, 0));
+            inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.15f, 1.1f, d * 0.12f));
+        }
+
+        /// <summary>一个带墙与门洞的房间 + 它自己的道具。</summary>
+        static void BuildRoomBox(SiteInstance inst, SiteRoom room, Vector3 center, Vector2 size,
+            bool doorSouth, System.Random rng)
+        {
+            float hx = size.x / 2f, hz = size.y / 2f;
+            const float h = 3.4f;
+            // 三面实墙 + 一面留门洞
+            Box(inst, "Wall", center + new Vector3(hx, h / 2f, 0), new Vector3(0.35f, h, size.y), Wall);
+            Box(inst, "Wall", center + new Vector3(-hx, h / 2f, 0), new Vector3(0.35f, h, size.y), Wall);
+            float far = doorSouth ? hz : -hz;
+            Box(inst, "Wall", center + new Vector3(0, h / 2f, far), new Vector3(size.x, h, 0.35f), Wall);
+
+            float near = doorSouth ? -hz : hz;
+            float side = (size.x - 2.4f) / 2f;
+            Box(inst, "Wall", center + new Vector3(-(size.x - side) / 2f, h / 2f, near),
+                new Vector3(side, h, 0.35f), Wall);
+            Box(inst, "Wall", center + new Vector3((size.x - side) / 2f, h / 2f, near),
+                new Vector3(side, h, 0.35f), Wall);
+            Deco(inst, "DoorHead", center + new Vector3(0, h - 0.35f, near),
+                new Vector3(2.4f, 0.7f, 0.35f), Wall);
+
+            Sign(inst, center + new Vector3(0, h + 0.5f, near), room.name);
+
+            // 道具沿墙摆，中间留出走位空间
+            int n = 0;
+            foreach (var p in room.props)
+            {
+                float px = -hx + 1.6f + (size.x - 3.2f) * (n % 3) / 2f;
+                float pz = (doorSouth ? hz - 1.8f : -hz + 1.8f) * (n < 3 ? 1f : 0.35f);
+                BuildProp(inst, p, center + new Vector3(px, 0, pz), rng);
+                if (++n >= 6) break;
+            }
+            inst.propAnchors.Add(inst.origin + center);
+        }
+
+        // ================= 道具库 =================
+
+        /// <summary>已批准道具 → 程序化构件。库外 id 直接忽略（Validator 已先清洗过一遍）。</summary>
+        static void BuildProp(SiteInstance inst, string prop, Vector3 at, System.Random rng)
+        {
+            switch (prop)
+            {
+                case "desk":
+                    Box(inst, "Desk", at + new Vector3(0, 0.5f, 0), new Vector3(2.2f, 1f, 1.1f), new Color(0.42f, 0.3f, 0.2f));
+                    Deco(inst, "Monitor", at + new Vector3(0, 1.35f, 0.2f), new Vector3(1f, 0.6f, 0.1f), new Color(0.2f, 0.3f, 0.42f));
+                    break;
+                case "chair":
+                    Box(inst, "Chair", at + new Vector3(0, 0.35f, 0), new Vector3(0.8f, 0.7f, 0.8f), new Color(0.25f, 0.25f, 0.28f));
+                    break;
+                case "table":
+                    Box(inst, "Table", at + new Vector3(0, 0.45f, 0), new Vector3(3.2f, 0.9f, 1.6f), new Color(0.4f, 0.32f, 0.26f));
+                    break;
+                case "shelf":
+                    Box(inst, "Shelf", at + new Vector3(0, 1.2f, 0), new Vector3(2.4f, 2.4f, 0.6f), new Color(0.45f, 0.33f, 0.22f));
+                    break;
+                case "cabinet":
+                    Box(inst, "Cabinet", at + new Vector3(0, 1f, 0), new Vector3(1.2f, 2f, 0.7f), new Color(0.4f, 0.4f, 0.44f));
+                    break;
+                case "locker":
+                    Box(inst, "Locker", at + new Vector3(0, 1.1f, 0), new Vector3(1.6f, 2.2f, 0.6f), new Color(0.36f, 0.42f, 0.46f));
+                    break;
+                case "server_rack":
+                    Box(inst, "ServerRack", at + new Vector3(0, 1.2f, 0), new Vector3(1f, 2.4f, 1f), new Color(0.16f, 0.17f, 0.2f));
+                    Deco(inst, "RackLight", at + new Vector3(0, 1.8f, 0.55f), new Vector3(0.7f, 0.9f, 0.06f), new Color(0.3f, 0.9f, 0.5f));
+                    break;
+                case "monitor":
+                    Deco(inst, "Monitor", at + new Vector3(0, 1.4f, 0), new Vector3(1.2f, 0.7f, 0.1f), new Color(0.25f, 0.4f, 0.55f));
+                    break;
+                case "whiteboard":
+                    Deco(inst, "Whiteboard", at + new Vector3(0, 1.7f, 0), new Vector3(3f, 1.8f, 0.12f), new Color(0.92f, 0.92f, 0.9f));
+                    break;
+                case "printer":
+                    Box(inst, "Printer", at + new Vector3(0, 0.5f, 0), new Vector3(1.1f, 1f, 0.9f), new Color(0.55f, 0.56f, 0.58f));
+                    break;
+                case "counter":
+                    Box(inst, "Counter", at + new Vector3(0, 0.55f, 0), new Vector3(4f, 1.1f, 1.2f), new Color(0.5f, 0.5f, 0.55f));
+                    break;
+                case "sofa":
+                    Box(inst, "Sofa", at + new Vector3(0, 0.4f, 0), new Vector3(3.2f, 0.8f, 1.4f), new Color(0.34f, 0.36f, 0.44f));
+                    break;
+                case "bed":
+                    Box(inst, "Bed", at + new Vector3(0, 0.35f, 0), new Vector3(2f, 0.7f, 3.6f), new Color(0.72f, 0.74f, 0.78f));
+                    break;
+                case "curtain":
+                    Deco(inst, "Curtain", at + new Vector3(0, 1.6f, 0), new Vector3(2.6f, 3.2f, 0.1f), new Color(0.7f, 0.78f, 0.8f));
+                    break;
+                case "crate":
+                    Box(inst, "Crate", at + new Vector3(0, 0.6f, 0), new Vector3(1.2f, 1.2f, 1.2f), new Color(0.5f, 0.38f, 0.24f));
+                    break;
+                case "barrier":
+                    Box(inst, "Barrier", at + new Vector3(0, 0.6f, 0), new Vector3(2.6f, 1.2f, 0.3f), new Color(0.85f, 0.6f, 0.2f));
+                    break;
+                case "trashbin":
+                    Box(inst, "TrashBin", at + new Vector3(0, 0.55f, 0), new Vector3(0.9f, 1.1f, 0.9f), new Color(0.24f, 0.3f, 0.26f));
+                    break;
+                case "plant":
+                    Box(inst, "PlantPot", at + new Vector3(0, 0.3f, 0), new Vector3(0.7f, 0.6f, 0.7f), new Color(0.45f, 0.35f, 0.3f));
+                    Deco(inst, "Leaves", at + new Vector3(0, 1.1f, 0), new Vector3(1.2f, 1.2f, 1.2f), new Color(0.22f, 0.45f, 0.25f));
+                    break;
+                case "pillar":
+                    Box(inst, "Pillar", at + new Vector3(0, 2.1f, 0), new Vector3(1.3f, 4.2f, 1.3f), new Color(0.5f, 0.5f, 0.52f));
+                    break;
+                case "sign":
+                    Deco(inst, "SignBoard", at + new Vector3(0, 2.2f, 0), new Vector3(2.2f, 0.8f, 0.12f), new Color(0.3f, 0.45f, 0.6f));
+                    break;
+                case "bench":
+                    Box(inst, "Bench", at + new Vector3(0, 0.45f, 0), new Vector3(3f, 0.25f, 1f), new Color(0.5f, 0.36f, 0.24f));
+                    break;
+                case "vending":
+                    Box(inst, "Vending", at + new Vector3(0, 1.05f, 0), new Vector3(1.4f, 2.1f, 0.9f), new Color(0.3f, 0.5f, 0.65f));
+                    break;
+                case "cart":
+                    Box(inst, "Cart", at + new Vector3(0, 0.5f, 0), new Vector3(1.4f, 1f, 2f), new Color(0.55f, 0.55f, 0.6f));
+                    break;
+                case "pipe":
+                    Deco(inst, "Pipe", at + new Vector3(0, 3.6f, 0), new Vector3(0.4f, 0.4f, 12f), new Color(0.42f, 0.42f, 0.46f));
+                    break;
+                case "fence":
+                    Box(inst, "Fence", at + new Vector3(0, 1f, 0), new Vector3(6f, 2f, 0.2f), new Color(0.4f, 0.42f, 0.45f));
+                    break;
+                case "billboard":
+                    Box(inst, "BillboardPole", at + new Vector3(0, 2f, 0), new Vector3(0.3f, 4f, 0.3f), Trim);
+                    Deco(inst, "Billboard", at + new Vector3(0, 4.6f, 0), new Vector3(5f, 2.4f, 0.2f), new Color(0.8f, 0.7f, 0.4f));
+                    break;
+                case "stall":
+                    Box(inst, "Stall", at + new Vector3(0, 1f, 0), new Vector3(3f, 2f, 2f), new Color(0.6f, 0.5f, 0.35f));
+                    break;
+                case "car":
+                    Box(inst, "Car", at + new Vector3(0, 0.6f, 0), new Vector3(1.9f, 1.2f, 4.2f), new Color(0.4f, 0.42f, 0.5f));
+                    break;
+                case "lamp":
+                    Lamp(inst, at);
+                    break;
+                case "door_frame":
+                    Deco(inst, "DoorFrame", at + new Vector3(0, 1.4f, 0), new Vector3(1.8f, 2.8f, 0.18f), Trim);
+                    break;
+                case "stairs":
+                    for (int i = 0; i < 6; i++)
+                        Box(inst, "Step", at + new Vector3(0, 0.2f + i * 0.35f, i * 0.6f),
+                            new Vector3(3f, 0.35f, 0.6f), new Color(0.48f, 0.48f, 0.5f));
+                    break;
+                case "papers":
+                    Deco(inst, "Papers", at + new Vector3(0, 0.05f, 0), new Vector3(2.4f, 0.05f, 2.4f),
+                        new Color(0.88f, 0.86f, 0.8f));
+                    break;
+            }
+        }
+
+        // ================= 氛围 / 出入口 / 人 =================
+
+        static void ApplyAmbience(SiteInstance inst, SiteBlueprint bp,
+            SiteKitCatalog.SiteKindInfo kind, float w, float d)
+        {
+            Color c;
+            float intensity;
+            switch (bp.ambience)
+            {
+                case "day": c = new Color(1f, 0.97f, 0.9f); intensity = 1.5f; break;
+                case "dusk": c = new Color(1f, 0.75f, 0.55f); intensity = 1.1f; break;
+                case "night": c = new Color(0.55f, 0.65f, 0.9f); intensity = 0.65f; break;
+                case "rain": c = new Color(0.7f, 0.78f, 0.9f); intensity = 0.85f; break;
+                case "indoor_warm": c = new Color(1f, 0.88f, 0.68f); intensity = 1.2f; break;
+                case "flicker": c = new Color(0.85f, 0.9f, 1f); intensity = 0.9f; break;
+                case "fog": c = new Color(0.75f, 0.78f, 0.82f); intensity = 0.8f; break;
+                default: c = new Color(0.85f, 0.92f, 1f); intensity = 1.0f; break;   // indoor_cold
+            }
+
+            int lights = kind.indoor ? 4 : 2;
+            for (int i = 0; i < lights; i++)
+            {
+                var go = new GameObject("SiteLight" + i);
+                go.transform.SetParent(inst.root.transform, false);
+                go.transform.localPosition = new Vector3(
+                    (i % 2 == 0 ? -1 : 1) * w * 0.22f, kind.indoor ? 3.6f : 6f,
+                    (i < 2 ? -1 : 1) * d * 0.22f);
+                var l = go.AddComponent<Light>();
+                l.type = LightType.Point;
+                l.range = kind.indoor ? 26f : 40f;
+                l.intensity = intensity;
+                l.color = c;
+                if (bp.ambience == "flicker") go.AddComponent<SiteFlicker>();
+            }
+        }
+
+        static void BuildEntranceMarker(SiteInstance inst, SiteBlueprint bp)
+        {
+            float localZ = inst.exitPoint.z - inst.origin.z;
+            Sign(inst, new Vector3(0, 4.2f, localZ), "◀ " + bp.siteName + " · 出口");
+            Deco(inst, "ExitPad", new Vector3(0, 0.07f, localZ),
+                new Vector3(5f, 0.06f, 3f), new Color(0.4f, 0.8f, 0.6f));
+        }
+
+        /// <summary>只烘焙本场景（Children 收集）：不动主世界导航，卸载时一起消失。</summary>
+        static void BakeNav(SiteInstance inst)
+        {
+            var surface = inst.root.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Children;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.BuildNavMesh();
+        }
+
+        static void SpawnNpcs(SiteInstance inst, SiteBlueprint bp, System.Random rng, WorldContext ctx)
+        {
+            foreach (var npc in bp.npcs)
+            {
+                int n = Mathf.Clamp(npc.count, 1, 6);
+                for (int i = 0; i < n; i++)
+                {
+                    Vector3 want = inst.origin + new Vector3(
+                        (float)rng.NextDouble() * 40f - 20f, 1f, (float)rng.NextDouble() * 30f - 15f);
+                    if (!NavMesh.SamplePosition(want, out var hit, 8f, NavMesh.AllAreas)) continue;
+
+                    var go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    go.name = "Npc_" + SiteKitCatalog.NpcRoleName(npc.roleType);
+                    go.transform.SetParent(inst.root.transform, true);
+                    go.transform.position = hit.position + Vector3.up * 1f;
+                    go.transform.localScale = new Vector3(0.8f, 0.9f, 0.8f);
+                    if (ctx != null)
+                        ZoneBuilder.Paint(ctx, go, new Color(
+                            0.42f + (float)rng.NextDouble() * 0.4f,
+                            0.45f + (float)rng.NextDouble() * 0.35f,
+                            0.5f + (float)rng.NextDouble() * 0.35f));
+                    go.AddComponent<NavMeshAgent>();
+
+                    Vector3 station = hit.position;
+                    Vector3 roam = inst.origin + new Vector3(
+                        (float)rng.NextDouble() * 30f - 15f, 0, (float)rng.NextDouble() * 20f - 10f);
+                    CityNpc.Attach(go, NpcKind.Ordinary, station,
+                        npc.behavior == "station" ? station : roam,
+                        npc.behavior == "patrol" ? roam : station);
+
+                    if (i == 0 && !string.IsNullOrEmpty(npc.line))
+                        SiteAmbientLine.Attach(go, SiteKitCatalog.NpcRoleName(npc.roleType), npc.line);
+                }
+            }
+        }
+
+        // ================= 构件辅助（全部挂在 site root 下，可整体卸载） =================
+
+        static GameObject Box(SiteInstance inst, string name, Vector3 local, Vector3 size, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(inst.root.transform, false);
+            go.transform.localPosition = local;
+            go.transform.localScale = size;
+            PaintLocal(go, color);
+            return go;
+        }
+
+        static GameObject Deco(SiteInstance inst, string name, Vector3 local, Vector3 size, Color color)
+        {
+            var go = Box(inst, name, local, size, color);
+            Object.DestroyImmediate(go.GetComponent<Collider>());
+            return go;
+        }
+
+        static void Shell(SiteInstance inst, float w, float d, float h)
+        {
+            Box(inst, "Wall", new Vector3(0, h / 2f, d / 2f), new Vector3(w, h, 0.6f), Wall);
+            Box(inst, "Wall", new Vector3(w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), Wall);
+            Box(inst, "Wall", new Vector3(-w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), Wall);
+            // 南墙留出入口
+            float side = (w - 6f) / 2f;
+            Box(inst, "Wall", new Vector3(-(w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
+            Box(inst, "Wall", new Vector3((w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
+        }
+
+        static void Ceiling(SiteInstance inst, float w, float d, float h)
+        {
+            Deco(inst, "Ceiling", new Vector3(0, h, 0), new Vector3(w, 0.3f, d),
+                new Color(0.3f, 0.3f, 0.32f));
+        }
+
+        static void Lamp(SiteInstance inst, Vector3 local)
+        {
+            Box(inst, "LampPole", local + new Vector3(0, 1.9f, 0), new Vector3(0.16f, 3.8f, 0.16f), Trim);
+            var head = Deco(inst, "LampHead", local + new Vector3(0, 3.9f, 0),
+                new Vector3(0.5f, 0.3f, 0.5f), new Color(1f, 0.95f, 0.8f));
+            var lg = new GameObject("LampLight");
+            lg.transform.SetParent(head.transform, false);
+            var l = lg.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.range = 16f;
+            l.intensity = 1.1f;
+            l.color = new Color(1f, 0.92f, 0.75f);
+        }
+
+        static void Sign(SiteInstance inst, Vector3 local, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            var go = new GameObject("SiteSign");
+            go.transform.SetParent(inst.root.transform, false);
+            go.transform.localPosition = local;
+            var tm = go.AddComponent<TextMesh>();
+            tm.text = text;
+            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.fontSize = 48;
+            tm.characterSize = 0.08f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.color = new Color(0.95f, 0.92f, 0.8f);
+            var mr = go.GetComponent<MeshRenderer>();
+            if (tm.font != null) mr.material = tm.font.material;
+            go.AddComponent<FaceCamera>();
+        }
+
+        static void PaintLocal(GameObject go, Color c)
+        {
+            var r = go.GetComponent<MeshRenderer>();
+            if (r == null) return;
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            var m = new Material(shader) { color = c };
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+            r.sharedMaterial = m;
+        }
+    }
+
+    /// <summary>忽明忽暗的灯（flicker 氛围）。</summary>
+    public class SiteFlicker : MonoBehaviour
+    {
+        Light _l;
+        float _base;
+
+        void Start()
+        {
+            _l = GetComponent<Light>();
+            if (_l != null) _base = _l.intensity;
+        }
+
+        void Update()
+        {
+            if (_l == null) return;
+            float n = Mathf.PerlinNoise(Time.time * 6f, transform.position.x);
+            _l.intensity = _base * Mathf.Lerp(0.35f, 1.1f, n);
+        }
+    }
+
+    /// <summary>场景 NPC 的一句环境台词（非攻击性，只让世界像有人住过）。</summary>
+    public class SiteAmbientLine : MonoBehaviour
+    {
+        public string speaker = "";
+        public string line = "";
+        float _next = -99f;
+
+        public static void Attach(GameObject go, string speaker, string line)
+        {
+            var c = go.AddComponent<SiteAmbientLine>();
+            c.speaker = speaker;
+            c.line = line;
+        }
+
+        void Update()
+        {
+            if (Time.time < _next) return;
+            var player = FindObjectOfType<Player.PlayerController>();
+            if (player == null) return;
+            if (Vector3.Distance(transform.position, player.transform.position) > 6f) return;
+            _next = Time.time + 25f;
+            Core.GameEvents.RaiseSubtitle("『" + speaker + "』：" + line);
+        }
+    }
+}

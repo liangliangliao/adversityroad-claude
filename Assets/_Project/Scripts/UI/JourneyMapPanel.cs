@@ -285,7 +285,24 @@ namespace AdversityRoad.UI
                     }
                     sb.Append('\n');
                 }
-                sb.Append("      种子：").Append(c.assemblySeed).Append("（相同种子必定组装出同一关）\n");
+                sb.Append("      种子：").Append(c.assemblySeed).Append("（相同种子必定生成同一处场景）\n");
+                if (src != ChapterSource.Legacy && c.site != null && !c.site.IsEmpty)
+                {
+                    var st = c.site;
+                    sb.Append("      场景：").Append(st.siteName)
+                      .Append("（").Append(SiteKitCatalog.Kind(st.siteKind).name)
+                      .Append(" · ").Append(SiteKitCatalog.LayoutName(st.layout)).Append("）");
+                    sb.Append("  房间 ").Append(st.rooms.Count)
+                      .Append(" · NPC ").Append(st.npcs.Count)
+                      .Append(" · 台词 ").Append(st.externalLines.Count + st.internalLines.Count)
+                      .Append('\n');
+                    for (int r = 0; r < st.rooms.Count && r < 4; r++)
+                        sb.Append("        · ").Append(st.rooms[r].name)
+                          .Append("：").Append(string.Join("/", st.rooms[r].props.ToArray()))
+                          .Append('\n');
+                    if (st.rules.Count > 0)
+                        sb.Append("        规则：").Append(st.rules[0]).Append('\n');
+                }
             }
             if (!any) sb.Append("  （暂无）\n");
             sb.Append('\n');

@@ -41,6 +41,12 @@ namespace AdversityRoad.Goals
         /// <summary>可复现的组装种子：相同 Seed + 版本必须组装出相同关卡。</summary>
         public int assemblySeed;
 
+        /// <summary>
+        /// 场景蓝图：这个章节**自己的那个地方**长什么样。
+        /// 有它，AI 章节才不是"在固定关卡里换几个敌人"，而是为这个目标现造一处场景。
+        /// </summary>
+        public SiteBlueprint site = new SiteBlueprint();
+
         // ---------- 校验与评分（方案 5.5 / 5.6） ----------
         public bool validated;
         public float goalRelevance;

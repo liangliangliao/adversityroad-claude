@@ -92,15 +92,63 @@ namespace AdversityRoad.AI
 
         static readonly Random Rng = new Random();
 
-        /// <summary>最近一次 GetTaunt 取到的台词是否来自 AI（云端/自定义 Provider）。
+        /// <summary>最近一次 GetTaunt 取到的台词是否来自 AI（云端/自定义 Provider/章节台词池）。
         /// 玩家有权知道屏幕上这句话是**模型现编的**还是**本地写死的**——
         /// 二者的可信度与语气稳定性完全不同，混在一起会让人分不清
         /// 「这是设计好的剧情」还是「这是模型这一次的发挥」。</summary>
         public static bool LastFromAI { get; private set; }
 
+        // ===== 章节专属台词池（AI 为这个目标的这个场景写的言语攻击） =====
+        //
+        // 优先级最高：玩家在"需求迷宫"里听到的话，就该是关于需求膨胀的，
+        // 而不是通用的拖延台词。退出场景时归还，回到通用池。
+        static readonly List<string> ChapterExternal = new List<string>();
+        static readonly List<string> ChapterInternal = new List<string>();
+        static string _chapterId = "";
+
+        /// <summary>进入生成场景时接管台词池（内容已过安全过滤与禁用主题检查）。</summary>
+        public static void SetChapterLines(string chapterId,
+            IList<string> external, IList<string> internalLines)
+        {
+            _chapterId = chapterId ?? "";
+            ChapterExternal.Clear();
+            ChapterInternal.Clear();
+            if (external != null)
+                foreach (var l in external)
+                    if (!string.IsNullOrWhiteSpace(l)) ChapterExternal.Add(l.Trim());
+            if (internalLines != null)
+                foreach (var l in internalLines)
+                    if (!string.IsNullOrWhiteSpace(l)) ChapterInternal.Add(l.Trim());
+        }
+
+        public static void ClearChapterLines()
+        {
+            _chapterId = "";
+            ChapterExternal.Clear();
+            ChapterInternal.Clear();
+        }
+
+        public static bool HasChapterLines => ChapterExternal.Count > 0 || ChapterInternal.Count > 0;
+
+        /// <summary>内心回声：优先用 AI 为本场景写的内部言语攻击（没有则返回空，调用方回退本地）。</summary>
+        public static string GetChapterInnerLine()
+        {
+            if (ChapterInternal.Count == 0) return null;
+            return ChapterInternal[Rng.Next(ChapterInternal.Count)];
+        }
+
         public static string GetTaunt(WeaknessAxis axis, string zoneId)
         {
             LastFromAI = false;
+
+            // 场景专属外部言语攻击优先——这是"目标专属"最能被听见的地方。
+            // 这批台词同样出自模型（章节生成时写的），所以照样标成 AI 来源。
+            if (ChapterExternal.Count > 0 && Rng.Next(100) < 70)
+            {
+                LastFromAI = true;
+                return ChapterExternal[Rng.Next(ChapterExternal.Count)];
+            }
+
             var cfg = AIPromptConfig.Load();
             string global = cfg.globalPrompt;
             string scene = cfg.GetScenePrompt(zoneId);

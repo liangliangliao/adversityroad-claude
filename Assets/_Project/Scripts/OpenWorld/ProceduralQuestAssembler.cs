@@ -15,6 +15,9 @@ namespace AdversityRoad.OpenWorld
         public readonly List<GameObject> enemies = new List<GameObject>();
         public string bossEnemyId = "";
         public bool live;
+        /// <summary>本章节现场生成的场景（AI 章节必有；Legacy 走裂隙复用 V1 关卡）。</summary>
+        public SiteInstance site;
+        public SiteGate gate;
     }
 
     /// <summary>
@@ -31,6 +34,9 @@ namespace AdversityRoad.OpenWorld
     {
         /// <summary>由 GameBootstrap 注入的敌人生成器（type, tier, pos, uniqueId → GameObject）。</summary>
         public static System.Func<EnemyType, EnemyTier, Vector3, bool, GameObject> Spawner;
+
+        /// <summary>世界构建上下文（贴图/材质缓存），由 GameBootstrap 注入给场景生成器。</summary>
+        public static World.WorldContext WorldCtx;
 
         static readonly Dictionary<string, AssembledEncounter> _live =
             new Dictionary<string, AssembledEncounter>();
@@ -74,41 +80,26 @@ namespace AdversityRoad.OpenWorld
                 live = true
             };
 
-            // ---------- Enemy Spawn Profile（确定性） ----------
+            // ---------- 现场把这一章自己的场景建出来（V2.0 的关键一步） ----------
+            // 不再是"在固定关卡里换几个敌人"：AI 描述的房间、道具、NPC、灯光、规则
+            // 会在这里被真的建成一处可以走进去的地方，并按 seed 完全可复现。
+            enc.site = SiteBuilder.Build(bp, WorldCtx);
+
             var rng = new System.Random(bp.assemblySeed);
-            int slot = 0;
-            foreach (var name in bp.externalEnemies)
-            {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
-                var tier = TierFor(goal, rng);
-                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
-                var go = Spawner(t, tier, pos, true);
-                if (go != null) enc.enemies.Add(go);
-            }
-            foreach (var name in bp.internalEnemies)
-            {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
-                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
-                var go = Spawner(t, EnemyTier.Standard, pos, true);
-                if (go != null) enc.enemies.Add(go);
-            }
 
-            // ---------- Boss：章节守门人，绑定通关判定 ----------
-            if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var bossType))
+            if (enc.site != null)
             {
-                var bossGo = Spawner(bossType, EnemyTier.Chief, Offset(enc.anchor, rng), true);
-                if (bossGo != null)
-                {
-                    enc.enemies.Add(bossGo);
-                    var ec = bossGo.GetComponent<EnemyController>();
-                    if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
-                    var gate = bossGo.AddComponent<ChapterGateEnemy>();
-                    gate.chapterId = bp.chapterId;
-                }
+                // 入口开在所属区域的遭遇位上：从城里走过去，推门进入这个新场景
+                enc.gate = SiteGate.Create(GroundAt(enc.anchor), bp.chapterId,
+                    bp.site.siteName, new Color(0.55f, 0.8f, 1f));
+                SpawnIntoSite(bp, goal, enc, rng);
             }
-
-            // ---------- Mechanic Package：机制的世界化身 ----------
-            BuildMechanicProps(bp, enc.anchor);
+            else
+            {
+                // 极端情况（场景蓝图缺失）：退回在城区遭遇位上就地布置，保证章节仍可玩
+                SpawnIntoDistrict(bp, goal, enc, rng);
+                BuildMechanicProps(bp, enc.anchor);
+            }
 
             _live[bp.chapterId] = enc;
             WorldState.Get(bp.worldDistrictId).hasChapter = true;
@@ -121,6 +112,95 @@ namespace AdversityRoad.OpenWorld
             return enc;
         }
 
+        /// <summary>把敌人放进**生成出来的场景**里（不是放在城区街上）。</summary>
+        static void SpawnIntoSite(GoalChapterData bp, GoalData goal,
+            AssembledEncounter enc, System.Random rng)
+        {
+            var site = enc.site;
+            int slot = 0;
+
+            foreach (var name in bp.externalEnemies)
+            {
+                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                var go = Spawner(t, TierFor(goal, rng), SiteSpot(site, slot++, rng), true);
+                if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
+            }
+            foreach (var name in bp.internalEnemies)
+            {
+                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                var go = Spawner(t, EnemyTier.Standard, SiteSpot(site, slot++, rng), true);
+                if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
+            }
+
+            if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var bossType))
+            {
+                var bossGo = Spawner(bossType, EnemyTier.Chief, SiteSpot(site, 0, rng), true);
+                if (bossGo != null)
+                {
+                    enc.enemies.Add(bossGo);
+                    Reparent(bossGo, site);
+                    var ec = bossGo.GetComponent<EnemyController>();
+                    if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
+                    bossGo.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                }
+            }
+
+            // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着
+            BuildMechanicProps(bp, site.origin, site);
+        }
+
+        static void SpawnIntoDistrict(GoalChapterData bp, GoalData goal,
+            AssembledEncounter enc, System.Random rng)
+        {
+            int slot = 0;
+            foreach (var name in bp.externalEnemies)
+            {
+                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
+                var go = Spawner(t, TierFor(goal, rng), pos, true);
+                if (go != null) enc.enemies.Add(go);
+            }
+            foreach (var name in bp.internalEnemies)
+            {
+                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
+                var go = Spawner(t, EnemyTier.Standard, pos, true);
+                if (go != null) enc.enemies.Add(go);
+            }
+            if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var bossType))
+            {
+                var bossGo = Spawner(bossType, EnemyTier.Chief, Offset(enc.anchor, rng), true);
+                if (bossGo != null)
+                {
+                    enc.enemies.Add(bossGo);
+                    var ec = bossGo.GetComponent<EnemyController>();
+                    if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
+                    bossGo.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                }
+            }
+        }
+
+        static Vector3 SiteSpot(SiteInstance site, int index, System.Random rng)
+        {
+            if (site.enemySpawns.Count == 0) return site.playerSpawn + Vector3.forward * 10f;
+            var basePos = site.enemySpawns[Mathf.Abs(index) % site.enemySpawns.Count];
+            return Offset(basePos, rng);
+        }
+
+        /// <summary>敌人挂到场景根下：场景卸载时一起收走，不会留在世界里游荡。</summary>
+        static void Reparent(GameObject go, SiteInstance site)
+        {
+            if (go != null && site != null && site.root != null)
+                go.transform.SetParent(site.root.transform, true);
+        }
+
+        static Vector3 GroundAt(Vector3 p)
+        {
+            if (UnityEngine.AI.NavMesh.SamplePosition(p, out var hit, 8f, UnityEngine.AI.NavMesh.AllAreas))
+                return hit.position;
+            return p;
+        }
+
         /// <summary>章节通关或玩家离开时收起（不销毁世界，只收起这次遭遇的内容）。</summary>
         public static void Despawn(AssembledEncounter enc)
         {
@@ -128,6 +208,12 @@ namespace AdversityRoad.OpenWorld
             foreach (var go in enc.enemies)
                 if (go != null) Object.Destroy(go);
             enc.enemies.Clear();
+            if (enc.gate != null) Object.Destroy(enc.gate.gameObject);
+            if (enc.site != null)
+            {
+                World.ZoneBuilder.UnregisterDynamicZone(enc.site.siteId);
+                SiteBuilder.Unload(enc.chapterId);
+            }
             enc.live = false;
         }
 
@@ -165,7 +251,7 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>机制包：把蓝图里的机制标签变成场上看得见、摸得到的物件。</summary>
-        static void BuildMechanicProps(GoalChapterData bp, Vector3 anchor)
+        static void BuildMechanicProps(GoalChapterData bp, Vector3 anchor, SiteInstance site = null)
         {
             if (anchor == Vector3.zero) return;
             int i = 0;
@@ -173,29 +259,34 @@ namespace AdversityRoad.OpenWorld
             {
                 var info = ChapterModuleLibrary.Mechanic(id);
                 if (info == null) continue;
-                Vector3 p = anchor + Quaternion.Euler(0, 90f * i++, 0) * Vector3.forward * 7f;
+                Vector3 p = anchor + Quaternion.Euler(0, 70f * i++, 0) * Vector3.forward * 9f;
+                if (UnityEngine.AI.NavMesh.SamplePosition(p, out var mh, 10f,
+                        UnityEngine.AI.NavMesh.AllAreas)) p = mh.position;
 
+                ChapterProp made;
                 switch (id)
                 {
                     case "beacon_ignite":
-                        ChapterProp.Create(p, "行动灯台", new Color(1f, 0.65f, 0.25f), info.description);
+                        made = ChapterProp.Create(p, "行动灯台", new Color(1f, 0.65f, 0.25f), info.description);
                         break;
                     case "evidence_collect":
-                        ChapterProp.Create(p, "事实碎片", new Color(0.55f, 0.85f, 1f), info.description);
+                        made = ChapterProp.Create(p, "事实碎片", new Color(0.55f, 0.85f, 1f), info.description);
                         break;
                     case "resource_scavenge":
-                        ChapterProp.Create(p, "补给点", new Color(0.45f, 0.9f, 0.6f), info.description);
+                        made = ChapterProp.Create(p, "补给点", new Color(0.45f, 0.9f, 0.6f), info.description);
                         break;
                     case "protect_zone":
-                        ChapterProp.Create(p, "稳定区", new Color(0.5f, 0.75f, 1f), info.description);
+                        made = ChapterProp.Create(p, "稳定区", new Color(0.5f, 0.75f, 1f), info.description);
                         break;
                     case "timed_actions":
-                        ChapterProp.Create(p, "限时台", new Color(1f, 0.5f, 0.35f), info.description);
+                        made = ChapterProp.Create(p, "限时台", new Color(1f, 0.5f, 0.35f), info.description);
                         break;
                     default:
-                        ChapterProp.Create(p, info.name, new Color(0.8f, 0.75f, 0.95f), info.description);
+                        made = ChapterProp.Create(p, info.name, new Color(0.8f, 0.75f, 0.95f), info.description);
                         break;
                 }
+                if (made != null && site != null && site.root != null)
+                    made.transform.SetParent(site.root.transform, true);
             }
         }
     }
@@ -259,7 +350,14 @@ namespace AdversityRoad.OpenWorld
                 GameEvents.RaiseSubtitle("〔章节完成〕" + bp.chapterName + " —— " +
                     GoalJourneyGraph.ProgressLine(goal));
             }
-            ProceduralQuestAssembler.DespawnChapter(chapterId);
+            // 在生成场景里打完 → 先把玩家送回城里，再卸载这处场景（否则会被留在虚空里）
+            if (SiteGate.InsideSite && SiteGate.InsideChapterId == chapterId)
+            {
+                var host = new GameObject("SiteExitDelay");
+                host.AddComponent<SiteExitDelay>().Setup(chapterId, 3.5f);
+            }
+            else ProceduralQuestAssembler.DespawnChapter(chapterId);
         }
     }
 }
+

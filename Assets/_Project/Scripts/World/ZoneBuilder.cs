@@ -32,13 +32,15 @@ namespace AdversityRoad.World
     {
         public static string CurrentZoneId = "home";
 
-        static readonly string[] ZoneIds =
+        // V2.0：区域表改为可在运行时追加——AI 生成的场景会作为**动态区域**注册进来，
+        // 于是传送、雾色、剧情锁、存档里的当前区域都能像对待原生区域一样对待它。
+        static readonly List<string> ZoneIds = new List<string>
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
               "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor",
               "alley", "garage", "ward",
               "library", "hall", "bridge", "exhibit", "tower",
               "city" };
-        static readonly string[] ZoneNames =
+        static readonly List<string> ZoneNames = new List<string>
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
               "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
@@ -47,28 +49,68 @@ namespace AdversityRoad.World
               "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔",
               "开放城区" };
 
+        /// <summary>静态区域数量（含开放城区）。索引 ≥ 此值的都是运行时生成的动态场景。</summary>
+        public const int StaticZoneCount = 25;
+
         public static string ZoneIdOf(int index) =>
-            index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
+            index >= 0 && index < ZoneIds.Count ? ZoneIds[index] : "home";
 
         public static string ZoneNameOf(int index) =>
-            index >= 0 && index < ZoneNames.Length ? ZoneNames[index] : "";
+            index >= 0 && index < ZoneNames.Count ? ZoneNames[index] : "";
 
-        public static int ZoneCount => ZoneIds.Length;
+        public static int ZoneCount => ZoneIds.Count;
+
+        /// <summary>是不是运行时生成的动态场景（AI 章节现造的地方）。</summary>
+        public static bool IsDynamicZone(int index) => index >= StaticZoneCount;
 
         /// <summary>按区域 id 反查索引（找不到回退 0）。</summary>
         public static int IndexOfZone(string id)
         {
-            for (int i = 0; i < ZoneIds.Length; i++)
+            for (int i = 0; i < ZoneIds.Count; i++)
                 if (ZoneIds[i] == id) return i;
             return 0;
         }
 
         // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用
-        static Vector3[] _spawnTable;
+        static readonly List<Vector3> _spawnTable = new List<Vector3>();
 
         public static Vector3 PlayerSpawnOf(int index) =>
-            _spawnTable != null && index >= 0 && index < _spawnTable.Length
-                ? _spawnTable[index] : Vector3.up * 1.1f;
+            index >= 0 && index < _spawnTable.Count ? _spawnTable[index] : Vector3.up * 1.1f;
+
+        /// <summary>
+        /// 注册一个运行时生成的场景为新区域，返回它的索引。
+        /// 同名场景重复注册时复用原索引并更新出生点（避免区域表无限增长）。
+        /// </summary>
+        public static int RegisterDynamicZone(string id, string name, Vector3 playerSpawn)
+        {
+            if (string.IsNullOrEmpty(id)) return 0;
+            for (int i = StaticZoneCount; i < ZoneIds.Count; i++)
+                if (ZoneIds[i] == id)
+                {
+                    ZoneNames[i] = name;
+                    while (_spawnTable.Count <= i) _spawnTable.Add(Vector3.up * 1.1f);
+                    _spawnTable[i] = playerSpawn;
+                    return i;
+                }
+
+            ZoneIds.Add(id);
+            ZoneNames.Add(string.IsNullOrEmpty(name) ? id : name);
+            while (_spawnTable.Count < ZoneIds.Count - 1) _spawnTable.Add(Vector3.up * 1.1f);
+            _spawnTable.Add(playerSpawn);
+            return ZoneIds.Count - 1;
+        }
+
+        /// <summary>卸载动态场景时注销（保留占位以免既有索引错位，改名为已关闭）。</summary>
+        public static void UnregisterDynamicZone(string id)
+        {
+            for (int i = StaticZoneCount; i < ZoneIds.Count; i++)
+                if (ZoneIds[i] == id)
+                {
+                    ZoneIds[i] = id + "_closed";
+                    ZoneNames[i] = ZoneNames[i] + "（已关闭）";
+                    return;
+                }
+        }
 
         public static void BuildAll(WorldContext ctx)
         {
@@ -158,7 +200,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[24] + new Vector3(88, 1.1f, 35)    // 开放城区：边缘区小巷
             };
 
-            _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
+            _spawnTable.Clear();
+            _spawnTable.AddRange(ctx.playerSpawns);
 
             BuildHome(ctx);
             BuildDojo(ctx);

@@ -152,6 +152,10 @@ namespace AdversityRoad.Combat
 
         static string Pick(WeaknessAxis axis)
         {
+            // 身处 AI 生成的场景里时，脑内回声也用它为这个场景写的内部言语攻击
+            string chapterLine = AI.DialogueLibrary.GetChapterInnerLine();
+            if (!string.IsNullOrEmpty(chapterLine) && Random.value < 0.7f) return chapterLine;
+
             var arr = Echoes.TryGetValue(axis, out var a) ? a : Echoes[WeaknessAxis.SelfDoubt];
             return arr[Random.Range(0, arr.Length)];
         }

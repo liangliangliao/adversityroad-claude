@@ -262,8 +262,10 @@ namespace AdversityRoad.Core
             WorldEventManager.Ensure();
             GoalBeaconController.Ensure();
             GoalWorldBinder.Ensure();
+            SiteBuilder.UnloadAll();
             ProceduralQuestAssembler.ClearAll();
             ProceduralQuestAssembler.Spawner = SpawnEnemy;
+            ProceduralQuestAssembler.WorldCtx = _world;   // 场景生成器共用同一份材质/贴图缓存
 
             // 逆境层
             PlayerBehaviorAnalyzer.Ensure();
