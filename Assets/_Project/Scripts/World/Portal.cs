@@ -38,6 +38,17 @@ namespace AdversityRoad.World
         /// <summary>回头门 / 向前门。</summary>
         public PortalRole role = PortalRole.Forward;
 
+        /// <summary>
+        /// 显式目标区号（&lt;0 表示按章节顺序解析，即默认行为）。
+        ///
+        /// 开放城区与 AI 现场生成的临时站点都不在章节序列里——前者常开常在，
+        /// 后者压根没有章节号——它们算不出"上一关/下一关"，只能直接指定去处。
+        /// </summary>
+        public int explicitZone = -1;
+
+        /// <summary>显式目标的门牌文字（留空则取区域名）。</summary>
+        public string explicitLabel;
+
         /// <summary>门顶标牌（随解析结果刷新，玩家总能看清这扇门通向哪一关）。</summary>
         public TextMesh sign;
 
@@ -67,6 +78,16 @@ namespace AdversityRoad.World
         bool Resolve(out int zone, out string label)
         {
             zone = -1; label = "";
+
+            // 显式目标门（开放城区 / 临时站点）：直接给答案，不查章节表
+            if (explicitZone >= 0)
+            {
+                zone = explicitZone;
+                label = string.IsNullOrEmpty(explicitLabel)
+                    ? ZoneBuilder.ZoneNameOf(zone) : explicitLabel;
+                return true;
+            }
+
             var chapters = StoryManager.Chapters;
             if (chapters == null || chapters.Length == 0) return false;
 

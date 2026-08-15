@@ -36,14 +36,16 @@ namespace AdversityRoad.World
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
               "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor",
               "alley", "garage", "ward",
-              "library", "hall", "bridge", "exhibit", "tower" };
+              "library", "hall", "bridge", "exhibit", "tower",
+              "city" };
         static readonly string[] ZoneNames =
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
               "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
               "目标遗忘房", "老实人消耗局", "无限代付走廊",
               "饥饿荒巷", "车库寒夜", "病房回廊",
-              "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔" };
+              "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔",
+              "开放城区" };
 
         public static string ZoneIdOf(int index) =>
             index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
@@ -96,7 +98,8 @@ namespace AdversityRoad.World
                 new Vector3(6000, 0, 0),
                 new Vector3(6300, 0, 0),
                 new Vector3(6600, 0, 0),
-                new Vector3(6900, 0, 0)
+                new Vector3(6900, 0, 0),
+                new Vector3(7400, 0, 0)      // 24 开放城区（连续城市，占地更大，间距拉到 500）
             };
             ctx.playerSpawns = new[]
             {
@@ -123,7 +126,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[20] + new Vector3(0, 1.1f, -32),
                 ctx.zoneOrigins[21] + new Vector3(0, 1.1f, -42),
                 ctx.zoneOrigins[22] + new Vector3(0, 1.1f, -28),
-                ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30)
+                ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[24] + new Vector3(-96, 1.1f, 20)   // 开放城区：从家中醒来
             };
             ctx.enemySpawns = new[]
             {
@@ -150,7 +154,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[20] + new Vector3(0, 1.1f, 26),
                 ctx.zoneOrigins[21] + new Vector3(0, 1.1f, 34),
                 ctx.zoneOrigins[22] + new Vector3(0, 1.1f, 16),
-                ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26)
+                ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26),
+                ctx.zoneOrigins[24] + new Vector3(88, 1.1f, 35)    // 开放城区：边缘区小巷
             };
 
             _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
@@ -179,6 +184,8 @@ namespace AdversityRoad.World
             BuildWillBridge(ctx);
             BuildFailureExhibit(ctx);
             BuildWillTower(ctx);
+
+            OpenWorld.OpenWorldBuilder.Build(ctx, 24);   // V2.0：一片连续可自由移动的城市
 
             EnsureZoneLighting(ctx);
             EnsureSpawnPads(ctx);
@@ -297,6 +304,10 @@ namespace AdversityRoad.World
             // 出门传送门 → 训练武馆
             // 序章第一关只有一扇门：往前去训练武馆（没有上一关，所以没有回头门）
             MakePortal(ctx, o + new Vector3(0, 0, -10.5f), PortalRole.Forward);
+            // V2.0：北墙的另一扇门 → 开放城区（走出去就是连续的真实城市，不再回菜单选关）。
+            // 城区不在章节序列里——它一直开着，也不参与"上一关/下一关"的推进，
+            // 所以这扇门用显式目标，不走章节解析。
+            MakePortal(ctx, o + new Vector3(-4, 0, 10.4f), 24, "开放城区");
         }
 
         // ================= 第二区：训练武馆 =================
@@ -2187,7 +2198,7 @@ namespace AdversityRoad.World
             MakePortal(ctx, o + new Vector3(-20f, 0, 24), PortalRole.Forward);
         }
 
-        static void AddCeilingLight(Vector3 pos, Color color, float range)
+        public static void AddCeilingLight(Vector3 pos, Color color, float range)
         {
             var go = new GameObject("Court_Light");
             go.transform.position = pos;
@@ -2254,6 +2265,7 @@ namespace AdversityRoad.World
             /*21 意志断桥*/    M(new Color(0.82f,0.90f,1.12f),  -8, 16, 0.40f, new Color(0.06f,0.09f,0.18f)),
             /*22 失败展览馆*/  M(new Color(0.96f,0.97f,1.03f),  -6, 16, 0.32f, new Color(0.30f,0.32f,0.40f)),
             /*23 意志塔*/      M(new Color(1.04f,0.96f,0.80f),   6, 10, 0.28f, new Color(0.22f,0.22f,0.30f)),
+            /*24 开放城区*/    M(new Color(0.99f,0.98f,0.99f),   2, 6,  0.18f, new Color(0.58f,0.63f,0.72f)),
         };
 
         /// <summary>该区专属雾色（DayNightCycle 按当前所在区取用；越界回退中性）。</summary>
@@ -2410,7 +2422,7 @@ namespace AdversityRoad.World
 
         static readonly Color WallColor = new Color(0.72f, 0.68f, 0.6f);
 
-        static GameObject Box(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
+        public static GameObject Box(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
@@ -2421,17 +2433,17 @@ namespace AdversityRoad.World
         }
 
         /// <summary>无碰撞装饰件（路面标线、地毯、窗户等），不干扰 NavMesh。</summary>
-        static GameObject Decoration(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
+        public static GameObject Decoration(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
         {
             var go = Box(ctx, name, pos, scale, color);
             Object.DestroyImmediate(go.GetComponent<Collider>());
             return go;
         }
 
-        static void Ring(WorldContext ctx, Vector3 center, float half, float h, Color c) =>
+        public static void Ring(WorldContext ctx, Vector3 center, float half, float h, Color c) =>
             Ring(ctx, center, new Vector2(half, half), h, c);
 
-        static void Ring(WorldContext ctx, Vector3 center, Vector2 half, float h, Color c)
+        public static void Ring(WorldContext ctx, Vector3 center, Vector2 half, float h, Color c)
         {
             Box(ctx, "Wall", center + new Vector3(0, h / 2, half.y), new Vector3(half.x * 2, h, 1), c);
             Box(ctx, "Wall", center + new Vector3(0, h / 2, -half.y), new Vector3(half.x * 2, h, 1), c);
@@ -2439,7 +2451,7 @@ namespace AdversityRoad.World
             Box(ctx, "Wall", center + new Vector3(-half.x, h / 2, 0), new Vector3(1, h, half.y * 2), c);
         }
 
-        static void Building(WorldContext ctx, Vector3 basePos, float w, float h, float d, System.Random rng)
+        public static void Building(WorldContext ctx, Vector3 basePos, float w, float h, float d, System.Random rng)
         {
             Color bodyColor = new Color(
                 0.45f + (float)rng.NextDouble() * 0.25f,
@@ -2512,7 +2524,7 @@ namespace AdversityRoad.World
             };
         }
 
-        static void Lamp(WorldContext ctx, Vector3 basePos)
+        public static void Lamp(WorldContext ctx, Vector3 basePos)
         {
             var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             pole.name = "LampPole";
@@ -2676,6 +2688,21 @@ namespace AdversityRoad.World
         /// 再多传一个参数进来。
         /// </summary>
         static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
+            => MakePortal(ctx, basePos, role, -1, null);
+
+        /// <summary>
+        /// 建一扇【显式目标】的门：目标区号写死，不参与章节解析。
+        ///
+        /// 只给**不在章节序列里的区域**用：开放城区常开常在，AI 现场生成的临时站点
+        /// 更是压根没有章节号——它们都算不出"上一关/下一关"。
+        /// 经典 24 关一律走上面那个按章节解析的版本，免得又退回"每扇门硬编码目标"的老问题。
+        /// </summary>
+        public static void MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
+            string label = null)
+            => MakePortal(ctx, basePos, PortalRole.Forward, targetZone, label);
+
+        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
+            int explicitZone, string explicitLabel)
         {
             int homeZone = Mathf.Clamp(Mathf.RoundToInt(basePos.x / 300f), 0, ZoneCount - 1);
             var root = new GameObject("Portal_" + ZoneIdOf(homeZone) + "_" + role);
@@ -2722,6 +2749,8 @@ namespace AdversityRoad.World
             var portal = trigger.AddComponent<Portal>();
             portal.homeZone = homeZone;
             portal.role = role;
+            portal.explicitZone = explicitZone;
+            portal.explicitLabel = explicitLabel;
             portal.sign = tm;
             portal.glow = glow;
         }
@@ -2745,7 +2774,7 @@ namespace AdversityRoad.World
 
         static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
-        static void Paint(WorldContext ctx, GameObject go, Color c)
+        public static void Paint(WorldContext ctx, GameObject go, Color c)
         {
             var r = go.GetComponent<MeshRenderer>();
             if (r == null) return;
