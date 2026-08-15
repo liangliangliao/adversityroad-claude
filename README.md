@@ -31,6 +31,8 @@ V2.0 采用"保留资产与机制、重构上层调度"的策略：**V1.0 的七
 | **自适应敌人 / 宿敌** | 敌人学的是**游戏行为**不是隐私；被识破就换打法；宿敌记住每一场 | `AdaptiveEnemyController.cs`、`NemesisSystem.cs` |
 | **Stress / Resolve** | 把"快撑不住"做成可玩体验；逆转只奖励压力下的高质量行动，绝不随机送胜利 | `StressStateMachine.cs`、`ResolveSystem.cs` |
 | **逆境画像** | 只用可观察行为；每条边带样本数与置信度；可查看、可删除、可一键关闭 | `AdversityProfile.cs` |
+| **动作语法** | 十项帧数据全部公开，并自检"重招必须可读"——Boss 靠要求更高而不是看不清变难 | `Scripts/Combat/MoveGrammar.cs` |
+| **敌方武术十类** | 敌人不是"血量不同的同一个人"；玩家学的是应对一类打法，而不是背招表 | `Scripts/AI/MartialArchetype.cs` |
 
 ### 一条旅程是怎么跑起来的
 
@@ -2491,7 +2493,10 @@ Assets/
       T1-T7 敌人与宿敌、Stress / Resolve / Courage
 - [x] 阶段 5 V1 七章开放世界化：24 个子章升级为可被 Goal OS 动态插入的通用逆境模块，
       通过心理裂隙从现实地点进入（原关卡资产原样复用）
-- [ ] 阶段 6 商业化打磨：武术动画与敌方动作语法、开放世界美术密度、
+- [x] 阶段 5.5 战斗层补齐：敌方武术十类 Archetype（10.5）+ 完整动作语法
+      （10.6：Startup/Active/Recovery/Tracking/Poise/GuardDamage/
+      CancelWindow/ParryWindow/DodgeWindow/Telegraph，含"重招必须可读"自检）
+- [ ] 阶段 6 商业化打磨：武术**动画资产**、开放世界美术密度、
       移动端性能（Addressables / 流式加载）、存档迁移
 
 ### V1.0 阶段（已完成，全部保留）
