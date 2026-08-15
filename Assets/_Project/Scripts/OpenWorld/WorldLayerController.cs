@@ -35,7 +35,6 @@ namespace AdversityRoad.OpenWorld
         readonly Dictionary<string, PsychicRift> _rifts = new Dictionary<string, PsychicRift>();
 
         PlayerController _player;
-        Material _overlayMat;
         float _nextTick;
         string _lastDistrictId = "";
 
@@ -44,7 +43,6 @@ namespace AdversityRoad.OpenWorld
             if (Instance != null) return Instance;
             var go = new GameObject("WorldLayerController");
             Instance = go.AddComponent<WorldLayerController>();
-            Instance._overlayMat = baseMat;
             return Instance;
         }
 

@@ -64,11 +64,19 @@ namespace AdversityRoad.Player
 
         public void TickRegen(float dt, bool inCombat)
         {
+            float staminaBefore = stamina;
             stamina = Mathf.Min(maxStamina, stamina + staminaRegenPerSec * dt);
+            // 濒临崩溃时恢复变慢（方案 12.3）：压力不只是数字，它改变你回气的速度
+            var stress = Adversity.StressStateMachine.Instance;
+            float regenMult = stress != null ? stress.RegenMultiplier() : 1f;
+            if (regenMult < 1f)
+                stamina = staminaBefore + (stamina - staminaBefore) * regenMult;
+            if (!Mathf.Approximately(staminaBefore, stamina))
+                GameEvents.RaiseStaminaChanged(stamina, maxStamina);
             // 战斗中被动回复压得很低：心理能量的涨落主要来自战斗行为本身
             // （受击/被围/站桩流失，命中/击杀/完美闪避回复——见 MentalDynamics），
             // 否则被动回复会把这些变化当场抹平，条上永远看不到起伏。
-            float m = (inCombat ? 0.1f : 1f) * mentalRegenPerSec * dt;
+            float m = (inCombat ? 0.1f : 1f) * mentalRegenPerSec * dt * regenMult;
             will = Mathf.Min(maxWill, will + m);
             focus = Mathf.Min(maxFocus, focus + m);
             selfWorth = Mathf.Min(maxSelfWorth, selfWorth + m);
@@ -192,6 +200,7 @@ namespace AdversityRoad.Player
         {
             if (stamina < cost) return false;
             stamina -= cost;
+            GameEvents.RaiseStaminaChanged(stamina, maxStamina);
             return true;
         }
 
