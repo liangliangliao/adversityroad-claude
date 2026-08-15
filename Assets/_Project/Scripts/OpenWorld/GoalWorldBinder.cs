@@ -93,6 +93,35 @@ namespace AdversityRoad.OpenWorld
             _building = false;
         }
 
+        /// <summary>
+        /// 按需现场搭建某一关，建好后立刻把玩家送进去（"传送"面板直达走这条）。
+        ///
+        /// 靠近才建的策略对开放城区里的漫游是对的——世界不该被五处场景同时塞满。
+        /// 但玩家在面板上**明确点了这一关**，那就不能再要求他先走到对应街区去；
+        /// 也不该受"只展开当前里程碑"的限制——那是给自动展开用的引导规则，
+        /// 不是给玩家主动选择用的门禁。
+        /// </summary>
+        public void EnterOnDemand(string chapterId)
+        {
+            var goal = GoalOS.Active;
+            var ch = goal != null ? goal.FindChapter(chapterId) : null;
+            if (ch == null) { GameEvents.RaiseSubtitle("找不到这一关的蓝图。"); return; }
+            if (ProceduralQuestAssembler.IsAssembled(chapterId)) { SiteGate.EnterChapter(chapterId); return; }
+            StartCoroutine(BuildThenEnter(ch, goal));
+        }
+
+        IEnumerator BuildThenEnter(GoalChapterData ch, GoalData goal)
+        {
+            // 别的场景正在分帧建造时先等它建完：两处同时建会把分帧摊平成一次长卡顿
+            while (_building) yield return null;
+
+            GameEvents.RaiseSubtitle("正在为「" + ch.chapterName + "」搭建场景……");
+            yield return AssembleOne(ch, goal);
+
+            if (ProceduralQuestAssembler.IsAssembled(ch.chapterId)) SiteGate.EnterChapter(ch.chapterId);
+            else GameEvents.RaiseSubtitle("这处场景没能建起来——换一关，或稍后再试。");
+        }
+
         void Announce(GoalChapterData ch, DistrictRuntime d)
         {
             if (_announced.Contains(ch.chapterId)) return;

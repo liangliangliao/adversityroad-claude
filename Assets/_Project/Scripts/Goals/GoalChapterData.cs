@@ -57,6 +57,8 @@ namespace AdversityRoad.Goals
         public float safetyCompliance;
         public float cqs;                      // Chapter Quality Score
         public string rejectReason = "";
+        /// <summary>入库前被就近修复了哪些字段（玩家可查：这一关有多少是模型给的、多少是补的）。</summary>
+        public string repairLog = "";
 
         // ---------- 运行时状态 ----------
         public bool cleared;

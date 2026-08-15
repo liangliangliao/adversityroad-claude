@@ -29,8 +29,15 @@ namespace AdversityRoad.Goals
     {
         public static GoalChapterGenerator Instance { get; private set; }
 
-        /// <summary>复杂目标建议 3-8 个 AI 章节；这里按障碍数量取，至少 1 个（强制）。</summary>
-        public const int MinAiChapters = 1;
+        /// <summary>
+        /// 一条旅程至少要有这么多个 AI 专属关卡（强制下限）。
+        ///
+        /// 定成 5 不是拍脑袋：玩家写下一个目标，期待的是"通往它的路上有一连串要打的东西"。
+        /// 只给一两关的话，屏幕上写着「AI 专属 2」，玩家的实际体感是"我写了目标，
+        /// 然后什么也没发生"——目标驱动这件事就没成立。经典 24 关只是**附加可选**，
+        /// 不能拿来充数：它们不是为这个目标造的。
+        /// </summary>
+        public const int MinAiChapters = 5;
         public const int MaxAiChapters = 8;
 
         bool _busy;
@@ -60,6 +67,7 @@ namespace AdversityRoad.Goals
         {
             if (goal == null) return;
             EnsureLegacyChapters(goal);
+            // 障碍多就多给几关，但无论如何不低于强制下限
             int want = Mathf.Clamp(CountOpenObstacles(goal), MinAiChapters, MaxAiChapters);
 
             if (CloudReady && !_busy) StartCoroutine(GenerateRemote(goal, want));
@@ -144,26 +152,52 @@ namespace AdversityRoad.Goals
 
         void FillWithFallback(GoalData goal, int want, string why)
         {
+            want = Mathf.Clamp(want, MinAiChapters, MaxAiChapters);
             int made = 0;
             int salt = 0;
+
+            // 第一轮：一条障碍一关，这是最贴合玩家目标的排布
             foreach (var ob in goal.obstacles)
             {
                 if (CountAiChapters(goal) >= want) break;
                 if (ob.removed) continue;
                 if (HasChapterFor(goal, ob.obstacleId)) continue;
-
-                var bp = FallbackBlueprintLibrary.Build(goal, ob, salt++);
-                if (bp == null) continue;
-                if (!ChapterBlueprintValidator.Validate(bp, goal, out string reason))
-                {
-                    CloudDialogueService.AddLog("Fallback 章节被拒：" + bp.chapterName + " —— " + reason);
-                    continue;
-                }
-                goal.chapters.Add(bp);
-                goal.aiGeneratedChapterIds.Add(bp.chapterId);
-                made++;
+                if (TryAddFallback(goal, ob, salt++)) made++;
             }
+
+            // 第二轮：障碍用完了但还没凑够下限——给已有障碍再造一个不同阶段的关卡。
+            // 「障碍不够」不能成为"玩家写了目标却只拿到两关"的理由：
+            // 同一条障碍在旅程前段和后段的形态本来就不一样（刚开始的拖延和
+            // 快交付时的拖延不是同一件事），拆成两关是合理的，不是灌水。
+            for (int pass = 0; pass < 3 && CountAiChapters(goal) < want; pass++)
+                foreach (var ob in goal.obstacles)
+                {
+                    if (CountAiChapters(goal) >= want) break;
+                    if (ob.removed) continue;
+                    if (TryAddFallback(goal, ob, salt++)) made++;
+                }
+
             FinishJourney(goal, made, "本地 Fallback（" + why + "）");
+        }
+
+        /// <summary>造一个 Fallback 章节并入库；被拒时记日志并返回 false。</summary>
+        bool TryAddFallback(GoalData goal, GoalObstacle ob, int salt)
+        {
+            var bp = FallbackBlueprintLibrary.Build(goal, ob, salt);
+            if (bp == null) return false;
+
+            // 同一条障碍可能出多关，章节 id 必须带 salt 才不会互相覆盖
+            bp.chapterId = "ai_" + goal.goalId + "_" + ob.obstacleId + "_" + salt;
+            if (goal.FindChapter(bp.chapterId) != null) return false;
+
+            if (!ChapterBlueprintValidator.Validate(bp, goal, out string reason))
+            {
+                CloudDialogueService.AddLog("Fallback 章节被拒：" + bp.chapterName + " —— " + reason);
+                return false;
+            }
+            goal.chapters.Add(bp);
+            goal.aiGeneratedChapterIds.Add(bp.chapterId);
+            return true;
         }
 
         void FinishJourney(GoalData goal, int made, string sourceLabel)
@@ -209,7 +243,11 @@ namespace AdversityRoad.Goals
             string body = "{\"model\":\"" + Esc(model) + "\",\"messages\":[" +
                 "{\"role\":\"system\",\"content\":\"" + Esc(GlobalValuePrompt() + OutputContractPrompt()) + "\"}," +
                 "{\"role\":\"user\",\"content\":\"" + Esc(GoalChapterPrompt(goal, want)) + "\"}]," +
-                "\"max_tokens\":2600,\"temperature\":0.8}";
+                // 每章带一整套 site（房间/道具/NPC/规则/内外台词），一章就要四五百 token。
+                // 以前按 3 章、2600 token 配的额度，现在最少要 5 章——额度不给够，
+                // 返回内容会在半路被截断，那才是最难查的失败：日志里看着"成功"，
+                // 实际拿回来的是一段解析不了的残缺 JSON。
+                "\"max_tokens\":8000,\"temperature\":0.8}";
 
             CloudDialogueService.AddLog("章节生成请求 " + cfg.provider + "/" + model +
                 " → 目标「" + goal.title + "」× " + want + " 章");
@@ -244,6 +282,11 @@ namespace AdversityRoad.Goals
                 if (CountAiChapters(goal) >= want) break;
                 bp.source = ChapterSource.AIRequired;
                 bp.chapterId = "ai_" + goal.goalId + "_" + (goal.aiGeneratedChapterIds.Count + accepted + 1);
+                // 模型很可能把好几章都挂到同一条障碍上。以前这里直接丢弃后来的那几章——
+                // 但它们本身是好章节，只是"归档位置"重了。改成先给它换一条还没被覆盖的障碍，
+                // 真的所有障碍都覆盖满了才丢。
+                if (HasChapterFor(goal, bp.primaryObstacle)) Rebind(goal, bp);
+
                 if (ChapterBlueprintValidator.Validate(bp, goal, out string reason))
                 {
                     if (HasChapterFor(goal, bp.primaryObstacle)) { rejected++; continue; }
@@ -316,7 +359,14 @@ namespace AdversityRoad.Goals
               .Append(string.Join("/", ChapterModuleLibrary.AllMechanicIds(true).ToArray())).Append("，且至少一个。");
             sb.Append("mentalMechanics 只能取：")
               .Append(string.Join("/", ChapterModuleLibrary.AllMechanicIds(false).ToArray())).Append("。");
-            sb.Append("敌人与 Boss 只能使用给定的敌人类型英文名。");
+            // 这份清单以前只在契约里写了一句"只能使用给定的敌人类型英文名"，
+            // 却从来没有把清单**给**出去——模型只能自己编（「截止倒计时」「便签风暴」），
+            // 然后在校验时被判"不在已批准敌人库中"整章丢弃。
+            // 说了"给定"就必须真的给。
+            sb.Append("externalEnemies / internalEnemies / bossArchetype 只能从下面这份清单里挑，");
+            sb.Append("必须逐字使用英文名（括号内是它的中文含义，仅供你理解，不要填中文）：");
+            sb.Append(string.Join("、", ChapterModuleLibrary.AllEnemyNames().ToArray())).Append("。");
+            sb.Append("externalEnemies 填 1-3 个，internalEnemies 填 1-2 个，bossArchetype 填 1 个。");
             sb.Append("不得输出任何代码、Prefab 名、资源路径或坐标——世界组装由引擎按 assemblySeed 确定性完成。");
             return sb.ToString();
         }
@@ -387,20 +437,79 @@ namespace AdversityRoad.Goals
             var list = new List<GoalChapterData>();
             if (string.IsNullOrEmpty(content)) return list;
             int start = content.IndexOf('[');
+            if (start < 0) return list;
             int end = content.LastIndexOf(']');
-            if (start < 0 || end <= start) return list;
-            try
+
+            // 截断得厉害时可能连数组的收尾括号都没有——那就直接进抢救分支，
+            // 而不是像以前那样一句 return 把整批答复扔掉
+            if (end > start)
             {
-                var batch = JsonUtility.FromJson<BlueprintBatch>(
-                    "{\"items\":" + content.Substring(start, end - start + 1) + "}");
-                if (batch != null && batch.items != null)
-                    foreach (var b in batch.items)
-                        if (b != null) list.Add(Normalize(b));
+                try
+                {
+                    var batch = JsonUtility.FromJson<BlueprintBatch>(
+                        "{\"items\":" + content.Substring(start, end - start + 1) + "}");
+                    if (batch != null && batch.items != null)
+                        foreach (var b in batch.items)
+                            if (b != null) list.Add(Normalize(b));
+                }
+                catch
+                {
+                    CloudDialogueService.AddLog("章节解析失败：整段不是合法 JSON 数组，改为逐章抢救");
+                }
             }
-            catch
+
+            // 整段解析失败最常见的原因是**被截断**：最后一章写到一半就没了，
+            // 于是 LastIndexOf(']') 找到的其实是某个 props 数组的收尾括号。
+            // 这时候前面几章往往是完整的——逐个抠出来能救回来的就救，
+            // 总比"模型答了五章、玩家一章没拿到"强。
+            if (list.Count == 0) list = Salvage(content, start);
+            return list;
+        }
+
+        /// <summary>从可能被截断的数组里逐个抠出**完整**的顶层对象。</summary>
+        static List<GoalChapterData> Salvage(string content, int arrayStart)
+        {
+            var list = new List<GoalChapterData>();
+            if (arrayStart < 0) return list;
+
+            int depth = 0, objStart = -1;
+            bool inString = false, escaped = false;
+
+            for (int i = arrayStart; i < content.Length; i++)
             {
-                CloudDialogueService.AddLog("章节解析失败：返回内容不是合法 JSON 数组");
+                char c = content[i];
+
+                if (inString)
+                {
+                    if (escaped) escaped = false;
+                    else if (c == '\\') escaped = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { inString = true; continue; }
+
+                if (c == '{')
+                {
+                    if (depth == 0) objStart = i;
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth != 0 || objStart < 0) continue;
+                    try
+                    {
+                        var bp = JsonUtility.FromJson<GoalChapterData>(
+                            content.Substring(objStart, i - objStart + 1));
+                        if (bp != null) list.Add(Normalize(bp));
+                    }
+                    catch { /* 这一章救不回来，继续看下一章 */ }
+                    objStart = -1;
+                }
             }
+
+            if (list.Count > 0)
+                CloudDialogueService.AddLog("逐章抢救成功：从截断的返回里救回 " + list.Count + " 章");
             return list;
         }
 
@@ -432,6 +541,19 @@ namespace AdversityRoad.Goals
             int n = 0;
             foreach (var o in goal.obstacles) if (!o.removed) n++;
             return Mathf.Max(n, 1);
+        }
+
+        /// <summary>把这一章改挂到还没有关卡的那条障碍上（连里程碑一起改，免得两者对不上）。</summary>
+        static void Rebind(GoalData goal, GoalChapterData bp)
+        {
+            foreach (var o in goal.obstacles)
+            {
+                if (o.removed || HasChapterFor(goal, o.obstacleId)) continue;
+                bp.primaryObstacle = o.obstacleId;
+                if (!string.IsNullOrEmpty(o.linkedMilestoneId))
+                    bp.linkedMilestoneId = o.linkedMilestoneId;
+                return;
+            }
         }
 
         static bool HasChapterFor(GoalData goal, string obstacleId)

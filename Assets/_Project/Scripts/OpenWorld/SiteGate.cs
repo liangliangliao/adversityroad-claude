@@ -20,6 +20,7 @@ namespace AdversityRoad.OpenWorld
         public float range = 3.4f;
 
         static Vector3 _returnPoint;
+        static string _returnZoneId = "";
         static bool _hasReturn;
         static string _insideChapterId = "";
 
@@ -107,20 +108,38 @@ namespace AdversityRoad.OpenWorld
             Enter();
         }
 
-        void Enter()
+        void Enter() => EnterChapter(chapterId);
+
+        /// <summary>
+        /// 进入某个生成场景。门上按 E 走这条，"传送"面板直达也走这条——
+        /// 两条路必须共用同一套进场流程，否则从面板进去的玩家会少掉台词接管与规则播报，
+        /// 拿到的是一个没有规则、敌人还在说通用台词的空场景。
+        /// </summary>
+        public static bool EnterChapter(string chapterId)
         {
             var inst = SiteBuilder.Find(chapterId);
             if (inst == null || inst.root == null)
             {
                 GameEvents.RaiseSubtitle("这个场景还没准备好——稍等一下再试。");
-                return;
+                return false;
             }
+            var player = FindObjectOfType<PlayerController>();
+            if (player == null) return false;
 
-            _returnPoint = _player.transform.position;
+            // 已经在别的生成场景里：先归还上一处的台词池，再进这一处
+            if (InsideSite && _insideChapterId != chapterId) AI.DialogueLibrary.ClearChapterLines();
+
+            // 返回点只记一次，且连区域 id 一起记：从经典关卡直接传送进来的玩家
+            // 退出时该回到那一关，而不是被丢回开放城区
+            if (!InsideSite)
+            {
+                _returnPoint = player.transform.position;
+                _returnZoneId = ZoneBuilder.CurrentZoneId;
+            }
             _hasReturn = true;
             _insideChapterId = chapterId;
 
-            Teleport(_player, inst.playerSpawn);
+            Teleport(player, inst.playerSpawn);
             ZoneBuilder.CurrentZoneId = inst.siteId;
 
             var goal = GoalOS.Active;
@@ -134,6 +153,7 @@ namespace AdversityRoad.OpenWorld
                 GoalOS.NoteChapterAttempt(ch.chapterId);
                 ShowRules(ch);
             }
+            return true;
         }
 
         /// <summary>进场先把规则说清楚：关卡规则是玩家能读到的东西，不是藏在代码里的。</summary>
@@ -161,11 +181,14 @@ namespace AdversityRoad.OpenWorld
             if (!_hasReturn) return;
             var player = FindObjectOfType<PlayerController>();
             if (player != null) Teleport(player, _returnPoint);
-            if (OpenWorldBuilder.CityZoneIndex >= 0)
+            if (!string.IsNullOrEmpty(_returnZoneId))
+                ZoneBuilder.CurrentZoneId = _returnZoneId;
+            else if (OpenWorldBuilder.CityZoneIndex >= 0)
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
 
             AI.DialogueLibrary.ClearChapterLines();
             _hasReturn = false;
+            _returnZoneId = "";
             _insideChapterId = "";
             GameEvents.RaiseSubtitle("你从那个地方走了出来——它是为这条旅程建的，也会随这条旅程收起。");
         }

@@ -343,8 +343,23 @@ namespace AdversityRoad.Goals
             return null;
         }
 
+        /// <summary>
+        /// 这条障碍该去打哪一关。
+        ///
+        /// AI 专属章节优先——它是**为这条障碍现造的**，场景、规则、台词都对着它写。
+        /// 经典 24 关只有在没有专属章节时才顶上，属于附加可选项：
+        /// 拿一个通用关卡去代表玩家自己写的障碍，正是 V2.0 要摆脱的"心理标签推荐"。
+        /// </summary>
         static string ChapterOfObstacle(GoalData goal, string obstacleId)
         {
+            foreach (var c in goal.chapters)
+                if (c.source == ChapterSource.AIRequired &&
+                    (c.primaryObstacle == obstacleId || c.secondaryObstacle == obstacleId))
+                    return c.chapterId;
+            foreach (var c in goal.chapters)
+                if (c.source == ChapterSource.UserPreset &&
+                    (c.primaryObstacle == obstacleId || c.secondaryObstacle == obstacleId))
+                    return c.chapterId;
             foreach (var c in goal.chapters)
                 if (c.primaryObstacle == obstacleId || c.secondaryObstacle == obstacleId)
                     return c.chapterId;

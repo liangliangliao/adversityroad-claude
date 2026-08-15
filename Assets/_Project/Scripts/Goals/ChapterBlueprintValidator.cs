@@ -10,7 +10,19 @@ namespace AdversityRoad.Goals
     ///
     /// CQS = 0.30 GoalRelevance + 0.20 Playability + 0.15 PlayerFit
     ///     + 0.15 Novelty + 0.10 NarrativeCoherence + 0.10 SafetyCompliance
-    /// 任何安全项未通过直接拒绝；其余总分 ≥ 0.72 才进入组装。
+    ///
+    /// 【修复优先，不是拒绝优先】
+    /// 早期版本把"写错的字段"和"不该放进游戏的内容"当成同一类问题处理，一律整章丢弃。
+    /// 实机日志上的后果是刺眼的：模型返回了三章，三章全被判
+    /// 「敌人组合为空或全部不在已批准敌人库中」——因为模型给的敌人叫「截止倒计时」，
+    /// 而库里那条叫「明日幻影」，名字对不上就整章作废，于是"新增 0 个 AI 专属章节"。
+    /// 玩家写下目标之后什么都没得到，而这恰恰是 V2.0 唯一不能失手的地方。
+    ///
+    /// 所以这里分成两类，且只有一类会拒绝：
+    ///   · **可修复**：名字对不上、字段缺失、区域重复、机制写错——一律就近映射到已批准库，
+    ///     映射不到就按这条障碍的弱点轴取默认值。修复过程记进 repairLog，玩家可查。
+    ///   · **硬拒绝**：安全项。禁止内容、玩家禁用主题、该目标的禁用主题——这一类
+    ///     没有"就近修复"可言，只能整章丢弃。
     /// </summary>
     public static class ChapterBlueprintValidator
     {
@@ -31,6 +43,8 @@ namespace AdversityRoad.Goals
             reason = "";
             if (bp == null) { reason = "蓝图为空"; return false; }
 
+            var repairs = new List<string>();
+
             // JsonUtility 对缺失字段会给 null——先补齐再校验
             if (bp.externalEnemies == null) bp.externalEnemies = new List<string>();
             if (bp.internalEnemies == null) bp.internalEnemies = new List<string>();
@@ -38,11 +52,29 @@ namespace AdversityRoad.Goals
             if (bp.mentalMechanics == null) bp.mentalMechanics = new List<string>();
             if (bp.safetyTags == null) bp.safetyTags = new List<string>();
 
+            // 这条章节针对的障碍：所有"就近修复"都以它的弱点轴为准，
+            // 免得补出来的敌人/机制和这一关要考验的东西对不上。
+            var obstacle = ResolveObstacle(bp, goal);
+            var axis = obstacle != null ? obstacle.axis : Personalization.WeaknessAxis.Procrastination;
+            string obstacleLabel = obstacle != null ? obstacle.label : "这一步的阻力";
+
             // ---------- Schema：结构完整性（方案 23.3 第 23 条） ----------
-            if (string.IsNullOrEmpty(bp.chapterName)) { reason = "缺少 chapterName"; return Fail(bp, reason); }
+            if (string.IsNullOrEmpty(bp.chapterName))
+            {
+                bp.chapterName = obstacleLabel;
+                repairs.Add("补章节名");
+            }
             if (bp.chapterName.Length > 24) bp.chapterName = bp.chapterName.Substring(0, 24);
-            if (string.IsNullOrEmpty(bp.successCondition)) { reason = "缺少通关条件"; return Fail(bp, reason); }
-            if (string.IsNullOrEmpty(bp.failureConsequence)) { reason = "缺少失败后果"; return Fail(bp, reason); }
+            if (string.IsNullOrEmpty(bp.successCondition))
+            {
+                bp.successCondition = "在「" + obstacleLabel + "」真正挡住你的地方把它推开一次";
+                repairs.Add("补通关条件");
+            }
+            if (string.IsNullOrEmpty(bp.failureConsequence))
+            {
+                bp.failureConsequence = "这条路线暂时关闭，时间推进，得换一条路再来";
+                repairs.Add("补失败后果");
+            }
 
             // 必须绑定一个 Goal / Milestone（方案 18.3 第 1 条）
             if (goal != null)
@@ -58,32 +90,68 @@ namespace AdversityRoad.Goals
                 { reason = "没有可绑定的里程碑"; return Fail(bp, reason); }
             }
 
-            // 区域必须是已批准区域
+            // 区域必须是已批准区域；撞车的自动挪到还没被占用的区域（同质不再是拒绝理由）
             if (!ChapterModuleLibrary.IsDistrict(bp.worldDistrictId))
+            {
                 bp.worldDistrictId = ChapterModuleLibrary.Districts[0].id;
+                repairs.Add("换区域");
+            }
+            if (SpreadDistrict(bp, goal)) repairs.Add("错开撞车区域");
 
-            // 机制必须来自机制库，且至少一个物理机制（方案 18.3 第 2 条）
+            // 机制必须来自机制库，且至少一个物理机制（方案 18.3 第 2 条）。
+            // 一个都没剩下不代表这章不能玩，只代表模型没写对 id——按弱点轴补两个。
             Filter(bp.physicalMechanics, true);
             Filter(bp.mentalMechanics, false);
             if (bp.physicalMechanics.Count == 0)
-            { reason = "没有可玩的物理机制——只有对话的章节不允许进入世界"; return Fail(bp, reason); }
+            {
+                ChapterModuleLibrary.SuggestMechanics(axis, out string phys1, out string phys2, out _);
+                bp.physicalMechanics.Add(phys1);
+                if (phys2 != phys1) bp.physicalMechanics.Add(phys2);
+                repairs.Add("补物理机制");
+            }
+            if (bp.mentalMechanics.Count == 0)
+            {
+                ChapterModuleLibrary.SuggestMechanics(axis, out _, out _, out string mental);
+                bp.mentalMechanics.Add(mental);
+                repairs.Add("补心理机制");
+            }
 
-            // 敌人必须来自已批准的敌人库
-            FilterEnemies(bp.externalEnemies);
-            FilterEnemies(bp.internalEnemies);
-            if (bp.externalEnemies.Count == 0 && bp.internalEnemies.Count == 0)
-            { reason = "敌人组合为空或全部不在已批准敌人库中"; return Fail(bp, reason); }
-            if (!string.IsNullOrEmpty(bp.bossArchetype) &&
+            // 敌人：先就近映射到已批准敌人库，映射不到再按弱点轴取默认——
+            // 「名字没对上」是模型的措辞问题，不是这一关不该存在的理由。
+            int lostExternal = RepairEnemies(bp.externalEnemies);
+            int lostInternal = RepairEnemies(bp.internalEnemies);
+            if (lostExternal + lostInternal > 0) repairs.Add("映射敌人 ×" + (lostExternal + lostInternal));
+
+            ChapterModuleLibrary.SuggestEnemies(axis, out var defExternal, out var defInternal, out var defBoss);
+            if (bp.externalEnemies.Count == 0)
+            {
+                bp.externalEnemies.Add(defExternal.ToString());
+                repairs.Add("补外部敌人");
+            }
+            if (bp.internalEnemies.Count == 0)
+            {
+                bp.internalEnemies.Add(defInternal.ToString());
+                repairs.Add("补内心敌人");
+            }
+            if (string.IsNullOrEmpty(bp.bossArchetype) ||
                 !ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out _))
-                bp.bossArchetype = "";
+            {
+                if (!ChapterModuleLibrary.TryEnemyFuzzy(bp.bossArchetype, out var bossType))
+                    bossType = defBoss;
+                bp.bossArchetype = bossType.ToString();
+                repairs.Add("补 Boss");
+            }
+            else if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var okBoss))
+                bp.bossArchetype = okBoss.ToString();
 
             if (bp.assemblySeed == 0)
                 bp.assemblySeed = Mathf.Abs((bp.chapterName + bp.linkedMilestoneId).GetHashCode());
 
             // 场景蓝图：清洗到已批准 Kit 内，并过滤台词。没有场景的 AI 章节不允许进入世界——
             // 那样它又退回成"在固定关卡里换敌人"，正是 V2.0 要解决的问题。
-            if (!ValidateSite(bp, out string siteIssue))
-            { reason = "场景蓝图不可用：" + siteIssue; return Fail(bp, reason); }
+            // 但"模型没写场景"同样是可修复的：按障碍与弱点轴造一套出来，而不是丢掉这一章。
+            RepairSite(bp, axis, obstacleLabel, repairs);
+            ValidateSite(bp);
 
             // ---------- 安全性（未通过直接拒绝） ----------
             bp.safetyCompliance = ScoreSafety(bp, goal, out string safetyIssue);
@@ -105,16 +173,176 @@ namespace AdversityRoad.Goals
                 0.10f * bp.narrativeCoherence +
                 0.10f * bp.safetyCompliance;
 
+            // 分数低同样是可修复的：低在哪一维就补哪一维，补完重算。
+            // 只有补过之后仍然不及格才拒——那说明它是真的空，不是写歪了。
+            if (bp.cqs < PassThreshold || bp.goalRelevance < 0.4f)
+            {
+                if (RepairForScore(bp, goal, obstacle, axis, repairs))
+                {
+                    bp.goalRelevance = ScoreGoalRelevance(bp, goal);
+                    bp.playability = ScorePlayability(bp);
+                    bp.playerFit = ScorePlayerFit(bp);
+                    bp.novelty = ScoreNovelty(bp, goal);
+                    bp.narrativeCoherence = ScoreCoherence(bp);
+                    bp.cqs =
+                        0.30f * bp.goalRelevance +
+                        0.20f * bp.playability +
+                        0.15f * bp.playerFit +
+                        0.15f * bp.novelty +
+                        0.10f * bp.narrativeCoherence +
+                        0.10f * bp.safetyCompliance;
+                }
+            }
+
             if (bp.goalRelevance < 0.4f)
             { reason = "目标相关性不足：它没有真的阻挡任何一个里程碑"; return Fail(bp, reason); }
-            if (bp.novelty < 0.35f)
-            { reason = "与旅程中已有章节高度同质——应合并或重新生成"; return Fail(bp, reason); }
             if (bp.cqs < PassThreshold)
             { reason = "CQS " + bp.cqs.ToString("F2") + " 低于门槛 " + PassThreshold; return Fail(bp, reason); }
 
             bp.validated = true;
             bp.rejectReason = "";
+            bp.repairLog = repairs.Count == 0 ? "" : string.Join("、", repairs.ToArray());
+            if (repairs.Count > 0)
+                CloudDialogueService.AddLog("章节已修复入库：" + bp.chapterName + " —— " + bp.repairLog);
             return true;
+        }
+
+        /// <summary>这一章针对的障碍（先按 id/文字对上，对不上就取当前里程碑下第一条未清除的）。</summary>
+        static GoalObstacle ResolveObstacle(GoalChapterData bp, GoalData goal)
+        {
+            if (goal == null || goal.obstacles.Count == 0) return null;
+            foreach (var o in goal.obstacles)
+                if (o.obstacleId == bp.primaryObstacle) return o;
+            if (!string.IsNullOrEmpty(bp.primaryObstacle))
+                foreach (var o in goal.obstacles)
+                    if (o.label == bp.primaryObstacle || o.label.Contains(bp.primaryObstacle) ||
+                        bp.primaryObstacle.Contains(o.label)) return o;
+            foreach (var o in goal.obstacles)
+                if (!o.removed) return o;
+            return goal.obstacles[0];
+        }
+
+        /// <summary>
+        /// 撞车的章节自动挪窝：同一个区域已经被别的章节占了，就换一个还空着的。
+        /// 以前这里是直接判"高度同质"然后丢章——但两章撞在同一个区域是**排布问题**，
+        /// 换个地方就解决了，没有理由为此少给玩家一关。
+        /// </summary>
+        static bool SpreadDistrict(GoalChapterData bp, GoalData goal)
+        {
+            if (goal == null) return false;
+            bool taken = false;
+            foreach (var c in goal.chapters)
+                if (c != bp && c.chapterId != bp.chapterId && c.worldDistrictId == bp.worldDistrictId)
+                { taken = true; break; }
+            if (!taken) return false;
+
+            foreach (var d in ChapterModuleLibrary.Districts)
+            {
+                bool used = false;
+                foreach (var c in goal.chapters)
+                    if (c != bp && c.chapterId != bp.chapterId && c.worldDistrictId == d.id)
+                    { used = true; break; }
+                if (used) continue;
+                bp.worldDistrictId = d.id;
+                return true;
+            }
+            return false;   // 区域用满了：允许共用，不因此丢章
+        }
+
+        /// <summary>
+        /// 补分：低在哪一维补哪一维。
+        /// 这不是"给分数注水"——每一条补的都是这一章真的缺的东西：
+        /// 没绑上障碍就绑上、只有一个机制就再给一个、名字撞了就改名。
+        /// </summary>
+        static bool RepairForScore(GoalChapterData bp, GoalData goal, GoalObstacle obstacle,
+            Personalization.WeaknessAxis axis, List<string> repairs)
+        {
+            bool changed = false;
+
+            // 目标相关性：把它真正挂到一条障碍和一个里程碑上
+            if (obstacle != null && bp.primaryObstacle != obstacle.obstacleId)
+            {
+                bp.primaryObstacle = obstacle.obstacleId;
+                repairs.Add("绑定主障碍");
+                changed = true;
+            }
+            if (goal != null && string.IsNullOrEmpty(bp.secondaryObstacle))
+                foreach (var o in goal.obstacles)
+                    if (!o.removed && o.obstacleId != bp.primaryObstacle)
+                    {
+                        bp.secondaryObstacle = o.obstacleId;
+                        repairs.Add("绑定次障碍");
+                        changed = true;
+                        break;
+                    }
+            if (goal != null && goal.FindMilestone(bp.linkedMilestoneId) == null && obstacle != null &&
+                goal.FindMilestone(obstacle.linkedMilestoneId) != null)
+            {
+                bp.linkedMilestoneId = obstacle.linkedMilestoneId;
+                repairs.Add("绑定里程碑");
+                changed = true;
+            }
+
+            // 可玩性：机制太少、缺 Boss、缺内外敌人对位
+            ChapterModuleLibrary.SuggestMechanics(axis, out string p1, out string p2, out string m1);
+            if (bp.physicalMechanics.Count < 2)
+            {
+                if (!bp.physicalMechanics.Contains(p1)) bp.physicalMechanics.Add(p1);
+                else if (!bp.physicalMechanics.Contains(p2)) bp.physicalMechanics.Add(p2);
+                repairs.Add("加物理机制");
+                changed = true;
+            }
+            if (bp.mentalMechanics.Count == 0)
+            {
+                bp.mentalMechanics.Add(m1);
+                repairs.Add("加心理机制");
+                changed = true;
+            }
+
+            // 玩家契合：压力档位对不上玩家自己设的强度——按强度增减，而不是判这章不合格。
+            // 玩家把强度调成「轻度」却收到一章五个敌人，正确的处理是**把它调轻**，
+            // 不是告诉玩家"这一关不能给你"。
+            var safety = GameManager.Instance != null ? GameManager.Instance.safety : null;
+            if (safety != null)
+            {
+                int pressure = bp.mentalMechanics.Count + bp.externalEnemies.Count;
+                if (safety.intensity == MentalIntensity.Light && pressure > 3)
+                {
+                    while (bp.externalEnemies.Count > 1 &&
+                           bp.mentalMechanics.Count + bp.externalEnemies.Count > 3)
+                        bp.externalEnemies.RemoveAt(bp.externalEnemies.Count - 1);
+                    while (bp.mentalMechanics.Count > 1 &&
+                           bp.mentalMechanics.Count + bp.externalEnemies.Count > 3)
+                        bp.mentalMechanics.RemoveAt(bp.mentalMechanics.Count - 1);
+                    repairs.Add("按轻度强度减压");
+                    changed = true;
+                }
+                else if (safety.intensity == MentalIntensity.HighPressure && pressure < 3)
+                {
+                    ChapterModuleLibrary.SuggestEnemies(axis, out var ext, out _, out _);
+                    if (!bp.externalEnemies.Contains(ext.ToString()))
+                        bp.externalEnemies.Add(ext.ToString());
+                    if (!bp.mentalMechanics.Contains(m1)) bp.mentalMechanics.Add(m1);
+                    repairs.Add("按高压强度加压");
+                    changed = true;
+                }
+            }
+
+            // 新颖度：名字撞了就按障碍改写（改名比丢章便宜得多）
+            if (goal != null)
+                foreach (var c in goal.chapters)
+                    if (c != bp && c.chapterId != bp.chapterId && c.chapterName == bp.chapterName)
+                    {
+                        string tail = obstacle != null ? obstacle.label : bp.worldDistrictId;
+                        if (tail.Length > 8) tail = tail.Substring(0, 8);
+                        bp.chapterName = (bp.chapterName + "·" + tail);
+                        if (bp.chapterName.Length > 24) bp.chapterName = bp.chapterName.Substring(0, 24);
+                        repairs.Add("改名避重");
+                        changed = true;
+                        break;
+                    }
+
+            return changed;
         }
 
         // ================= 场景蓝图校验 =================
@@ -123,9 +351,47 @@ namespace AdversityRoad.Goals
         /// AI 只能从已批准的 Kit / 道具库 / 角色类型库里挑，写错的一律换成同类默认值。
         /// 台词经过去识别化，并逐条检查禁令与玩家禁用主题。
         /// </summary>
-        static bool ValidateSite(GoalChapterData bp, out string issue)
+        /// <summary>
+        /// 场景缺件补齐：没有场景 / 没有房间 / 没有台词的章节，按障碍与弱点轴造一套出来。
+        ///
+        /// "模型这次没写 site" 与 "这一关不该存在" 是两件完全不同的事。
+        /// 前者补上就能玩，后者才该丢——而玩家看到的区别是「有五关」和「一关都没有」。
+        /// </summary>
+        static void RepairSite(GoalChapterData bp, Personalization.WeaknessAxis axis,
+            string obstacleLabel, List<string> repairs)
         {
-            issue = "";
+            if (bp.site == null) { bp.site = new SiteBlueprint(); repairs.Add("补场景"); }
+            var s = bp.site;
+            if (s.rooms == null) s.rooms = new List<SiteRoom>();
+            if (s.externalLines == null) s.externalLines = new List<string>();
+            if (s.internalLines == null) s.internalLines = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(s.siteName)) s.siteName = bp.chapterName;
+
+            // 房间被清空（道具/名字全写错）或本来就没写：给一套与这条障碍对得上的房间
+            if (s.rooms.Count == 0)
+            {
+                foreach (var r in SiteKitCatalog.DefaultRooms(s.siteKind, axis))
+                    s.rooms.Add(r);
+                repairs.Add("补房间");
+            }
+
+            if (s.externalLines.Count == 0)
+            {
+                s.externalLines.Add("你这一步根本走不通。");
+                s.externalLines.Add("「" + obstacleLabel + "」——你自己也清楚吧。");
+                repairs.Add("补外部台词");
+            }
+            if (s.internalLines.Count == 0)
+            {
+                s.internalLines.Add("是不是该先放一放？");
+                s.internalLines.Add("这一关过不去，后面也一样。");
+                repairs.Add("补内心台词");
+            }
+        }
+
+        static void ValidateSite(GoalChapterData bp)
+        {
             if (bp.site == null) bp.site = new SiteBlueprint();
             var s = bp.site;
 
@@ -157,8 +423,11 @@ namespace AdversityRoad.Goals
                 if (r.name.Length > 12) r.name = r.name.Substring(0, 12);
                 if (r.sizeHint != "small" && r.sizeHint != "large") r.sizeHint = "medium";
             }
+            // 道具/名字全写错时房间会被清空——这里再兜一次底，绝不让场景空着出场
             if (s.rooms.Count == 0)
-            { issue = "没有任何房间/区块"; return false; }
+                foreach (var r in SiteKitCatalog.DefaultRooms(s.siteKind,
+                             Personalization.WeaknessAxis.Procrastination))
+                    s.rooms.Add(r);
             if (s.rooms.Count > 6) s.rooms.RemoveRange(6, s.rooms.Count - 6);
 
             // NPC：角色类型必须在库内，数量封顶
@@ -173,9 +442,9 @@ namespace AdversityRoad.Goals
             }
             if (s.npcs.Count > 5) s.npcs.RemoveRange(5, s.npcs.Count - 5);
 
-            // 台词：去识别化 + 禁令 + 玩家禁用主题
-            if (!CleanLines(s.externalLines, out issue)) return false;
-            if (!CleanLines(s.internalLines, out issue)) return false;
+            // 台词：去识别化 + 禁令 + 玩家禁用主题（命中的逐句丢弃，不牵连整章）
+            CleanLines(s.externalLines);
+            CleanLines(s.internalLines);
 
             for (int i = s.rules.Count - 1; i >= 0; i--)
             {
@@ -184,20 +453,16 @@ namespace AdversityRoad.Goals
             }
             if (s.rules.Count > 5) s.rules.RemoveRange(5, s.rules.Count - 5);
             if (s.rules.Count == 0) s.rules.Add(bp.successCondition);
-
-            return true;
         }
 
-        static bool CleanLines(List<string> lines, out string issue)
+        static void CleanLines(List<string> lines)
         {
-            issue = "";
             for (int i = lines.Count - 1; i >= 0; i--)
             {
                 lines[i] = CleanLine(lines[i], out bool bad);
                 if (bad || string.IsNullOrWhiteSpace(lines[i])) lines.RemoveAt(i);
             }
             if (lines.Count > 10) lines.RemoveRange(10, lines.Count - 10);
-            return true;
         }
 
         /// <summary>单句清洗：去识别化 → 长度封顶 → 禁令与禁用主题命中即丢弃。</summary>
@@ -360,17 +625,33 @@ namespace AdversityRoad.Goals
                     if (ids[i] == ids[j]) { ids.RemoveAt(i); break; }
         }
 
-        static void FilterEnemies(List<string> names)
+        /// <summary>
+        /// 敌人名就近映射：先精确匹配，再模糊匹配（关键词/包含关系），都对不上才丢掉这一条。
+        /// 返回被映射或丢弃的条数（只用于日志，让玩家知道模型写歪了多少）。
+        ///
+        /// 模型给的名字几乎不可能和枚举名逐字相同——它会写「截止倒计时」「需求膨胀者」
+        /// 这种贴合玩家目标的叫法。要求逐字相同，等于要求模型背下内部枚举表。
+        /// </summary>
+        static int RepairEnemies(List<string> names)
         {
-            if (names == null) return;
+            if (names == null) return 0;
+            int touched = 0;
             for (int i = names.Count - 1; i >= 0; i--)
             {
-                if (!ChapterModuleLibrary.TryEnemy(names[i], out var t)) names.RemoveAt(i);
-                else names[i] = t.ToString();
+                if (ChapterModuleLibrary.TryEnemy(names[i], out var exact))
+                { names[i] = exact.ToString(); continue; }
+
+                if (ChapterModuleLibrary.TryEnemyFuzzy(names[i], out var near))
+                { names[i] = near.ToString(); touched++; continue; }
+
+                names.RemoveAt(i);
+                touched++;
             }
             for (int i = names.Count - 1; i >= 0; i--)
                 for (int j = 0; j < i; j++)
                     if (names[i] == names[j]) { names.RemoveAt(i); break; }
+            if (names.Count > 4) names.RemoveRange(4, names.Count - 4);
+            return touched;
         }
     }
 }

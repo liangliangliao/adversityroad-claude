@@ -36,6 +36,77 @@ namespace AdversityRoad.Goals
     /// </summary>
     public static class GoalParser
     {
+        /// <summary>
+        /// 任何目标都至少要解析出这么多条障碍。
+        ///
+        /// 这个下限不是凑数：一条旅程里每条障碍对应一关，障碍太少玩家写完目标之后
+        /// 只会看到一两个关卡，"通过挑战抵达目标"这件事在体感上根本不成立。
+        /// 模板只覆盖到各自领域最典型的三条，而「我要考上重点高中」这类目标
+        /// 光靠模板与关键词往往连三条都凑不满——所以下面还有一条通用脊柱兜底。
+        /// </summary>
+        public const int MinObstacles = 5;
+        public const int MaxObstacles = 8;
+
+        /// <summary>
+        /// 通用障碍脊柱：不管目标是什么，这几件事都会挡在路上。
+        ///
+        /// 顺序即优先级——越靠前的越普遍。补齐时按弱点轴去重，
+        /// 已经被模板/关键词覆盖到的轴不会再补一条同轴的，免得两关考验同一件事。
+        /// </summary>
+        static readonly KeyValuePair<string, WeaknessAxis>[] ObstacleSpine =
+        {
+            new KeyValuePair<string, WeaknessAxis>("迟迟不开始的第一步", WeaknessAxis.Procrastination),
+            new KeyValuePair<string, WeaknessAxis>("「我大概做不到」的自我怀疑", WeaknessAxis.SelfDoubt),
+            new KeyValuePair<string, WeaknessAxis>("被临时的事挤掉的时间", WeaknessAxis.BoundaryConflict),
+            new KeyValuePair<string, WeaknessAxis>("一次挫败就想全盘放弃", WeaknessAxis.FailureFear),
+            new KeyValuePair<string, WeaknessAxis>("别人的进度与评价", WeaknessAxis.Shame),
+            new KeyValuePair<string, WeaknessAxis>("环境干扰与注意力被拉走", WeaknessAxis.NoiseSensitivity),
+            new KeyValuePair<string, WeaknessAxis>("撑到后半程时的精力见底", WeaknessAxis.WillpowerCollapse),
+            new KeyValuePair<string, WeaknessAxis>("准备到完美才肯交出去", WeaknessAxis.LowConfidence),
+        };
+
+        /// <summary>把障碍补齐到 MinObstacles，按弱点轴去重、按里程碑摊开。</summary>
+        static void TopUpObstacles(GoalData goal)
+        {
+            if (goal.milestones.Count == 0) return;
+
+            var usedAxes = new List<WeaknessAxis>();
+            foreach (var o in goal.obstacles) if (!usedAxes.Contains(o.axis)) usedAxes.Add(o.axis);
+
+            // 第一轮：只补还没被覆盖到的弱点轴
+            foreach (var s in ObstacleSpine)
+            {
+                if (goal.obstacles.Count >= MinObstacles) break;
+                if (usedAxes.Contains(s.Value)) continue;
+                AddSpineObstacle(goal, s.Key, s.Value);
+                usedAxes.Add(s.Value);
+            }
+
+            // 第二轮：轴都覆盖过了还不够（障碍本来就多样时不会走到这里），按脊柱顺序继续补
+            foreach (var s in ObstacleSpine)
+            {
+                if (goal.obstacles.Count >= MinObstacles) break;
+                bool dup = false;
+                foreach (var o in goal.obstacles) if (o.label == s.Key) { dup = true; break; }
+                if (!dup) AddSpineObstacle(goal, s.Key, s.Value);
+            }
+        }
+
+        static void AddSpineObstacle(GoalData goal, string label, WeaknessAxis axis)
+        {
+            goal.obstacles.Add(new GoalObstacle
+            {
+                obstacleId = "ob" + (goal.obstacles.Count + 1),
+                label = label,
+                // 脊柱障碍是系统按经验推断的，不是玩家自己说出来的——来源如实标注，
+                // 玩家在障碍图里能看出哪几条是他自己写的、哪几条是系统预测的
+                source = ObstacleSource.AIPredicted,
+                axis = axis,
+                linkedMilestoneId =
+                    goal.milestones[goal.obstacles.Count % goal.milestones.Count].milestoneId
+            });
+        }
+
         // ================= 模板库 =================
 
         public static readonly GoalTemplate[] Templates =
@@ -226,7 +297,7 @@ namespace AdversityRoad.Goals
 
             foreach (var kw in ExtractObstacleKeywords(title))
             {
-                if (goal.obstacles.Count >= 6) break;
+                if (goal.obstacles.Count >= MaxObstacles) break;
                 bool dup = false;
                 foreach (var o in goal.obstacles) if (o.label == kw.Key) { dup = true; break; }
                 if (dup) continue;
@@ -239,6 +310,8 @@ namespace AdversityRoad.Goals
                     linkedMilestoneId = goal.milestones[goal.obstacles.Count % goal.milestones.Count].milestoneId
                 });
             }
+
+            TopUpObstacles(goal);
 
             // 关键行动：每个里程碑至少一条，首条默认为现实行动（Reality Progress）
             for (int i = 0; i < goal.milestones.Count; i++)

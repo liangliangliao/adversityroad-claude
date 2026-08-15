@@ -114,6 +114,19 @@ namespace AdversityRoad.OpenWorld
             GameEvents.RaiseSubtitle("〔章节展开〕" + bp.chapterName + " —— " + bp.successCondition);
         }
 
+        /// <summary>
+        /// 敌人名 → 敌人类型：先精确、再就近。
+        ///
+        /// 校验器入库时已经把名字统一成枚举名了，但**旧存档**里的章节是按老规则存下来的，
+        /// 里面还留着模型当初写的叫法。这里再兜一层，免得升级之后老旅程的关卡
+        /// 一个敌人都刷不出来——那种"能进去但里面空无一人"比直接报错更难查。
+        /// </summary>
+        static bool ResolveEnemy(string name, out EnemyType type)
+        {
+            if (ChapterModuleLibrary.TryEnemy(name, out type)) return true;
+            return ChapterModuleLibrary.TryEnemyFuzzy(name, out type);
+        }
+
         /// <summary>把敌人放进**生成出来的场景**里（不是放在城区街上）。</summary>
         static void SpawnIntoSite(GoalChapterData bp, GoalData goal,
             AssembledEncounter enc, System.Random rng)
@@ -123,18 +136,18 @@ namespace AdversityRoad.OpenWorld
 
             foreach (var name in bp.externalEnemies)
             {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                if (!ResolveEnemy(name, out var t)) continue;
                 var go = Spawner(t, TierFor(goal, rng), SiteSpot(site, slot++, rng), true);
                 if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
             }
             foreach (var name in bp.internalEnemies)
             {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                if (!ResolveEnemy(name, out var t)) continue;
                 var go = Spawner(t, EnemyTier.Standard, SiteSpot(site, slot++, rng), true);
                 if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
             }
 
-            if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var bossType))
+            if (ResolveEnemy(bp.bossArchetype, out var bossType))
             {
                 var bossGo = Spawner(bossType, EnemyTier.Chief, SiteSpot(site, 0, rng), true);
                 if (bossGo != null)
@@ -157,19 +170,19 @@ namespace AdversityRoad.OpenWorld
             int slot = 0;
             foreach (var name in bp.externalEnemies)
             {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                if (!ResolveEnemy(name, out var t)) continue;
                 var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
                 var go = Spawner(t, TierFor(goal, rng), pos, true);
                 if (go != null) enc.enemies.Add(go);
             }
             foreach (var name in bp.internalEnemies)
             {
-                if (!ChapterModuleLibrary.TryEnemy(name, out var t)) continue;
+                if (!ResolveEnemy(name, out var t)) continue;
                 var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
                 var go = Spawner(t, EnemyTier.Standard, pos, true);
                 if (go != null) enc.enemies.Add(go);
             }
-            if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var bossType))
+            if (ResolveEnemy(bp.bossArchetype, out var bossType))
             {
                 var bossGo = Spawner(bossType, EnemyTier.Chief, Offset(enc.anchor, rng), true);
                 if (bossGo != null)

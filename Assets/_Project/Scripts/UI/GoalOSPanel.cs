@@ -259,13 +259,18 @@ namespace AdversityRoad.UI
                 else if (c.source == ChapterSource.UserPreset) user++;
                 else if (c.validated) ai++;
             }
-            sb.Append("章节来源：经典 ").Append(legacy)
-              .Append(" · 玩家预设 ").Append(user)
-              .Append(" · AI 专属 ").Append(ai)
+            sb.Append("必选关卡：AI 专属 ").Append(ai)
+              .Append(" / 至少 ").Append(Goals.GoalChapterGenerator.MinAiChapters)
               .Append("（已通关 ").Append(cleared).Append("）\n");
-            sb.Append(g.journeyReady
-                ? "旅程状态：正式生成完成 ✓\n"
-                : "旅程状态：⚠ 缺少 AI 专属章节，尚未进入「正式生成完成」\n");
+            sb.Append("附加可选：经典关卡 ").Append(legacy)
+              .Append(" · 玩家预设 ").Append(user).Append('\n');
+            if (!g.journeyReady)
+                sb.Append("旅程状态：⚠ 缺少 AI 专属章节，尚未进入「正式生成完成」\n");
+            else if (ai < Goals.GoalChapterGenerator.MinAiChapters)
+                sb.Append("旅程状态：正在补齐必选关卡（").Append(ai).Append('/')
+                  .Append(Goals.GoalChapterGenerator.MinAiChapters).Append("）…\n");
+            else
+                sb.Append("旅程状态：正式生成完成 ✓\n");
 
             if (g.evolution.Count > 0)
             {

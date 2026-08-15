@@ -124,6 +124,50 @@ namespace AdversityRoad.Goals
             return m != null && m.physical;
         }
 
+        /// <summary>
+        /// 按弱点轴给出两个物理机制 + 一个心理机制（供 Prompt、Fallback 与"就近修复"共用）。
+        ///
+        /// 模型写错机制 id 时不该整章作废：它已经说清了这一关要考验什么（弱点轴），
+        /// 那就按轴取一套默认机制补上——玩到的还是这一关，只是玩法回到了已批准的那几种。
+        /// </summary>
+        public static void SuggestMechanics(WeaknessAxis axis,
+            out string physical1, out string physical2, out string mental)
+        {
+            switch (axis)
+            {
+                case WeaknessAxis.BoundaryConflict:
+                    physical1 = "protect_zone"; physical2 = "route_cost";
+                    mental = "mental_shift_blame"; return;
+                case WeaknessAxis.FairnessSensitivity:
+                    physical1 = "evidence_collect"; physical2 = "boss_phase";
+                    mental = "mental_provoke"; return;
+                case WeaknessAxis.NoiseSensitivity:
+                    physical1 = "stealth_observe"; physical2 = "route_cost";
+                    mental = "mental_noise"; return;
+                case WeaknessAxis.Shame:
+                    physical1 = "escort_protect"; physical2 = "evidence_collect";
+                    mental = "mental_compare"; return;
+                case WeaknessAxis.JobAnxiety:
+                    physical1 = "timed_actions"; physical2 = "explore_branching";
+                    mental = "mental_doubt"; return;
+                case WeaknessAxis.SelfDoubt:
+                    physical1 = "beacon_ignite"; physical2 = "terrain_climb";
+                    mental = "mental_freeze"; return;
+                case WeaknessAxis.LowConfidence:
+                    physical1 = "beacon_ignite"; physical2 = "timed_actions";
+                    mental = "mental_urgency"; return;
+                case WeaknessAxis.FailureFear:
+                    physical1 = "source_hunt"; physical2 = "explore_branching";
+                    mental = "mental_freeze"; return;
+                case WeaknessAxis.WillpowerCollapse:
+                    physical1 = "resource_scavenge"; physical2 = "terrain_climb";
+                    mental = "mental_urgency"; return;
+                default:   // Procrastination 及其它
+                    physical1 = "timed_actions"; physical2 = "explore_branching";
+                    mental = "mental_urgency"; return;
+            }
+        }
+
         // ================= 敌人库 =================
 
         /// <summary>敌人名是否在已批准的 EnemyCatalog 里。</summary>
@@ -138,6 +182,89 @@ namespace AdversityRoad.Goals
             }
             return false;
         }
+
+        /// <summary>
+        /// 敌人名的**就近映射**：模型写的名字对不上库里任何一条时，按语义找最接近的一条。
+        ///
+        /// 为什么必须有这一层：模型面对「完成并发布一个自己的作品」这样的目标，
+        /// 写出来的敌人叫「截止倒计时」「需求膨胀者」「便签风暴」——它在用玩家的语言
+        /// 描述玩家的处境，这正是我们要的。要求它逐字写出 `TomorrowPhantom`，
+        /// 等于要求它背下内部枚举表；对不上就整章作废，等于因为措辞不合规而没收整关。
+        ///
+        /// 三级匹配：包含关系 → 关键词归轴 → 失败（由调用方按轴取默认）。
+        /// </summary>
+        public static bool TryEnemyFuzzy(string name, out EnemyType type)
+        {
+            type = EnemyType.TomorrowPhantom;
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            string n = name.Trim();
+
+            // ① 包含关系：「拖延影魔王」↔「拖延影魔」、「TomorrowPhantom 明日幻影」↔ 枚举名
+            foreach (EnemyType t in System.Enum.GetValues(typeof(EnemyType)))
+            {
+                string en = t.ToString(), cn = EnemyCatalog.TypeLabel(t);
+                if (n.Contains(en) || en.Contains(n)) { type = t; return true; }
+                if (!string.IsNullOrEmpty(cn) && (n.Contains(cn) || cn.Contains(n)))
+                { type = t; return true; }
+            }
+
+            // ② 关键词归轴：认不出这一条具体是谁，但认得出它在考验哪一项
+            foreach (var kv in EnemyKeywordAxis)
+                if (n.Contains(kv.Key))
+                {
+                    SuggestEnemies(kv.Value, out var ext, out _, out _);
+                    type = ext;
+                    return true;
+                }
+
+            return false;
+        }
+
+        /// <summary>敌人名关键词 → 弱点轴（只用于就近映射，不参与正式匹配）。</summary>
+        static readonly Dictionary<string, WeaknessAxis> EnemyKeywordAxis =
+            new Dictionary<string, WeaknessAxis>
+            {
+                { "拖延", WeaknessAxis.Procrastination },
+                { "明天", WeaknessAxis.Procrastination },
+                { "倒计时", WeaknessAxis.Procrastination },
+                { "截止", WeaknessAxis.Procrastination },
+                { "分心", WeaknessAxis.NoiseSensitivity },
+                { "噪声", WeaknessAxis.NoiseSensitivity },
+                { "干扰", WeaknessAxis.NoiseSensitivity },
+                { "挑衅", WeaknessAxis.NoiseSensitivity },
+                { "眼神", WeaknessAxis.Shame },
+                { "议论", WeaknessAxis.Shame },
+                { "羞耻", WeaknessAxis.Shame },
+                { "评价", WeaknessAxis.Shame },
+                { "比较", WeaknessAxis.Shame },
+                { "怀疑", WeaknessAxis.SelfDoubt },
+                { "否定", WeaknessAxis.SelfDoubt },
+                { "低语", WeaknessAxis.SelfDoubt },
+                { "完美", WeaknessAxis.LowConfidence },
+                { "追问", WeaknessAxis.LowConfidence },
+                { "虚无", WeaknessAxis.LowConfidence },
+                { "膨胀", WeaknessAxis.BoundaryConflict },
+                { "需求", WeaknessAxis.BoundaryConflict },
+                { "请求", WeaknessAxis.BoundaryConflict },
+                { "代付", WeaknessAxis.BoundaryConflict },
+                { "内疚", WeaknessAxis.BoundaryConflict },
+                { "责任", WeaknessAxis.FairnessSensitivity },
+                { "不公", WeaknessAxis.FairnessSensitivity },
+                { "赖账", WeaknessAxis.FairnessSensitivity },
+                { "债", WeaknessAxis.FairnessSensitivity },
+                { "沉默", WeaknessAxis.JobAnxiety },
+                { "无回", WeaknessAxis.JobAnxiety },
+                { "拒信", WeaknessAxis.JobAnxiety },
+                { "面试", WeaknessAxis.JobAnxiety },
+                { "失败", WeaknessAxis.FailureFear },
+                { "旧我", WeaknessAxis.FailureFear },
+                { "过去", WeaknessAxis.FailureFear },
+                { "回声", WeaknessAxis.FailureFear },
+                { "疲惫", WeaknessAxis.WillpowerCollapse },
+                { "低谷", WeaknessAxis.WillpowerCollapse },
+                { "饥饿", WeaknessAxis.WillpowerCollapse },
+                { "寒", WeaknessAxis.WillpowerCollapse },
+            };
 
         /// <summary>按弱点轴给出该轴的外部敌人 / 内心敌人 / Boss 原型建议（供 Prompt 与 Fallback 用）。</summary>
         public static void SuggestEnemies(WeaknessAxis axis,
@@ -241,6 +368,24 @@ namespace AdversityRoad.Goals
             var l = new List<string>();
             foreach (var m in Mechanics)
                 if (!physicalOnly || m.physical) l.Add(m.id);
+            return l;
+        }
+
+        /// <summary>
+        /// 已批准敌人清单，写成「英文名(中文)」发给模型。
+        ///
+        /// 英文名是它必须逐字填回来的键，中文只是让它挑得准——
+        /// 光给一串 PascalCase 英文，模型很难判断 GuiltThrower 和 DebtShadow
+        /// 哪个更适合"被人情绑架"的那一关。
+        /// </summary>
+        public static List<string> AllEnemyNames()
+        {
+            var l = new List<string>();
+            foreach (EnemyType t in System.Enum.GetValues(typeof(EnemyType)))
+            {
+                string cn = EnemyCatalog.TypeLabel(t);
+                l.Add(string.IsNullOrEmpty(cn) ? t.ToString() : t + "(" + cn + ")");
+            }
             return l;
         }
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AdversityRoad.Personalization;
 
 namespace AdversityRoad.Goals
 {
@@ -157,6 +158,69 @@ namespace AdversityRoad.Goals
         {
             foreach (var p in Props) if (p == id) return true;
             return false;
+        }
+
+        /// <summary>
+        /// 兜底房间：模型没写房间、或者房间里的道具全写错被清空时用这一套。
+        ///
+        /// 三间房而不是一间：入口（看清处境）→ 阻力所在（这一关真正要打的地方）→
+        /// 深处（Boss / 结算）。一间空房不构成关卡，玩家走进去会立刻看出这是敷衍的。
+        /// 中间那间按弱点轴换陈设——考验专注的地方摆的是工位与显示器，
+        /// 考验边界的地方摆的是柜台与队列，玩家一眼能看出这关在针对什么。
+        /// </summary>
+        public static List<SiteRoom> DefaultRooms(string siteKind, WeaknessAxis axis)
+        {
+            var mid = new SiteRoom { name = "阻力所在", sizeHint = "large" };
+            switch (axis)
+            {
+                case WeaknessAxis.BoundaryConflict:
+                    mid.purpose = "一个个请求在这里排队递到你面前";
+                    mid.props.AddRange(new[] { "counter", "barrier", "chair", "papers" });
+                    break;
+                case WeaknessAxis.NoiseSensitivity:
+                    mid.purpose = "声音与目光从四面挤过来，专注被持续拉扯";
+                    mid.props.AddRange(new[] { "pillar", "bench", "vending", "sign" });
+                    break;
+                case WeaknessAxis.JobAnxiety:
+                    mid.purpose = "投出去的东西堆在这里，没有一条回音";
+                    mid.props.AddRange(new[] { "counter", "printer", "papers", "chair" });
+                    break;
+                case WeaknessAxis.Shame:
+                    mid.purpose = "所有人都能看见你在这里做得怎么样";
+                    mid.props.AddRange(new[] { "billboard", "bench", "monitor", "plant" });
+                    break;
+                case WeaknessAxis.WillpowerCollapse:
+                    mid.purpose = "撑不住的时候，这里连个能坐下的地方都要找";
+                    mid.props.AddRange(new[] { "crate", "pipe", "trashbin", "bench" });
+                    break;
+                case WeaknessAxis.FairnessSensitivity:
+                    mid.purpose = "该谁承担的事在这里被反复推来推去";
+                    mid.props.AddRange(new[] { "table", "papers", "cabinet", "sign" });
+                    break;
+                case WeaknessAxis.FailureFear:
+                    mid.purpose = "以前失手的东西被一件件摆出来展示";
+                    mid.props.AddRange(new[] { "shelf", "sign", "pillar", "papers" });
+                    break;
+                default:   // 拖延 / 自我怀疑 / 低信心
+                    mid.purpose = "该做的事都在这里，但每一件都可以再等一等";
+                    mid.props.AddRange(new[] { "desk", "monitor", "papers", "whiteboard" });
+                    break;
+            }
+
+            return new List<SiteRoom>
+            {
+                new SiteRoom
+                {
+                    name = "入口", purpose = "先看清这地方是什么样子", sizeHint = "medium",
+                    props = new List<string> { "door_frame", "sign", "plant" }
+                },
+                mid,
+                new SiteRoom
+                {
+                    name = "深处", purpose = "挡在最后的那一个在这里等你", sizeHint = "large",
+                    props = new List<string> { "pillar", "crate", "lamp" }
+                },
+            };
         }
 
         /// <summary>已批准 NPC 角色类型：只有类型，没有姓名（方案 8.2 隐私红线）。</summary>
