@@ -1,11 +1,68 @@
 # 逆境之路 AdversityRoad
 
-Unity 第三人称动作冒险 RPG：把现实中的困境转译为可战斗、可识别、可反击、可成长的敌人与场景。
+**V2.0**：由玩家真实目标驱动的个性化开放世界逆境动作 RPG。
+玩家不是为了"通关心理章节"而行动，而是为了一个自己选择的目标穿越世界。
 
-> 看见弱点 → 面对困境 → 主动战斗 → 失败复盘 → 强化意志 → 再次挑战 → 逆袭成长
+> 输入一个你真正想实现的目标，游戏就把通往它的道路变成一座
+> 会观察你、针对你、阻挡你，也允许你学习、逆袭并最终穿越的开放世界。
+
+> 目标是方向，开放世界是道路，逆境是阻力，战斗是回应，失败是证据，
+> 复盘是学习，宿敌是成长对照，逆袭是变化的证明，最终胜利是抵达自己选择的目标。
 
 - 引擎：Unity 6000.5（URP，安卓/PC 双端）
 - 打包：GitHub Actions + game-ci/unity-builder（推送到 `main` 或 `claude/**` 分支自动构建安卓 APK，Library 已缓存）
+
+## V2.0 上层操作系统（本次迭代）
+
+V2.0 采用"保留资产与机制、重构上层调度"的策略：**V1.0 的七大章节、24 个子章、
+全部敌人 / Boss / 动作 / 姿态 / 技能 / 装备 / 言语攻防 / 心理数值 / 复盘 / 安全屋
+一个都没有删除**——它们被升级为 Goal OS 可以动态调用的「通用逆境模块库」。
+
+| V2.0 系统 | 它解决的问题 | 落在哪里 |
+| --- | --- | --- |
+| **Goal OS** | V1 把心理章节当主线，玩家理解成"我要完成一套心理训练"；V2 把结构反转，目标才是主线 | `Scripts/Goals/GoalOS.cs`、`GoalParser.cs` |
+| **Goal Journey Graph** | 目标旅程是有向图不是一条线：直接打 / 先训练 / 找资源 / 绕开 / 失败后恢复都是路 | `GoalJourneyGraph.cs` |
+| **四维进度** | 拒绝"完成了 63%"的百分比幻觉：里程碑 · 关键行动 · 已消除障碍 · 能力准备 | `GoalJourneyGraph.Progress` |
+| **AI 目标专属章节（强制）** | 只匹配固定模块 = 心理标签推荐；每条旅程必须至少有一个只属于这个目标的章节 | `GoalChapterGenerator.cs`、`ChapterBlueprintValidator.cs` |
+| **Fallback Blueprint** | 没网络 / 没 API Key / 生成被拒时，本地照样产出合法的专属章节 | `FallbackBlueprintLibrary.cs` |
+| **开放世界** | 从关卡选择器升级为一片连续可走的持久化城市：家门口一路走到任务区不过菜单 | `Scripts/OpenWorld/OpenWorldBuilder.cs` |
+| **三层世界** | 现实层可信 → 逆境层扭曲但可识别 → 心理裂隙通往 V1 经典关卡 → 回到原地点 | `WorldLayerController.cs` |
+| **逆境导演** | 不是作弊 AI，而是找"足够困难但可学习"的区间；五维预算，公平边界写死在代码里 | `Scripts/Adversity/AdversityDirector.cs` |
+| **自适应敌人 / 宿敌** | 敌人学的是**游戏行为**不是隐私；被识破就换打法；宿敌记住每一场 | `AdaptiveEnemyController.cs`、`NemesisSystem.cs` |
+| **Stress / Resolve** | 把"快撑不住"做成可玩体验；逆转只奖励压力下的高质量行动，绝不随机送胜利 | `StressStateMachine.cs`、`ResolveSystem.cs` |
+| **逆境画像** | 只用可观察行为；每条边带样本数与置信度；可查看、可删除、可一键关闭 | `AdversityProfile.cs` |
+
+### 一条旅程是怎么跑起来的
+
+1. 在「目标」面板写下你想去的方向（或选模板）。系统当场做**有效性检查**：
+   行动性 / 完成定义 / 现实可控性 / 冲突提示；以伤害、犯罪、报复为方向的目标**直接拒绝**并给出安全替代。
+2. Goal Parser 生成初始 Goal Model：里程碑、关键行动、障碍、需要成长的能力、风险。
+3. 章节装配：V1 七大线按**目标相关性**插入 → 你自己预设的障碍可以加进来 →
+   AI 生成**至少一个**目标专属章节（过 CQS≥0.72 与四重校验才准进世界，不合格就用本地兜底）。
+4. 走进开放城区。当前里程碑的章节在对应区域展开；Legacy 章节则在现实地点长出**心理裂隙**。
+5. 打不过就撤：与目标无关的挑衅，解除锁定离开判为**边界胜利**。
+6. 输了不是重生了事：世界状态持久变化（路线关闭但出现替代路线、宿敌升级换巡逻区、
+   时间推进），失败的那个敌人成为**宿敌候选**并记住你的打法。
+7. 濒临崩溃时打开**逆转窗口**——一次精准格挡或一次说清事实的回击就能翻过来。
+8. 全部里程碑完成 → **终局守门人**出现，它守的是你自己写下的完成条件，
+   不是统一的旧我。击败它，这条旅程进入 Hall of Goals。
+
+### 开放世界垂直切片（方案 21.2 验收项）
+
+一片连续可自由移动的城市区域：**玩家住宅 + 街道 + 公交站 + 商店 + 办公区 + 小巷**。
+
+| 区域 | 环境 | 玩法 |
+| --- | --- | --- |
+| 住宅区 | Player Home（玄关/客厅/卧室/厨房/卫生间可走动）、小区楼栋、便利店、绿地长椅 | 生活、准备、恢复、社会事件 |
+| 商业区 | 商场、店铺、广场 | 人群压力、机会、交易 |
+| 工作区 | 写字楼、可进入的一层大堂、会议桌、招聘区 | 目标专属任务、评价压力 |
+| 交通区 | 主干道、十字路口、公交站、地铁入口、停车场 | 路线选择、时间压力、追逐 |
+| 生活服务区 | 医院、餐馆、银行、公园 | 资源、支持、恢复 |
+| 边缘区 | 小巷、车库入口、废弃建筑 | 高风险遭遇、宿敌 |
+
+**Player Home 的物理 UI**（方案 17.3：菜单功能由房间物件承载，而不是一屏按钮）：
+墙上目标板 → 目标与旅程；书桌 → 复盘与行动计划；衣柜 → 装备；镜子 → 角色与旧我；
+电脑 → 弱点/优势图谱；手机 → 现实行动打卡；冰箱 → 补给。走近按 **E** 使用，门通向开放世界。
 
 ## 当前可玩内容
 
@@ -2324,6 +2381,7 @@ Boss 重招（基础 22 × 精英招 1.5 × 背刺 1.4 ≈ 46）能一口气打�
 | 1 / 2 / 3 | 技能：定心护体 / 能量斩·斩念气刃 / 责任归还（法院清除过度负责、打回责任球） |
 | 4 / 5 / 6 | 技能：五分钟火种（解冻/恢复行动力）/ 不读心盾 / 注意力回收（清幻影） |
 | E（靠近目标板按住） | 目标板蓄力，恢复心理属性 |
+| E（靠近家中物件 / 心理裂隙） | 使用房间物件（目标板/书桌/衣柜/镜子/电脑/手机/冰箱）；走进裂隙 |
 
 ### 安卓真机
 
@@ -2352,6 +2410,13 @@ Boss 重招（基础 22 × 精英招 1.5 × 背刺 1.4 ≈ 46）能一口气打�
   面对 Boss 抛来的**责任球**——红球举「挡」打回、绿球别挡接下，被减速时按「还」一次清掉
 - 右上角：「敌人+」添加挑战、「AI台词」配置提示词与 LLM、「角色」切换外观、「日志」查看 AI 调用记录、
   「复盘」打开战后复盘四栏（归档清空反刍值）
+- **V2.0 新增四个面板**：「目标」（写下目标 / 有效性检查 / 重铸 / 现实行动打卡）、
+  「旅程」（旅程图 · 障碍图 · 章节来源三个页签，可加入自己预设的章节）、
+  「逆境史」（宿敌逐条回放与逆袭判定 + Hall of Goals）、
+  「图谱」（弱点/优势图谱：样本数、场景数、置信度、证据等级，可整条删除、可一键关闭个性化）
+- **HUD 情境化**：常驻只有 HP / 体力 / 意志 + 当前目标 + 姿态条；
+  专注、自尊、边界、行动、反刍、消耗、刺痛**被打到哪一条哪一条才亮**，几秒后收起
+  （底层数值一个都没删，复盘页仍然完整展示）
 - 敌人发动心理攻击时，屏幕下方弹出「言语攻防」三选一回应面板——选对即可回击破防、化解伤害
 - 左侧属性条下方「姿态条」五枚按钮：点选切换战斗姿态（把姿态对准来袭弱点轴即可大幅减伤）
 
@@ -2370,6 +2435,23 @@ Assets/
 │   ├── Materials/M_Base.mat          # URP Lit 基础材质（保证 Shader 进包）
 │   ├── Resources/Quiz/quiz_bank.json # 休养生息题库（420 题·7 章·来源标签可追溯）
 │   └── Scripts/
+│       ├── Goals/         # V2.0 Goal OS：GoalModel/GoalParser(有效性检查+安全拒绝)、
+│       │                  # GoalJourneyGraph(有向图+四维进度)、GoalPriorityEngine、
+│       │                  # GoalChapterGenerator(三层Prompt+JSON契约)、
+│       │                  # ChapterBlueprintValidator(CQS+四重校验)、
+│       │                  # FallbackBlueprintLibrary、ChapterModuleLibrary(已批准模块库)、
+│       │                  # LegacyChapterCatalog(V1 七大线→通用逆境模块)、GoalProgressHook
+│       ├── OpenWorld/     # V2.0 开放世界：OpenWorldBuilder(六区连续城区+Player Home)、
+│       │                  # DistrictCatalog、WorldState(持久世界状态)、
+│       │                  # WorldLayerController(现实/逆境/内心三层+心理裂隙)、
+│       │                  # WorldEventManager(六类事件)、CityNpc(日程)、
+│       │                  # GoalBeaconController、ProceduralQuestAssembler(确定性组装)、
+│       │                  # GoalWorldBinder、HomeFixture(家中物理 UI)
+│       ├── Adversity/     # V2.0 逆境层：AdversityDirector + AdversityBudget(五维预算)、
+│       │                  # PlayerBehaviorAnalyzer、AdversityProfile(弱点/优势/经历图谱)、
+│       │                  # AdaptiveEnemyController(T1-T7+心理攻击链)、NemesisSystem、
+│       │                  # AdversityHistoryHook(逆袭判定)、StressStateMachine、
+│       │                  # ResolveSystem + CourageSystem
 │       ├── Core/          # GameBootstrap、StoryManager(十章剧情)、BattleFlow、GrowthSystem
 │       │                  # (复盘点/技能树/套装/图鉴/档案)、QuizSystem(休养生息答题规则层)、
 │       │                  # QuizAiBank/QuizAiService(AI自动命题·校验与生成)、
@@ -2384,12 +2466,35 @@ Assets/
 │       ├── Personalization/ # 弱点轴、玩家画像、场景匹配、安全过滤
 │       ├── Quest/         # 任务与复盘（改进卡）
 │       ├── Mobile/        # 虚拟摇杆、触屏按钮、转镜头区（消费式输入，防丢帧）
-│       ├── UI/            # HUD、敌人状态条、敌人配置面板、AI提示词面板、QuizPanel(休养生息答题)、
-│       │                  # QuizReviewPanel(AI命题审核)
+│       ├── UI/            # HUD(常驻三条+情境七条)、敌人状态条、敌人配置面板、AI提示词面板、
+│       │                  # QuizPanel(休养生息答题)、QuizReviewPanel(AI命题审核)、
+│       │                  # GoalOSPanel(目标板)、JourneyMapPanel(旅程/障碍/章节来源)、
+│       │                  # AdversityHistoryPanel(宿敌逆袭史 + Hall of Goals)、
+│       │                  # AdversityProfilePanel(弱点/优势图谱·置信度·可删可关)
 │       └── Save/          # 本地 JSON 存档（数据最小化、可一键删除）
 ```
 
 ## 开发路线（对应产品方案）
+
+### V2.0 阶段（本次迭代，对应方案第 22 节）
+
+- [x] 阶段 0 架构冻结：GoalData / Chapter Blueprint / Adversity Budget /
+      VulnerabilityEdge / NemesisData 五份数据契约冻结；Legacy 章节资产清单建立（V1 零删减）；
+      AI Prompt 与 JSON Schema 输出契约成文
+- [x] 阶段 1 开放世界基础：Player Home、六大街区、NPC 日程、交通背景、世界状态持久化，
+      V1 玩家控制 / 镜头 / 战斗系统直接在开放世界里跑
+- [x] 阶段 2 Goal OS：目标输入、Goal Parser、Journey Graph、Goal Beacon、Goal Priority，
+      Legacy 章节与目标绑定
+- [x] 阶段 3 AIRequired 章节：Chapter Generator、Validator、Fallback Library、
+      ProceduralQuestAssembler（相同 seed 必复现）
+- [x] 阶段 4 逆境导演与自适应敌人：行为分析、弱点/优势图谱、五维逆境预算、
+      T1-T7 敌人与宿敌、Stress / Resolve / Courage
+- [x] 阶段 5 V1 七章开放世界化：24 个子章升级为可被 Goal OS 动态插入的通用逆境模块，
+      通过心理裂隙从现实地点进入（原关卡资产原样复用）
+- [ ] 阶段 6 商业化打磨：武术动画与敌方动作语法、开放世界美术密度、
+      移动端性能（Addressables / 流式加载）、存档迁移
+
+### V1.0 阶段（已完成，全部保留）
 
 - [x] 第 1-2 阶段：核心动作原型 + 战斗闭环
 - [x] 第 3 阶段：心理战系统（五维心理属性、心理攻击、定心格挡、心理硬直）
