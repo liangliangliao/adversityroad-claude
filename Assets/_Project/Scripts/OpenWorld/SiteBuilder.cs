@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -13,6 +14,8 @@ namespace AdversityRoad.OpenWorld
         public string chapterId;
         public string siteId;
         public int zoneIndex = -1;
+        /// <summary>它占用的坐标槽位（卸载时归还，避免场景越建越远丢精度）。</summary>
+        public int slot = -1;
         public GameObject root;
         public Vector3 origin;
         public Vector3 playerSpawn;
@@ -41,6 +44,9 @@ namespace AdversityRoad.OpenWorld
         const float SiteSpacing = 600f;
 
         static int _nextSlot;
+        // 槽位回收：场景不断生成又卸载时，坐标不能一路往外飘——
+        // 浮点精度会在十万单位外肉眼可见地抖起来。
+        static readonly Stack<int> _freeSlots = new Stack<int>();
         static readonly Dictionary<string, SiteInstance> _live = new Dictionary<string, SiteInstance>();
 
         static readonly Color Floor = new Color(0.46f, 0.45f, 0.44f);
@@ -55,27 +61,34 @@ namespace AdversityRoad.OpenWorld
         // ================= 生成 =================
 
         /// <summary>
-        /// 按蓝图生成场景。相同 seed → 相同结果。
+        /// 按蓝图生成场景（分帧进行）。相同 seed → 相同结果。
         /// 生成后注册为一个**动态区域**，传送/存档/雾色/剧情锁都能像原生区域一样对待它。
+        ///
+        /// 之所以要分帧：一处场景是上百个构件加一次导航烘焙，挤在同一帧里建完，
+        /// 玩家会在走近入口的那一刻明显卡一下。所以按"外壳→布局→氛围→烘焙→放人"
+        /// 分成若干步，每步之间让出一帧——建造过程本身不该被玩家感觉到。
         /// </summary>
-        public static SiteInstance Build(GoalChapterData chapter, WorldContext ctx)
+        public static IEnumerator BuildRoutine(GoalChapterData chapter, WorldContext ctx,
+            System.Action<SiteInstance> onDone)
         {
-            if (chapter == null || chapter.site == null || chapter.site.IsEmpty) return null;
+            if (chapter == null || chapter.site == null || chapter.site.IsEmpty)
+            { onDone?.Invoke(null); yield break; }
             if (_live.TryGetValue(chapter.chapterId, out var existing) && existing.root != null)
-                return existing;
+            { onDone?.Invoke(existing); yield break; }
 
             var bp = chapter.site;
             var kind = SiteKitCatalog.Kind(bp.siteKind);
             var rng = new System.Random(chapter.assemblySeed);
 
+            int slot = _freeSlots.Count > 0 ? _freeSlots.Pop() : _nextSlot++;
             var inst = new SiteInstance
             {
                 chapterId = chapter.chapterId,
                 siteId = "site_" + chapter.chapterId,
-                origin = new Vector3(SiteOriginX + _nextSlot * SiteSpacing, 0f, 0f),
+                slot = slot,
+                origin = new Vector3(SiteOriginX + slot * SiteSpacing, 0f, 0f),
                 blueprint = bp
             };
-            _nextSlot++;
 
             inst.root = new GameObject("Site_" + bp.siteName);
             inst.root.transform.position = inst.origin;
@@ -94,20 +107,22 @@ namespace AdversityRoad.OpenWorld
             {
                 Shell(inst, w, d, 2.2f);   // 户外用矮护栏围出可玩边界
             }
+            yield return null;
 
             // ---- 布局 ----
             switch (bp.layout)
             {
-                case "corridor": BuildCorridor(inst, bp, rng, w, d); break;
-                case "maze": BuildMaze(inst, bp, rng, w, d); break;
-                case "hall": BuildHall(inst, bp, rng, w, d); break;
-                case "openblock": BuildOpenBlock(inst, bp, rng, w, d); break;
-                case "courtyard": BuildCourtyard(inst, bp, rng, w, d); break;
-                default: BuildRooms(inst, bp, rng, w, d); break;
+                case "corridor": yield return BuildCorridor(inst, bp, rng, w, d); break;
+                case "maze": yield return BuildMaze(inst, bp, rng, w, d); break;
+                case "hall": yield return BuildHall(inst, bp, rng, w, d); break;
+                case "openblock": yield return BuildOpenBlock(inst, bp, rng, w, d); break;
+                case "courtyard": yield return BuildCourtyard(inst, bp, rng, w, d); break;
+                default: yield return BuildRooms(inst, bp, rng, w, d); break;
             }
 
             // ---- 灯光与氛围 ----
             ApplyAmbience(inst, bp, kind, w, d);
+            yield return null;
 
             // ---- 出入口 ----
             inst.playerSpawn = inst.origin + new Vector3(0, 1.1f, -d / 2 + 4f);
@@ -119,6 +134,7 @@ namespace AdversityRoad.OpenWorld
 
             // ---- 本场景独立烘焙导航（不碰主世界的 NavMesh） ----
             BakeNav(inst);
+            yield return null;
 
             // ---- 人与敌人（导航好了才放） ----
             SpawnNpcs(inst, bp, rng, ctx);
@@ -128,7 +144,7 @@ namespace AdversityRoad.OpenWorld
                 SiteKitCatalog.LayoutName(bp.layout) + "）房间 " + bp.rooms.Count +
                 " · NPC " + bp.npcs.Count + " · seed " + chapter.assemblySeed +
                 " → 动态区域 #" + inst.zoneIndex);
-            return inst;
+            onDone?.Invoke(inst);
         }
 
         /// <summary>卸载一个生成出来的场景（章节通关或玩家离开后回收）。</summary>
@@ -136,6 +152,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (chapterId == null || !_live.TryGetValue(chapterId, out var inst)) return;
             if (inst.root != null) Object.Destroy(inst.root);
+            if (inst.slot >= 0) _freeSlots.Push(inst.slot);
             _live.Remove(chapterId);
         }
 
@@ -144,12 +161,14 @@ namespace AdversityRoad.OpenWorld
             foreach (var kv in _live)
                 if (kv.Value.root != null) Object.Destroy(kv.Value.root);
             _live.Clear();
+            _freeSlots.Clear();
+            _nextSlot = 0;
         }
 
         // ================= 布局生成器 =================
 
         /// <summary>房间群：中央走廊两侧开房间——办公层、公寓、病房区最常见的形状。</summary>
-        static void BuildRooms(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildRooms(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             int count = Mathf.Max(2, Mathf.Min(bp.rooms.Count, 6));
             float corridorW = 6f;
@@ -165,6 +184,7 @@ namespace AdversityRoad.OpenWorld
                 var room = bp.rooms[i % bp.rooms.Count];
                 BuildRoomBox(inst, room, new Vector3(cx, 0, cz), new Vector2(roomW - 1.5f, roomD),
                     north, rng);
+                yield return null;   // 一帧一间房：整片场景不再卡在同一帧里建完
             }
 
             // 走廊地面标线
@@ -175,7 +195,7 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>长廊：一条走不完的通道，两侧是门——无限代付走廊那一类的通用形状。</summary>
-        static void BuildCorridor(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildCorridor(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             float hallW = 9f;
             Box(inst, "Wall", new Vector3(0, 2.1f, hallW / 2f), new Vector3(w, 4.2f, 0.5f), Wall);
@@ -193,13 +213,14 @@ namespace AdversityRoad.OpenWorld
                 if (room != null && room.props.Count > 0)
                     BuildProp(inst, room.props[i % room.props.Count],
                         new Vector3(x, 0, north ? hallW / 2f - 2.2f : -hallW / 2f + 2.2f), rng);
+                if (i % 3 == 2) yield return null;
             }
             for (int i = 0; i < 3; i++)
                 inst.enemySpawns.Add(inst.origin + new Vector3(-w / 4f + i * w / 4f, 1.1f, 0));
         }
 
         /// <summary>迷宫：分叉与死路——「需求迷宫」「概念迷环」这类障碍的通用形状。</summary>
-        static void BuildMaze(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildMaze(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             int cols = 7, rows = 5;
             float cw = w / cols, ch = d / rows;
@@ -214,6 +235,7 @@ namespace AdversityRoad.OpenWorld
                     Box(inst, "Wall", new Vector3(px, 1.6f, pz),
                         horizontal ? new Vector3(cw * 0.9f, 3.2f, 0.5f)
                                    : new Vector3(0.5f, 3.2f, ch * 0.9f), Wall);
+                    if (z == 0) yield return null;
                 }
 
             int propIdx = 0;
@@ -224,19 +246,21 @@ namespace AdversityRoad.OpenWorld
                     float pz = -d / 2f + 4f + (float)rng.NextDouble() * (d - 8f);
                     BuildProp(inst, p, new Vector3(px, 0, pz), rng);
                     if (propIdx++ > 12) break;
+                    if (propIdx % 4 == 0) yield return null;
                 }
             inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, d / 4f));
             inst.enemySpawns.Add(inst.origin + new Vector3(w / 4f, 1.1f, -d / 4f));
         }
 
         /// <summary>大厅：一个开阔空间 + 立柱 + 中央焦点——Boss 战与集会场景。</summary>
-        static void BuildHall(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildHall(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             for (int x = -1; x <= 1; x++)
                 for (int z = -1; z <= 1; z++)
                 {
                     if (x == 0 && z == 0) continue;
                     BuildProp(inst, "pillar", new Vector3(x * w * 0.28f, 0, z * d * 0.28f), rng);
+                    yield return null;
                 }
 
             if (bp.rooms.Count > 0)
@@ -254,6 +278,7 @@ namespace AdversityRoad.OpenWorld
                 Vector3 at = new Vector3(Mathf.Cos(ang) * w * 0.3f, 0, Mathf.Sin(ang) * d * 0.3f);
                 foreach (var p in bp.rooms[i].props) BuildProp(inst, p, at, rng);
                 Sign(inst, at + Vector3.up * 3f, bp.rooms[i].name);
+                yield return null;
             }
             inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, d * 0.18f));
             inst.enemySpawns.Add(inst.origin + new Vector3(-8f, 1.1f, 0));
@@ -261,7 +286,7 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>开放街区：户外——路面、人行道、两侧建筑、路灯。</summary>
-        static void BuildOpenBlock(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildOpenBlock(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             Deco(inst, "Road", new Vector3(0, 0.03f, 0), new Vector3(w, 0.04f, 10f),
                 new Color(0.19f, 0.19f, 0.21f));
@@ -292,13 +317,14 @@ namespace AdversityRoad.OpenWorld
                             north ? z - 7f : z + 7f), rng);
                 }
                 Lamp(inst, new Vector3(x, 0, north ? 8f : -8f));
+                yield return null;
             }
             inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.2f, 1.1f, 0));
             inst.enemySpawns.Add(inst.origin + new Vector3(-w * 0.25f, 1.1f, 6f));
         }
 
         /// <summary>围合院落：四面建筑围出一个中庭——最适合"被围观"「被评价」的空间。</summary>
-        static void BuildCourtyard(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        static IEnumerator BuildCourtyard(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             float inner = 0.55f;
             Box(inst, "Building", new Vector3(0, 5f, d * inner / 2f + 6f), new Vector3(w, 10f, 10f), Wall);
@@ -317,6 +343,7 @@ namespace AdversityRoad.OpenWorld
                 Sign(inst, at + Vector3.up * 2.6f, room.name);
                 foreach (var p in room.props) BuildProp(inst, p, at, rng);
                 i++;
+                yield return null;
             }
             inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, 0));
             inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.15f, 1.1f, d * 0.12f));

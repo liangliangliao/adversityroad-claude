@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.AI;
@@ -53,24 +54,26 @@ namespace AdversityRoad.OpenWorld
             !string.IsNullOrEmpty(chapterId) && _live.ContainsKey(chapterId);
 
         /// <summary>
-        /// 把一个章节蓝图组装进开放世界。Legacy 章节不在这里组装——
-        /// 它们通过心理裂隙进入 V1 原关卡（资产复用，不重复造）。
+        /// 把一个章节蓝图组装进开放世界（分帧进行，避免走近入口时卡一下）。
+        /// Legacy 章节不在这里组装——它们通过心理裂隙进入 V1 原关卡（资产复用，不重复造）。
+        ///
+        /// 由 GoalWorldBinder 以协程驱动；组装期间先占位登记，防止同一章节被重复组装。
         /// </summary>
-        public static AssembledEncounter Assemble(GoalChapterData bp, GoalData goal)
+        public static IEnumerator AssembleRoutine(GoalChapterData bp, GoalData goal)
         {
-            if (bp == null || Spawner == null || !DistrictCatalog.Ready) return null;
-            if (!bp.validated) return null;
-            if (_live.ContainsKey(bp.chapterId)) return _live[bp.chapterId];
+            if (bp == null || Spawner == null || !DistrictCatalog.Ready) yield break;
+            if (!bp.validated) yield break;
+            if (_live.ContainsKey(bp.chapterId)) yield break;
 
             if (bp.source == ChapterSource.Legacy)
             {
                 // Legacy：在它对应的区域打开心理裂隙，走进去就是原汁原味的 V1 关卡
                 WorldState.OpenRift(bp.worldDistrictId, bp.legacyZoneIndex, bp.chapterName);
-                return null;
+                yield break;
             }
 
             var district = DistrictCatalog.Get(bp.worldDistrictId);
-            if (district == null) return null;
+            if (district == null) yield break;
 
             var enc = new AssembledEncounter
             {
@@ -79,11 +82,12 @@ namespace AdversityRoad.OpenWorld
                 anchor = DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, 0),
                 live = true
             };
+            _live[bp.chapterId] = enc;   // 先占位：分帧期间不会被再次触发组装
 
             // ---------- 现场把这一章自己的场景建出来（V2.0 的关键一步） ----------
             // 不再是"在固定关卡里换几个敌人"：AI 描述的房间、道具、NPC、灯光、规则
             // 会在这里被真的建成一处可以走进去的地方，并按 seed 完全可复现。
-            enc.site = SiteBuilder.Build(bp, WorldCtx);
+            yield return SiteBuilder.BuildRoutine(bp, WorldCtx, built => enc.site = built);
 
             var rng = new System.Random(bp.assemblySeed);
 
@@ -101,7 +105,6 @@ namespace AdversityRoad.OpenWorld
                 BuildMechanicProps(bp, enc.anchor);
             }
 
-            _live[bp.chapterId] = enc;
             WorldState.Get(bp.worldDistrictId).hasChapter = true;
             GoalOS.NoteChapterAttempt(bp.chapterId);
 
@@ -109,7 +112,6 @@ namespace AdversityRoad.OpenWorld
                 DistrictCatalog.NameOf(bp.worldDistrictId) + " seed=" + bp.assemblySeed +
                 " 敌人×" + enc.enemies.Count);
             GameEvents.RaiseSubtitle("〔章节展开〕" + bp.chapterName + " —— " + bp.successCondition);
-            return enc;
         }
 
         /// <summary>把敌人放进**生成出来的场景**里（不是放在城区街上）。</summary>

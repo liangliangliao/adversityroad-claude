@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Core;
@@ -25,6 +26,8 @@ namespace AdversityRoad.OpenWorld
 
         PlayerController _player;
         float _nextTick;
+        bool _building;
+        string _buildingChapterId = "";
         readonly List<string> _announced = new List<string>();
 
         public static GoalWorldBinder Ensure()
@@ -66,15 +69,28 @@ namespace AdversityRoad.OpenWorld
                 if (dist <= engageRadius)
                 {
                     Announce(ch, d);
-                    if (!ProceduralQuestAssembler.IsAssembled(ch.chapterId))
-                        ProceduralQuestAssembler.Assemble(ch, goal);
+                    // 分帧组装：场景是上百个构件加一次导航烘焙，不能挤在同一帧里建完
+                    if (!ProceduralQuestAssembler.IsAssembled(ch.chapterId) && !_building)
+                        StartCoroutine(AssembleOne(ch, goal));
                 }
-                else if (dist > disengageRadius && ProceduralQuestAssembler.IsAssembled(ch.chapterId))
+                else if (dist > disengageRadius && ProceduralQuestAssembler.IsAssembled(ch.chapterId)
+                         && _buildingChapterId != ch.chapterId)
                 {
+                    // 正在分帧建造的那一处不能中途收走——否则建到一半的场景会漏在世界里
                     ProceduralQuestAssembler.DespawnChapter(ch.chapterId);
                     _announced.Remove(ch.chapterId);
                 }
             }
+        }
+
+        /// <summary>一次只组装一处场景：并行建造会把分帧的意义抵消掉。</summary>
+        IEnumerator AssembleOne(GoalChapterData ch, GoalData goal)
+        {
+            _building = true;
+            _buildingChapterId = ch.chapterId;
+            yield return ProceduralQuestAssembler.AssembleRoutine(ch, goal);
+            _buildingChapterId = "";
+            _building = false;
         }
 
         void Announce(GoalChapterData ch, DistrictRuntime d)
