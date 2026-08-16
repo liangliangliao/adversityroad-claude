@@ -74,7 +74,8 @@ namespace AdversityRoad.OpenWorld
                         StartCoroutine(AssembleOne(ch, goal));
                 }
                 else if (dist > disengageRadius && ProceduralQuestAssembler.IsAssembled(ch.chapterId)
-                         && _buildingChapterId != ch.chapterId)
+                         && _buildingChapterId != ch.chapterId
+                         && !PlayerIsInside(ch))
                 {
                     // 正在分帧建造的那一处不能中途收走——否则建到一半的场景会漏在世界里
                     ProceduralQuestAssembler.DespawnChapter(ch.chapterId);
@@ -82,6 +83,22 @@ namespace AdversityRoad.OpenWorld
                 }
             }
         }
+
+        /// <summary>
+        /// 玩家此刻是不是就站在这一章生成的场景里。
+        ///
+        /// 【这是"进去就一片黑、马上踩空"的真正成因】
+        /// 上面那个远近判定量的是**玩家到城区街区中心的距离**，而生成场景建在 x=20000
+        /// 之外——玩家一走进去，这个距离立刻变成一万多米，远大于 disengageRadius，
+        /// 于是下一个 tick（≤1.2 秒）就把这处场景当成"玩家已经走远了"整个销毁掉。
+        /// 玩家看到的正是：进去还好好的，一秒后地面、墙、灯连同一切消失，
+        /// 人直接掉进虚空——而截图里悬在半空的「限时台」「行动灯台」标牌，
+        /// 就是还没来得及一起销毁的残留。
+        ///
+        /// 所以远近判定必须先排除"人在里面"这一种情况：脚下这块地不能被收走。
+        /// </summary>
+        static bool PlayerIsInside(GoalChapterData ch) =>
+            SiteGate.InsideSite && SiteGate.InsideChapterId == ch.chapterId;
 
         /// <summary>一次只组装一处场景：并行建造会把分帧的意义抵消掉。</summary>
         IEnumerator AssembleOne(GoalChapterData ch, GoalData goal)

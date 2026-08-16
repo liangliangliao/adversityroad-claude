@@ -346,19 +346,75 @@ namespace AdversityRoad.Goals
         }
 
         /// <summary>
+        /// 同一个骨架的场所变体：室内 / 户外各给几个语义相近的选择。
+        ///
+        /// 判断依据是"这条阻力**发生在哪里**最可信"：
+        /// 求职的沉默反馈可以是招聘大厅，也可以是散场后的天台或深夜的地铁站；
+        /// 边界被侵占可以是办公层，也可以是路口和市集。所以不按"室内默认"一刀切，
+        /// 而是让骨架自己声明它的户外对应物，再由 seed 决定这一关落在哪一种。
+        /// </summary>
+        static string PickVariant(Skeleton sk, System.Random rng, out string layout, out string ambience)
+        {
+            // 骨架自带的室内形态
+            string indoorKind = sk.siteKind, indoorLayout = sk.layout, indoorAmb = sk.ambience;
+
+            // 与之对应的户外形态（同一种压力，换到开阔地带发生）
+            string outKind, outLayout, outAmb;
+            switch (sk.siteKind)
+            {
+                case "recruit_hall":
+                case "office_floor":
+                case "meeting_room":
+                    outKind = "crossroad"; outLayout = "openblock"; outAmb = "dusk"; break;
+                case "server_room":
+                case "archive":
+                    outKind = "rooftop"; outLayout = "openblock"; outAmb = "night"; break;
+                case "studio":
+                case "apartment":
+                    outKind = "park"; outLayout = "courtyard"; outAmb = "day"; break;
+                case "subway":
+                case "parking":
+                    outKind = "street_block"; outLayout = "openblock"; outAmb = "rain"; break;
+                case "mall":
+                case "shop":
+                    outKind = "market"; outLayout = "openblock"; outAmb = "day"; break;
+                default:
+                    outKind = "alley"; outLayout = "corridor"; outAmb = "night"; break;
+            }
+
+            // 户外占四成：既保证"不是全都在房子里"，也不至于把室内场景全挤掉——
+            // 有些阻力（面试间、机房、档案室）本来就只发生在室内。
+            bool outdoor = rng.Next(100) < 40;
+            if (SiteKitCatalog.Kind(indoorKind).indoor == false) outdoor = true;   // 骨架本来就是户外
+
+            layout = outdoor ? outLayout : indoorLayout;
+            ambience = outdoor ? outAmb : indoorAmb;
+            return outdoor ? outKind : indoorKind;
+        }
+
+        /// <summary>
         /// 本地场景蓝图：没有网络时照样造出一个"这个目标专属的地方"。
         /// 房间名带上目标关键词，同一条轴在不同目标下也长得不一样。
         /// </summary>
         static SiteBlueprint BuildSite(Skeleton sk, GoalData goal, GoalObstacle ob,
             string keyword, System.Random rng)
         {
+            // 同一条障碍可能出好几关（旅程前段/后段的形态不一样）。骨架是固定的，
+            // 但**场所不能是固定的**：一条目标下五关全在办公层里打，玩家看到的就是
+            // "换了个名字的同一个房间"。这里按 rng 在同类语义的备选里挑一个，
+            // 并且**刻意把室内外混着来**——有些阻力就该发生在街上、天台、路口，
+            // 而不是又一间屋子。rng 由 assemblySeed 派生，所以仍然完全可复现。
+            string kind = PickVariant(sk, rng, out string layout, out string ambience);
+
             var site = new SiteBlueprint
             {
                 siteName = string.IsNullOrEmpty(keyword) ? sk.name : keyword + "·" + sk.name,
-                siteKind = sk.siteKind,
-                layout = sk.layout,
-                ambience = sk.ambience,
-                sizeHint = rng.Next(100) < 25 ? "large" : "medium"
+                siteKind = kind,
+                layout = layout,
+                ambience = ambience,
+                sizeHint = SiteKitCatalog.Kind(kind).indoor
+                    ? (rng.Next(100) < 25 ? "large" : "medium")
+                    : "large"   // 户外就该开阔，medium 的户外场地小得像个院子
             };
             if (site.siteName.Length > 16) site.siteName = site.siteName.Substring(0, 16);
 

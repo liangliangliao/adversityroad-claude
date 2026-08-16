@@ -588,23 +588,48 @@ namespace AdversityRoad.Goals
         static float ScoreSafety(GoalChapterData bp, GoalData goal, out string issue)
         {
             issue = "";
-            string blob = bp.chapterName + " " + bp.successCondition + " " + bp.failureConsequence + " " +
-                string.Join(" ", bp.safetyTags.ToArray());
+
+            // 只扫**玩家真的会看到的内容**。
+            //
+            // 以前这里把 safetyTags 也拼进来一起扫，后果是灾难性的：模型很自觉，
+            // safetyTags 里填的是「无报复」「非报复」「不含自伤」——它在声明自己**避开了**什么，
+            // 而我们看到子串「报复」就把整章毙掉。实机日志上是五章五个同样的
+            // 「安全校验未通过：包含禁止内容「报复」」，通过 0、拒绝 5，
+            // 于是每一次都退回本地 Fallback——模型写的东西一个字都没进过游戏。
+            //
+            // safetyTags 是**元数据**，不是内容；它只该参与"玩家禁用主题"的比对。
+            string blob = bp.chapterName + " " + bp.successCondition + " " + bp.failureConsequence;
             foreach (var b in BannedContent)
                 if (blob.Contains(b)) { issue = "包含禁止内容「" + b + "」"; return 0f; }
 
+            // 禁用主题比对：先剔掉声明式写法（「无XX」「不含XX」「非XX」）。
+            // 不剔的话，模型写「无自伤」会被判成"命中禁用主题 自伤"——
+            // 又是一次因为它守规矩而毙掉它。
             var safety = GameManager.Instance != null ? GameManager.Instance.safety : null;
-            if (safety != null)
-                foreach (var tag in bp.safetyTags)
-                    if (safety.IsThemeDisabled(tag))
-                    { issue = "命中玩家禁用主题「" + tag + "」"; return 0f; }
-
-            if (goal != null)
-                foreach (var tag in bp.safetyTags)
-                    if (goal.safetyTags.Contains(tag))
-                    { issue = "命中该目标的禁用主题「" + tag + "」"; return 0f; }
+            foreach (var raw in bp.safetyTags)
+            {
+                string tag = StripNegation(raw);
+                if (string.IsNullOrEmpty(tag)) continue;
+                if (safety != null && safety.IsThemeDisabled(tag))
+                { issue = "命中玩家禁用主题「" + tag + "」"; return 0f; }
+                if (goal != null && goal.safetyTags.Contains(tag))
+                { issue = "命中该目标的禁用主题「" + tag + "」"; return 0f; }
+            }
 
             return 1f;
+        }
+
+        /// <summary>去掉标签里的否定前缀：「无报复」「不含报复」「非报复」→「报复」。</summary>
+        static string StripNegation(string tag)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) return "";
+            string t = tag.Trim();
+            string[] prefixes = { "不包含", "不涉及", "不含", "无任何", "没有", "禁止", "避免", "无", "非" };
+            foreach (var p in prefixes)
+                if (t.Length > p.Length && t.StartsWith(p))
+                    // 只剥一层：「无报复」→「报复」。剥完仍是声明式的极少见，不再递归。
+                    return t.Substring(p.Length);
+            return t;
         }
 
         // ================= 清洗 =================

@@ -94,6 +94,9 @@ namespace AdversityRoad.OpenWorld
             inst.root.transform.position = inst.origin;
 
             float scale = bp.sizeHint == "large" ? 1.35f : bp.sizeHint == "small" ? 0.75f : 1f;
+            // 户外场景再放大一截：同样的 60×46 放在街上就是个院子，
+            // 玩家要的"开阔地带"得真的开阔才成立
+            if (!kind.indoor) scale *= 1.6f;
             float w = 60f * scale, d = 46f * scale;
 
             // ---- 周边街区：先把"这地方在城市里"建出来 ----
@@ -111,7 +114,9 @@ namespace AdversityRoad.OpenWorld
             }
             else
             {
-                Shell(inst, w, d, 2.2f);   // 户外用矮护栏围出可玩边界
+                // 户外不砌墙。四面矮墙会把"开阔地带"变成一个院子——
+                // 边界改由外圈的临街楼与护栏段落承担，视线始终是通的。
+                OpenEdge(inst, w, d);
             }
             yield return null;
 
@@ -161,12 +166,11 @@ namespace AdversityRoad.OpenWorld
                 " · 落点" + (grounded ? "脚下有地(" + gh.collider.name + ")" : "⚠ 脚下悬空") +
                 " · seed " + chapter.assemblySeed + " → 动态区域 #" + inst.zoneIndex);
 
-            // 落点悬空是致命的（玩家一进去就往下掉），当场补一块台子，不留到实机再炸
-            if (!grounded)
-                Box(inst, "GroundPad_Spawn",
-                    inst.root.transform.InverseTransformPoint(inst.playerSpawn) +
-                        new Vector3(0, -1.35f, 0),
-                    new Vector3(10f, 0.6f, 10f), Floor);
+            // 落点台子**无条件**补一块：一块 10×10 的板子几乎不要钱，
+            // 而"玩家一进来就往下掉"是最劝退的一种失败，不值得为了省它去赌。
+            Box(inst, "GroundPad_Spawn",
+                inst.root.transform.InverseTransformPoint(inst.playerSpawn) + new Vector3(0, -1.35f, 0),
+                new Vector3(10f, 0.6f, 10f), Floor);
 
             onDone?.Invoke(inst);
         }
@@ -726,6 +730,30 @@ namespace AdversityRoad.OpenWorld
             float side = (w - 6f) / 2f;
             Box(inst, "Wall", new Vector3(-(w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
             Box(inst, "Wall", new Vector3((w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
+        }
+
+        /// <summary>
+        /// 户外边界：断续的护栏段 + 四角的花坛，围而不挡。
+        /// 玩家看得见外面的楼与天光，走到边上又会被挡住——开阔感和可玩边界两者都要。
+        /// </summary>
+        static void OpenEdge(SiteInstance inst, float w, float d)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                float t = -0.4f + i * 0.2f;
+                Box(inst, "Rail", new Vector3(t * w, 0.6f, d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), Trim);
+                Box(inst, "Rail", new Vector3(t * w, 0.6f, -d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), Trim);
+                Box(inst, "Rail", new Vector3(w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), Trim);
+                Box(inst, "Rail", new Vector3(-w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), Trim);
+            }
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                {
+                    Box(inst, "Planter", new Vector3(sx * w * 0.46f, 0.5f, sz * d * 0.46f),
+                        new Vector3(4f, 1f, 4f), new Color(0.34f, 0.33f, 0.3f));
+                    Deco(inst, "Bush", new Vector3(sx * w * 0.46f, 1.5f, sz * d * 0.46f),
+                        new Vector3(3.4f, 1.2f, 3.4f), new Color(0.22f, 0.4f, 0.24f));
+                }
         }
 
         static void Ceiling(SiteInstance inst, float w, float d, float h)

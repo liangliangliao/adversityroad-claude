@@ -336,6 +336,10 @@ namespace AdversityRoad.Goals
             sb.Append("secondaryObstacle、worldDistrictId、externalEnemies(数组)、internalEnemies(数组)、");
             sb.Append("bossArchetype、physicalMechanics(数组)、mentalMechanics(数组)、successCondition、");
             sb.Append("failureConsequence、safetyTags(数组)、assemblySeed(整数)、site(对象)。");
+            // 说清楚 safetyTags 要填什么：模型默认会填「无报复」「不含自伤」这种**声明**，
+            // 那是在回答"我避开了什么"，而这个字段问的是"这一章涉及什么主题"。
+            sb.Append("safetyTags 填这一章**实际涉及**的主题词（例：求职压力、自我怀疑、时间紧迫），");
+            sb.Append("用来和玩家的禁用主题比对；不要填「无XX」「不含XX」这类声明式内容。");
 
             // —— site：这一章自己的那个地方（V2.0 的关键，不能省） ——
             sb.Append("site 字段（必填，决定这一章会被现场建成什么样的场景）：");
@@ -407,6 +411,15 @@ namespace AdversityRoad.Goals
             sb.Append("如果目标是找工作，那可能是招聘大厅或一间只有一张桌子的面试室；");
             sb.Append("房间名、道具、NPC 角色类型、环境台词都要贴着这个目标写，");
             sb.Append("让玩家一走进去就认得出「这是我那件事」。");
+
+            // 场所多样性：不给这条约束，模型会把五关全写成办公层/会议室，
+            // 玩家看到的就是"换了名字的同一个房间"。阻力发生在哪里本身就是内容的一部分。
+            sb.Append("【场所必须各不相同】这 ").Append(want).Append(" 关的 siteKind 不许重复，");
+            sb.Append("且**至少两关发生在户外开阔地带**（street_block/market/rooftop/park/crossroad/alley）。");
+            sb.Append("按'这条阻力最可信地发生在哪里'来选：面试与评价多在室内，");
+            sb.Append("而等待、奔波、被围观、下决心这类更适合街道、天台、路口、公园。");
+            sb.Append("户外场景请把 sizeHint 填 large、layout 用 openblock 或 courtyard，");
+            sb.Append("ambience 用 day/dusk/night/rain 而不是 indoor_ 开头的那两个。");
             return sb.ToString();
         }
 
