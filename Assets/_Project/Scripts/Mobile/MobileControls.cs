@@ -77,6 +77,17 @@ namespace AdversityRoad.Mobile
                 new Color(0.45f, 0.55f, 0.95f, 0.82f));
             AddButton("Jump", "跳", new Vector2(-100, 680), 112, new Color(0.65f, 0.5f, 0.9f, 0.75f));
 
+            // ---- 统一交互键：全游戏所有"按 E"的地方，手机上都是这一个键 ----
+            //
+            // 【之前这个键根本不存在】MobileInput 的注释里写着 Interact，
+            // 家里的物件、生成关卡的门、猫食盆、画框也都在查 MobileInput.GetDown("Interact")，
+            // 但 MobileControls 从来没有造出这个按钮——于是手机玩家永远够不到任何一处交互，
+            // 只能看着"按 E 使用"的提示干瞪眼。
+            // 位置放在拳键上方、拇指弧内但避开连打区：它是战斗外用的键，
+            // 既要够得着，又不能在打斗时被误触。
+            AddButton("Interact", "用", new Vector2(-230, 700), 124,
+                new Color(0.35f, 0.72f, 0.62f, 0.82f));
+
             // ---- 低频操作移出战斗区（战间隙才用，不该占拇指黄金位）----
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
             // 锁定切换 / 拔刀收刀：右侧边缘竖排，远离连打区，避免打斗中误触

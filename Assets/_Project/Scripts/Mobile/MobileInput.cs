@@ -123,6 +123,15 @@ namespace AdversityRoad.Mobile
 
         public static bool GetHeld(string btn) => _held.Contains(btn);
 
+        /// <summary>
+        /// 交互提示该怎么说：桌面上是"按 E"，手机上是右下角那个「用」键。
+        ///
+        /// 之前所有提示都硬写着"按 E"，而手机上既没有 E 也（曾经）没有这个按钮——
+        /// 玩家照着提示做，什么都不会发生。提示必须说当前这台设备上真正能按的东西。
+        /// </summary>
+        public static string UseHint =>
+            Application.isMobilePlatform ? "点右下角【用】键" : "按 E";
+
         // ---- 镜头回正（一次性把镜头拉到角色行进方向背后）----
         static bool _recenter;
         /// <summary>请求一次镜头回正（触屏双击转镜区 / 桌面 V 键）。</summary>

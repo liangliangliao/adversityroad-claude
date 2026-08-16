@@ -34,8 +34,11 @@ namespace AdversityRoad.OpenWorld
             DistrictCatalog.Clear();
 
             // ---------- 地面：一整片连续地板（不分区、无接缝、可自由行走） ----------
+            // 地板往南扩出一大片：住处升级成带院子、泳池与车库的别墅之后，
+            // 原来 260×150 的城区里已经没有一块能装下它、又不压到别的街区的地。
+            // 与其把商业区、医院挤走，不如给这栋宅子一块自己的地。
             ZoneBuilder.Box(ctx, "City_Ground", o + new Vector3(0, -0.25f, 0),
-                new Vector3(260, 0.5f, 150), Ground);
+                new Vector3(280, 0.5f, 250), Ground);
 
             BuildMainRoad(ctx, o);
             BuildResidential(ctx, o);
@@ -46,7 +49,7 @@ namespace AdversityRoad.OpenWorld
             BuildEdge(ctx, o);
 
             // 城区外圈：低矮护栏（挡住边界但不遮视野）
-            ZoneBuilder.Ring(ctx, o, new Vector2(128, 73), 2.4f, new Color(0.32f, 0.33f, 0.36f));
+            ZoneBuilder.Ring(ctx, o, new Vector2(136, 122), 2.4f, new Color(0.32f, 0.33f, 0.36f));
 
             // 回到 V1 关卡选择世界的门（旧内容一个不丢：随时可以回去打经典章节）
             ZoneBuilder.MakePortal(ctx, o + new Vector3(-118, 0, -60), 0, "独居小屋");
@@ -126,8 +129,10 @@ namespace AdversityRoad.OpenWorld
             d.recoverySpots.Add(o + new Vector3(-36, 1.1f, 36));
             d.recoverySpots.Add(o + new Vector3(-40, 1.1f, 16));
 
-            // 我的住处：一栋带院子、泳池与车库的私人别墅（见 PlayerVilla）
-            BuildPlayerHome(ctx, o + new Vector3(-98, 0, 32));
+            // 我的住处：一栋带院子、泳池与车库的私人别墅（见 PlayerVilla）。
+            // 放在主干道以南的独立地块上——它占地一百多米见方，
+            // 塞进任何一个既有街区都要把别人挤走。
+            BuildPlayerHome(ctx, o + new Vector3(-40, 0, -85));
 
             // 遭遇位一律避开自家院子——章节的门不该开在自己客厅门口
             d.encounterSlots.Add(o + new Vector3(-40, 1.1f, 14));
@@ -348,6 +353,10 @@ namespace AdversityRoad.OpenWorld
             {
                 Vector3 home = res.center + new Vector3(
                     (float)(rng.NextDouble() * 30 - 15), 0, (float)(rng.NextDouble() * 20 - 10));
+                // 别把市民生在自家院子里：宅子整体是寻路禁区，生在里面的人会原地卡住
+                if (PlayerVilla.Lot.size.sqrMagnitude > 1f &&
+                    PlayerVilla.Lot.Contains(new Vector3(home.x, PlayerVilla.Lot.center.y, home.z)))
+                    continue;
                 if (!UnityEngine.AI.NavMesh.SamplePosition(home, out var hit, 6f,
                         UnityEngine.AI.NavMesh.AllAreas)) continue;
 

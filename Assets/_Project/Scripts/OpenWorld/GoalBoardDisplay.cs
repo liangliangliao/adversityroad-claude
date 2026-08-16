@@ -23,17 +23,25 @@ namespace AdversityRoad.OpenWorld
         TextMesh _head, _left, _mid, _right;
         float _next;
 
-        public static GoalBoardDisplay Attach(GameObject board, Vector3 center, float width, float height)
+        bool _faceNorth;
+
+        /// <param name="faceNorth">true = 板面朝 +Z（挂在南墙上，站在北边看）。</param>
+        public static GoalBoardDisplay Attach(GameObject board, Vector3 center, float width,
+            float height, bool faceNorth = false)
         {
             var d = board.AddComponent<GoalBoardDisplay>();
-            // 屏幕朝 -Z（客厅在板子的南侧），所以整体转 180°
-            d._head = d.Make("Head", center + new Vector3(0, height * 0.40f, -0.22f), 0.115f, 82,
+            d._faceNorth = faceNorth;
+            // 文字贴在板面前方一点点；朝北的板子，"前方"是 +Z
+            float front = faceNorth ? 0.22f : -0.22f;
+            // 朝北时左右也要跟着镜像，否则三栏顺序在玩家眼里是反的
+            float side = faceNorth ? -1f : 1f;
+            d._head = d.Make("Head", center + new Vector3(0, height * 0.40f, front), 0.115f, 82,
                 new Color(1f, 0.86f, 0.42f), TextAnchor.MiddleCenter);
-            d._left = d.Make("Left", center + new Vector3(-width * 0.34f, height * 0.10f, -0.22f), 0.062f, 46,
+            d._left = d.Make("Left", center + new Vector3(side * -width * 0.34f, height * 0.10f, front), 0.062f, 46,
                 new Color(0.95f, 0.96f, 0.99f), TextAnchor.UpperLeft);
-            d._mid = d.Make("Mid", center + new Vector3(-width * 0.02f, height * 0.10f, -0.22f), 0.062f, 46,
+            d._mid = d.Make("Mid", center + new Vector3(side * -width * 0.02f, height * 0.10f, front), 0.062f, 46,
                 new Color(0.80f, 0.94f, 0.86f), TextAnchor.UpperLeft);
-            d._right = d.Make("Right", center + new Vector3(width * 0.28f, height * 0.10f, -0.22f), 0.062f, 46,
+            d._right = d.Make("Right", center + new Vector3(side * width * 0.28f, height * 0.10f, front), 0.062f, 46,
                 new Color(0.86f, 0.90f, 1f), TextAnchor.UpperLeft);
             d.Refresh();
             return d;
@@ -43,7 +51,7 @@ namespace AdversityRoad.OpenWorld
         {
             var go = new GameObject("Board_" + name);
             go.transform.position = worldPos;
-            go.transform.rotation = Quaternion.Euler(0, 180f, 0);
+            go.transform.rotation = Quaternion.Euler(0, _faceNorth ? 0f : 180f, 0);
             var tm = go.AddComponent<TextMesh>();
             tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tm.fontSize = fontSize;

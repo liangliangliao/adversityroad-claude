@@ -53,9 +53,21 @@ namespace AdversityRoad.Core
             BakeNavMesh();
             ZoneBuilder.SetupZoneMoods(_world);   // 分区色彩脚本（烘焙后建，触发盒不入寻路）
 
+            // 开局位置：**从自己家里出发**。
+            //
+            // 以前是落在"当前主线章节的那个区域"，于是玩家一进游戏就站在噪声街区
+            // 或求职荒原的空地上——第一眼看到的是任务，不是自己的生活。
+            // 住处是这条旅程的起点也是每次失败后的落脚处，开局就该在这里睁眼。
             int zone = CurrentChapterZone();
+            Vector3 startAt = _world.playerSpawns[zone];
+            if (OpenWorldBuilder.CityZoneIndex >= 0 &&
+                PlayerVilla.InteriorSpawn.sqrMagnitude > 0.01f)
+            {
+                zone = OpenWorldBuilder.CityZoneIndex;
+                startAt = PlayerVilla.InteriorSpawn;
+            }
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
-            BuildPlayer(_world.playerSpawns[zone]);
+            BuildPlayer(startAt);
             BuildCamera();
             EnemySpawnHook.Spawn = SpawnEnemy;   // Boss 战中召唤援军（明天之王/旧我）
             SpawnChapterEnemy();
