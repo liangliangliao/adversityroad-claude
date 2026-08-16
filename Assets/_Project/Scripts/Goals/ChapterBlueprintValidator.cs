@@ -146,8 +146,30 @@ namespace AdversityRoad.Goals
 
             RepairEnemyPlan(bp, repairs);
 
-            if (bp.assemblySeed == 0)
-                bp.assemblySeed = Mathf.Abs((bp.chapterName + bp.linkedMilestoneId).GetHashCode());
+            // 种子一律由引擎算，不采信模型给的值。
+            //
+            // 实机日志里模型填的是 12345 / 54321 / 67890 —— 三个占位数字。
+            // 而 seed 决定整处场景的几何、道具与 NPC 摆放，两关撞了 seed 就是
+            // **两处一模一样的地方**，玩家看到的"每关都长得一样"正是这么来的。
+            // 种子本来也不该由模型决定：它是引擎的可复现性参数，不是内容。
+            bp.assemblySeed = Mathf.Abs(
+                (bp.chapterId + "|" + bp.chapterName + "|" + bp.primaryObstacle +
+                 "|" + bp.worldDistrictId).GetHashCode());
+            if (bp.assemblySeed == 0) bp.assemblySeed = 1;
+
+            // 重名一律改掉（不再只在"分数不够"时才查）：
+            // 同名的两关在传送面板里根本分不出谁是谁。
+            if (goal != null)
+                foreach (var c in goal.chapters)
+                {
+                    if (c == bp || c.chapterId == bp.chapterId || c.chapterName != bp.chapterName) continue;
+                    string tail = obstacle != null ? obstacle.label : bp.worldDistrictId;
+                    if (tail.Length > 6) tail = tail.Substring(0, 6);
+                    bp.chapterName = bp.chapterName + "·" + tail;
+                    if (bp.chapterName.Length > 24) bp.chapterName = bp.chapterName.Substring(0, 24);
+                    repairs.Add("改名避重");
+                    break;
+                }
 
             // 场景蓝图：清洗到已批准 Kit 内，并过滤台词。没有场景的 AI 章节不允许进入世界——
             // 那样它又退回成"在固定关卡里换敌人"，正是 V2.0 要解决的问题。

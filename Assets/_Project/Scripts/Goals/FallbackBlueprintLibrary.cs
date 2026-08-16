@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Personalization;
 
@@ -345,6 +346,43 @@ namespace AdversityRoad.Goals
             return bp;
         }
 
+        /// <summary>房间名的修饰词池：同一个"工位区"可以是"深处的工位区""临窗的工位区"。</summary>
+        static readonly string[] RoomPrefix =
+            { "", "", "深处的", "临窗的", "尽头的", "刚进门的", "堆满东西的", "空着的" };
+
+        static readonly string[] ExtraProps =
+            { "chair", "crate", "plant", "trashbin", "papers", "cabinet", "bench", "sign" };
+
+        static readonly string[] RoomPurposes =
+        {
+            "支线：资源、喘息或岔路", "绕开正面冲突的另一条路", "能补一口气的地方",
+            "看清阵型再决定从哪一侧介入", "堆着还没处理完的东西"
+        };
+
+        static string DecorateRoomName(string baseName, int index, System.Random rng)
+        {
+            string p = RoomPrefix[rng.Next(RoomPrefix.Length)];
+            string n = p + baseName;
+            if (n.Length > 12) n = baseName;   // 房间名有长度上限，修饰不下就用原名
+            return n;
+        }
+
+        static string RoomPurpose(System.Random rng) => RoomPurposes[rng.Next(RoomPurposes.Length)];
+
+        /// <summary>按 seed 打乱后取前 least 条（不足则全取）。</summary>
+        static void AddShuffled(List<string> into, string[] from, int least, System.Random rng)
+        {
+            if (from == null || from.Length == 0) return;
+            var pool = new List<string>(from);
+            for (int i = pool.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (pool[i], pool[j]) = (pool[j], pool[i]);
+            }
+            int take = Mathf.Clamp(least + rng.Next(2), 1, pool.Count);
+            for (int i = 0; i < take; i++) into.Add(pool[i]);
+        }
+
         /// <summary>
         /// 同一个骨架的场所变体：室内 / 户外各给几个语义相近的选择。
         ///
@@ -418,16 +456,43 @@ namespace AdversityRoad.Goals
             };
             if (site.siteName.Length > 16) site.siteName = site.siteName.Substring(0, 16);
 
-            for (int i = 0; i < sk.roomNames.Length; i++)
+            // 房间不再逐字照抄骨架：数量、顺序、修饰词、道具都按 seed 变。
+            //
+            // 离线兜底只在断网或没配 Key 时用，做不到"每关都是全新设计"，
+            // 但**不能一眼看出是同一套模板**——而照抄骨架的结果就是
+            // 同一条弱点轴下的每一关，房间名和摆设一模一样。
+            int roomCount = Mathf.Clamp(sk.roomNames.Length + rng.Next(-1, 2), 2, 5);
+            var order = new List<int>();
+            for (int i = 0; i < sk.roomNames.Length; i++) order.Add(i);
+            for (int i = order.Count - 1; i > 0; i--)   // Fisher-Yates，由 seed 决定
             {
+                int j = rng.Next(i + 1);
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            for (int i = 0; i < roomCount; i++)
+            {
+                int src = order[i % order.Count];
                 var room = new SiteRoom
                 {
-                    name = sk.roomNames[i],
-                    purpose = i == 0 ? "这一关的核心：" + ob.label : "支线：资源、喘息或岔路",
-                    sizeHint = i == 0 ? "large" : "medium"
+                    name = DecorateRoomName(sk.roomNames[src], i, rng),
+                    purpose = i == 0 ? "这一关的核心：" + ob.label : RoomPurpose(rng),
+                    sizeHint = i == 0 ? "large" : (rng.Next(3) == 0 ? "small" : "medium")
                 };
-                if (sk.roomProps != null && i < sk.roomProps.Length)
-                    room.props.AddRange(sk.roomProps[i]);
+                if (sk.roomProps != null && src < sk.roomProps.Length)
+                {
+                    // 骨架道具打乱后取一部分，再从通用池补一两件——同一间房不会每次都一样
+                    var pool = new List<string>(sk.roomProps[src]);
+                    for (int k = pool.Count - 1; k > 0; k--)
+                    {
+                        int j = rng.Next(k + 1);
+                        (pool[k], pool[j]) = (pool[j], pool[k]);
+                    }
+                    int take = Mathf.Clamp(pool.Count - rng.Next(2), 1, pool.Count);
+                    for (int k = 0; k < take; k++) room.props.Add(pool[k]);
+                }
+                string extra = ExtraProps[rng.Next(ExtraProps.Length)];
+                if (!room.props.Contains(extra)) room.props.Add(extra);
                 site.rooms.Add(room);
             }
 
@@ -445,8 +510,9 @@ namespace AdversityRoad.Goals
             site.rules.Add("失败不是终点：" + sk.failure);
             site.rules.Add("与目标无关的挑衅可以不接——离开也是一种胜利。");
 
-            if (sk.externalLines != null) site.externalLines.AddRange(sk.externalLines);
-            if (sk.internalLines != null) site.internalLines.AddRange(sk.internalLines);
+            // 台词也按 seed 打乱后取一部分：同一条轴的两关不会逐句雷同
+            AddShuffled(site.externalLines, sk.externalLines, 3, rng);
+            AddShuffled(site.internalLines, sk.internalLines, 3, rng);
 
             site.interactables.Add(sk.name + "的关键物");
             return site;

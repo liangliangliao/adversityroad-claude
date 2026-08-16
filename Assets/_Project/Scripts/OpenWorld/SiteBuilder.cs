@@ -204,15 +204,24 @@ namespace AdversityRoad.OpenWorld
         /// <summary>房间群：中央走廊两侧开房间——办公层、公寓、病房区最常见的形状。</summary>
         static IEnumerator BuildRooms(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
-            int count = Mathf.Max(2, Mathf.Min(bp.rooms.Count, 6));
+            // 房间数按**可用面积**算，而不是把固定几间房拉伸到填满场地。
+            //
+            // 原来是 roomW = (w-4)/ceil(count/2)：场景放大到 130 米宽、蓝图只给三间房时，
+            // 每间房被拉成六十多米——那不是房间，是一片带墙的旷野，
+            // 玩家在里面既找不到门也认不出这是什么地方。
+            // 现在房间按 16 米左右一间，装得下几间就摆几间；蓝图里的房间循环复用。
+            const float TargetRoomW = 16f;
             float corridorW = 6f;
-            float roomD = (d - corridorW) / 2f - 2f;
-            float roomW = (w - 4f) / Mathf.Ceil(count / 2f);
+            float roomD = Mathf.Min((d - corridorW) / 2f - 2f, 18f);
+            int cols = Mathf.Clamp(Mathf.FloorToInt((w - 4f) / TargetRoomW), 1, 6);
+            int count = Mathf.Clamp(Mathf.Max(bp.rooms.Count, cols * 2), 2, cols * 2);
+            float roomW = (w - 4f) / cols;
 
             for (int i = 0; i < count; i++)
             {
                 bool north = i % 2 == 0;
                 int col = i / 2;
+                if (col >= cols) break;   // 超出列数的房间没有位置可放
                 float cx = -w / 2f + 2f + roomW * (col + 0.5f);
                 float cz = north ? (corridorW / 2f + roomD / 2f) : -(corridorW / 2f + roomD / 2f);
                 var room = bp.rooms[i % bp.rooms.Count];
@@ -361,10 +370,18 @@ namespace AdversityRoad.OpenWorld
         static IEnumerator BuildCourtyard(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             float inner = 0.55f;
-            Box(inst, "Building", new Vector3(0, 5f, d * inner / 2f + 6f), new Vector3(w, 10f, 10f), Wall);
-            Box(inst, "Building", new Vector3(0, 5f, -(d * inner / 2f + 6f)), new Vector3(w, 10f, 10f), Wall);
-            Box(inst, "Building", new Vector3(w * inner / 2f + 6f, 5f, 0), new Vector3(10f, 10f, d), Wall);
-            Box(inst, "Building", new Vector3(-(w * inner / 2f + 6f), 5f, 0), new Vector3(10f, 10f, d), Wall);
+
+            // 围合的四边由**一排独立楼**组成，不是四块整板。
+            //
+            // 原来是 new Vector3(w, 10f, 10f) —— w 在户外场景已经放大到一百三十米，
+            // 于是"围合院落"变成四块一百三十米宽的巨型板子：玩家看到的是一面
+            // 望不到头的平墙，既找不到入口，也完全没有"这是一片街区"的感觉。
+            // 楼按 14 米一栋铺过去，中间留缝当通道，高度各不相同——
+            // 尺度回到人身上，围合感反而更强。
+            BuildingRow(inst, rng, new Vector3(0, 0, d * inner / 2f + 6f), w, true);
+            BuildingRow(inst, rng, new Vector3(0, 0, -(d * inner / 2f + 6f)), w, true);
+            BuildingRow(inst, rng, new Vector3(w * inner / 2f + 6f, 0, 0), d, false);
+            BuildingRow(inst, rng, new Vector3(-(w * inner / 2f + 6f), 0, 0), d, false);
 
             Deco(inst, "Yard", new Vector3(0, 0.05f, 0), new Vector3(w * inner, 0.06f, d * inner),
                 new Color(0.42f, 0.44f, 0.4f));
@@ -976,6 +993,40 @@ namespace AdversityRoad.OpenWorld
             {
                 float a = i / 8f * Mathf.PI * 2f;
                 Lamp(inst, new Vector3(Mathf.Cos(a) * (w / 2f + 14f), 0, Mathf.Sin(a) * (d / 2f + 14f)));
+            }
+        }
+
+        /// <summary>
+        /// 一排独立的楼（沿一条边铺开，留缝、错高、带亮窗）。
+        ///
+        /// 场景放大之后，任何"一整条边一个 Box"的做法都会变成一面几十上百米的平板。
+        /// 建筑必须按**栋**来造，尺度才回得到人身上，玩家也才看得出哪里是通道。
+        /// </summary>
+        static void BuildingRow(SiteInstance inst, System.Random rng, Vector3 center,
+            float span, bool alongX)
+        {
+            const float unit = 14f;
+            int count = Mathf.Max(2, Mathf.FloorToInt(span / unit));
+            for (int i = 0; i < count; i++)
+            {
+                float t = (i + 0.5f) / count - 0.5f;
+                float h = 9f + (float)rng.NextDouble() * 9f;
+                Vector3 at = center + (alongX ? new Vector3(t * span, 0, 0) : new Vector3(0, 0, t * span));
+                Vector3 size = alongX ? new Vector3(unit - 3f, h, 10f) : new Vector3(10f, h, unit - 3f);
+                var tint = new Color(0.42f + (float)rng.NextDouble() * 0.16f,
+                                     0.42f + (float)rng.NextDouble() * 0.14f,
+                                     0.45f + (float)rng.NextDouble() * 0.16f);
+                Box(inst, "Building", at + new Vector3(0, h / 2f, 0), size, tint);
+
+                // 朝院子那一面开窗：有窗才像楼，没窗就是块板
+                float face = alongX ? Mathf.Sign(-center.z) : Mathf.Sign(-center.x);
+                for (int r = 0; r < Mathf.Clamp(Mathf.FloorToInt(h / 4f), 1, 4); r++)
+                {
+                    Vector3 wp = at + new Vector3(0, 3f + r * 4f, 0) +
+                        (alongX ? new Vector3(0, 0, face * 5.1f) : new Vector3(face * 5.1f, 0, 0));
+                    Vector3 ws = alongX ? new Vector3(6f, 1.5f, 0.12f) : new Vector3(0.12f, 1.5f, 6f);
+                    Deco(inst, "Win", wp, ws, new Color(0.95f, 0.86f, 0.58f));
+                }
             }
         }
 
