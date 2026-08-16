@@ -85,6 +85,20 @@ namespace AdversityRoad.AI
         /// <summary>安抚状态（旧我整合阶段）：停止一切攻击与追击，站在原地等待整合。</summary>
         [HideInInspector] public bool pacified;
 
+        /// <summary>
+        /// 候场状态（群战人数上限）：这一个还没轮到上场——不追击、不出手、不喊话，
+        /// 在自己那一带待着。但它**照样能被打到**，而且挨一下就立刻入场（见 TakeHit）。
+        ///
+        /// 与 pacified 的区别：pacified 是剧情态（连伤害都免疫），
+        /// 这个只是排队。玩家反馈"四个以上敌人加大 Boss 一起围上来，不公平"——
+        /// 攻击令牌只挡住了同时**出手**的人数，挡不住同时**围过来喊话**的人数，
+        /// 场面上仍然是六个打一个。真正要限的是同时参战的人头。
+        /// </summary>
+        [HideInInspector] public bool holdPosition;
+
+        /// <summary>玩家主动打过它：从此不再被排进候场队列（打了就得认真打完）。</summary>
+        [HideInInspector] public bool provoked;
+
         /// <summary>血线保护（0-1）：血量不会被打到该比例以下（旧我必须走整合结局而非击杀）。</summary>
         [HideInInspector] public float minHpFloor = 0f;
 
@@ -243,6 +257,24 @@ namespace AdversityRoad.AI
                     if (poser != null) poser.SetPose(PoseState.Idle);
                 }
                 UpdateEmotion("平静");
+                return;
+            }
+
+            // 候场：还没轮到上场的那几个，站在自己那一带，不追不打不喊话。
+            // 硬直中不打断——被打飞的那一下要播完，否则会看到人被打中却瞬间站直。
+            if (holdPosition && State != EnemyState.Stagger)
+            {
+                if (State == EnemyState.Chase || State == EnemyState.Attack ||
+                    State == EnemyState.MentalAttack)
+                {
+                    Combat.CombatDirector.Release(this);
+                    ShowTelegraph(false);
+                    if (attackHitbox != null) attackHitbox.DisableHitbox();
+                    StopMoving();
+                    State = EnemyState.Idle;
+                }
+                PatrolTick();
+                UpdateEmotion("旁观");
                 return;
             }
 
@@ -715,6 +747,11 @@ namespace AdversityRoad.AI
                     new Color(0.7f, 0.85f, 1f), 1.15f);
                 return;
             }
+            // 候场中被打：立刻入场。排队是为了不围殴玩家，不是给玩家一个
+            // 站着挨打不还手的木桩——主动上去打它，它当然该还手。
+            holdPosition = false;
+            provoked = true;
+
             // Boss 护体（明天之王泥壳等）：伤害大幅削减时给出机制提示
             if (externalDamageMult <= 0.35f && Time.time - _lastHurtT > 3f)
                 CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.4f, "护体",

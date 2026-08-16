@@ -31,6 +31,39 @@ namespace AdversityRoad.OpenWorld
         public static bool InsideSite => !string.IsNullOrEmpty(_insideChapterId);
         public static string InsideChapterId => _insideChapterId;
 
+        /// <summary>
+        /// 玩家所在生成场景的落点（场景还活着才给）。
+        ///
+        /// 掉出边沿要捞人时，唯一正确的落点是**这处场景自己的入口**——
+        /// 它下面无条件铺了一块 10×10 的实地板，一定站得住。
+        /// 拿区域表去反查是错的：查不到就会滑到别的区，人就被送出关卡了。
+        /// </summary>
+        public static bool TryCurrentSiteSpawn(out Vector3 spawn)
+        {
+            spawn = Vector3.zero;
+            if (!InsideSite) return false;
+            var inst = SiteBuilder.Find(_insideChapterId);
+            if (inst == null || inst.root == null) return false;
+            spawn = inst.playerSpawn;
+            return true;
+        }
+
+        /// <summary>
+        /// 只清"人在场景里"的状态，**不做任何传送**。
+        ///
+        /// 阵亡时用这条：死亡流程随后会整场重载，位置本来就会重来一遍；
+        /// 但静态字段不会随重载清零，所以必须显式收干净，
+        /// 否则重生之后程序仍以为玩家站在一处已经不存在的生成场景里。
+        /// </summary>
+        public static void ClearInsideState()
+        {
+            AI.DialogueLibrary.ClearChapterLines();
+            UI.HUDController.SetObjective("");
+            _hasReturn = false;
+            _returnZoneId = "";
+            _insideChapterId = "";
+        }
+
         public static SiteGate Create(Vector3 pos, string chapterId, string siteName, Color tint)
         {
             var root = new GameObject("SiteGate_" + siteName);
@@ -84,10 +117,20 @@ namespace AdversityRoad.OpenWorld
         void OnEnable() => GameEvents.OnPlayerDied += OnPlayerDied;
         void OnDisable() => GameEvents.OnPlayerDied -= OnPlayerDied;
 
-        /// <summary>在生成场景里阵亡：先回城，再由战败流程走复盘——不会复活在虚空里。</summary>
+        /// <summary>
+        /// 在生成场景里阵亡：只收状态，**不把尸体传走**。
+        ///
+        /// 【这是"和敌人打着打着穿越到训练武馆"的另一半成因】
+        /// 老版本在这里调 ExitToCity()，而 ExitToCity 的落点是"当初从哪儿进来的"——
+        /// 玩家如果是在训练武馆点开传送面板进的这一关，退出点就是训练武馆。
+        /// 而复盘面板要等倒地动作播完（2~6 秒）才弹，这几秒里玩家眼睁睁看着自己
+        /// 从战场被拽到一个八竿子打不着的经典关卡里。第一次报的是独居小屋，
+        /// 这次是训练武馆——差别只是他那两次分别从哪儿进来的。
+        /// 阵亡后本来就要整场重载，根本不需要挪人；这里只把静态状态收干净。
+        /// </summary>
         static void OnPlayerDied(string reason)
         {
-            if (InsideSite) ExitToCity();
+            if (InsideSite) ClearInsideState();
         }
 
         void Update()
@@ -184,7 +227,7 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
-        /// <summary>从生成场景返回城区（通关、主动退出或死亡后调用）。</summary>
+        /// <summary>从生成场景返回城区（通关或主动退出时调用；阵亡不走这条）。</summary>
         public static void ExitToCity()
         {
             if (!_hasReturn) return;
@@ -195,11 +238,7 @@ namespace AdversityRoad.OpenWorld
             else if (OpenWorldBuilder.CityZoneIndex >= 0)
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
 
-            AI.DialogueLibrary.ClearChapterLines();
-            UI.HUDController.SetObjective("");
-            _hasReturn = false;
-            _returnZoneId = "";
-            _insideChapterId = "";
+            ClearInsideState();
             GameEvents.RaiseSubtitle("你从那个地方走了出来——它是为这条旅程建的，也会随这条旅程收起。");
         }
 

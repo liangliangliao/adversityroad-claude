@@ -63,12 +63,31 @@ namespace AdversityRoad.World
         /// <summary>是不是运行时生成的动态场景（AI 章节现造的地方）。</summary>
         public static bool IsDynamicZone(int index) => index >= StaticZoneCount;
 
-        /// <summary>按区域 id 反查索引（找不到回退 0）。</summary>
+        /// <summary>
+        /// 按区域 id 反查索引，**查不到返回 -1**。
+        ///
+        /// 【这里曾经是"打着打着穿越回独居小屋"的源头】
+        /// 老版本查不到就回退 0，而 0 号区正是独居小屋。于是任何一次查不到——
+        /// 生成场景被卸载后 id 改成了 `xxx_closed`、或区域表还没注册上——
+        /// 都会被静默翻译成"你在独居小屋"，下游的落点计算照单全收，
+        /// 把正在别处打架的玩家直接送回小屋。
+        /// 查不到就是查不到：返回 -1，让调用方自己决定该怎么兜底。
+        /// 需要"查不到当独居小屋"的老语义时用 <see cref="IndexOfZoneOrHome"/>，
+        /// 但那只该用在显示上，绝不该用来算传送落点。
+        /// </summary>
         public static int IndexOfZone(string id)
         {
+            if (string.IsNullOrEmpty(id)) return -1;
             for (int i = 0; i < ZoneIds.Count; i++)
                 if (ZoneIds[i] == id) return i;
-            return 0;
+            return -1;
+        }
+
+        /// <summary>同上，但查不到时回退到 0 号区（仅供显示用途）。</summary>
+        public static int IndexOfZoneOrHome(string id)
+        {
+            int i = IndexOfZone(id);
+            return i < 0 ? 0 : i;
         }
 
         // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用

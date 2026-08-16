@@ -133,6 +133,9 @@ namespace AdversityRoad.OpenWorld
         {
             var site = enc.site;
 
+            // 同时参战人数由它管：场上人可以多，一起打你的最多三个（含 Boss）
+            var director = SiteEncounterDirector.Attach(site.root);
+
             // 按 AI 给的编成放人：谁、几个、门口还是深处、守点还是巡逻。
             // 坐标仍由引擎算——placement 只表达远近层次。
             int idx = 0;
@@ -147,6 +150,7 @@ namespace AdversityRoad.OpenWorld
                     if (go == null) continue;
                     enc.enemies.Add(go);
                     Reparent(go, site);
+                    if (director != null) director.Register(go);
 
                     if (spec.tier != "chief") continue;
                     var ec = go.GetComponent<EnemyController>();
@@ -335,10 +339,25 @@ namespace AdversityRoad.OpenWorld
             enc.live = false;
         }
 
+        /// <summary>
+        /// 收起某一章的遭遇内容。
+        ///
+        /// 【绝不收走玩家脚下这一处】
+        /// 这条以前是无条件执行的，于是出现过这样一串：玩家进了一处本地占位关开打，
+        /// 后台云端生成刚好返回，`DropOnePlaceholder` 为了腾名额把这一章连场景一起销毁——
+        /// 地板、墙、灯在他脚下消失，区域 id 被改成 `xxx_closed`，
+        /// 于是踩空兜底反查区域表查不到，落到 0 号区，人就出现在独居小屋里。
+        /// 人在里面时这处场景就是不能动的：等他走出来（ExitToCity 之后）再收。
+        /// </summary>
         public static void DespawnChapter(string chapterId)
         {
             if (string.IsNullOrEmpty(chapterId)) return;
             if (!_live.TryGetValue(chapterId, out var enc)) return;
+            if (SiteGate.InsideSite && SiteGate.InsideChapterId == chapterId)
+            {
+                Core.CloudDialogueService.AddLog("跳过卸载 " + chapterId + "：玩家正站在这处场景里");
+                return;
+            }
             Despawn(enc);
             _live.Remove(chapterId);
         }

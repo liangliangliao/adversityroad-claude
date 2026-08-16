@@ -180,29 +180,40 @@ namespace AdversityRoad.Player
             // 直接回本区出生点；再掉就说明这处场景根本站不住人，整个退出去。
             if (_catchStreak >= 2)
             {
-                Vector3 spawn = World.ZoneBuilder.PlayerSpawnOf(
-                    World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId));
+                // 【落点只能在人现在待的那处地方里找】
+                bool insideSite = OpenWorld.SiteGate.InsideSite;
+                Vector3 spawn = HomeSpawn(out bool spawnTrusted);
 
-                // 【战斗中绝不把人踢出关卡】
-                // 玩家反馈"打着打着穿越回独居小屋"，就是这条升级逻辑干的：
-                // 被击退摔出边沿 → 连续触发兜底 → 退出场景 → 回到进关时站的地方
-                // （他是从独居小屋用传送面板进来的，于是"回到进入点"就是回小屋）。
-                // 一场打到一半的战斗被这样中断，比掉进坑里还糟。
-                // 附近还有活敌人时，最多把人放回本关入口，绝不退出。
+                // 【在生成场景里，任何情况都不把人送出关卡】
+                // 玩家两次报的"穿越回独居小屋 / 训练武馆"，这条升级逻辑是其中一路：
+                // 被击退摔出边沿 → 连续触发兜底 → ExitToCity → 回到进关时站的地方。
+                // 之前只用"附近 30 米有没有活敌人"挡了一下，可击退能把人抛出三十米开外，
+                // 于是照样漏过去。现在的规则简单得多：**人在生成场景里就只在场景内部捞**，
+                // 场景自己的入口下面无条件铺了实地板，一定站得住；
+                // 只有这处场景连同地板真的已经不存在了（被卸载），才谈得上退出去。
+                if (insideSite && spawnTrusted)
+                {
+                    _lastSafePos = spawn;
+                    Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                        " @" + World.ZoneBuilder.CurrentZoneId + " → 回本关入口 " + V(spawn));
+                    Snap(spawn);
+                    Core.GameEvents.RaiseSubtitle("刚才那处站不稳——已经把你送回这一关的入口。");
+                    return;
+                }
+
                 bool fighting = EnemyNearby(transform.position, 30f);
-                if (!fighting && (_catchStreak >= 4 || !HasGroundUnder(spawn)))
+                if (!fighting && (_catchStreak >= 4 || !spawnTrusted))
                 {
                     Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
                         " @" + World.ZoneBuilder.CurrentZoneId + " " + V(transform.position) + " → 退出该场景");
                     _catchStreak = 0;
                     _lastSafePos = Vector3.zero;
-                    // 在生成场景里就送回城；不在的话回独居小屋——总之不能继续困在坑里
-                    if (OpenWorld.SiteGate.InsideSite) OpenWorld.SiteGate.ExitToCity();
+                    // 走到这里说明场景已经没了（或人本来就不在场景里）：回城/回小屋
+                    if (insideSite) OpenWorld.SiteGate.ExitToCity();
                     else Snap(World.ZoneBuilder.PlayerSpawnOf(0));
                     Core.GameEvents.RaiseSubtitle("这块地方站不住人——已经把你带出来了。");
                     return;
                 }
-                if (!HasGroundUnder(spawn)) spawn = World.ZoneBuilder.PlayerSpawnOf(0);
                 _lastSafePos = spawn;
                 Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
                     " → 改回本关入口 " + V(spawn));
@@ -215,13 +226,7 @@ namespace AdversityRoad.Player
             if (HasGroundUnder(_lastSafePos)) back = _lastSafePos;
             else
             {
-                // 退到当前区域的出生点：那里由 ZoneBuilder.EnsureSpawnPads 保证有实地
-                back = World.ZoneBuilder.PlayerSpawnOf(
-                    World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId));
-                // 连这一关的入口都悬空（生成场景没建成之类）——回独居小屋。
-                // 那是全世界唯一一处**一定**踩得住的地方，宁可把人送远，
-                // 也绝不能让他继续困在虚空里反复掉。
-                if (!HasGroundUnder(back)) back = World.ZoneBuilder.PlayerSpawnOf(0);
+                back = HomeSpawn(out _);
                 _lastSafePos = back;   // 同时把"安全点"本身修正掉，不然下一次又回到虚空
                 Core.CloudDialogueService.AddLog("踩空且无安全点 @" + World.ZoneBuilder.CurrentZoneId +
                     " 掉落点 " + V(transform.position) + " → 送回 " + V(back));
@@ -237,6 +242,35 @@ namespace AdversityRoad.Player
                 " 掉落点 " + V(transform.position) + " → 捞到 " + V(back));
             Snap(back);
             Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
+        }
+
+        /// <summary>
+        /// "这一关的入口在哪"——捞人时唯一该用的落点。
+        ///
+        /// 【为什么不能直接查区域表】
+        /// 老代码写的是 `PlayerSpawnOf(IndexOfZone(CurrentZoneId))`，而 `IndexOfZone`
+        /// 查不到时会**静默返回 0**，0 号区就是独居小屋。生成场景被卸载后 id 会被改成
+        /// `xxx_closed`，此时这一行就把"我在自己关卡里"翻译成了"我在独居小屋"，
+        /// 于是玩家在战斗中被一脚踢回经典关卡。
+        /// 现在按可靠性排序找：场景自己的落点 → 区域表里**确实查到**的那一条 →
+        /// 最后才是 0 号区。<paramref name="trusted"/> 为 false 表示"只剩最后的兜底了"，
+        /// 调用方可以据此判断这处地方是不是真的没救了。
+        /// </summary>
+        static Vector3 HomeSpawn(out bool trusted)
+        {
+            if (OpenWorld.SiteGate.TryCurrentSiteSpawn(out var siteSpawn))
+            {
+                trusted = true;   // 落点下面有无条件铺的 GroundPad，不用再验地
+                return siteSpawn;
+            }
+            int zone = World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId);
+            if (zone >= 0)
+            {
+                var p = World.ZoneBuilder.PlayerSpawnOf(zone);
+                if (HasGroundUnder(p)) { trusted = true; return p; }
+            }
+            trusted = false;
+            return World.ZoneBuilder.PlayerSpawnOf(0);
         }
 
         void Snap(Vector3 to)

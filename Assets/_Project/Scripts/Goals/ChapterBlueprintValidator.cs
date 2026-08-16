@@ -664,7 +664,7 @@ namespace AdversityRoad.Goals
                     !ChapterModuleLibrary.TryEnemyFuzzy(e.enemyType, out t))
                 { bp.enemyPlan.RemoveAt(i); continue; }
                 e.enemyType = t.ToString();
-                e.count = Mathf.Clamp(e.count, 1, 4);
+                e.count = Mathf.Clamp(e.count, 1, 3);
                 if (e.tier != "minion" && e.tier != "elite" && e.tier != "chief") e.tier = "standard";
                 if (e.placement != "entrance" && e.placement != "deep") e.placement = "middle";
                 if (e.role != "patrol" && e.role != "ambush") e.role = "guard";
@@ -709,6 +709,48 @@ namespace AdversityRoad.Goals
                 });
                 repairs.Add("补首领");
             }
+
+            CapHeadcount(bp, repairs);
+        }
+
+        /// <summary>一关最多几个敌人（含 Boss）——公平边界，不由模型决定。</summary>
+        const int MaxEnemiesPerChapter = 6;
+
+        /// <summary>
+        /// 总人头封顶：单条编成最多 3 个，但六条编成加起来照样能到十几个。
+        ///
+        /// 玩家反馈"某些关卡 4 个以上敌人连大 Boss 一起围攻，不公平"——
+        /// 运行时的参战人数上限（SiteEncounterDirector，同时最多 3 个）已经把场面按住了，
+        /// 但一关塞十几个人依然是错的：清场时间被拉长成消耗战，
+        /// 而且首领只允许有一个（两个 chief 意味着两个通关条件，玩家打完一个会以为卡关）。
+        /// 这里在入库时就把总量削到 6 个以内：先削最靠后的普通编成，首领永远留着。
+        /// </summary>
+        static void CapHeadcount(GoalChapterData bp, List<string> repairs)
+        {
+            // 只留一个首领：多出来的降级成精英
+            bool seenChief = false;
+            foreach (var e in bp.enemyPlan)
+            {
+                if (e.tier != "chief") continue;
+                if (!seenChief) { seenChief = true; e.count = 1; continue; }
+                e.tier = "elite";
+                repairs.Add("多余首领降级");
+            }
+
+            int total = 0;
+            foreach (var e in bp.enemyPlan) total += e.count;
+            if (total <= MaxEnemiesPerChapter) return;
+
+            for (int i = bp.enemyPlan.Count - 1; i >= 0 && total > MaxEnemiesPerChapter; i--)
+            {
+                var e = bp.enemyPlan[i];
+                if (e.tier == "chief") continue;          // 首领不动：它是通关条件
+                int cut = Mathf.Min(e.count - 1, total - MaxEnemiesPerChapter);
+                if (cut > 0) { e.count -= cut; total -= cut; }
+                if (total > MaxEnemiesPerChapter && bp.enemyPlan.Count > 2)
+                { bp.enemyPlan.RemoveAt(i); total -= e.count; }
+            }
+            repairs.Add("敌人总数削到 " + total);
         }
 
         /// <summary>去掉标签里的否定前缀：「无报复」「不含报复」「非报复」→「报复」。</summary>

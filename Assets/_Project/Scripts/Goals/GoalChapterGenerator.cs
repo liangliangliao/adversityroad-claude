@@ -413,11 +413,15 @@ namespace AdversityRoad.Goals
             // 敌人编成也交给模型：谁、几个、放门口还是深处、守点还是巡逻。
             // 只给三个扁平字段的话，每一关的战斗排布都是引擎按同一套规则摆的，
             // "这一关有它自己的打法"就无从谈起。坐标仍然不给——placement 只说层次。
-            sb.Append("enemyPlan(数组,3-5 条)：每条含 enemyType(同上清单里的英文名)、");
-            sb.Append("tier(minion|standard|elite|chief)、count(1-4)、");
+            sb.Append("enemyPlan(数组,3-4 条)：每条含 enemyType(同上清单里的英文名)、");
+            sb.Append("tier(minion|standard|elite|chief)、count(1-3)、");
             sb.Append("placement(entrance 门口|middle 中段|deep 深处)、role(guard 守点|patrol 巡逻|ambush 伏击)。");
             sb.Append("必须**恰好有一条 tier=chief 且 placement=deep**（它就是这一关的首领与通关条件），");
             sb.Append("并且**至少有一条 placement=entrance**——玩家一进场就该看得见要打的东西。");
+            // 公平边界：人数上限是引擎的规矩，不是模型的创作空间。写进提示词是为了让它
+            // 一开始就把强度做进"谁"和"怎么摆"里，而不是靠堆人头——堆出来也会被削掉。
+            sb.Append("全场敌人总数(所有 count 相加，含首领)**不得超过 6**；");
+            sb.Append("难度靠 tier 与站位层次体现，不靠人多——一次围上来太多个是不公平的设计。");
             sb.Append("编成要贴着这一关的阻力：被围观就多而弱、被一个人挡死就少而强。");
             sb.Append("不得输出任何代码、Prefab 名、资源路径或坐标——世界组装由引擎按 assemblySeed 确定性完成。");
             return sb.ToString();
@@ -614,6 +618,10 @@ namespace AdversityRoad.Goals
             {
                 var c = goal.chapters[i];
                 if (!c.placeholder || c.cleared || c.source != ChapterSource.AIRequired) continue;
+                // 玩家此刻正站在这一关里就不能丢：连章节数据带场景一起抽走，
+                // 等于把地板从他脚下拆了——他会掉进虚空、再被兜底送去别的区。
+                if (OpenWorld.SiteGate.InsideSite &&
+                    OpenWorld.SiteGate.InsideChapterId == c.chapterId) continue;
                 // 占位关可能已经在世界里建出来了，一并收走，免得留下一处没人认领的场景
                 OpenWorld.ProceduralQuestAssembler.DespawnChapter(c.chapterId);
                 goal.aiGeneratedChapterIds.Remove(c.chapterId);

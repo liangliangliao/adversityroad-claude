@@ -76,6 +76,13 @@ namespace AdversityRoad.UI
 
             var player = FindObjectOfType<PlayerController>();
             if (player == null) return;
+
+            // 从生成场景里直接传去经典关卡：必须先解除"人在场景里"这个状态。
+            // 不解除的话，程序仍然认为他站在那处生成场景中——顶部目标行、章节台词
+            // 都还挂着，而踩空兜底一算落点就是那处场景的入口，一掉下去就被拽回去，
+            // 玩家看到的就是"传送完又莫名其妙回到刚才那一关"。
+            if (OpenWorld.SiteGate.InsideSite) OpenWorld.SiteGate.ClearInsideState();
+
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             player.transform.position = ZoneBuilder.PlayerSpawnOf(zone);
