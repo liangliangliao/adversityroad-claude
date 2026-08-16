@@ -172,13 +172,16 @@ namespace AdversityRoad.OpenWorld
             // 已经在别的生成场景里：先归还上一处的台词池，再进这一处
             if (InsideSite && _insideChapterId != chapterId) AI.DialogueLibrary.ClearChapterLines();
 
-            // 返回点只记一次，且连区域 id 一起记：从经典关卡直接传送进来的玩家
-            // 退出时该回到那一关，而不是被丢回开放城区
-            if (!InsideSite)
-            {
-                _returnPoint = player.transform.position;
-                _returnZoneId = ZoneBuilder.CurrentZoneId;
-            }
+            // 返回点只记一次。
+            //
+            // 【为什么不再记"进来之前站的地方"】
+            // 玩家在训练武馆点开传送面板进了一关，打完/打输之后又被送回训练武馆——
+            // 他的原话是"每次从经典关卡传送到生成场景，不管通关还是失败都会返回原初经典关卡"。
+            // 那是把"入口"和"归属"搞混了：生成关卡是这条旅程从城区长出来的，
+            // 它的门就开在城里；从哪儿点的传送只是一次跳转，不该变成这一关的归宿。
+            // 所以：本来就在城里的，回原地（他还有没逛完的事）；
+            // 从经典关卡/别处进来的，回**这一关在城里的那道门**前。
+            if (!InsideSite) RememberReturn(chapterId, player);
             _hasReturn = true;
             _insideChapterId = chapterId;
 
@@ -208,11 +211,34 @@ namespace AdversityRoad.OpenWorld
             return true;
         }
 
+        /// <summary>记下"出来之后站哪儿"：在城里就回原地，别处进来的一律回城里的关卡门口。</summary>
+        static void RememberReturn(string chapterId, PlayerController player)
+        {
+            _returnZoneId = OpenWorldBuilder.CityZoneIndex >= 0
+                ? ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex) : "city";
+
+            bool inCity = ZoneBuilder.CurrentZoneId == _returnZoneId;
+            if (inCity) { _returnPoint = player.transform.position; return; }
+
+            // 从经典关卡或别处直接传送进来的：出来站在这一关自己的门口
+            if (ProceduralQuestAssembler.TryGateAnchor(chapterId, out var gateAt))
+            {
+                _returnPoint = gateAt + new Vector3(0, 1.1f, -3.5f);
+                return;
+            }
+            _returnPoint = OpenWorldBuilder.CityZoneIndex >= 0
+                ? ZoneBuilder.PlayerSpawnOf(OpenWorldBuilder.CityZoneIndex)
+                : player.transform.position;
+        }
+
         /// <summary>进场先把规则说清楚：关卡规则是玩家能读到的东西，不是藏在代码里的。</summary>
         static void ShowRules(GoalChapterData ch)
         {
             var sb = new System.Text.StringBuilder();
             sb.Append("〔").Append(ch.site != null ? ch.site.siteName : ch.chapterName).Append("〕");
+            // 先说这地方长什么样，再说怎么算赢：玩家一进来第一件事是"我在哪儿"
+            if (ch.site != null && !string.IsNullOrEmpty(ch.site.sceneDescription))
+                sb.Append(ch.site.sceneDescription).Append(' ');
             sb.Append(ch.successCondition);
             GameEvents.RaiseSubtitle(sb.ToString());
 

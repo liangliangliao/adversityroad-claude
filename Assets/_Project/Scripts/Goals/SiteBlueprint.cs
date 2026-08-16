@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using AdversityRoad.Personalization;
 
 namespace AdversityRoad.Goals
@@ -66,6 +67,31 @@ namespace AdversityRoad.Goals
         public string layout = "rooms";     // rooms / corridor / maze / hall / openblock / courtyard
         public string ambience = "indoor_cold";
         public string sizeHint = "medium";
+
+        // ===== 物理世界的差异化描述（V2.1 新增）=====
+        //
+        // 【为什么必须加这一组】玩家反复反馈"AI 生成的每一关场景基本雷同，
+        // 像是共用同一个物理世界"。查下来确实如此：AI 能决定的只有
+        // "哪类地方 + 什么布局 + 什么灯光"，而地面、墙色、边界、场地中央有什么、
+        // 有没有高低差、什么天气——这些**一眼就能看出差别**的东西全部写死在引擎里。
+        // 于是十关下来都是同一块灰地板、同一圈米色墙、同一片空地。
+        //
+        // 所以把"这地方长什么样"真正交给 AI 描述，引擎按描述现场搭：
+        // 每一项都对应一套已实现的程序化构件，AI 只能从已批准清单里选
+        // （和道具、敌人、机制同一套约束——它描述，引擎建，坐标永远不由它给）。
+        public string palette = "";          // 色板：地面/墙体/装饰的主色调
+        public string groundSurface = "";    // 地面：混凝土/瓷砖/沥青/木地板/地毯/草地/沙地/碎石/积水/钢格栅
+        public string boundary = "";         // 场地边界：墙/围栏/绿篱/临街楼/水岸/山崖/幕布/集装箱
+        public string landmark = "";         // 场地中央的标志物：舞台/喷泉/钟塔/大屏/雕像/塔吊/篝火/讲台/帐篷/巴士/擂台/货架山
+        public string verticality = "flat";  // 高低差：flat / platform / split / pit / balcony
+        public string weather = "clear";     // 天气：clear / rain / fog / snow / dust / wind
+        public int clutter = 2;              // 杂物密度 0-3
+
+        /// <summary>散落在场地各处的道具（不属于任何房间，用来把空地填成"有人用过的地方"）。</summary>
+        public List<string> scatterProps = new List<string>();
+
+        /// <summary>一段"这地方长什么样"的描述：进场时给玩家看，也是差异化的自检项。</summary>
+        public string sceneDescription = "";
 
         public List<SiteRoom> rooms = new List<SiteRoom>();
         public List<SiteNpc> npcs = new List<SiteNpc>();
@@ -165,6 +191,213 @@ namespace AdversityRoad.Goals
         {
             foreach (var a in Ambiences) if (a == id) return true;
             return false;
+        }
+
+        // ================= 物理世界差异化词表 =================
+        //
+        // 这几张表是"AI 描述 → 引擎搭建"的接口：每一个 id 背后都有一段已实现的
+        // 程序化构件（见 SiteBuilder）。AI 只能从这里选，但选出来的组合足够多——
+        // 12 色板 × 10 地面 × 8 边界 × 14 标志物 × 5 高低差 × 6 天气，
+        // 再叠上 26 类场所与 6 种布局，两关撞成一个样子的概率低到可以忽略。
+
+        /// <summary>色板：一整套地面/墙体/装饰/点缀色。这是"一眼看出不是同一个地方"的第一层。</summary>
+        public class PaletteInfo
+        {
+            public string id, name;
+            public Color floor, wall, trim, accent;
+        }
+
+        public static readonly PaletteInfo[] Palettes =
+        {
+            new PaletteInfo { id = "concrete_gray", name = "水泥灰",
+                floor = new Color(0.46f, 0.45f, 0.44f), wall = new Color(0.70f, 0.68f, 0.63f),
+                trim = new Color(0.32f, 0.33f, 0.36f), accent = new Color(0.85f, 0.72f, 0.30f) },
+            new PaletteInfo { id = "office_blue", name = "办公冷蓝",
+                floor = new Color(0.34f, 0.36f, 0.40f), wall = new Color(0.78f, 0.82f, 0.86f),
+                trim = new Color(0.22f, 0.30f, 0.40f), accent = new Color(0.35f, 0.62f, 0.85f) },
+            new PaletteInfo { id = "clinic_white", name = "诊室白",
+                floor = new Color(0.80f, 0.82f, 0.83f), wall = new Color(0.92f, 0.94f, 0.94f),
+                trim = new Color(0.55f, 0.70f, 0.72f), accent = new Color(0.40f, 0.75f, 0.72f) },
+            new PaletteInfo { id = "warm_wood", name = "暖木色",
+                floor = new Color(0.52f, 0.37f, 0.23f), wall = new Color(0.80f, 0.70f, 0.55f),
+                trim = new Color(0.36f, 0.25f, 0.16f), accent = new Color(0.90f, 0.66f, 0.32f) },
+            new PaletteInfo { id = "rust_industrial", name = "工业锈",
+                floor = new Color(0.33f, 0.31f, 0.29f), wall = new Color(0.52f, 0.40f, 0.31f),
+                trim = new Color(0.42f, 0.24f, 0.14f), accent = new Color(0.92f, 0.52f, 0.18f) },
+            new PaletteInfo { id = "neon_night", name = "霓虹夜",
+                floor = new Color(0.17f, 0.18f, 0.24f), wall = new Color(0.24f, 0.24f, 0.34f),
+                trim = new Color(0.12f, 0.13f, 0.18f), accent = new Color(0.95f, 0.25f, 0.65f) },
+            new PaletteInfo { id = "moss_green", name = "苔藓绿",
+                floor = new Color(0.30f, 0.40f, 0.28f), wall = new Color(0.62f, 0.68f, 0.55f),
+                trim = new Color(0.25f, 0.32f, 0.24f), accent = new Color(0.75f, 0.85f, 0.40f) },
+            new PaletteInfo { id = "sunset_brick", name = "落日砖红",
+                floor = new Color(0.45f, 0.33f, 0.30f), wall = new Color(0.72f, 0.42f, 0.34f),
+                trim = new Color(0.40f, 0.22f, 0.18f), accent = new Color(0.98f, 0.72f, 0.40f) },
+            new PaletteInfo { id = "sand_beige", name = "沙土米",
+                floor = new Color(0.72f, 0.64f, 0.48f), wall = new Color(0.85f, 0.79f, 0.66f),
+                trim = new Color(0.52f, 0.45f, 0.34f), accent = new Color(0.60f, 0.72f, 0.85f) },
+            new PaletteInfo { id = "steel_cold", name = "钢青",
+                floor = new Color(0.38f, 0.42f, 0.45f), wall = new Color(0.55f, 0.62f, 0.66f),
+                trim = new Color(0.24f, 0.28f, 0.32f), accent = new Color(0.60f, 0.90f, 0.95f) },
+            new PaletteInfo { id = "paper_archive", name = "旧纸黄",
+                floor = new Color(0.58f, 0.53f, 0.42f), wall = new Color(0.84f, 0.78f, 0.62f),
+                trim = new Color(0.45f, 0.38f, 0.28f), accent = new Color(0.72f, 0.35f, 0.28f) },
+            new PaletteInfo { id = "deep_violet", name = "深紫夜",
+                floor = new Color(0.24f, 0.20f, 0.30f), wall = new Color(0.38f, 0.32f, 0.48f),
+                trim = new Color(0.16f, 0.13f, 0.22f), accent = new Color(0.72f, 0.55f, 0.95f) },
+        };
+
+        public static PaletteInfo Palette(string id)
+        {
+            foreach (var p in Palettes) if (p.id == id) return p;
+            return Palettes[0];
+        }
+
+        public static bool IsPalette(string id)
+        {
+            foreach (var p in Palettes) if (p.id == id) return true;
+            return false;
+        }
+
+        /// <summary>地面材质：决定地板颜色微调与地面上的纹理构件（车道线/砖缝/草簇/积水…）。</summary>
+        public static readonly string[] Surfaces =
+            { "concrete", "tile", "asphalt", "wood", "carpet", "grass", "sand", "gravel", "puddle", "grate" };
+
+        public static bool IsSurface(string id)
+        {
+            foreach (var s in Surfaces) if (s == id) return true;
+            return false;
+        }
+
+        public static string SurfaceName(string id)
+        {
+            switch (id)
+            {
+                case "tile": return "瓷砖";
+                case "asphalt": return "沥青";
+                case "wood": return "木地板";
+                case "carpet": return "地毯";
+                case "grass": return "草地";
+                case "sand": return "沙地";
+                case "gravel": return "碎石";
+                case "puddle": return "积水地面";
+                case "grate": return "钢格栅";
+                default: return "水泥地";
+            }
+        }
+
+        /// <summary>场地边界：室外场景的"这块地到哪儿为止"，也是远景的主要构成。</summary>
+        public static readonly string[] Boundaries =
+            { "wall", "fence", "hedge", "buildings", "water", "cliff", "curtain", "containers" };
+
+        public static bool IsBoundary(string id)
+        {
+            foreach (var b in Boundaries) if (b == id) return true;
+            return false;
+        }
+
+        public static string BoundaryName(string id)
+        {
+            switch (id)
+            {
+                case "fence": return "围栏";
+                case "hedge": return "绿篱";
+                case "buildings": return "临街楼";
+                case "water": return "水岸";
+                case "cliff": return "断崖";
+                case "curtain": return "帷幕";
+                case "containers": return "集装箱墙";
+                default: return "围墙";
+            }
+        }
+
+        /// <summary>
+        /// 场地标志物：中央那个**一眼就记得住**的东西。
+        /// 两关就算同为"街区·开放布局"，一个中间立着舞台、一个中间是塔吊，
+        /// 玩家也绝不会觉得是同一个地方——这是差异化里性价比最高的一项。
+        /// </summary>
+        public static readonly string[] Landmarks =
+        {
+            "none", "stage", "fountain", "clock_tower", "big_screen", "statue", "crane",
+            "bonfire", "podium", "tent", "bus", "ring", "shelf_maze", "scaffold"
+        };
+
+        public static bool IsLandmark(string id)
+        {
+            foreach (var l in Landmarks) if (l == id) return true;
+            return false;
+        }
+
+        public static string LandmarkName(string id)
+        {
+            switch (id)
+            {
+                case "stage": return "舞台";
+                case "fountain": return "喷泉";
+                case "clock_tower": return "钟塔";
+                case "big_screen": return "巨幕";
+                case "statue": return "雕像";
+                case "crane": return "塔吊";
+                case "bonfire": return "篝火堆";
+                case "podium": return "讲台";
+                case "tent": return "帐篷";
+                case "bus": return "废弃巴士";
+                case "ring": return "擂台";
+                case "shelf_maze": return "货架阵";
+                case "scaffold": return "脚手架";
+                default: return "";
+            }
+        }
+
+        /// <summary>高低差：平地 / 中央高台 / 半层落差 / 下沉坑 / 二层挑台。</summary>
+        public static readonly string[] Verticalities =
+            { "flat", "platform", "split", "pit", "balcony" };
+
+        public static bool IsVerticality(string id)
+        {
+            foreach (var v in Verticalities) if (v == id) return true;
+            return false;
+        }
+
+        public static string VerticalityName(string id)
+        {
+            switch (id)
+            {
+                case "platform": return "中央高台";
+                case "split": return "半层落差";
+                case "pit": return "下沉坑";
+                case "balcony": return "二层挑台";
+                default: return "平地";
+            }
+        }
+
+        public static readonly string[] Weathers =
+            { "clear", "rain", "fog", "snow", "dust", "wind" };
+
+        public static bool IsWeather(string id)
+        {
+            foreach (var w in Weathers) if (w == id) return true;
+            return false;
+        }
+
+        public static string WeatherName(string id)
+        {
+            switch (id)
+            {
+                case "rain": return "下着雨";
+                case "fog": return "起雾";
+                case "snow": return "落雪";
+                case "dust": return "扬尘";
+                case "wind": return "刮风";
+                default: return "晴";
+            }
+        }
+
+        public static List<string> AllPaletteIds()
+        {
+            var l = new List<string>();
+            foreach (var p in Palettes) l.Add(p.id);
+            return l;
         }
 
         /// <summary>已批准道具库：每个 id 都有对应的程序化构件（SiteBuilder.BuildProp）。</summary>

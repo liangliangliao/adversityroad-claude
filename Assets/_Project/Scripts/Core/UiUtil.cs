@@ -86,6 +86,19 @@ namespace AdversityRoad.Core
             input.textComponent = text;
             input.placeholder = ph;
             input.lineType = multiLine ? InputField.LineType.MultiLineNewline : InputField.LineType.SingleLine;
+
+            // 【手机上输入法全屏盖住整个游戏画面的根因，就在这一行】
+            //
+            // 安卓输入法在**横屏**下默认会切到"全屏编辑模式"（extract UI）：
+            // 它自带一个占满整块屏幕的文本框，把游戏画面整个盖掉——
+            // 这时候无论把面板往上挪多少都没用，因为屏幕上根本已经没有游戏了。
+            // 之前只做了避让（SoftKeyboardShifter），治的是"键盘遮住下半屏"，
+            // 治不了"输入法接管全屏"，所以玩家看到的问题一点没变。
+            //
+            // shouldHideMobileInput = true 让 UGUI 不使用系统那块原生输入框，
+            // 文字始终画在游戏内的输入框里；配合 SoftKeyboardShifter 里
+            // TouchScreenKeyboard.hideInput 一起，输入法就只在屏幕下方出一块键盘。
+            input.shouldHideMobileInput = true;
             return input;
         }
     }

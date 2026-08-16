@@ -23,6 +23,19 @@ namespace AdversityRoad.OpenWorld
         public readonly List<Vector3> enemySpawns = new List<Vector3>();
         public readonly List<Vector3> propAnchors = new List<Vector3>();
         public SiteBlueprint blueprint;
+
+        /// <summary>
+        /// 这处场景的配色（来自蓝图色板）。
+        ///
+        /// 以前地面/墙体/装饰是三个全局常量——所有生成场景共用同一块灰地板、
+        /// 同一圈米色墙。玩家说"每一关的物理世界基本一样、像共用同一个场景"，
+        /// 最直接的一层原因就在这三行常量上：布局再怎么变，颜色一样就还是"那个地方"。
+        /// 现在每处场景带自己的一套颜色，由 AI 从已批准色板里挑。
+        /// </summary>
+        public Color cFloor = new Color(0.46f, 0.45f, 0.44f);
+        public Color cWall = new Color(0.70f, 0.68f, 0.63f);
+        public Color cTrim = new Color(0.32f, 0.33f, 0.36f);
+        public Color cAccent = new Color(0.85f, 0.72f, 0.30f);
     }
 
     /// <summary>
@@ -48,10 +61,6 @@ namespace AdversityRoad.OpenWorld
         // 浮点精度会在十万单位外肉眼可见地抖起来。
         static readonly Stack<int> _freeSlots = new Stack<int>();
         static readonly Dictionary<string, SiteInstance> _live = new Dictionary<string, SiteInstance>();
-
-        static readonly Color Floor = new Color(0.46f, 0.45f, 0.44f);
-        static readonly Color Wall = new Color(0.7f, 0.68f, 0.63f);
-        static readonly Color Trim = new Color(0.32f, 0.33f, 0.36f);
 
         public static IEnumerable<SiteInstance> Live => _live.Values;
 
@@ -93,6 +102,16 @@ namespace AdversityRoad.OpenWorld
             inst.root = new GameObject("Site_" + bp.siteName);
             inst.root.transform.position = inst.origin;
 
+            // ---- 配色：一切几何画上去之前先定下来 ----
+            // 同一套布局配不同色板就是两个地方；这也是最便宜的差异化。
+            var pal = SiteKitCatalog.Palette(bp.palette);
+            inst.cFloor = pal.floor;
+            inst.cWall = pal.wall;
+            inst.cTrim = pal.trim;
+            inst.cAccent = pal.accent;
+            // 地面材质再对地板色做一次偏移：同样是"水泥灰"，草地和沥青不该一个颜色
+            inst.cFloor = TintForSurface(inst.cFloor, bp.groundSurface);
+
             float scale = bp.sizeHint == "large" ? 1.35f : bp.sizeHint == "small" ? 0.75f : 1f;
             // 户外比室内略大，但**只是略大**。
             //
@@ -111,7 +130,10 @@ namespace AdversityRoad.OpenWorld
             yield return null;
 
             // ---- 地面与外壳 ----
-            Box(inst, "Site_Floor", new Vector3(0, -0.25f, 0), new Vector3(w + 8f, 0.5f, d + 8f), Floor);
+            Box(inst, "Site_Floor", new Vector3(0, -0.25f, 0), new Vector3(w + 8f, 0.5f, d + 8f), inst.cFloor);
+            // 地面纹理：车道线 / 砖缝 / 草簇 / 积水 / 格栅……
+            // 一整块纯色地板是"这几关像同一个场景"最刺眼的一处，先把它铺出层次
+            PaveSurface(inst, bp.groundSurface, rng, w, d);
             if (kind.indoor)
             {
                 Shell(inst, w, d, 4.2f);
@@ -123,7 +145,13 @@ namespace AdversityRoad.OpenWorld
                 // 边界改由外圈的临街楼与护栏段落承担，视线始终是通的。
                 OpenEdge(inst, w, d);
             }
+            // 边界形态：围栏/绿篱/水岸/断崖/集装箱……换一种边界，整个远景就换了。
+            // 室内不建：外壳本身就是边界，再在壳外砌一圈是看不见的浪费。
+            if (!kind.indoor) BuildBoundary(inst, bp.boundary, rng, w, d);
             yield return null;
+
+            // ---- 地形起伏：平地之外还有高台、落差、下沉坑、二层挑台 ----
+            BuildVerticality(inst, bp.verticality, rng, w, d);
 
             // ---- 布局 ----
             switch (bp.layout)
@@ -138,10 +166,16 @@ namespace AdversityRoad.OpenWorld
 
             // ---- 场景陈设：让它一眼看得出是"哪种地方" ----
             Furnish(inst, kind, rng, w, d);
+            // ---- 标志物：中央那个一眼记得住的东西 ----
+            BuildLandmark(inst, bp.landmark, rng, w, d);
+            // ---- 杂物：把空地填成"有人用过的地方" ----
+            ScatterClutter(inst, bp, rng, w, d);
             yield return null;
 
             // ---- 灯光与氛围 ----
             ApplyAmbience(inst, bp, kind, w, d);
+            // ---- 天气：雨/雪/雾/扬尘，室外才有意义 ----
+            ApplyWeather(inst, bp.weather, kind, w, d);
             yield return null;
 
             // ---- 出入口 ----
@@ -174,9 +208,17 @@ namespace AdversityRoad.OpenWorld
             Physics.SyncTransforms();
             bool grounded = Physics.Raycast(inst.playerSpawn + Vector3.up * 2f, Vector3.down,
                 out RaycastHit gh, 30f, ~0, QueryTriggerInteraction.Ignore);
+            // 相貌那几项也一并打进日志：玩家说"几关看起来一样"时，
+            // 这一行能直接回答"到底是真的一样，还是只是没看出差别"。
             Core.CloudDialogueService.AddLog("场景已生成：" + bp.siteName + "（" + kind.name + "·" +
                 SiteKitCatalog.LayoutName(bp.layout) + "）构件 " + parts + " · 灯 " + lamps +
                 " · 房间 " + bp.rooms.Count + " · NPC " + bp.npcs.Count +
+                " · 相貌[" + SiteKitCatalog.Palette(bp.palette).name + "/" +
+                SiteKitCatalog.SurfaceName(bp.groundSurface) + "/" +
+                SiteKitCatalog.BoundaryName(bp.boundary) + "/" +
+                (SiteKitCatalog.LandmarkName(bp.landmark) == "" ? "无标志物" : SiteKitCatalog.LandmarkName(bp.landmark)) + "/" +
+                SiteKitCatalog.VerticalityName(bp.verticality) + "/" +
+                SiteKitCatalog.WeatherName(bp.weather) + "]" +
                 " · 落点" + (grounded ? "脚下有地(" + gh.collider.name + ")" : "⚠ 脚下悬空") +
                 " · seed " + chapter.assemblySeed + " → 动态区域 #" + inst.zoneIndex);
 
@@ -186,7 +228,7 @@ namespace AdversityRoad.OpenWorld
             // 差 5 公分就是一道台阶，走过去会被绊、动画也会抖。
             Box(inst, "GroundPad_Spawn",
                 inst.root.transform.InverseTransformPoint(inst.playerSpawn) + new Vector3(0, -1.4f, 0),
-                new Vector3(10f, 0.6f, 10f), Floor);
+                new Vector3(10f, 0.6f, 10f), inst.cFloor);
 
             onDone?.Invoke(inst);
         }
@@ -251,8 +293,8 @@ namespace AdversityRoad.OpenWorld
         static IEnumerator BuildCorridor(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
             float hallW = 9f;
-            Box(inst, "Wall", new Vector3(0, 2.1f, hallW / 2f), new Vector3(w, 4.2f, 0.5f), Wall);
-            Box(inst, "Wall", new Vector3(0, 2.1f, -hallW / 2f), new Vector3(w, 4.2f, 0.5f), Wall);
+            Box(inst, "Wall", new Vector3(0, 2.1f, hallW / 2f), new Vector3(w, 4.2f, 0.5f), inst.cWall);
+            Box(inst, "Wall", new Vector3(0, 2.1f, -hallW / 2f), new Vector3(w, 4.2f, 0.5f), inst.cWall);
 
             int doors = Mathf.Max(4, Mathf.Min(bp.rooms.Count * 2, 10));
             for (int i = 0; i < doors; i++)
@@ -260,7 +302,7 @@ namespace AdversityRoad.OpenWorld
                 float x = -w / 2f + 4f + (w - 8f) * i / Mathf.Max(1, doors - 1);
                 bool north = i % 2 == 0;
                 float z = north ? hallW / 2f - 0.4f : -hallW / 2f + 0.4f;
-                Deco(inst, "DoorFrame", new Vector3(x, 1.4f, z), new Vector3(1.8f, 2.8f, 0.18f), Trim);
+                Deco(inst, "DoorFrame", new Vector3(x, 1.4f, z), new Vector3(1.8f, 2.8f, 0.18f), inst.cTrim);
                 var room = bp.rooms.Count > 0 ? bp.rooms[i % bp.rooms.Count] : null;
                 Sign(inst, new Vector3(x, 3.1f, z), room != null ? room.name : "门");
                 if (room != null && room.props.Count > 0)
@@ -287,7 +329,7 @@ namespace AdversityRoad.OpenWorld
                     bool horizontal = rng.Next(2) == 0;
                     Box(inst, "Wall", new Vector3(px, 1.6f, pz),
                         horizontal ? new Vector3(cw * 0.9f, 3.2f, 0.5f)
-                                   : new Vector3(0.5f, 3.2f, ch * 0.9f), Wall);
+                                   : new Vector3(0.5f, 3.2f, ch * 0.9f), inst.cWall);
                     if (z == 0) yield return null;
                 }
 
@@ -417,19 +459,19 @@ namespace AdversityRoad.OpenWorld
             float hx = size.x / 2f, hz = size.y / 2f;
             const float h = 3.4f;
             // 三面实墙 + 一面留门洞
-            Box(inst, "Wall", center + new Vector3(hx, h / 2f, 0), new Vector3(0.35f, h, size.y), Wall);
-            Box(inst, "Wall", center + new Vector3(-hx, h / 2f, 0), new Vector3(0.35f, h, size.y), Wall);
+            Box(inst, "Wall", center + new Vector3(hx, h / 2f, 0), new Vector3(0.35f, h, size.y), inst.cWall);
+            Box(inst, "Wall", center + new Vector3(-hx, h / 2f, 0), new Vector3(0.35f, h, size.y), inst.cWall);
             float far = doorSouth ? hz : -hz;
-            Box(inst, "Wall", center + new Vector3(0, h / 2f, far), new Vector3(size.x, h, 0.35f), Wall);
+            Box(inst, "Wall", center + new Vector3(0, h / 2f, far), new Vector3(size.x, h, 0.35f), inst.cWall);
 
             float near = doorSouth ? -hz : hz;
             float side = (size.x - 2.4f) / 2f;
             Box(inst, "Wall", center + new Vector3(-(size.x - side) / 2f, h / 2f, near),
-                new Vector3(side, h, 0.35f), Wall);
+                new Vector3(side, h, 0.35f), inst.cWall);
             Box(inst, "Wall", center + new Vector3((size.x - side) / 2f, h / 2f, near),
-                new Vector3(side, h, 0.35f), Wall);
+                new Vector3(side, h, 0.35f), inst.cWall);
             Deco(inst, "DoorHead", center + new Vector3(0, h - 0.35f, near),
-                new Vector3(2.4f, 0.7f, 0.35f), Wall);
+                new Vector3(2.4f, 0.7f, 0.35f), inst.cWall);
 
             Sign(inst, center + new Vector3(0, h + 0.5f, near), room.name);
 
@@ -444,6 +486,412 @@ namespace AdversityRoad.OpenWorld
             }
             inst.propAnchors.Add(inst.origin + center);
         }
+
+        // ================= 物理世界差异化：地面 / 边界 / 起伏 / 标志物 / 天气 / 杂物 =================
+        //
+        // 【这一整段是在回答"为什么每一关的物理世界都长得差不多"】
+        //
+        // 之前引擎能变的只有"布局形状"和"按场所类型摆的固有陈设"，
+        // 而玩家一眼看到的其实是另外几样东西：脚下什么地、四周到哪儿为止、
+        // 有没有高低差、场地中央杵着什么、天上在下什么。这些原来全是写死的，
+        // 所以六个关卡走进去都是同一块灰地板 + 同一圈墙 + 一片空地。
+        //
+        // 现在这几样全部由蓝图描述、由引擎现场搭。做法参考的是那些"实时构建物理世界"
+        // 的游戏（No Man's Sky 的行星表面、Minecraft 的结构生成、Diablo 的随机地牢）：
+        // **不预制成品场景，只预制零件与规则**，运行时按一份描述把零件拼起来。
+        // 零件就是这些程序化构件，规则就是下面这些函数，描述来自 AI。
+
+        /// <summary>地面材质对地板色的偏移：草地不能和沥青一个颜色。</summary>
+        static Color TintForSurface(Color baseColor, string surface)
+        {
+            switch (surface)
+            {
+                case "grass": return Color.Lerp(baseColor, new Color(0.28f, 0.45f, 0.24f), 0.75f);
+                case "sand": return Color.Lerp(baseColor, new Color(0.78f, 0.70f, 0.48f), 0.7f);
+                case "asphalt": return Color.Lerp(baseColor, new Color(0.20f, 0.20f, 0.22f), 0.7f);
+                case "wood": return Color.Lerp(baseColor, new Color(0.52f, 0.36f, 0.21f), 0.7f);
+                case "carpet": return Color.Lerp(baseColor, new Color(0.38f, 0.25f, 0.28f), 0.6f);
+                case "gravel": return Color.Lerp(baseColor, new Color(0.44f, 0.42f, 0.38f), 0.5f);
+                case "puddle": return Color.Lerp(baseColor, new Color(0.24f, 0.26f, 0.30f), 0.5f);
+                case "grate": return Color.Lerp(baseColor, new Color(0.30f, 0.32f, 0.34f), 0.6f);
+                case "tile": return Color.Lerp(baseColor, Color.white, 0.18f);
+                default: return baseColor;
+            }
+        }
+
+        /// <summary>把地面铺出纹理：这是"脚下这块地是什么地"的可见证据。</summary>
+        static void PaveSurface(SiteInstance inst, string surface, System.Random rng, float w, float d)
+        {
+            switch (surface)
+            {
+                case "tile":   // 瓷砖：淡色缝网
+                    for (int i = -4; i <= 4; i++)
+                    {
+                        Deco(inst, "Grout", new Vector3(i * w / 9f, 0.03f, 0), new Vector3(0.18f, 0.02f, d), Lighten(inst.cFloor, 0.25f));
+                        Deco(inst, "Grout", new Vector3(0, 0.03f, i * d / 9f), new Vector3(w, 0.02f, 0.18f), Lighten(inst.cFloor, 0.25f));
+                    }
+                    break;
+                case "asphalt":   // 沥青：中央双黄线 + 两侧车道边线
+                    for (int i = -6; i <= 6; i++)
+                        Deco(inst, "LaneMark", new Vector3(0, 0.03f, i * d / 13f), new Vector3(w * 0.5f, 0.02f, 0.5f),
+                            new Color(0.92f, 0.82f, 0.25f));
+                    Deco(inst, "Curb", new Vector3(-w * 0.42f, 0.06f, 0), new Vector3(0.6f, 0.12f, d), Lighten(inst.cFloor, 0.4f));
+                    Deco(inst, "Curb", new Vector3(w * 0.42f, 0.06f, 0), new Vector3(0.6f, 0.12f, d), Lighten(inst.cFloor, 0.4f));
+                    break;
+                case "wood":   // 木地板：长条纹
+                    for (int i = -8; i <= 8; i++)
+                        Deco(inst, "Plank", new Vector3(i * w / 17f, 0.03f, 0), new Vector3(w / 20f, 0.02f, d),
+                            i % 2 == 0 ? Lighten(inst.cFloor, 0.12f) : Lighten(inst.cFloor, -0.10f));
+                    break;
+                case "carpet":   // 地毯：中央一块深色毯 + 包边
+                    Deco(inst, "Carpet", new Vector3(0, 0.04f, 0), new Vector3(w * 0.7f, 0.03f, d * 0.7f), Lighten(inst.cFloor, -0.18f));
+                    Deco(inst, "CarpetEdge", new Vector3(0, 0.05f, 0), new Vector3(w * 0.72f, 0.02f, d * 0.02f), inst.cAccent);
+                    break;
+                case "grass":   // 草地：草簇 + 两条踩出来的土路
+                    for (int i = 0; i < 34; i++)
+                        Deco(inst, "Tuft", new Vector3(Rand(rng, w * 0.46f), 0.16f, Rand(rng, d * 0.46f)),
+                            new Vector3(0.9f, 0.3f, 0.9f), Lighten(inst.cFloor, 0.18f));
+                    Deco(inst, "DirtPath", new Vector3(0, 0.03f, 0), new Vector3(3.2f, 0.02f, d), new Color(0.45f, 0.38f, 0.28f));
+                    break;
+                case "sand":   // 沙地：起伏沙丘
+                    for (int i = 0; i < 14; i++)
+                        Deco(inst, "Dune", new Vector3(Rand(rng, w * 0.45f), 0.1f, Rand(rng, d * 0.45f)),
+                            new Vector3(5f + (float)rng.NextDouble() * 6f, 0.2f, 3f), Lighten(inst.cFloor, 0.1f));
+                    break;
+                case "gravel":   // 碎石：密集小石
+                    for (int i = 0; i < 42; i++)
+                        Deco(inst, "Pebble", new Vector3(Rand(rng, w * 0.46f), 0.1f, Rand(rng, d * 0.46f)),
+                            new Vector3(0.4f, 0.15f, 0.4f), Lighten(inst.cFloor, (float)rng.NextDouble() * 0.3f - 0.1f));
+                    break;
+                case "puddle":   // 积水：反光水洼
+                    for (int i = 0; i < 12; i++)
+                        Deco(inst, "Puddle", new Vector3(Rand(rng, w * 0.44f), 0.035f, Rand(rng, d * 0.44f)),
+                            new Vector3(3f + (float)rng.NextDouble() * 4f, 0.02f, 2f + (float)rng.NextDouble() * 3f),
+                            new Color(0.35f, 0.45f, 0.55f, 1f));
+                    break;
+                case "grate":   // 钢格栅：条状格网
+                    for (int i = -10; i <= 10; i++)
+                        Deco(inst, "Grate", new Vector3(i * w / 21f, 0.04f, 0), new Vector3(w / 26f, 0.03f, d * 0.9f),
+                            Lighten(inst.cTrim, 0.2f));
+                    break;
+                default:   // 混凝土：伸缩缝
+                    for (int i = -3; i <= 3; i++)
+                        Deco(inst, "Seam", new Vector3(i * w / 7f, 0.03f, 0), new Vector3(0.14f, 0.02f, d), Lighten(inst.cFloor, -0.15f));
+                    break;
+            }
+        }
+
+        /// <summary>场地边界：换一种边界，整块远景就换了一副样子。</summary>
+        static void BuildBoundary(SiteInstance inst, string boundary, System.Random rng, float w, float d)
+        {
+            float hw = w / 2f + 3f, hd = d / 2f + 3f;
+            switch (boundary)
+            {
+                case "fence":
+                    for (float x = -hw; x <= hw; x += 4f)
+                    {
+                        Box(inst, "FencePost", new Vector3(x, 1.2f, hd), new Vector3(0.2f, 2.4f, 0.2f), inst.cTrim);
+                        Box(inst, "FencePost", new Vector3(x, 1.2f, -hd), new Vector3(0.2f, 2.4f, 0.2f), inst.cTrim);
+                    }
+                    Deco(inst, "FenceMesh", new Vector3(0, 1.6f, hd), new Vector3(w + 6f, 1.6f, 0.06f), Lighten(inst.cTrim, 0.3f));
+                    Deco(inst, "FenceMesh", new Vector3(0, 1.6f, -hd), new Vector3(w + 6f, 1.6f, 0.06f), Lighten(inst.cTrim, 0.3f));
+                    break;
+                case "hedge":
+                    Box(inst, "Hedge", new Vector3(0, 0.9f, hd), new Vector3(w + 6f, 1.8f, 1.6f), new Color(0.22f, 0.42f, 0.24f));
+                    Box(inst, "Hedge", new Vector3(0, 0.9f, -hd), new Vector3(w + 6f, 1.8f, 1.6f), new Color(0.22f, 0.42f, 0.24f));
+                    Box(inst, "Hedge", new Vector3(hw, 0.9f, 0), new Vector3(1.6f, 1.8f, d + 6f), new Color(0.22f, 0.42f, 0.24f));
+                    Box(inst, "Hedge", new Vector3(-hw, 0.9f, 0), new Vector3(1.6f, 1.8f, d + 6f), new Color(0.22f, 0.42f, 0.24f));
+                    break;
+                case "water":
+                    Deco(inst, "Water", new Vector3(0, 0.02f, hd + 12f), new Vector3(w + 40f, 0.04f, 24f),
+                        new Color(0.22f, 0.38f, 0.52f));
+                    Box(inst, "Quay", new Vector3(0, 0.35f, hd), new Vector3(w + 8f, 0.7f, 1.4f), Lighten(inst.cFloor, 0.2f));
+                    for (float x = -hw; x <= hw; x += 8f)
+                        Box(inst, "Bollard", new Vector3(x, 0.9f, hd - 1.2f), new Vector3(0.5f, 1.1f, 0.5f), inst.cTrim);
+                    break;
+                case "cliff":
+                    Box(inst, "CliffFace", new Vector3(0, 6f, hd + 4f), new Vector3(w + 20f, 12f, 8f), Lighten(inst.cWall, -0.25f));
+                    Box(inst, "CliffFace", new Vector3(hw + 4f, 6f, 0), new Vector3(8f, 12f, d + 20f), Lighten(inst.cWall, -0.25f));
+                    Box(inst, "CliffFace", new Vector3(-hw - 4f, 6f, 0), new Vector3(8f, 12f, d + 20f), Lighten(inst.cWall, -0.25f));
+                    break;
+                case "curtain":
+                    for (int i = -5; i <= 5; i++)
+                    {
+                        Deco(inst, "Drape", new Vector3(i * w / 11f, 3.2f, hd), new Vector3(w / 12f, 6.4f, 0.15f), inst.cAccent);
+                        Deco(inst, "Drape", new Vector3(i * w / 11f, 3.2f, -hd), new Vector3(w / 12f, 6.4f, 0.15f), inst.cAccent);
+                    }
+                    break;
+                case "containers":
+                    for (int i = -3; i <= 3; i++)
+                    {
+                        var c = i % 2 == 0 ? inst.cAccent : Lighten(inst.cWall, -0.2f);
+                        Box(inst, "Container", new Vector3(i * 13f, 1.4f, hd + 1f), new Vector3(12f, 2.8f, 3f), c);
+                        if (i % 2 == 0)
+                            Box(inst, "Container", new Vector3(i * 13f, 4.2f, hd + 1f), new Vector3(12f, 2.8f, 3f), Lighten(c, -0.15f));
+                        Box(inst, "Container", new Vector3(i * 13f, 1.4f, -hd - 1f), new Vector3(12f, 2.8f, 3f), c);
+                    }
+                    break;
+                case "buildings":
+                    // 由 BuildSurroundings 的临街楼承担，这里不重复砌
+                    break;
+                default:   // wall
+                    Box(inst, "BoundWall", new Vector3(0, 1.6f, hd), new Vector3(w + 8f, 3.2f, 0.6f), inst.cWall);
+                    Box(inst, "BoundWall", new Vector3(0, 1.6f, -hd), new Vector3(w + 8f, 3.2f, 0.6f), inst.cWall);
+                    Box(inst, "BoundWall", new Vector3(hw, 1.6f, 0), new Vector3(0.6f, 3.2f, d + 8f), inst.cWall);
+                    Box(inst, "BoundWall", new Vector3(-hw, 1.6f, 0), new Vector3(0.6f, 3.2f, d + 8f), inst.cWall);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 地形起伏：高台、半层落差、下沉坑、二层挑台。
+        /// 全部带坡道或台阶——导航面要能走上去，否则就是一堵挡路的方块。
+        /// </summary>
+        static void BuildVerticality(SiteInstance inst, string mode, System.Random rng, float w, float d)
+        {
+            switch (mode)
+            {
+                case "platform":
+                    Box(inst, "Platform", new Vector3(0, 0.55f, 0), new Vector3(w * 0.34f, 1.1f, d * 0.34f), Lighten(inst.cFloor, 0.14f));
+                    Ramp(inst, new Vector3(0, 0, -d * 0.22f), 6f, 1.1f, false);
+                    Ramp(inst, new Vector3(0, 0, d * 0.22f), 6f, 1.1f, true);
+                    break;
+                case "split":
+                    Box(inst, "HighHalf", new Vector3(0, 0.6f, d * 0.26f), new Vector3(w * 0.9f, 1.2f, d * 0.44f), Lighten(inst.cFloor, 0.1f));
+                    Ramp(inst, new Vector3(-w * 0.28f, 0, d * 0.02f), 7f, 1.2f, true);
+                    Ramp(inst, new Vector3(w * 0.28f, 0, d * 0.02f), 7f, 1.2f, true);
+                    break;
+                case "pit":
+                    // 坑：地板整体在 y=0，这里用围边把"下沉"读出来（不真的挖洞，免得掉下去）
+                    Box(inst, "PitEdgeN", new Vector3(0, 0.45f, d * 0.16f), new Vector3(w * 0.4f, 0.9f, 0.6f), Lighten(inst.cTrim, 0.15f));
+                    Box(inst, "PitEdgeS", new Vector3(0, 0.45f, -d * 0.16f), new Vector3(w * 0.4f, 0.9f, 0.6f), Lighten(inst.cTrim, 0.15f));
+                    Box(inst, "PitEdgeE", new Vector3(w * 0.2f, 0.45f, 0), new Vector3(0.6f, 0.9f, d * 0.32f), Lighten(inst.cTrim, 0.15f));
+                    Box(inst, "PitEdgeW", new Vector3(-w * 0.2f, 0.45f, 0), new Vector3(0.6f, 0.9f, d * 0.32f), Lighten(inst.cTrim, 0.15f));
+                    Deco(inst, "PitFloor", new Vector3(0, 0.06f, 0), new Vector3(w * 0.4f, 0.04f, d * 0.32f), Lighten(inst.cFloor, -0.22f));
+                    break;
+                case "balcony":
+                    Box(inst, "Balcony", new Vector3(0, 4.2f, d * 0.38f), new Vector3(w * 0.8f, 0.4f, d * 0.16f), Lighten(inst.cFloor, 0.1f));
+                    Deco(inst, "BalconyRail", new Vector3(0, 4.9f, d * 0.31f), new Vector3(w * 0.8f, 1f, 0.12f), inst.cTrim);
+                    for (float x = -w * 0.34f; x <= w * 0.34f; x += w * 0.34f)
+                        Box(inst, "BalconyPost", new Vector3(x, 2.1f, d * 0.44f), new Vector3(0.5f, 4.2f, 0.5f), inst.cTrim);
+                    Stairway(inst, new Vector3(-w * 0.36f, 0, d * 0.24f), 4.2f);
+                    break;
+            }
+        }
+
+        /// <summary>一段可走的斜坡（用薄台阶叠出来，导航面能烘上去）。</summary>
+        static void Ramp(SiteInstance inst, Vector3 at, float length, float height, bool towardPlus)
+        {
+            int steps = Mathf.Max(4, Mathf.RoundToInt(length / 0.9f));
+            for (int i = 0; i < steps; i++)
+            {
+                float t = (i + 1f) / steps;
+                float z = at.z + (towardPlus ? 1f : -1f) * (length * (1f - t));
+                Box(inst, "RampStep", new Vector3(at.x, height * t * 0.5f, z),
+                    new Vector3(5.5f, Mathf.Max(0.12f, height * t), length / steps + 0.05f),
+                    Lighten(inst.cFloor, 0.06f));
+            }
+        }
+
+        /// <summary>一段楼梯（通往挑台/二层）。</summary>
+        static void Stairway(SiteInstance inst, Vector3 at, float height)
+        {
+            int steps = Mathf.Max(8, Mathf.RoundToInt(height / 0.35f));
+            for (int i = 0; i < steps; i++)
+                Box(inst, "Step", at + new Vector3(0, height * (i + 1) / steps * 0.5f, i * 0.55f),
+                    new Vector3(3.4f, height * (i + 1) / steps, 0.6f), Lighten(inst.cFloor, 0.08f));
+        }
+
+        /// <summary>
+        /// 场地标志物：中央那个记得住的东西。
+        /// 这是差异化里性价比最高的一项——同为"开放街区"，一个立着舞台、
+        /// 一个杵着塔吊，玩家绝不会觉得是同一个地方。
+        /// </summary>
+        static void BuildLandmark(SiteInstance inst, string landmark, System.Random rng, float w, float d)
+        {
+            Vector3 c = new Vector3(0, 0, d * 0.06f);
+            switch (landmark)
+            {
+                case "stage":
+                    Box(inst, "StageDeck", c + new Vector3(0, 0.6f, 0), new Vector3(14f, 1.2f, 8f), Lighten(inst.cFloor, 0.2f));
+                    Box(inst, "StageBackdrop", c + new Vector3(0, 4f, 4.2f), new Vector3(14f, 6f, 0.4f), inst.cAccent);
+                    for (float x = -6f; x <= 6f; x += 12f)
+                        Box(inst, "StageTruss", c + new Vector3(x, 3.5f, -3.6f), new Vector3(0.4f, 7f, 0.4f), inst.cTrim);
+                    Deco(inst, "StageBar", c + new Vector3(0, 7f, -3.6f), new Vector3(13f, 0.35f, 0.35f), inst.cTrim);
+                    Lamp(inst, c + new Vector3(-5f, 0, -2f));
+                    Lamp(inst, c + new Vector3(5f, 0, -2f));
+                    break;
+                case "fountain":
+                    Box(inst, "FountainRim", c + new Vector3(0, 0.5f, 0), new Vector3(11f, 1f, 11f), Lighten(inst.cWall, -0.1f));
+                    Deco(inst, "FountainWater", c + new Vector3(0, 0.95f, 0), new Vector3(9.6f, 0.1f, 9.6f), new Color(0.3f, 0.55f, 0.72f));
+                    Box(inst, "FountainStem", c + new Vector3(0, 2f, 0), new Vector3(1.2f, 4f, 1.2f), Lighten(inst.cWall, 0.1f));
+                    Deco(inst, "FountainTop", c + new Vector3(0, 4.2f, 0), new Vector3(3f, 0.5f, 3f), Lighten(inst.cWall, 0.2f));
+                    break;
+                case "clock_tower":
+                    Box(inst, "TowerBody", c + new Vector3(0, 9f, 0), new Vector3(5f, 18f, 5f), inst.cWall);
+                    Deco(inst, "ClockFace", c + new Vector3(0, 15f, -2.6f), new Vector3(3.4f, 3.4f, 0.3f), new Color(0.95f, 0.93f, 0.85f));
+                    Deco(inst, "ClockHand", c + new Vector3(0, 15f, -2.85f), new Vector3(0.2f, 2.4f, 0.1f), inst.cTrim);
+                    Box(inst, "TowerCap", c + new Vector3(0, 18.6f, 0), new Vector3(6.4f, 1.2f, 6.4f), inst.cTrim);
+                    break;
+                case "big_screen":
+                    Box(inst, "ScreenFrame", c + new Vector3(0, 7f, 3f), new Vector3(20f, 12f, 0.8f), inst.cTrim);
+                    Deco(inst, "ScreenGlow", c + new Vector3(0, 7f, 2.5f), new Vector3(18.4f, 10.4f, 0.2f), inst.cAccent);
+                    for (float x = -8f; x <= 8f; x += 16f)
+                        Box(inst, "ScreenLeg", c + new Vector3(x, 0.6f, 3.4f), new Vector3(1.2f, 1.2f, 1.2f), inst.cTrim);
+                    break;
+                case "statue":
+                    Box(inst, "Plinth", c + new Vector3(0, 0.9f, 0), new Vector3(4f, 1.8f, 4f), Lighten(inst.cWall, -0.15f));
+                    Box(inst, "StatueBody", c + new Vector3(0, 3.6f, 0), new Vector3(1.6f, 3.6f, 1.1f), Lighten(inst.cWall, 0.25f));
+                    Deco(inst, "StatueHead", c + new Vector3(0, 5.8f, 0), new Vector3(1f, 1f, 1f), Lighten(inst.cWall, 0.25f));
+                    Deco(inst, "StatueArm", c + new Vector3(0.9f, 4.6f, 0), new Vector3(0.5f, 2.2f, 0.5f), Lighten(inst.cWall, 0.25f));
+                    break;
+                case "crane":
+                    Box(inst, "CraneMast", c + new Vector3(0, 11f, 0), new Vector3(2f, 22f, 2f), inst.cAccent);
+                    Deco(inst, "CraneJib", c + new Vector3(7f, 21f, 0), new Vector3(24f, 1.2f, 1.2f), inst.cAccent);
+                    Deco(inst, "CraneCable", c + new Vector3(14f, 15f, 0), new Vector3(0.15f, 11f, 0.15f), inst.cTrim);
+                    Box(inst, "CraneHook", c + new Vector3(14f, 9f, 0), new Vector3(1.2f, 1.6f, 1.2f), inst.cTrim);
+                    Box(inst, "CraneBase", c + new Vector3(0, 0.5f, 0), new Vector3(6f, 1f, 6f), inst.cTrim);
+                    break;
+                case "bonfire":
+                    for (int i = 0; i < 7; i++)
+                    {
+                        float a = i * 51f * Mathf.Deg2Rad;
+                        Box(inst, "Log", c + new Vector3(Mathf.Cos(a) * 1.2f, 0.5f, Mathf.Sin(a) * 1.2f),
+                            new Vector3(0.4f, 1f, 2.6f), new Color(0.36f, 0.25f, 0.16f));
+                    }
+                    Deco(inst, "Flame", c + new Vector3(0, 1.8f, 0), new Vector3(2f, 2.6f, 2f), new Color(1f, 0.55f, 0.2f));
+                    var fireGo = new GameObject("BonfireLight");
+                    fireGo.transform.SetParent(inst.root.transform, false);
+                    fireGo.transform.localPosition = c + new Vector3(0, 2.4f, 0);
+                    var fl = fireGo.AddComponent<Light>();
+                    fl.type = LightType.Point; fl.range = 26f; fl.intensity = 3.2f;
+                    fl.color = new Color(1f, 0.6f, 0.25f);
+                    fireGo.AddComponent<SiteFlicker>();
+                    // 篝火四周摆一圈能坐的地方：中央有火没人坐，看着像布景而不是场所
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float a = i * 90f * Mathf.Deg2Rad;
+                        Box(inst, "FireSeat", c + new Vector3(Mathf.Cos(a) * 4.5f, 0.3f, Mathf.Sin(a) * 4.5f),
+                            new Vector3(2.4f, 0.6f, 0.9f), new Color(0.42f, 0.32f, 0.22f));
+                    }
+                    break;
+                case "podium":
+                    Box(inst, "PodiumStep1", c + new Vector3(0, 0.3f, 0), new Vector3(9f, 0.6f, 6f), Lighten(inst.cFloor, 0.15f));
+                    Box(inst, "PodiumStep2", c + new Vector3(0, 0.9f, 0), new Vector3(6f, 0.6f, 4f), Lighten(inst.cFloor, 0.22f));
+                    Box(inst, "Lectern", c + new Vector3(0, 1.8f, 0), new Vector3(1.4f, 1.2f, 0.8f), inst.cTrim);
+                    Deco(inst, "Mic", c + new Vector3(0, 2.6f, 0), new Vector3(0.12f, 0.7f, 0.12f), inst.cTrim);
+                    break;
+                case "tent":
+                    Box(inst, "TentPost", c + new Vector3(-5f, 2f, -4f), new Vector3(0.3f, 4f, 0.3f), inst.cTrim);
+                    Box(inst, "TentPost", c + new Vector3(5f, 2f, -4f), new Vector3(0.3f, 4f, 0.3f), inst.cTrim);
+                    Box(inst, "TentPost", c + new Vector3(-5f, 2f, 4f), new Vector3(0.3f, 4f, 0.3f), inst.cTrim);
+                    Box(inst, "TentPost", c + new Vector3(5f, 2f, 4f), new Vector3(0.3f, 4f, 0.3f), inst.cTrim);
+                    Deco(inst, "TentRoof", c + new Vector3(0, 4.3f, 0), new Vector3(12f, 0.4f, 10f), inst.cAccent);
+                    Deco(inst, "TentSkirt", c + new Vector3(0, 3.9f, 4.9f), new Vector3(12f, 1f, 0.2f), inst.cAccent);
+                    break;
+                case "bus":
+                    Box(inst, "BusBody", c + new Vector3(0, 1.7f, 0), new Vector3(3f, 3f, 11f), inst.cAccent);
+                    Deco(inst, "BusWindow", c + new Vector3(1.55f, 2.3f, 0), new Vector3(0.1f, 1f, 9f), new Color(0.3f, 0.4f, 0.45f));
+                    Deco(inst, "BusWindow", c + new Vector3(-1.55f, 2.3f, 0), new Vector3(0.1f, 1f, 9f), new Color(0.3f, 0.4f, 0.45f));
+                    for (float z = -4f; z <= 4f; z += 8f)
+                    {
+                        Box(inst, "Wheel", c + new Vector3(1.5f, 0.5f, z), new Vector3(0.5f, 1f, 1f), new Color(0.12f, 0.12f, 0.13f));
+                        Box(inst, "Wheel", c + new Vector3(-1.5f, 0.5f, z), new Vector3(0.5f, 1f, 1f), new Color(0.12f, 0.12f, 0.13f));
+                    }
+                    break;
+                case "ring":
+                    Box(inst, "RingDeck", c + new Vector3(0, 0.5f, 0), new Vector3(13f, 1f, 13f), Lighten(inst.cFloor, 0.18f));
+                    for (int i = 0; i < 4; i++)
+                    {
+                        float x = (i % 2 == 0 ? 1 : -1) * 6.2f, z = (i < 2 ? 1 : -1) * 6.2f;
+                        Box(inst, "RingPost", c + new Vector3(x, 1.9f, z), new Vector3(0.35f, 2.8f, 0.35f), inst.cTrim);
+                    }
+                    for (float y = 1.2f; y <= 2.6f; y += 0.7f)
+                    {
+                        Deco(inst, "Rope", c + new Vector3(0, y, 6.2f), new Vector3(12.4f, 0.1f, 0.1f), inst.cAccent);
+                        Deco(inst, "Rope", c + new Vector3(0, y, -6.2f), new Vector3(12.4f, 0.1f, 0.1f), inst.cAccent);
+                        Deco(inst, "Rope", c + new Vector3(6.2f, y, 0), new Vector3(0.1f, 0.1f, 12.4f), inst.cAccent);
+                        Deco(inst, "Rope", c + new Vector3(-6.2f, y, 0), new Vector3(0.1f, 0.1f, 12.4f), inst.cAccent);
+                    }
+                    break;
+                case "shelf_maze":
+                    for (int i = -2; i <= 2; i++)
+                    {
+                        Box(inst, "TallShelf", c + new Vector3(i * 5.5f, 2.2f, -3f), new Vector3(1.2f, 4.4f, 12f), Lighten(inst.cWall, -0.2f));
+                        for (int k = 1; k <= 3; k++)
+                            Deco(inst, "ShelfBoard", c + new Vector3(i * 5.5f, k * 1.1f, -3f), new Vector3(1.5f, 0.12f, 12f), inst.cAccent);
+                    }
+                    break;
+                case "scaffold":
+                    for (int ix = -1; ix <= 1; ix++)
+                        for (int iz = -1; iz <= 1; iz++)
+                            Box(inst, "ScaffoldPole", c + new Vector3(ix * 5f, 3.5f, iz * 4f), new Vector3(0.25f, 7f, 0.25f), inst.cAccent);
+                    for (float y = 2.4f; y <= 6.6f; y += 2.1f)
+                        Deco(inst, "ScaffoldDeck", c + new Vector3(0, y, 0), new Vector3(10.4f, 0.2f, 8.4f), Lighten(inst.cFloor, 0.1f));
+                    Stairway(inst, c + new Vector3(-6.5f, 0, -4f), 2.4f);
+                    break;
+            }
+        }
+
+        /// <summary>天气：室外才建。雨雪用几十根下落的细条，便宜且一眼能认。</summary>
+        static void ApplyWeather(SiteInstance inst, string weather, SiteKitCatalog.SiteKindInfo kind,
+            float w, float d)
+        {
+            if (string.IsNullOrEmpty(weather) || weather == "clear") return;
+            if (kind.indoor && weather != "fog" && weather != "dust") return;
+
+            switch (weather)
+            {
+                case "rain":
+                    SiteWeather.Attach(inst.root, w, d, 60, new Color(0.65f, 0.75f, 0.9f, 1f),
+                        new Vector3(0.05f, 1.4f, 0.05f), 26f, 0f);
+                    break;
+                case "snow":
+                    SiteWeather.Attach(inst.root, w, d, 45, new Color(0.95f, 0.96f, 1f, 1f),
+                        new Vector3(0.22f, 0.22f, 0.22f), 4.5f, 1.2f);
+                    break;
+                case "dust":
+                    SiteWeather.Attach(inst.root, w, d, 45, new Color(0.72f, 0.62f, 0.45f, 1f),
+                        new Vector3(0.3f, 0.3f, 0.3f), 2.2f, 3.5f);
+                    break;
+                case "wind":
+                    SiteWeather.Attach(inst.root, w, d, 30, new Color(0.8f, 0.8f, 0.72f, 1f),
+                        new Vector3(0.5f, 0.14f, 0.14f), 3f, 9f);
+                    break;
+                case "fog":
+                    // 雾用几层贴地的半透明片：不动全局 RenderSettings（那会影响整个世界）
+                    for (int i = 0; i < 5; i++)
+                        Deco(inst, "FogLayer", new Vector3(0, 1.2f + i * 1.6f, 0),
+                            new Vector3(w + 10f, 0.05f, d + 10f), new Color(0.72f, 0.75f, 0.8f, 1f));
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// 杂物：把空地填成"有人用过的地方"。
+        /// 密度由蓝图给（0 干净、3 堆满），具体摆哪儿由引擎按 seed 定。
+        /// </summary>
+        static void ScatterClutter(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
+        {
+            var pool = new List<string>();
+            foreach (var p in bp.scatterProps)
+                if (SiteKitCatalog.IsProp(p)) pool.Add(p);
+            if (pool.Count == 0) return;
+
+            int n = Mathf.Clamp(bp.clutter, 0, 3) * 4;
+            for (int i = 0; i < n; i++)
+            {
+                var at = new Vector3(Rand(rng, w * 0.42f), 0f, Rand(rng, d * 0.42f));
+                // 中央那圈留给标志物：舞台/喷泉正中间插一个垃圾桶就成了穿帮
+                if (at.sqrMagnitude < 90f) continue;
+                BuildProp(inst, pool[rng.Next(pool.Count)], at, rng);
+            }
+        }
+
+        static float Rand(System.Random rng, float half) => (float)(rng.NextDouble() * 2.0 - 1.0) * half;
+
+        static Color Lighten(Color c, float amount) => new Color(
+            Mathf.Clamp01(c.r + amount), Mathf.Clamp01(c.g + amount), Mathf.Clamp01(c.b + amount), c.a);
 
         // ================= 道具库 =================
 
@@ -531,7 +979,7 @@ namespace AdversityRoad.OpenWorld
                     Box(inst, "Fence", at + new Vector3(0, 1f, 0), new Vector3(6f, 2f, 0.2f), new Color(0.4f, 0.42f, 0.45f));
                     break;
                 case "billboard":
-                    Box(inst, "BillboardPole", at + new Vector3(0, 2f, 0), new Vector3(0.3f, 4f, 0.3f), Trim);
+                    Box(inst, "BillboardPole", at + new Vector3(0, 2f, 0), new Vector3(0.3f, 4f, 0.3f), inst.cTrim);
                     Deco(inst, "Billboard", at + new Vector3(0, 4.6f, 0), new Vector3(5f, 2.4f, 0.2f), new Color(0.8f, 0.7f, 0.4f));
                     break;
                 case "stall":
@@ -544,7 +992,7 @@ namespace AdversityRoad.OpenWorld
                     Lamp(inst, at);
                     break;
                 case "door_frame":
-                    Deco(inst, "DoorFrame", at + new Vector3(0, 1.4f, 0), new Vector3(1.8f, 2.8f, 0.18f), Trim);
+                    Deco(inst, "DoorFrame", at + new Vector3(0, 1.4f, 0), new Vector3(1.8f, 2.8f, 0.18f), inst.cTrim);
                     break;
                 case "stairs":
                     for (int i = 0; i < 6; i++)
@@ -879,7 +1327,7 @@ namespace AdversityRoad.OpenWorld
                         for (int sz = -1; sz <= 1; sz += 2)
                         {
                             Box(inst, "Signal", new Vector3(sx * 9f, 2.6f, sz * 9f),
-                                new Vector3(0.35f, 5.2f, 0.35f), Trim);
+                                new Vector3(0.35f, 5.2f, 0.35f), inst.cTrim);
                             Deco(inst, "SignalHead", new Vector3(sx * 9f, 5f, sz * 9f),
                                 new Vector3(0.7f, 1.6f, 0.7f), new Color(0.9f, 0.35f, 0.3f));
                         }
@@ -1102,13 +1550,13 @@ namespace AdversityRoad.OpenWorld
 
         static void Shell(SiteInstance inst, float w, float d, float h)
         {
-            Box(inst, "Wall", new Vector3(0, h / 2f, d / 2f), new Vector3(w, h, 0.6f), Wall);
-            Box(inst, "Wall", new Vector3(w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), Wall);
-            Box(inst, "Wall", new Vector3(-w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), Wall);
+            Box(inst, "Wall", new Vector3(0, h / 2f, d / 2f), new Vector3(w, h, 0.6f), inst.cWall);
+            Box(inst, "Wall", new Vector3(w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), inst.cWall);
+            Box(inst, "Wall", new Vector3(-w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), inst.cWall);
             // 南墙留出入口
             float side = (w - 6f) / 2f;
-            Box(inst, "Wall", new Vector3(-(w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
-            Box(inst, "Wall", new Vector3((w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), Wall);
+            Box(inst, "Wall", new Vector3(-(w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), inst.cWall);
+            Box(inst, "Wall", new Vector3((w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), inst.cWall);
         }
 
         /// <summary>
@@ -1120,10 +1568,10 @@ namespace AdversityRoad.OpenWorld
             for (int i = 0; i < 5; i++)
             {
                 float t = -0.4f + i * 0.2f;
-                Box(inst, "Rail", new Vector3(t * w, 0.6f, d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), Trim);
-                Box(inst, "Rail", new Vector3(t * w, 0.6f, -d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), Trim);
-                Box(inst, "Rail", new Vector3(w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), Trim);
-                Box(inst, "Rail", new Vector3(-w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), Trim);
+                Box(inst, "Rail", new Vector3(t * w, 0.6f, d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), inst.cTrim);
+                Box(inst, "Rail", new Vector3(t * w, 0.6f, -d / 2f), new Vector3(w * 0.16f, 1.2f, 0.35f), inst.cTrim);
+                Box(inst, "Rail", new Vector3(w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), inst.cTrim);
+                Box(inst, "Rail", new Vector3(-w / 2f, 0.6f, t * d), new Vector3(0.35f, 1.2f, d * 0.16f), inst.cTrim);
             }
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
@@ -1143,7 +1591,7 @@ namespace AdversityRoad.OpenWorld
 
         static void Lamp(SiteInstance inst, Vector3 local)
         {
-            Box(inst, "LampPole", local + new Vector3(0, 1.9f, 0), new Vector3(0.16f, 3.8f, 0.16f), Trim);
+            Box(inst, "LampPole", local + new Vector3(0, 1.9f, 0), new Vector3(0.16f, 3.8f, 0.16f), inst.cTrim);
             var head = Deco(inst, "LampHead", local + new Vector3(0, 3.9f, 0),
                 new Vector3(0.5f, 0.3f, 0.5f), new Color(1f, 0.95f, 0.8f));
             var lg = new GameObject("LampLight");
@@ -1173,15 +1621,100 @@ namespace AdversityRoad.OpenWorld
             go.AddComponent<FaceCamera>();
         }
 
-        static void PaintLocal(GameObject go, Color c)
+        /// <summary>
+        /// 按颜色复用材质。
+        ///
+        /// 差异化把构件数量抬上去了（地面纹理、杂物、天气各几十个），
+        /// 而原来每个构件都 new 一个 Material——同色的一百块砖就是一百份材质，
+        /// 批处理直接失效，手机上是实打实的掉帧。颜色量化到 1/64 之后做缓存，
+        /// 同色共用一份，画面完全一样，DrawCall 少一大截。
+        /// </summary>
+        static readonly Dictionary<int, Material> _matCache = new Dictionary<int, Material>();
+
+        static Material MaterialFor(Color c)
         {
-            var r = go.GetComponent<MeshRenderer>();
-            if (r == null) return;
+            int key = (Mathf.RoundToInt(c.r * 63) << 18) | (Mathf.RoundToInt(c.g * 63) << 12) |
+                      (Mathf.RoundToInt(c.b * 63) << 6) | Mathf.RoundToInt(c.a * 63);
+            if (_matCache.TryGetValue(key, out var cached) && cached != null) return cached;
+
             var shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
             var m = new Material(shader) { color = c };
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            r.sharedMaterial = m;
+            _matCache[key] = m;
+            return m;
+        }
+
+        static void PaintLocal(GameObject go, Color c)
+        {
+            var r = go.GetComponent<MeshRenderer>();
+            if (r == null) return;
+            r.sharedMaterial = MaterialFor(c);
+        }
+    }
+
+    /// <summary>
+    /// 天气：一批循环下落的细条（雨丝/雪片/尘粒/风中碎屑）。
+    ///
+    /// 不上粒子系统：这处场景整体是可卸载的运行时对象，几十个自管的方块比
+    /// 一套 ParticleSystem 更好收；而且雨天/雪天/沙尘的差别玩家一眼就看得出，
+    /// 属于"最便宜的一大块差异化"。落到地面以下就回到顶上，永远循环。
+    /// </summary>
+    public class SiteWeather : MonoBehaviour
+    {
+        Transform[] _bits;
+        float _w, _d, _fall, _drift;
+
+        public static void Attach(GameObject root, float w, float d, int count, Color color,
+            Vector3 size, float fallSpeed, float drift)
+        {
+            if (root == null) return;
+            var host = new GameObject("SiteWeather");
+            host.transform.SetParent(root.transform, false);
+            var c = host.AddComponent<SiteWeather>();
+            c._w = w; c._d = d; c._fall = fallSpeed; c._drift = drift;
+            c._bits = new Transform[count];
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            var mat = new Material(shader) { color = color };
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+
+            for (int i = 0; i < count; i++)
+            {
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = "Bit";
+                Destroy(go.GetComponent<Collider>());
+                go.transform.SetParent(host.transform, false);
+                go.transform.localScale = size;
+                go.GetComponent<MeshRenderer>().sharedMaterial = mat;
+                go.transform.localPosition = new Vector3(
+                    Random.Range(-w * 0.5f, w * 0.5f),
+                    Random.Range(0f, 16f),
+                    Random.Range(-d * 0.5f, d * 0.5f));
+                c._bits[i] = go.transform;
+            }
+        }
+
+        void Update()
+        {
+            if (_bits == null) return;
+            float dt = Time.deltaTime;
+            for (int i = 0; i < _bits.Length; i++)
+            {
+                var t = _bits[i];
+                if (t == null) continue;
+                var p = t.localPosition;
+                p.y -= _fall * dt;
+                if (_drift > 0f) p.x += Mathf.Sin(Time.time * 1.7f + i) * _drift * dt;
+                if (p.y < 0.2f)
+                {
+                    p.y = 15f + Random.value * 3f;
+                    p.x = Random.Range(-_w * 0.5f, _w * 0.5f);
+                    p.z = Random.Range(-_d * 0.5f, _d * 0.5f);
+                }
+                t.localPosition = p;
+            }
         }
     }
 

@@ -176,6 +176,10 @@ namespace AdversityRoad.Goals
             // 但"模型没写场景"同样是可修复的：按障碍与弱点轴造一套出来，而不是丢掉这一章。
             RepairSite(bp, axis, obstacleLabel, repairs);
             ValidateSite(bp);
+            // 相貌去重必须在字段清洗之后：先保证每一项合法，再保证整体不撞脸
+            EnsureDistinctLook(bp, goal, repairs);
+            if (bp.site != null && string.IsNullOrEmpty(bp.site.sceneDescription))
+                bp.site.sceneDescription = DescribeSite(bp.site);
 
             // ---------- 安全性（未通过直接拒绝） ----------
             bp.safetyCompliance = ScoreSafety(bp, goal, out string safetyIssue);
@@ -425,6 +429,7 @@ namespace AdversityRoad.Goals
             if (s.externalLines == null) s.externalLines = new List<string>();
             if (s.internalLines == null) s.internalLines = new List<string>();
             if (s.interactables == null) s.interactables = new List<string>();
+            if (s.scatterProps == null) s.scatterProps = new List<string>();
 
             if (string.IsNullOrWhiteSpace(s.siteName)) s.siteName = bp.chapterName;
             if (s.siteName.Length > 16) s.siteName = s.siteName.Substring(0, 16);
@@ -434,6 +439,38 @@ namespace AdversityRoad.Goals
             if (!SiteKitCatalog.IsLayout(s.layout)) s.layout = "rooms";
             if (!SiteKitCatalog.IsAmbience(s.ambience)) s.ambience = "indoor_cold";
             if (s.sizeHint != "small" && s.sizeHint != "large") s.sizeHint = "medium";
+
+            // ---- 物理世界差异化字段：非法值不丢章，改成**按种子选一个合法的** ----
+            //
+            // 这里不能像别处那样"错了就用默认值"：全部落到同一个默认值，
+            // 正是"每一关看起来都一样"的成因之一。种子来自章节自身（id+名字+障碍），
+            // 所以不同的章节会落到不同的选项上，而同一章节每次都一样（可复现）。
+            int seed = Mathf.Abs((bp.chapterId + "|" + bp.chapterName).GetHashCode());
+            if (!SiteKitCatalog.IsPalette(s.palette))
+                s.palette = SiteKitCatalog.Palettes[seed % SiteKitCatalog.Palettes.Length].id;
+            if (!SiteKitCatalog.IsSurface(s.groundSurface))
+                s.groundSurface = SiteKitCatalog.Surfaces[(seed / 3) % SiteKitCatalog.Surfaces.Length];
+            if (!SiteKitCatalog.IsBoundary(s.boundary))
+                s.boundary = SiteKitCatalog.Boundaries[(seed / 7) % SiteKitCatalog.Boundaries.Length];
+            if (!SiteKitCatalog.IsLandmark(s.landmark))
+                s.landmark = SiteKitCatalog.Landmarks[1 + (seed / 11) % (SiteKitCatalog.Landmarks.Length - 1)];
+            if (!SiteKitCatalog.IsVerticality(s.verticality))
+                s.verticality = SiteKitCatalog.Verticalities[(seed / 13) % SiteKitCatalog.Verticalities.Length];
+            if (!SiteKitCatalog.IsWeather(s.weather))
+                s.weather = SiteKitCatalog.Weathers[(seed / 17) % SiteKitCatalog.Weathers.Length];
+            s.clutter = Mathf.Clamp(s.clutter, 0, 3);
+
+            // 散落杂物：清洗到道具库内；一件都没有就按种子挑三件，别让空地一直空着
+            for (int i = s.scatterProps.Count - 1; i >= 0; i--)
+                if (!SiteKitCatalog.IsProp(s.scatterProps[i])) s.scatterProps.RemoveAt(i);
+            if (s.scatterProps.Count == 0)
+                for (int i = 0; i < 3; i++)
+                    s.scatterProps.Add(SiteKitCatalog.Props[(seed / (19 + i * 5)) % SiteKitCatalog.Props.Length]);
+            if (s.scatterProps.Count > 6) s.scatterProps.RemoveRange(6, s.scatterProps.Count - 6);
+
+            // 描述在这里只做清洗；真正填上是在相貌去重之后（去重会改色板/标志物，
+            // 提前生成的描述会和最终建出来的场景对不上）
+            s.sceneDescription = CleanDescription(s.sceneDescription);
 
             // 房间：至少一个，最多六个；道具清洗到库内
             for (int i = s.rooms.Count - 1; i >= 0; i--)
@@ -477,6 +514,107 @@ namespace AdversityRoad.Goals
             }
             if (s.rules.Count > 5) s.rules.RemoveRange(5, s.rules.Count - 5);
             if (s.rules.Count == 0) s.rules.Add(bp.successCondition);
+        }
+
+        /// <summary>场景描述只做去识别化与长度封顶——它是给玩家看的说明，不是攻击台词。</summary>
+        static string CleanDescription(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "";
+            string line = Personalization.SafetyFilter.Anonymize(raw.Trim());
+            if (line.Length > 60) line = line.Substring(0, 60);
+            foreach (var b in BannedContent)
+                if (line.Contains(b)) return "";
+            return line;
+        }
+
+        /// <summary>模型没写描述时，用它自己选的那几项拼一句——照样是这一关独有的。</summary>
+        static string DescribeSite(SiteBlueprint s)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(SiteKitCatalog.Kind(s.siteKind).name);
+            sb.Append("·").Append(SiteKitCatalog.LayoutName(s.layout));
+            sb.Append("；脚下是").Append(SiteKitCatalog.SurfaceName(s.groundSurface));
+            string lm = SiteKitCatalog.LandmarkName(s.landmark);
+            if (!string.IsNullOrEmpty(lm)) sb.Append("，中间立着").Append(lm);
+            if (s.verticality != "flat") sb.Append("，有").Append(SiteKitCatalog.VerticalityName(s.verticality));
+            if (s.weather != "clear") sb.Append("，").Append(SiteKitCatalog.WeatherName(s.weather));
+            sb.Append("。");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 相貌去重：同一个目标下，两关不能长成一个样子。
+        ///
+        /// 玩家的原话是"每个关卡的物理世界场景基本雷同，都是共用同一个物理世界"。
+        /// 光把差异化字段加进蓝图还不够——模型很可能给五关填同一套值
+        /// （它并不知道另外四关填了什么，每一批请求都是独立的）。
+        /// 所以入库时按"场所+布局+色板+标志物"算一个相貌签名，
+        /// 撞了就按固定顺序换一项，直到这一关在这条旅程里独一无二。
+        /// 换的顺序是先换看得最明显的（色板 → 标志物 → 地面 → 布局 → 天气）。
+        /// </summary>
+        static void EnsureDistinctLook(GoalChapterData bp, GoalData goal, List<string> repairs)
+        {
+            if (goal == null || bp.site == null) return;
+            var s = bp.site;
+
+            for (int attempt = 0; attempt < 24; attempt++)
+            {
+                string sig = LookSignature(s);
+                bool clash = false;
+                foreach (var c in goal.chapters)
+                {
+                    if (c == bp || c.chapterId == bp.chapterId || c.site == null) continue;
+                    if (LookSignature(c.site) == sig) { clash = true; break; }
+                }
+                if (!clash)
+                {
+                    if (attempt > 0) repairs.Add("换相貌避重");
+                    return;
+                }
+
+                int step = attempt;
+                switch (step % 5)
+                {
+                    case 0:
+                        s.palette = SiteKitCatalog.Palettes[
+                            (IndexOfPalette(s.palette) + 1 + step) % SiteKitCatalog.Palettes.Length].id;
+                        break;
+                    case 1:
+                        s.landmark = SiteKitCatalog.Landmarks[
+                            1 + (IndexOf(SiteKitCatalog.Landmarks, s.landmark) + step)
+                            % (SiteKitCatalog.Landmarks.Length - 1)];
+                        break;
+                    case 2:
+                        s.groundSurface = SiteKitCatalog.Surfaces[
+                            (IndexOf(SiteKitCatalog.Surfaces, s.groundSurface) + 1 + step)
+                            % SiteKitCatalog.Surfaces.Length];
+                        break;
+                    case 3:
+                        s.layout = SiteKitCatalog.Layouts[
+                            (IndexOf(SiteKitCatalog.Layouts, s.layout) + 1 + step) % SiteKitCatalog.Layouts.Length];
+                        break;
+                    default:
+                        s.weather = SiteKitCatalog.Weathers[
+                            (IndexOf(SiteKitCatalog.Weathers, s.weather) + 1 + step) % SiteKitCatalog.Weathers.Length];
+                        break;
+                }
+            }
+        }
+
+        static string LookSignature(SiteBlueprint s) =>
+            s.siteKind + "|" + s.layout + "|" + s.palette + "|" + s.landmark;
+
+        static int IndexOfPalette(string id)
+        {
+            for (int i = 0; i < SiteKitCatalog.Palettes.Length; i++)
+                if (SiteKitCatalog.Palettes[i].id == id) return i;
+            return 0;
+        }
+
+        static int IndexOf(string[] arr, string id)
+        {
+            for (int i = 0; i < arr.Length; i++) if (arr[i] == id) return i;
+            return 0;
         }
 
         static void CleanLines(List<string> lines)

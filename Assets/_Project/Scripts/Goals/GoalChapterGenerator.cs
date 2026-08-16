@@ -388,13 +388,41 @@ namespace AdversityRoad.Goals
             sb.Append("rules(数组,2-3条,用玩家能读懂的一句话说清这一关怎么玩)、");
             sb.Append("externalLines(数组,3句,敌人会喊的压力台词,每句不超过18字)、");
             sb.Append("internalLines(数组,3句,玩家脑内回声,每句不超过18字)、");
-            sb.Append("interactables(数组,场景里的关键可交互物名称)。");
+            sb.Append("interactables(数组,场景里的关键可交互物名称)、");
+
+            // —— 物理世界的差异化描述：这一段是"每关不能长一个样"的关键 ——
+            //
+            // 之前 site 里能变的只有"哪类地方/什么布局/什么灯光"，
+            // 地面、边界、中央有什么、有没有高低差、什么天气全部写死在引擎里，
+            // 于是玩家走进任何一关看到的都是同一块灰地板加一圈米色墙。
+            // 现在把这些一并交给模型描述——每一项背后都有一套已实现的程序化构件，
+            // 引擎照着现搭。它只能从清单里挑，但组合足够多，撞脸概率极低。
+            sb.Append("palette(色板)、groundSurface(地面材质)、boundary(场地边界)、");
+            sb.Append("landmark(场地中央的标志物)、verticality(高低差)、weather(天气)、");
+            sb.Append("clutter(杂物密度0-3)、scatterProps(数组,3-5个,散落在场地里的道具)、");
+            sb.Append("sceneDescription(一句话,不超过30字,描述走进去第一眼看到什么)。");
+
             sb.Append("siteKind 只能取：")
               .Append(string.Join("/", SiteKitCatalog.AllKindIds().ToArray())).Append("。");
             sb.Append("layout 只能取：").Append(string.Join("/", SiteKitCatalog.Layouts)).Append("。");
             sb.Append("ambience 只能取：").Append(string.Join("/", SiteKitCatalog.Ambiences)).Append("。");
-            sb.Append("props 只能取：").Append(string.Join("/", SiteKitCatalog.Props)).Append("。");
+            sb.Append("palette 只能取：").Append(string.Join("/", SiteKitCatalog.AllPaletteIds().ToArray())).Append("。");
+            sb.Append("groundSurface 只能取：").Append(string.Join("/", SiteKitCatalog.Surfaces)).Append("。");
+            sb.Append("boundary 只能取：").Append(string.Join("/", SiteKitCatalog.Boundaries)).Append("。");
+            sb.Append("landmark 只能取：").Append(string.Join("/", SiteKitCatalog.Landmarks)).Append("。");
+            sb.Append("verticality 只能取：").Append(string.Join("/", SiteKitCatalog.Verticalities)).Append("。");
+            sb.Append("weather 只能取：").Append(string.Join("/", SiteKitCatalog.Weathers)).Append("。");
+            sb.Append("props / scatterProps 只能取：").Append(string.Join("/", SiteKitCatalog.Props)).Append("。");
             sb.Append("roleType 只能取：").Append(string.Join("/", SiteKitCatalog.NpcRoles)).Append("。");
+
+            // 硬要求：本批各章之间必须**看起来就不是一个地方**。
+            // 只说"要有差异"太软，模型会只改名字；直接指定哪几项必须互不相同。
+            sb.Append("【硬要求】本次返回的每一章，site 的 siteKind、layout、palette、landmark、");
+            sb.Append("groundSurface 这五项**必须两两不同**——玩家会连着打这几关，");
+            sb.Append("走进去必须一眼看出不是同一个地方。相同的组合会被系统改掉并判为重复。");
+            sb.Append("室内类场所（办公层/病房/机房等）配 tile/wood/carpet/concrete 这类地面，");
+            sb.Append("室外类场所（街区/公园/天台/十字路口等）配 asphalt/grass/sand/gravel/puddle 这类地面，");
+            sb.Append("并且室外要选一个像样的 boundary（fence/hedge/water/cliff/containers/buildings）。");
             sb.Append("台词必须是虚构的压力表达，不得包含现实操控教程、真实姓名、住址、联系方式，");
             sb.Append("不得出现报复、羞辱特定真实个体、自伤或仇恨内容。");
             sb.Append("worldDistrictId 只能取：").Append(string.Join("/", ChapterModuleLibrary.AllDistrictIds().ToArray())).Append("。");

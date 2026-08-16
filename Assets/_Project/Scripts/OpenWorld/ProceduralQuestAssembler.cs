@@ -54,6 +54,21 @@ namespace AdversityRoad.OpenWorld
             !string.IsNullOrEmpty(chapterId) && _live.ContainsKey(chapterId);
 
         /// <summary>
+        /// 这一章在**城里**的入口位置（那道 Site Gate 立着的地方）。
+        ///
+        /// 打完/失败之后该回到这里：生成关卡是这条旅程长出来的，它的门开在城区，
+        /// 出来就该站在自己的门口——而不是被送回"当初碰巧从哪儿点的传送"。
+        /// </summary>
+        public static bool TryGateAnchor(string chapterId, out Vector3 anchor)
+        {
+            anchor = Vector3.zero;
+            if (string.IsNullOrEmpty(chapterId) || !_live.TryGetValue(chapterId, out var enc)) return false;
+            if (enc.gate != null) { anchor = enc.gate.transform.position; return true; }
+            if (enc.anchor.sqrMagnitude > 0.01f) { anchor = enc.anchor; return true; }
+            return false;
+        }
+
+        /// <summary>
         /// 把一个章节蓝图组装进开放世界（分帧进行，避免走近入口时卡一下）。
         /// Legacy 章节不在这里组装——它们通过心理裂隙进入 V1 原关卡（资产复用，不重复造）。
         ///

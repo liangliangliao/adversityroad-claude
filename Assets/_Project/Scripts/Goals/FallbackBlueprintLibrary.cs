@@ -430,6 +430,12 @@ namespace AdversityRoad.Goals
             return outdoor ? outKind : indoorKind;
         }
 
+        /// <summary>室内该有的地面：草地和沥青铺进办公室就穿帮了。</summary>
+        static readonly string[] IndoorSurfaces = { "tile", "wood", "carpet", "concrete", "grate" };
+
+        /// <summary>室外该有的地面。</summary>
+        static readonly string[] OutdoorSurfaces = { "asphalt", "grass", "sand", "gravel", "puddle", "concrete" };
+
         /// <summary>
         /// 本地场景蓝图：没有网络时照样造出一个"这个目标专属的地方"。
         /// 房间名带上目标关键词，同一条轴在不同目标下也长得不一样。
@@ -455,6 +461,24 @@ namespace AdversityRoad.Goals
                     : "large"   // 户外就该开阔，medium 的户外场地小得像个院子
             };
             if (site.siteName.Length > 16) site.siteName = site.siteName.Substring(0, 16);
+
+            // ---- 物理世界的相貌：断网时也不能每关都长一个样 ----
+            // 全部由 rng（来自 assemblySeed）决定：可复现，但关与关之间必然不同。
+            bool indoor = SiteKitCatalog.Kind(kind).indoor;
+            site.palette = SiteKitCatalog.Palettes[rng.Next(SiteKitCatalog.Palettes.Length)].id;
+            site.groundSurface = indoor
+                ? IndoorSurfaces[rng.Next(IndoorSurfaces.Length)]
+                : OutdoorSurfaces[rng.Next(OutdoorSurfaces.Length)];
+            site.boundary = SiteKitCatalog.Boundaries[rng.Next(SiteKitCatalog.Boundaries.Length)];
+            // 标志物跳过 none：中央有个东西，是"这不是同一块空地"最直接的证据
+            site.landmark = SiteKitCatalog.Landmarks[1 + rng.Next(SiteKitCatalog.Landmarks.Length - 1)];
+            site.verticality = SiteKitCatalog.Verticalities[rng.Next(SiteKitCatalog.Verticalities.Length)];
+            site.weather = indoor
+                ? (rng.Next(4) == 0 ? "fog" : "clear")
+                : SiteKitCatalog.Weathers[rng.Next(SiteKitCatalog.Weathers.Length)];
+            site.clutter = 1 + rng.Next(3);
+            for (int i = 0; i < 3 + rng.Next(2); i++)
+                site.scatterProps.Add(SiteKitCatalog.Props[rng.Next(SiteKitCatalog.Props.Length)]);
 
             // 房间不再逐字照抄骨架：数量、顺序、修饰词、道具都按 seed 变。
             //
