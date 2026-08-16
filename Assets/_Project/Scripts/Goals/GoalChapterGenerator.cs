@@ -267,7 +267,13 @@ namespace AdversityRoad.Goals
                 if (req.result == UnityWebRequest.Result.Success)
                 {
                     content = CloudDialogueService.ExtractContent(req.downloadHandler.text);
-                    CloudDialogueService.AddLog("章节生成返回 " + Mathf.RoundToInt(ms) + "ms");
+                    // 返回长度 + 开头，是"通过 0、拒绝 0"唯一能查下去的线索：
+                    // 0 章既可能是没返回内容、也可能是返回了但不是 JSON、还可能是被截断。
+                    // 只打一句"返回 28240ms"什么也说明不了。
+                    string head = string.IsNullOrEmpty(content) ? "(空)"
+                        : content.Substring(0, Mathf.Min(60, content.Length)).Replace("\n", " ");
+                    CloudDialogueService.AddLog("章节生成返回 " + Mathf.RoundToInt(ms) + "ms · 长度 " +
+                        (content == null ? 0 : content.Length) + " · 开头「" + head + "」");
                 }
                 else
                 {
@@ -344,11 +350,14 @@ namespace AdversityRoad.Goals
             // —— site：这一章自己的那个地方（V2.0 的关键，不能省） ——
             sb.Append("site 字段（必填，决定这一章会被现场建成什么样的场景）：");
             sb.Append("siteName(场景名,不超过8个汉字)、siteKind、layout、ambience、sizeHint(small/medium/large)、");
-            sb.Append("rooms(数组,2-5个,每个含 name(不超过6个汉字)/purpose/sizeHint/props(数组))、");
-            sb.Append("npcs(数组,0-4个,每个含 roleType/count(1-4)/behavior(wander|station|patrol)/line(一句非攻击性的环境台词))、");
-            sb.Append("rules(数组,2-4条,用玩家能读懂的一句话说清这一关怎么玩)、");
-            sb.Append("externalLines(数组,3-6句,敌人会喊的压力台词,每句不超过20字)、");
-            sb.Append("internalLines(数组,3-6句,玩家脑内回声,每句不超过20字)、");
+            // 篇幅直接决定这次返回会不会被截断——五章各写满五个房间、六句台词，
+            // 很容易超出额度，然后整批解析不出来（日志上表现为"通过 0、拒绝 0"）。
+            // 房间与台词各砍一半，信息密度不变，返回长度减一大截。
+            sb.Append("rooms(数组,2-3个,每个含 name(不超过6个汉字)/purpose(不超过12字)/sizeHint/props(数组,2-4个))、");
+            sb.Append("npcs(数组,1-3个,每个含 roleType/count(1-3)/behavior(wander|station|patrol)/line(一句非攻击性的环境台词))、");
+            sb.Append("rules(数组,2-3条,用玩家能读懂的一句话说清这一关怎么玩)、");
+            sb.Append("externalLines(数组,3句,敌人会喊的压力台词,每句不超过18字)、");
+            sb.Append("internalLines(数组,3句,玩家脑内回声,每句不超过18字)、");
             sb.Append("interactables(数组,场景里的关键可交互物名称)。");
             sb.Append("siteKind 只能取：")
               .Append(string.Join("/", SiteKitCatalog.AllKindIds().ToArray())).Append("。");

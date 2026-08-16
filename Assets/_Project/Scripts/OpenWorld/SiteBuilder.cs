@@ -131,6 +131,10 @@ namespace AdversityRoad.OpenWorld
                 default: yield return BuildRooms(inst, bp, rng, w, d); break;
             }
 
+            // ---- 场景陈设：让它一眼看得出是"哪种地方" ----
+            Furnish(inst, kind, rng, w, d);
+            yield return null;
+
             // ---- 灯光与氛围 ----
             ApplyAmbience(inst, bp, kind, w, d);
             yield return null;
@@ -168,8 +172,10 @@ namespace AdversityRoad.OpenWorld
 
             // 落点台子**无条件**补一块：一块 10×10 的板子几乎不要钱，
             // 而"玩家一进来就往下掉"是最劝退的一种失败，不值得为了省它去赌。
+            // 顶面必须和主地板齐平（落点 y=1.1，板厚 0.6 → 中心 -0.3 时顶面正好 0）。
+            // 差 5 公分就是一道台阶，走过去会被绊、动画也会抖。
             Box(inst, "GroundPad_Spawn",
-                inst.root.transform.InverseTransformPoint(inst.playerSpawn) + new Vector3(0, -1.35f, 0),
+                inst.root.transform.InverseTransformPoint(inst.playerSpawn) + new Vector3(0, -1.4f, 0),
                 new Vector3(10f, 0.6f, 10f), Floor);
 
             onDone?.Invoke(inst);
@@ -655,6 +661,244 @@ namespace AdversityRoad.OpenWorld
             var go = Box(inst, name, local, size, color);
             Object.DestroyImmediate(go.GetComponent<Collider>());
             return go;
+        }
+
+        /// <summary>
+        /// 按场景类型铺一套**认得出来**的陈设。
+        ///
+        /// 【为什么必须有这一层】布局生成器只负责"空间形状"——长廊就是两面墙加几个门框，
+        /// 大厅就是一个空盒子。玩家走进"地铁站·长廊"，看到的是两堵墙和几块飘着的标牌，
+        /// 于是"场景里什么都没有，除了一个出口标记"。房间道具清单也救不了：
+        /// 一间房最多摆六件，而一个地铁站需要的是闸机排、站台、长椅阵列、柱子和灯箱——
+        /// 那是**场所的固有构成**，不该指望 AI 逐件列出来。
+        ///
+        /// 所以这里按 siteKind 给每一类地方配一套固有陈设。AI 决定"这是地铁站"，
+        /// 引擎负责"地铁站长什么样"——分工和坐标那条约束是一致的。
+        /// </summary>
+        static void Furnish(SiteInstance inst, SiteKitCatalog.SiteKindInfo kind,
+            System.Random rng, float w, float d)
+        {
+            float hw = w / 2f, hd = d / 2f;
+            switch (kind.id)
+            {
+                case "subway":
+                    // 站台 + 轨道沟 + 闸机排 + 长椅 + 柱列 + 灯箱
+                    Box(inst, "Platform", new Vector3(0, 0.35f, hd * 0.55f),
+                        new Vector3(w * 0.86f, 0.7f, d * 0.3f), new Color(0.5f, 0.49f, 0.47f));
+                    Deco(inst, "TrackPit", new Vector3(0, 0.04f, -hd * 0.5f),
+                        new Vector3(w * 0.86f, 0.08f, d * 0.22f), new Color(0.13f, 0.13f, 0.15f));
+                    for (int i = -3; i <= 3; i++)
+                        Deco(inst, "Rail", new Vector3(i * w * 0.12f, 0.1f, -hd * 0.5f),
+                            new Vector3(0.5f, 0.12f, d * 0.2f), new Color(0.4f, 0.4f, 0.44f));
+                    for (int i = 0; i < 5; i++)
+                        Box(inst, "Gate", new Vector3(-w * 0.32f + i * w * 0.16f, 0.6f, 0),
+                            new Vector3(0.7f, 1.2f, 2.4f), new Color(0.55f, 0.57f, 0.6f));
+                    for (int i = 0; i < 4; i++)
+                        BuildProp(inst, "bench", new Vector3(-w * 0.3f + i * w * 0.2f, 0, hd * 0.5f), rng);
+                    for (int i = 0; i < 6; i++)
+                        Box(inst, "Pillar", new Vector3(-w * 0.36f + i * w * 0.145f, 2.1f, hd * 0.2f),
+                            new Vector3(1f, 4.2f, 1f), new Color(0.58f, 0.57f, 0.55f));
+                    for (int i = 0; i < 4; i++)
+                        Deco(inst, "AdBox", new Vector3(-w * 0.28f + i * w * 0.19f, 2.2f, hd - 1.2f),
+                            new Vector3(3.4f, 2f, 0.15f), new Color(0.95f, 0.88f, 0.6f));
+                    break;
+
+                case "office_floor":
+                case "meeting_room":
+                    for (int x = 0; x < 4; x++)
+                        for (int z = 0; z < 3; z++)
+                        {
+                            var at = new Vector3(-hw * 0.6f + x * w * 0.28f, 0, -hd * 0.5f + z * d * 0.34f);
+                            BuildProp(inst, "desk", at, rng);
+                            BuildProp(inst, "chair", at + new Vector3(0, 0, -1.4f), rng);
+                            Deco(inst, "Divider", at + new Vector3(0, 0.9f, 1.1f),
+                                new Vector3(2.4f, 1.4f, 0.12f), new Color(0.55f, 0.56f, 0.6f));
+                        }
+                    BuildProp(inst, "printer", new Vector3(hw * 0.7f, 0, 0), rng);
+                    BuildProp(inst, "whiteboard", new Vector3(0, 0, hd - 1.4f), rng);
+                    break;
+
+                case "recruit_hall":
+                case "waiting_area":
+                    for (int r = 0; r < 4; r++)
+                        for (int c = 0; c < 6; c++)
+                            BuildProp(inst, "chair",
+                                new Vector3(-hw * 0.6f + c * w * 0.2f, 0, -hd * 0.4f + r * 3.2f), rng);
+                    for (int i = 0; i < 3; i++)
+                        BuildProp(inst, "counter", new Vector3(-w * 0.25f + i * w * 0.25f, 0, hd * 0.7f), rng);
+                    for (int i = 0; i < 8; i++)
+                        BuildProp(inst, "barrier",
+                            new Vector3(-hw * 0.55f + i * w * 0.14f, 0, hd * 0.35f), rng);
+                    Deco(inst, "CallScreen", new Vector3(0, 3.2f, hd - 1f),
+                        new Vector3(5f, 1.6f, 0.15f), new Color(0.2f, 0.55f, 0.75f));
+                    break;
+
+                case "server_room":
+                    for (int x = 0; x < 4; x++)
+                        for (int z = 0; z < 4; z++)
+                            BuildProp(inst, "server_rack",
+                                new Vector3(-hw * 0.55f + x * w * 0.28f, 0, -hd * 0.5f + z * d * 0.28f), rng);
+                    break;
+
+                case "archive":
+                case "library_room":
+                    for (int x = 0; x < 5; x++)
+                        for (int z = 0; z < 3; z++)
+                            BuildProp(inst, "shelf",
+                                new Vector3(-hw * 0.6f + x * w * 0.24f, 0, -hd * 0.4f + z * d * 0.3f), rng);
+                    BuildProp(inst, "table", new Vector3(0, 0, hd * 0.7f), rng);
+                    break;
+
+                case "classroom":
+                    for (int r = 0; r < 4; r++)
+                        for (int c = 0; c < 5; c++)
+                            BuildProp(inst, "desk",
+                                new Vector3(-hw * 0.55f + c * w * 0.22f, 0, -hd * 0.4f + r * 3.6f), rng);
+                    BuildProp(inst, "whiteboard", new Vector3(0, 0, hd - 1.4f), rng);
+                    BuildProp(inst, "table", new Vector3(0, 0, hd * 0.6f), rng);
+                    break;
+
+                case "apartment":
+                case "studio":
+                    BuildProp(inst, "bed", new Vector3(-hw * 0.6f, 0, hd * 0.5f), rng);
+                    BuildProp(inst, "desk", new Vector3(hw * 0.55f, 0, hd * 0.5f), rng);
+                    BuildProp(inst, "sofa", new Vector3(0, 0, -hd * 0.4f), rng);
+                    BuildProp(inst, "shelf", new Vector3(hw * 0.7f, 0, -hd * 0.2f), rng);
+                    BuildProp(inst, "table", new Vector3(0, 0, 0), rng);
+                    BuildProp(inst, "plant", new Vector3(-hw * 0.7f, 0, -hd * 0.6f), rng);
+                    break;
+
+                case "hospital_ward":
+                case "clinic":
+                    for (int i = 0; i < 5; i++)
+                    {
+                        BuildProp(inst, "bed", new Vector3(-hw * 0.6f + i * w * 0.28f, 0, hd * 0.4f), rng);
+                        BuildProp(inst, "curtain",
+                            new Vector3(-hw * 0.6f + i * w * 0.28f + 1.6f, 0, hd * 0.4f), rng);
+                    }
+                    break;
+
+                case "warehouse":
+                case "factory":
+                    for (int x = 0; x < 5; x++)
+                        for (int z = 0; z < 3; z++)
+                            BuildProp(inst, rng.Next(2) == 0 ? "crate" : "shelf",
+                                new Vector3(-hw * 0.6f + x * w * 0.25f, 0, -hd * 0.4f + z * d * 0.3f), rng);
+                    for (int i = 0; i < 4; i++)
+                        BuildProp(inst, "pipe", new Vector3(-hw * 0.5f + i * w * 0.28f, 0, hd * 0.8f), rng);
+                    break;
+
+                case "parking":
+                    for (int i = 0; i < 8; i++)
+                        Deco(inst, "Slot", new Vector3(-hw * 0.7f + i * w * 0.18f, 0.05f, 0),
+                            new Vector3(0.2f, 0.04f, d * 0.5f), new Color(0.85f, 0.85f, 0.8f));
+                    for (int i = 0; i < 4; i++)
+                        BuildProp(inst, "car", new Vector3(-hw * 0.55f + i * w * 0.3f, 0, hd * 0.2f), rng);
+                    for (int i = 0; i < 6; i++)
+                        Box(inst, "Pillar", new Vector3(-hw * 0.6f + i * w * 0.24f, 2.1f, -hd * 0.5f),
+                            new Vector3(1.1f, 4.2f, 1.1f), new Color(0.5f, 0.5f, 0.52f));
+                    break;
+
+                // ---- 户外 ----
+                case "street_block":
+                case "market":
+                    for (int i = 0; i < 6; i++)
+                        BuildProp(inst, "stall", new Vector3(-hw * 0.65f + i * w * 0.24f, 0, hd * 0.35f), rng);
+                    for (int i = 0; i < 3; i++)
+                        BuildProp(inst, "car", new Vector3(-hw * 0.4f + i * w * 0.36f, 0, -hd * 0.55f), rng);
+                    for (int i = 0; i < 5; i++)
+                        BuildProp(inst, "bench", new Vector3(-hw * 0.5f + i * w * 0.24f, 0, -hd * 0.15f), rng);
+                    for (int i = 0; i < 4; i++)
+                        BuildProp(inst, "trashbin", new Vector3(-hw * 0.45f + i * w * 0.3f, 0, hd * 0.1f), rng);
+                    break;
+
+                case "crossroad":
+                    Deco(inst, "CrossNS", new Vector3(0, 0.05f, 0), new Vector3(14f, 0.04f, d * 0.95f),
+                        new Color(0.2f, 0.2f, 0.22f));
+                    Deco(inst, "CrossEW", new Vector3(0, 0.05f, 0), new Vector3(w * 0.95f, 0.04f, 14f),
+                        new Color(0.2f, 0.2f, 0.22f));
+                    for (int i = -4; i <= 4; i++)
+                    {
+                        Deco(inst, "Zebra", new Vector3(i * 1.8f, 0.07f, 9f),
+                            new Vector3(1.1f, 0.05f, 6f), new Color(0.9f, 0.9f, 0.86f));
+                        Deco(inst, "Zebra", new Vector3(9f, 0.07f, i * 1.8f),
+                            new Vector3(6f, 0.05f, 1.1f), new Color(0.9f, 0.9f, 0.86f));
+                    }
+                    for (int sx = -1; sx <= 1; sx += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                        {
+                            Box(inst, "Signal", new Vector3(sx * 9f, 2.6f, sz * 9f),
+                                new Vector3(0.35f, 5.2f, 0.35f), Trim);
+                            Deco(inst, "SignalHead", new Vector3(sx * 9f, 5f, sz * 9f),
+                                new Vector3(0.7f, 1.6f, 0.7f), new Color(0.9f, 0.35f, 0.3f));
+                        }
+                    for (int i = 0; i < 3; i++)
+                        BuildProp(inst, "car", new Vector3(-hw * 0.5f + i * w * 0.4f, 0, -hd * 0.7f), rng);
+                    break;
+
+                case "rooftop":
+                    for (int i = 0; i < 3; i++)
+                        BuildProp(inst, "crate", new Vector3(-hw * 0.4f + i * w * 0.35f, 0, hd * 0.4f), rng);
+                    for (int i = 0; i < 4; i++)
+                        BuildProp(inst, "pipe", new Vector3(-hw * 0.5f + i * w * 0.28f, 0, -hd * 0.4f), rng);
+                    Box(inst, "WaterTank", new Vector3(hw * 0.5f, 2.2f, 0), new Vector3(6f, 4.4f, 6f),
+                        new Color(0.55f, 0.52f, 0.48f));
+                    Box(inst, "Stairhead", new Vector3(-hw * 0.55f, 1.6f, -hd * 0.2f),
+                        new Vector3(7f, 3.2f, 6f), new Color(0.45f, 0.45f, 0.48f));
+                    break;
+
+                case "park":
+                    for (int i = 0; i < 10; i++)
+                    {
+                        float a = i / 10f * Mathf.PI * 2f;
+                        var at = new Vector3(Mathf.Cos(a) * hw * 0.6f, 0, Mathf.Sin(a) * hd * 0.6f);
+                        Box(inst, "Trunk", at + new Vector3(0, 1.6f, 0), new Vector3(0.6f, 3.2f, 0.6f),
+                            new Color(0.35f, 0.26f, 0.18f));
+                        Deco(inst, "Crown", at + new Vector3(0, 4.2f, 0), new Vector3(4.5f, 3.4f, 4.5f),
+                            new Color(0.2f, 0.42f, 0.24f));
+                    }
+                    Deco(inst, "Path", new Vector3(0, 0.05f, 0), new Vector3(w * 0.8f, 0.04f, 5f),
+                        new Color(0.62f, 0.58f, 0.5f));
+                    for (int i = 0; i < 5; i++)
+                        BuildProp(inst, "bench", new Vector3(-hw * 0.5f + i * w * 0.24f, 0, 4.2f), rng);
+                    break;
+
+                case "alley":
+                    for (int i = 0; i < 5; i++)
+                    {
+                        BuildProp(inst, "trashbin", new Vector3(-hw * 0.6f + i * w * 0.26f, 0, hd * 0.6f), rng);
+                        BuildProp(inst, "crate", new Vector3(-hw * 0.5f + i * w * 0.26f, 0, -hd * 0.6f), rng);
+                    }
+                    for (int i = 0; i < 4; i++)
+                        Box(inst, "AcUnit", new Vector3(-hw * 0.5f + i * w * 0.3f, 3.2f, hd * 0.85f),
+                            new Vector3(1.6f, 1.2f, 1f), new Color(0.5f, 0.5f, 0.54f));
+                    break;
+
+                case "mall":
+                    for (int i = 0; i < 4; i++)
+                    {
+                        Box(inst, "ShopFront", new Vector3(-hw * 0.6f + i * w * 0.4f, 2f, hd * 0.7f),
+                            new Vector3(w * 0.22f, 4f, 5f), new Color(0.6f, 0.58f, 0.56f));
+                        Deco(inst, "ShopGlass", new Vector3(-hw * 0.6f + i * w * 0.4f, 1.8f, hd * 0.7f - 2.6f),
+                            new Vector3(w * 0.18f, 3f, 0.12f), new Color(0.75f, 0.86f, 0.95f));
+                    }
+                    for (int i = 0; i < 6; i++)
+                        BuildProp(inst, "bench", new Vector3(-hw * 0.55f + i * w * 0.22f, 0, -hd * 0.3f), rng);
+                    BuildProp(inst, "plant", new Vector3(0, 0, 0), rng);
+                    break;
+
+                default:
+                    // 没有专属套装的类型：撒一批通用陈设，至少不是空地
+                    string[] generic = { "crate", "bench", "plant", "barrier", "trashbin", "pillar" };
+                    for (int i = 0; i < 12; i++)
+                    {
+                        float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+                        float r = 0.25f + (float)rng.NextDouble() * 0.45f;
+                        BuildProp(inst, generic[i % generic.Length],
+                            new Vector3(Mathf.Cos(a) * hw * r, 0, Mathf.Sin(a) * hd * r), rng);
+                    }
+                    break;
+            }
         }
 
         /// <summary>

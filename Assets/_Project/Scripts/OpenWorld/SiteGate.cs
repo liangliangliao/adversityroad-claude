@@ -153,6 +153,14 @@ namespace AdversityRoad.OpenWorld
                 GoalOS.NoteChapterAttempt(ch.chapterId);
                 ShowRules(ch);
                 SiteObjective.Attach(inst, ch);   // 顶部常驻目标行：打谁、还剩几个
+
+                // 进场时把影响移速的三个因子记一笔："在生成场景里跑不动"如果真存在，
+                // 成因只可能在这三个里（减益倍率 / 行动力 / 蹲伏），一行日志就能分辨。
+                CloudDialogueService.AddLog("进入场景 " + inst.siteId +
+                    " 落点 " + inst.playerSpawn.ToString("F0") +
+                    " · 移速倍率 " + player.MoveSpeedMultiplier.ToString("F2") +
+                    " · 行动力 " + Mathf.RoundToInt(player.Stats.actionPower) +
+                    " · 蹲伏 " + (player.IsCrouched ? "是" : "否"));
             }
             return true;
         }

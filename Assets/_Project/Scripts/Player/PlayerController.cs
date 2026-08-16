@@ -169,12 +169,18 @@ namespace AdversityRoad.Player
                 // 也绝不能让他继续困在虚空里反复掉。
                 if (!HasGroundUnder(back)) back = World.ZoneBuilder.PlayerSpawnOf(0);
                 _lastSafePos = back;   // 同时把"安全点"本身修正掉，不然下一次又回到虚空
+                Core.CloudDialogueService.AddLog("踩空且无安全点 @" + World.ZoneBuilder.CurrentZoneId +
+                    " 掉落点 " + V(transform.position) + " → 送回 " + V(back));
                 Core.GameEvents.RaiseSubtitle("刚才那块地不存在——已经把你送回安全的落点。");
                 Snap(back);
                 return;
             }
 
             back.y += 1.2f;
+            // 掉出去的**位置**记进日志：这是唯一能查出"从哪儿掉的"的线索。
+            // 只发一句字幕的话，玩家截图给我的永远只有"又踩空了"，查不下去。
+            Core.CloudDialogueService.AddLog("踩空捞回 @" + World.ZoneBuilder.CurrentZoneId +
+                " 掉落点 " + V(transform.position) + " → 捞到 " + V(back));
             Snap(back);
             Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
         }
@@ -187,6 +193,9 @@ namespace AdversityRoad.Player
             _vy = 0f;
             _hVel = Vector3.zero;
         }
+
+        static string V(Vector3 p) =>
+            "(" + Mathf.RoundToInt(p.x) + "," + Mathf.RoundToInt(p.y) + "," + Mathf.RoundToInt(p.z) + ")";
 
         /// <summary>这个点下方 30 米内有没有实地（有就敢往那儿捞人）。</summary>
         static bool HasGroundUnder(Vector3 p)
