@@ -257,8 +257,9 @@ namespace AdversityRoad.OpenWorld
             var o = site.root.GetComponent<SiteObjective>() ?? site.root.AddComponent<SiteObjective>();
             o._site = site;
             o._chapterId = ch.chapterId;
-            o._title = ch.site != null && !string.IsNullOrEmpty(ch.site.siteName)
-                ? ch.site.siteName : ch.chapterName;
+            // 顶部目标行也用章节名：面板、日志、HUD 三处必须是同一个名字，
+            // 否则玩家没法把"我点的那一关"和"日志里生成的那一章"对上号
+            o._title = ch.chapterName;
             o._next = 0f;
         }
 

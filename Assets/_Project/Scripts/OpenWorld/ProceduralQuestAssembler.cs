@@ -243,10 +243,19 @@ namespace AdversityRoad.OpenWorld
         {
             Vector3 spawn = site.playerSpawn;
             Vector3 center = site.origin + Vector3.up * 1.1f;
-            Vector3 deep = center + (center - spawn);          // 与落点关于中心对称的那一端
+
+            // "深处"也要有上限：与落点关于中心对称的那一端在大场地里能有九十多米，
+            // 玩家看着目标行上的距离数字走十几秒，路上什么都遇不到——
+            // 那不是纵深，那是空跑。四十米足够形成"要走过去打"的层次。
+            const float MaxDeep = 40f;
+            Vector3 deepDir = center - spawn;
+            deepDir.y = 0f;
+            if (deepDir.sqrMagnitude < 1f) deepDir = Vector3.forward;
+            Vector3 deep = spawn + deepDir.normalized * Mathf.Min(deepDir.magnitude * 2f, MaxDeep);
+
             Vector3 baseAt = placement == "entrance"
-                ? Vector3.Lerp(spawn, center, 0.35f)
-                : placement == "deep" ? deep : center;
+                ? Vector3.Lerp(spawn, center, 0.28f)
+                : placement == "deep" ? deep : Vector3.Lerp(spawn, deep, 0.55f);
 
             // 同一层次的多个敌人错开，不要叠在一个点上
             float a = index * 1.9f;

@@ -94,9 +94,14 @@ namespace AdversityRoad.OpenWorld
             inst.root.transform.position = inst.origin;
 
             float scale = bp.sizeHint == "large" ? 1.35f : bp.sizeHint == "small" ? 0.75f : 1f;
-            // 户外场景再放大一截：同样的 60×46 放在街上就是个院子，
-            // 玩家要的"开阔地带"得真的开阔才成立
-            if (!kind.indoor) scale *= 1.6f;
+            // 户外比室内略大，但**只是略大**。
+            //
+            // 上一版给了 ×1.6，叠上 large 的 ×1.35 就是 ×2.16——场地宽到 130 米。
+            // 后果是玩家进场只看得见一面墙，Boss 被排到九十多米外（实机目标行：↘ 91m），
+            // 走过去要十几秒还什么都遇不到。"开阔"不等于"空旷到找不到人"：
+            // 一处能打起来的关卡，两端距离控制在四五十米之内才对。
+            if (!kind.indoor) scale *= 1.15f;
+            scale = Mathf.Min(scale, 1.3f);
             float w = 60f * scale, d = 46f * scale;
 
             // ---- 周边街区：先把"这地方在城市里"建出来 ----
@@ -613,12 +618,36 @@ namespace AdversityRoad.OpenWorld
             fill.shadows = LightShadows.None;
         }
 
+        /// <summary>
+        /// 落点处的两块牌子：身后是出口，身前是往里走的方向。
+        ///
+        /// 以前这里只立了"出口"。玩家是被传送进来的，本来就没有推门而入的过程，
+        /// 结果一睁眼四周只有一块写着"出口"的牌子——他的原话是
+        /// 「每个关卡都提示出口几个字，没有看到一扇门的入口」。
+        /// 缺的不是门，是**往哪走**：所以补一条通向深处的引导带和一块指向牌，
+        /// 落点周围也点两盏灯，别让人对着一面墙醒来。
+        /// </summary>
         static void BuildEntranceMarker(SiteInstance inst, SiteBlueprint bp)
         {
             float localZ = inst.exitPoint.z - inst.origin.z;
             Sign(inst, new Vector3(0, 4.2f, localZ), "◀ " + bp.siteName + " · 出口");
             Deco(inst, "ExitPad", new Vector3(0, 0.07f, localZ),
                 new Vector3(5f, 0.06f, 3f), new Color(0.4f, 0.8f, 0.6f));
+
+            // 落点照明：醒来的地方必须是亮的
+            Lamp(inst, new Vector3(-5f, 0, localZ + 3f));
+            Lamp(inst, new Vector3(5f, 0, localZ + 3f));
+
+            // 引导带：从落点铺向场景深处，走上去就知道该往哪边
+            float spawnZ = inst.playerSpawn.z - inst.origin.z;
+            float dir = spawnZ <= 0f ? 1f : -1f;                 // 深处在落点的另一侧
+            for (int i = 1; i <= 6; i++)
+            {
+                float z = spawnZ + dir * i * 4.5f;
+                Deco(inst, "PathMark", new Vector3(0, 0.08f, z),
+                    new Vector3(2.6f, 0.05f, 1.1f), new Color(0.95f, 0.82f, 0.45f, 1f));
+            }
+            Sign(inst, new Vector3(0, 3.4f, spawnZ + dir * 9f), "▼ 往里走");
         }
 
         /// <summary>只烘焙本场景（Children 收集）：不动主世界导航，卸载时一起消失。</summary>

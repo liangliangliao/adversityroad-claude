@@ -124,19 +124,27 @@ namespace AdversityRoad.UI
                     foreach (var ch in made)
                     {
                         bool ready = OpenWorld.ProceduralQuestAssembler.IsAssembled(ch.chapterId);
-                        string siteName = ch.site != null && !string.IsNullOrEmpty(ch.site.siteName)
-                            ? ch.site.siteName : ch.chapterName;
+                        // 卡片标题一律用**章节名**——它就是 AI 日志里那个名字。
+                        //
+                        // 以前这里显示的是 site.siteName（场景名），而日志打的是 chapterName，
+                        // 两个字段都由 AI 给、但并不相同：日志写「沉默快递站」，面板写「快递站」，
+                        // 玩家自然会怀疑"这些关卡到底是不是 AI 生成的"。
+                        // 现在标题=章节名，第二行把场景名与障碍一起标出来，两边对得上。
+                        string title = ch.chapterName;
+                        string place = ch.site != null && !string.IsNullOrEmpty(ch.site.siteName)
+                            ? ch.site.siteName : "";
                         string cid = ch.chapterId;
                         var ob = goal.FindObstacle(ch.primaryObstacle);
 
                         // 没建好也照样能点：点下去就现场搭建再进去（预生成/临时组装）
                         Cell(ref slot,
-                            (ch.cleared ? "✓ " : "") + siteName + "\n" +
-                            (ob != null ? ob.label : ch.chapterName) + "\n" +
+                            (ch.cleared ? "✓ " : "") + title + "\n" +
+                            (string.IsNullOrEmpty(place) ? "" : "场景：" + place + "\n") +
+                            (ob != null ? "挡住：" + ob.label : "") + "\n" +
                             (ch.cleared ? "已通关——可重进" : ready ? "已就绪——点击进入" : "点击现场搭建并进入"),
                             ch.cleared ? new Color(0.24f, 0.32f, 0.26f, 0.96f)
                                        : new Color(0.5f, 0.38f, 0.18f, 0.96f),
-                            () => EnterSite(cid, siteName));
+                            () => EnterSite(cid, title));
                     }
                 }
             }
@@ -162,7 +170,7 @@ namespace AdversityRoad.UI
 
         // 网格：五列，格子 226×96，行距 106，首行顶在 -178
         const int Cols = 5;
-        const float CellW = 226f, CellH = 96f, StepX = 240f, StepY = 106f, Top = -178f;
+        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -178f;
 
         static Vector2 SlotPos(int slot) => new Vector2(
             -(Cols - 1) * StepX * 0.5f + (slot % Cols) * StepX,
