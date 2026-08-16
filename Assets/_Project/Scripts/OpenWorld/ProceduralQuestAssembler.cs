@@ -54,6 +54,44 @@ namespace AdversityRoad.OpenWorld
             !string.IsNullOrEmpty(chapterId) && _live.ContainsKey(chapterId);
 
         /// <summary>
+        /// 给这一章挑一个**没被别的章节占着**的遭遇位。
+        ///
+        /// 【这是"点了 A 关，进去却是 B 关"的根因】
+        /// 遭遇位原来是 `EncounterSlot(区域, 种子, 0)` 直接算出来的：
+        /// 位置 = |种子/7| % 该区遭遇位数量。一个区只有几个遭遇位，而同一条旅程
+        /// 常有两三关落在同一个区——两个种子撞进同一个格子的概率相当高。
+        /// 撞上之后，两道门就**立在同一个坐标上**：玩家走过去按 E，
+        /// 响应的是那一帧里先轮到 Update 的那道门，于是他明明站在 A 的门牌下，
+        /// 进去的却是 B 的场景。场景没建错，是门叠在一起了。
+        ///
+        /// 现在按顺序试这个区的每一个遭遇位，跳过已经被其它活动章节占用的，
+        /// 实在都占满了才在原位上错开——至少不会两道门重合。
+        /// </summary>
+        static Vector3 PickFreeAnchor(string districtId, int seed)
+        {
+            const float MinGap = 22f;   // 两道门之间至少隔这么远，走近时不会同时进范围
+            Vector3 first = Vector3.zero;
+            for (int i = 0; i < 16; i++)
+            {
+                var p = DistrictCatalog.EncounterSlot(districtId, seed, i);
+                if (p == Vector3.zero) return p;
+                if (i == 0) first = p;
+
+                bool taken = false;
+                foreach (var kv in _live)
+                {
+                    var other = kv.Value;
+                    if (other == null || !other.live) continue;
+                    if ((other.anchor - p).sqrMagnitude < MinGap * MinGap) { taken = true; break; }
+                }
+                if (!taken) return p;
+            }
+
+            // 这个区的遭遇位全被占了：按已用数量往外错开，绝不和别人重合
+            return first + new Vector3(_live.Count * MinGap, 0f, 0f);
+        }
+
+        /// <summary>
         /// 这一章在**城里**的入口位置（那道 Site Gate 立着的地方）。
         ///
         /// 打完/失败之后该回到这里：生成关卡是这条旅程长出来的，它的门开在城区，
@@ -94,7 +132,7 @@ namespace AdversityRoad.OpenWorld
             {
                 chapterId = bp.chapterId,
                 districtId = bp.worldDistrictId,
-                anchor = DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, 0),
+                anchor = PickFreeAnchor(bp.worldDistrictId, bp.assemblySeed),
                 live = true
             };
             _live[bp.chapterId] = enc;   // 先占位：分帧期间不会被再次触发组装

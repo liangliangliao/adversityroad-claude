@@ -114,27 +114,29 @@ namespace AdversityRoad.OpenWorld
             var d = DistrictCatalog.Register("residential", "住宅区", c);
 
             var rng = new System.Random(9001);
-            // 小区楼栋
+            // 小区楼栋：住处升级成一整座别墅之后，邻里往北挪出这块地
             for (int i = 0; i < 4; i++)
-                ZoneBuilder.Building(ctx, o + new Vector3(-118 + i * 20, 0, 58), 14, 16 + i * 3, 12, rng);
-            // 便利店
-            Shop(ctx, o + new Vector3(-58, 0, 20), "便利店", new Color(0.35f, 0.65f, 0.5f));
+                ZoneBuilder.Building(ctx, o + new Vector3(-118 + i * 20, 0, 64), 14, 16 + i * 3, 12, rng);
+            // 便利店（同样让开别墅的院子）
+            Shop(ctx, o + new Vector3(-40, 0, 20), "便利店", new Color(0.35f, 0.65f, 0.5f));
             // 小区绿地与长椅（恢复点）
-            ZoneBuilder.Decoration(ctx, "Lawn", o + new Vector3(-72, 0.06f, 40),
+            ZoneBuilder.Decoration(ctx, "Lawn", o + new Vector3(-36, 0.06f, 42),
                 new Vector3(24, 0.06f, 16), new Color(0.28f, 0.42f, 0.26f));
-            Bench(ctx, o + new Vector3(-72, 0, 34));
-            d.recoverySpots.Add(o + new Vector3(-72, 1.1f, 34));
-            d.recoverySpots.Add(o + new Vector3(-58, 1.1f, 16));
+            Bench(ctx, o + new Vector3(-36, 0, 36));
+            d.recoverySpots.Add(o + new Vector3(-36, 1.1f, 36));
+            d.recoverySpots.Add(o + new Vector3(-40, 1.1f, 16));
 
-            BuildPlayerHome(ctx, o + new Vector3(-96, 0, 26));
+            // 我的住处：一栋带院子、泳池与车库的私人别墅（见 PlayerVilla）
+            BuildPlayerHome(ctx, o + new Vector3(-98, 0, 32));
 
-            d.encounterSlots.Add(o + new Vector3(-78, 1.1f, 16));
-            d.encounterSlots.Add(o + new Vector3(-104, 1.1f, 44));
-            d.encounterSlots.Add(o + new Vector3(-62, 1.1f, 50));
-            d.riftAnchor = o + new Vector3(-84, 0, 18);
+            // 遭遇位一律避开自家院子——章节的门不该开在自己客厅门口
+            d.encounterSlots.Add(o + new Vector3(-40, 1.1f, 14));
+            d.encounterSlots.Add(o + new Vector3(-30, 1.1f, 48));
+            d.encounterSlots.Add(o + new Vector3(-46, 1.1f, 60));
+            d.riftAnchor = o + new Vector3(-38, 0, 18);
 
             for (int i = 0; i < 4; i++)
-                ctx.pedestrianSpawns.Add(o + new Vector3(-110 + i * 16, 1f, 46));
+                ctx.pedestrianSpawns.Add(o + new Vector3(-44 + i * 12, 1f, 46));
         }
 
         /// <summary>
@@ -145,93 +147,12 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         static void BuildPlayerHome(WorldContext ctx, Vector3 h)
         {
-            const float W = 26f, D = 20f;
-            ZoneBuilder.Box(ctx, "Home_Floor", h + new Vector3(0, -0.05f, 0),
-                new Vector3(W, 0.2f, D), new Color(0.5f, 0.42f, 0.34f));
-
-            // 外墙（南墙留门洞，正对街道）
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(0, 1.6f, D / 2), new Vector3(W, 3.2f, 0.4f), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(-W / 2, 1.6f, 0), new Vector3(0.4f, 3.2f, D), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(W / 2, 1.6f, 0), new Vector3(0.4f, 3.2f, D), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(-8, 1.6f, -D / 2), new Vector3(10, 3.2f, 0.4f), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(8, 1.6f, -D / 2), new Vector3(10, 3.2f, 0.4f), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(0, 2.9f, -D / 2), new Vector3(6, 0.6f, 0.4f), WallC);
-
-            // 内隔墙：玄关 / 客厅 / 卧室 / 厨房 / 卫生间
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(-4.5f, 1.6f, -4), new Vector3(0.3f, 3.2f, 12), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(6, 1.6f, 2), new Vector3(0.3f, 3.2f, 16), WallC);
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(-9, 1.6f, 2), new Vector3(9, 3.2f, 0.3f), WallC);
-
-            HomeSign(h + new Vector3(0, 3.6f, -D / 2 - 0.4f), "我 的 住 处");
-
-            // —— 玄关（进门第一格）——
-            ZoneBuilder.Decoration(ctx, "Rug", h + new Vector3(0, 0.08f, -8),
-                new Vector3(4, 0.04f, 2.4f), new Color(0.42f, 0.24f, 0.22f));
-
-            // —— 客厅：沙发 / 茶几 / 电视 ——
-            ZoneBuilder.Box(ctx, "Sofa", h + new Vector3(1.5f, 0.4f, -3.5f),
-                new Vector3(5, 0.8f, 1.8f), new Color(0.34f, 0.36f, 0.44f));
-            ZoneBuilder.Box(ctx, "Table", h + new Vector3(1.5f, 0.3f, -0.5f),
-                new Vector3(3, 0.6f, 1.4f), new Color(0.42f, 0.3f, 0.2f));
-            ZoneBuilder.Decoration(ctx, "Screen", h + new Vector3(1.5f, 1.4f, 5.6f),
-                new Vector3(3.4f, 1.9f, 0.15f), new Color(0.16f, 0.18f, 0.24f));
-
-            // —— 卧室（西北）：床 / 衣柜 / 窗 ——
-            ZoneBuilder.Box(ctx, "Bed", h + new Vector3(-9, 0.35f, 6.5f),
-                new Vector3(4, 0.7f, 5.4f), new Color(0.35f, 0.42f, 0.6f));
-            ZoneBuilder.Box(ctx, "Pillow", h + new Vector3(-9, 0.8f, 8.6f),
-                new Vector3(2.6f, 0.3f, 1.1f), new Color(0.9f, 0.9f, 0.92f));
-            var wardrobe = ZoneBuilder.Box(ctx, "Wardrobe", h + new Vector3(-12.2f, 1.2f, 1.2f),
-                new Vector3(0.8f, 2.4f, 4f), new Color(0.46f, 0.34f, 0.24f));
-            HomeFixture.Attach(wardrobe, HomeFixtureKind.Wardrobe);
-            ZoneBuilder.Decoration(ctx, "Window", h + new Vector3(-12.9f, 1.9f, 7.5f),
-                new Vector3(0.1f, 1.6f, 3.2f), new Color(0.65f, 0.8f, 1f));
-
-            // —— 书桌角（东北）：书桌 / 电脑 / 手机 / 椅子 ——
-            var desk = ZoneBuilder.Box(ctx, "Desk", h + new Vector3(9.5f, 0.5f, 6.5f),
-                new Vector3(4.4f, 1f, 1.8f), new Color(0.42f, 0.3f, 0.2f));
-            HomeFixture.Attach(desk, HomeFixtureKind.Desk);
-            var pc = ZoneBuilder.Box(ctx, "Computer", h + new Vector3(9.5f, 1.5f, 7.1f),
-                new Vector3(1.8f, 1f, 0.15f), new Color(0.55f, 0.75f, 1f));
-            HomeFixture.Attach(pc, HomeFixtureKind.Computer);
-            var phone = ZoneBuilder.Box(ctx, "Phone", h + new Vector3(8f, 1.06f, 6.2f),
-                new Vector3(0.4f, 0.06f, 0.8f), new Color(0.85f, 0.9f, 1f));
-            HomeFixture.Attach(phone, HomeFixtureKind.Phone);
-            ZoneBuilder.Box(ctx, "Chair", h + new Vector3(9.5f, 0.35f, 4.6f),
-                new Vector3(1.1f, 0.7f, 1.1f), new Color(0.25f, 0.25f, 0.28f));
-
-            // —— 厨房（东南）：冰箱 / 灶台 ——
-            var fridge = ZoneBuilder.Box(ctx, "Fridge", h + new Vector3(11.5f, 1.1f, -5f),
-                new Vector3(1.6f, 2.2f, 1.4f), new Color(0.86f, 0.88f, 0.9f));
-            HomeFixture.Attach(fridge, HomeFixtureKind.Fridge);
-            ZoneBuilder.Box(ctx, "Counter", h + new Vector3(9.5f, 0.5f, -8f),
-                new Vector3(5, 1f, 1.4f), new Color(0.6f, 0.58f, 0.55f));
-
-            // —— 卫生间（西南）：镜子 ——
-            ZoneBuilder.Box(ctx, "Wall", h + new Vector3(-9, 1.6f, -4.2f), new Vector3(9, 3.2f, 0.3f), WallC);
-            var mirror = ZoneBuilder.Box(ctx, "Mirror", h + new Vector3(-12.4f, 1.6f, -6.5f),
-                new Vector3(0.15f, 1.6f, 1.8f), new Color(0.78f, 0.86f, 0.92f));
-            HomeFixture.Attach(mirror, HomeFixtureKind.Mirror);
-            ZoneBuilder.Box(ctx, "Sink", h + new Vector3(-11.6f, 0.45f, -6.5f),
-                new Vector3(1.2f, 0.9f, 1.4f), new Color(0.9f, 0.9f, 0.92f));
-
-            // —— 墙上的目标板（Goal Board 的物理化身）——
-            var board = ZoneBuilder.Box(ctx, "GoalBoard", h + new Vector3(3.5f, 1.7f, 9.7f),
-                new Vector3(4.4f, 2.2f, 0.25f), new Color(0.95f, 0.8f, 0.25f));
-            board.AddComponent<GoalBoard>();
-            HomeFixture.Attach(board, HomeFixtureKind.GoalBoard);
-            HomeSign(h + new Vector3(3.5f, 3.15f, 9.5f), "目 标 板");
-
-            // 室内灯
-            ZoneBuilder.AddCeilingLight(h + new Vector3(0, 2.9f, 0), new Color(1f, 0.9f, 0.72f), 20f);
-            ZoneBuilder.AddCeilingLight(h + new Vector3(9, 2.9f, 6), new Color(0.9f, 0.94f, 1f), 12f);
-
-            HomeInteriorSpawn = h + new Vector3(0, 1.1f, -6);
-            HomeDoorSpawn = h + new Vector3(0, 1.1f, -D / 2 - 4);
-
-            // 门口台阶 → 直接连到住宅区人行道，走出去就是开放世界（不经过菜单）
-            ZoneBuilder.Decoration(ctx, "Path", h + new Vector3(0, 0.06f, -D / 2 - 8),
-                new Vector3(6, 0.06f, 16), Sidewalk);
+            // 住处已经升级成一整栋别墅（客厅大看板 / 卧室 / 办公室 / 书房 / 卫生间 /
+            // 厨房 / 六人餐厅 / 健身房 / 泳池 / 车库 / 一只猫），
+            // 建造细节全在 PlayerVilla 里——这里只负责把它放到城里这个位置上。
+            PlayerVilla.Build(ctx, h);
+            HomeInteriorSpawn = PlayerVilla.InteriorSpawn;
+            HomeDoorSpawn = PlayerVilla.DoorSpawn;
         }
 
         // ================= 商业区 =================

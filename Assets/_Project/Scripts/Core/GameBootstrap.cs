@@ -264,6 +264,9 @@ namespace AdversityRoad.Core
             GoalWorldBinder.Ensure();
             SiteBuilder.UnloadAll();
             ProceduralQuestAssembler.ClearAll();
+            // 静态字段不随场景重载清零：阵亡重开后如果还记着"人在某处生成场景里"，
+            // 落点计算与出关点都会指向一处已经不存在的地方
+            SiteGate.ClearInsideState();
             ProceduralQuestAssembler.Spawner = SpawnEnemy;
             ProceduralQuestAssembler.WorldCtx = _world;   // 场景生成器共用同一份材质/贴图缓存
 

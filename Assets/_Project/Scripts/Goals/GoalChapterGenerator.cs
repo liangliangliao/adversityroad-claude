@@ -228,6 +228,11 @@ namespace AdversityRoad.Goals
         IEnumerator GenerateRemote(GoalData goal, int want)
         {
             _busy = true;
+            // 先让 AI 预测这条目标真正会遇到的障碍，再按障碍生成关卡。
+            // 顺序反了的话，五关全挂在同一批"迟迟不开始的第一步""我大概做不到"上——
+            // 那是本地脊柱给任何目标都会补的通用条目，跟玩家写的目标没什么关系。
+            yield return PredictObstacles(goal);
+
             var cfg = AIPromptConfig.Load();
             string url, model;
             switch (cfg.provider)
@@ -345,6 +350,227 @@ namespace AdversityRoad.Goals
                 FillWithFallback(goal, want, accepted > 0 ? "补足 AI 生成缺口" : "AI 返回不可用");
             else
                 FinishJourney(goal, accepted, "云端 " + cfg.provider);
+        }
+
+        // ================= 障碍预测（关卡的上游） =================
+
+        [System.Serializable]
+        class ObstacleGuess
+        {
+            public string label = "";
+            public string axis = "";
+            public string milestoneId = "";
+        }
+
+        [System.Serializable]
+        class ObstacleGuessList { public List<ObstacleGuess> items = new List<ObstacleGuess>(); }
+
+        /// <summary>
+        /// 让 AI 预测这条目标**最可能、最常见、最相关**的障碍，替换掉本地兜底的通用脊柱。
+        ///
+        /// 【为什么关卡雷同的问题必须从这里治】
+        /// 关卡是按障碍长出来的：一条障碍一关。而障碍原来只有两个来源——
+        /// 模板库（按领域关键词命中）和通用脊柱（"迟迟不开始的第一步"
+        /// "我大概做不到的自我怀疑"……对任何目标都是同一份）。
+        /// 于是不管玩家写"考上重点高中"还是"三个月内跑完半马"，
+        /// 拿到的都是同一批障碍，自然也就长出一批高度相似的关卡。
+        ///
+        /// 现在先问 AI：这件事上，最常挡住人的到底是什么？
+        /// 它给出的是"晚自习后的两小时被手机吃掉""模考掉档后的三天空转"这种
+        /// 贴着目标的具体阻力——关卡因此从源头就分开了。
+        /// 失败（没网/超时/解析不出）就保留本地脊柱，不影响后面的流程。
+        /// </summary>
+        IEnumerator PredictObstacles(GoalData goal)
+        {
+            var cfg = AIPromptConfig.Load();
+            if (!CloudReady || goal == null || goal.milestones.Count == 0) yield break;
+
+            string url, model;
+            switch (cfg.provider)
+            {
+                case "deepseek":
+                    url = "https://api.deepseek.com/chat/completions";
+                    model = string.IsNullOrEmpty(cfg.model) ? "deepseek-chat" : cfg.model;
+                    break;
+                case "edenai":
+                    url = "https://api.edenai.run/v2/llm/chat";
+                    model = string.IsNullOrEmpty(cfg.model) ? "openai/gpt-4o-mini" : cfg.model;
+                    break;
+                default:
+                    url = "https://openrouter.ai/api/v1/chat/completions";
+                    model = string.IsNullOrEmpty(cfg.model) ? "deepseek/deepseek-chat" : cfg.model;
+                    break;
+            }
+
+            string body = "{\"model\":\"" + Esc(model) + "\",\"messages\":[" +
+                "{\"role\":\"system\",\"content\":\"" + Esc(ObstacleContractPrompt()) + "\"}," +
+                "{\"role\":\"user\",\"content\":\"" + Esc(ObstaclePrompt(goal)) + "\"}]," +
+                "\"max_tokens\":1200,\"temperature\":0.9}";
+
+            CloudDialogueService.AddLog("障碍预测请求 " + cfg.provider + "/" + model +
+                " → 目标「" + goal.title + "」");
+
+            string content = null;
+            using (var req = new UnityWebRequest(url, "POST"))
+            {
+                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.SetRequestHeader("Authorization", "Bearer " + cfg.apiKey.Trim());
+                req.timeout = 90;
+                yield return req.SendWebRequest();
+
+                if (req.result == UnityWebRequest.Result.Success)
+                    content = CloudDialogueService.ExtractContent(req.downloadHandler.text);
+                else
+                    CloudDialogueService.AddLog("障碍预测失败 HTTP" + req.responseCode + " " + req.error +
+                        " → 沿用本地障碍");
+            }
+            if (string.IsNullOrEmpty(content)) yield break;
+
+            var guesses = ParseObstacles(content);
+            if (guesses.Count < 3)
+            {
+                CloudDialogueService.AddLog("障碍预测只解析出 " + guesses.Count + " 条 → 沿用本地障碍");
+                yield break;
+            }
+            ApplyPredictedObstacles(goal, guesses);
+        }
+
+        /// <summary>
+        /// 用 AI 预测的障碍替换掉本地补的通用条目。
+        ///
+        /// 只换 AIPredicted 那一批（本地脊柱补的）——玩家自己写进目标里的障碍
+        /// 和已经打通/已消除的障碍一律保留：那是他的东西，不该被模型覆盖。
+        /// </summary>
+        static void ApplyPredictedObstacles(GoalData goal, List<ObstacleGuess> guesses)
+        {
+            // 已经有关卡挂着的障碍不能删，否则那一关就成了没有来由的孤儿
+            var keep = new List<GoalObstacle>();
+            foreach (var o in goal.obstacles)
+            {
+                bool hasChapter = false;
+                foreach (var c in goal.chapters)
+                    if (c.primaryObstacle == o.obstacleId) { hasChapter = true; break; }
+                if (o.source != ObstacleSource.AIPredicted || o.removed || hasChapter) keep.Add(o);
+            }
+
+            int added = 0;
+            foreach (var g in guesses)
+            {
+                if (keep.Count >= GoalParser.MaxObstacles) break;
+                string label = Personalization.SafetyFilter.Anonymize((g.label ?? "").Trim());
+                if (label.Length < 2) continue;
+                if (label.Length > 18) label = label.Substring(0, 18);
+
+                bool dup = false;
+                foreach (var o in keep) if (o.label == label) { dup = true; break; }
+                if (dup) continue;
+
+                keep.Add(new GoalObstacle
+                {
+                    obstacleId = "ob_ai" + (keep.Count + 1),
+                    label = label,
+                    source = ObstacleSource.AIPredicted,
+                    axis = AxisFromName(g.axis),
+                    linkedMilestoneId = ResolveMilestone(goal, g.milestoneId, keep.Count)
+                });
+                added++;
+            }
+
+            if (added == 0) return;
+            goal.obstacles.Clear();
+            goal.obstacles.AddRange(keep);
+            GoalJourneyGraph.Build(goal);
+
+            var sb = new StringBuilder();
+            sb.Append("障碍预测已采纳 ").Append(added).Append(" 条：");
+            foreach (var o in goal.obstacles) sb.Append(o.label).Append('/');
+            CloudDialogueService.AddLog(sb.ToString());
+        }
+
+        static string ResolveMilestone(GoalData goal, string id, int index)
+        {
+            foreach (var m in goal.milestones) if (m.milestoneId == id) return id;
+            return goal.milestones[index % goal.milestones.Count].milestoneId;
+        }
+
+        /// <summary>弱点轴名 → 枚举（模型给英文名，给错就按 index 摊开，不丢这一条）。</summary>
+        static Personalization.WeaknessAxis AxisFromName(string name)
+        {
+            switch ((name ?? "").Trim())
+            {
+                case "Procrastination": return Personalization.WeaknessAxis.Procrastination;
+                case "LowConfidence": return Personalization.WeaknessAxis.LowConfidence;
+                case "NoiseSensitivity": return Personalization.WeaknessAxis.NoiseSensitivity;
+                case "Shame": return Personalization.WeaknessAxis.Shame;
+                case "JobAnxiety": return Personalization.WeaknessAxis.JobAnxiety;
+                case "BoundaryConflict": return Personalization.WeaknessAxis.BoundaryConflict;
+                case "FairnessSensitivity": return Personalization.WeaknessAxis.FairnessSensitivity;
+                case "FailureFear": return Personalization.WeaknessAxis.FailureFear;
+                case "WillpowerCollapse": return Personalization.WeaknessAxis.WillpowerCollapse;
+                default: return Personalization.WeaknessAxis.SelfDoubt;
+            }
+        }
+
+        static List<ObstacleGuess> ParseObstacles(string content)
+        {
+            var list = new List<ObstacleGuess>();
+            if (string.IsNullOrEmpty(content)) return list;
+            int start = content.IndexOf('[');
+            int end = content.LastIndexOf(']');
+            if (start < 0 || end <= start) return list;
+            string json = "{\"items\":" + content.Substring(start, end - start + 1) + "}";
+            try
+            {
+                var parsed = JsonUtility.FromJson<ObstacleGuessList>(json);
+                if (parsed != null && parsed.items != null) list.AddRange(parsed.items);
+            }
+            catch (System.Exception e)
+            {
+                CloudDialogueService.AddLog("障碍预测解析失败：" + e.Message);
+            }
+            return list;
+        }
+
+        static string ObstacleContractPrompt()
+        {
+            var sb = new StringBuilder();
+            sb.Append("你是《逆境之路》的障碍预测器。只输出一个 JSON 数组，不要任何解释文字或代码块标记。");
+            sb.Append("每个元素字段：label(这条障碍的名字,6-16个汉字,具体到能想象出画面)、");
+            sb.Append("axis(下列之一：Procrastination/LowConfidence/NoiseSensitivity/Shame/JobAnxiety/");
+            sb.Append("BoundaryConflict/FairnessSensitivity/FailureFear/WillpowerCollapse/SelfDoubt)、");
+            sb.Append("milestoneId(这条障碍最可能挡在哪个里程碑上，用给出的 id)。");
+            sb.Append("绝不推断玩家的人格或精神疾病，不写现实操控话术、真实姓名与联系方式。");
+            return sb.ToString();
+        }
+
+        static string ObstaclePrompt(GoalData goal)
+        {
+            var sb = new StringBuilder();
+            sb.Append("为下面这个目标预测 ").Append(GoalParser.MinObstacles + 1);
+            sb.Append(" 条**最可能真的挡住他**的障碍。");
+            sb.Append("目标：").Append(goal.title).Append("。");
+            if (!string.IsNullOrEmpty(goal.why)) sb.Append("动机：").Append(goal.why).Append("。");
+            if (!string.IsNullOrEmpty(goal.successCondition))
+                sb.Append("完成条件：").Append(goal.successCondition).Append("。");
+            sb.Append("当前状态：").Append(goal.currentState).Append("；目标状态：").Append(goal.targetState).Append("。");
+            sb.Append("里程碑(id:标题)：");
+            foreach (var m in goal.milestones)
+                sb.Append(m.milestoneId).Append(':').Append(m.title).Append(' ');
+
+            sb.Append("。要求：");
+            sb.Append("1.按**最常见、最可能发生、和这个目标最相关**排序——先想清楚真正做这件事的人，");
+            sb.Append("在哪一步最容易停下来、最容易前功尽弃，而不是套用放之四海皆准的说法；");
+            sb.Append("2.每条都要具体到能想象出画面：不要写「拖延」「不自信」，");
+            sb.Append("要写「晚自习后的两小时被手机吃掉」「模考掉档后的三天空转」这种；");
+            sb.Append("3.六条之间必须是**不同性质**的阻力——时间、精力、环境、人际、方法、信心、");
+            sb.Append("金钱、身体，尽量分布在不同类别上，不要六条都在讲心态；");
+            sb.Append("4.分布在不同里程碑上：早期、中期、后期各有各的挡路方式；");
+            sb.Append("5.只写这个目标真会遇到的，别写通用鸡汤。");
+            if (goal.safetyTags.Count > 0)
+                sb.Append("玩家禁用主题（绝对不能出现）：").Append(string.Join("、", goal.safetyTags.ToArray())).Append("。");
+            return sb.ToString();
         }
 
         // ================= 三层 Prompt（方案 18.2） =================
@@ -478,6 +704,25 @@ namespace AdversityRoad.Goals
             sb.Append("。已经存在的章节（不要重复它们的主障碍与机制组合）：");
             foreach (var c in goal.chapters)
                 sb.Append(c.chapterName).Append('(').Append(c.primaryObstacle).Append(") ");
+
+            // 【分批请求之间必须互相知道对方长什么样】
+            // 一次只要两章，每批都是独立请求——模型并不知道上一批已经用过什么场所、
+            // 什么色板、什么标志物，于是很自然地又给一套差不多的。
+            // 把已用过的相貌逐条列出来并明令禁用，是分批模式下唯一能防撞脸的办法。
+            var used = new StringBuilder();
+            foreach (var c in goal.chapters)
+            {
+                if (c.site == null || string.IsNullOrEmpty(c.site.siteKind)) continue;
+                used.Append(c.site.siteKind).Append('+').Append(c.site.layout).Append('+')
+                    .Append(c.site.palette).Append('+').Append(c.site.landmark).Append('+')
+                    .Append(c.site.groundSurface).Append("；");
+            }
+            if (used.Length > 0)
+            {
+                sb.Append("。【已被占用的场景相貌，本次一律不许再用】");
+                sb.Append(used);
+                sb.Append("——siteKind、palette、landmark、groundSurface 这四项都要避开上面出现过的值。");
+            }
 
             sb.Append("。强度设置：").Append(IntensityLabel(goal.intensity));
             sb.Append("；现实贴近度：").Append(RealismLabel(goal.realism));

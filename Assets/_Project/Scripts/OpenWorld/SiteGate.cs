@@ -140,7 +140,14 @@ namespace AdversityRoad.OpenWorld
                 _player = FindObjectOfType<PlayerController>();
                 if (_player == null) return;
             }
-            if (Vector3.Distance(transform.position, _player.transform.position) > range) return;
+            float dist = Vector3.Distance(transform.position, _player.transform.position);
+            if (dist > range) return;
+
+            // 【第二道保险：只有离玩家最近的那道门能响应】
+            // 万一还是有两道门离得很近（比如遭遇位被挤满时的错开落点），
+            // 按 E 必须进"我站着的这一道"，而不是那一帧里先跑到的那一个。
+            // 门的数量是个位数，只在贴近时查一次，开销可以忽略。
+            if (!IsNearestGate(_player.transform.position, dist)) return;
 
             if (Time.time - _lastHint > 8f)
             {
@@ -149,6 +156,16 @@ namespace AdversityRoad.OpenWorld
             }
             if (!Input.GetKeyDown(KeyCode.E) && !Mobile.MobileInput.GetDown("Interact")) return;
             Enter();
+        }
+
+        bool IsNearestGate(Vector3 playerPos, float myDist)
+        {
+            foreach (var g in FindObjectsByType<SiteGate>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (g == null || g == this) continue;
+                if (Vector3.Distance(g.transform.position, playerPos) < myDist - 0.01f) return false;
+            }
+            return true;
         }
 
         void Enter() => EnterChapter(chapterId);
@@ -202,7 +219,10 @@ namespace AdversityRoad.OpenWorld
 
                 // 进场时把影响移速的三个因子记一笔："在生成场景里跑不动"如果真存在，
                 // 成因只可能在这三个里（减益倍率 / 行动力 / 蹲伏），一行日志就能分辨。
-                CloudDialogueService.AddLog("进入场景 " + inst.siteId +
+                // 章节名 + 场景名 + siteId 一起记：玩家说"点了 A 却进了 B"时，
+                // 这一行能立刻分辨是门点错了、还是场景本身建错了
+                CloudDialogueService.AddLog("进入关卡「" + ch.chapterName + "」→ 场景「" +
+                    (ch.site != null ? ch.site.siteName : "") + "」" + inst.siteId +
                     " 落点 " + inst.playerSpawn.ToString("F0") +
                     " · 移速倍率 " + player.MoveSpeedMultiplier.ToString("F2") +
                     " · 行动力 " + Mathf.RoundToInt(player.Stats.actionPower) +
