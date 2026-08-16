@@ -45,10 +45,11 @@ namespace AdversityRoad.UI
         {
             if (_canvasRt == null) return;
 
+            // 先取键盘高度再判焦点：写成 `input != null && KeyboardHeightPx(out kbPx)`
+            // 的话，短路掉那一支时 kbPx 从未赋值，编译期就过不去（CS0165）。
+            float kbPx = 0f;
             var input = FocusedInput();
-            bool kbUp = input != null && KeyboardHeightPx(out float kbPx);
-
-            if (!kbUp)
+            if (input == null || !KeyboardHeightPx(out kbPx))
             {
                 Restore();
                 return;
