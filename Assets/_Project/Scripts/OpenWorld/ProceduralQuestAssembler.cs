@@ -132,31 +132,27 @@ namespace AdversityRoad.OpenWorld
             AssembledEncounter enc, System.Random rng)
         {
             var site = enc.site;
-            int slot = 0;
 
-            foreach (var name in bp.externalEnemies)
+            // 按 AI 给的编成放人：谁、几个、门口还是深处、守点还是巡逻。
+            // 坐标仍由引擎算——placement 只表达远近层次。
+            int idx = 0;
+            foreach (var spec in bp.enemyPlan)
             {
-                if (!ResolveEnemy(name, out var t)) continue;
-                var go = Spawner(t, TierFor(goal, rng), SiteSpot(site, slot++, rng), true);
-                if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
-            }
-            foreach (var name in bp.internalEnemies)
-            {
-                if (!ResolveEnemy(name, out var t)) continue;
-                var go = Spawner(t, EnemyTier.Standard, SiteSpot(site, slot++, rng), true);
-                if (go != null) { enc.enemies.Add(go); Reparent(go, site); }
-            }
-
-            if (ResolveEnemy(bp.bossArchetype, out var bossType))
-            {
-                var bossGo = Spawner(bossType, EnemyTier.Chief, SiteSpot(site, 0, rng), true);
-                if (bossGo != null)
+                if (!ResolveEnemy(spec.enemyType, out var t)) continue;
+                var tier = TierOf(spec.tier, goal, rng);
+                for (int k = 0; k < spec.count; k++)
                 {
-                    enc.enemies.Add(bossGo);
-                    Reparent(bossGo, site);
-                    var ec = bossGo.GetComponent<EnemyController>();
+                    Vector3 at = PlacedSpot(site, spec.placement, idx++, rng);
+                    var go = Spawner(t, tier, at, true);
+                    if (go == null) continue;
+                    enc.enemies.Add(go);
+                    Reparent(go, site);
+
+                    if (spec.tier != "chief") continue;
+                    var ec = go.GetComponent<EnemyController>();
                     if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
-                    bossGo.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                    go.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                    BossBeacon(go);
                 }
             }
 
@@ -195,11 +191,71 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
-        static Vector3 SiteSpot(SiteInstance site, int index, System.Random rng)
+        /// <summary>
+        /// Boss 头顶的光柱。
+        ///
+        /// 户外场景放大之后有一百多米宽，Boss 常在三十米外、隔着一栋楼；
+        /// 目标行只写"剩余 3"的话，玩家在空地上转半天也找不到打谁——
+        /// 他的原话是"连战斗的入口都找不到，boss 都没有出现"。
+        /// 一根远处就能看见的光柱，比任何文字提示都直接。
+        /// </summary>
+        static void BossBeacon(GameObject boss)
         {
-            if (site.enemySpawns.Count == 0) return site.playerSpawn + Vector3.forward * 10f;
-            var basePos = site.enemySpawns[Mathf.Abs(index) % site.enemySpawns.Count];
-            return Offset(basePos, rng);
+            if (boss == null) return;
+            var beam = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            beam.name = "BossBeacon";
+            Object.DestroyImmediate(beam.GetComponent<Collider>());
+            beam.transform.SetParent(boss.transform, false);
+            beam.transform.localPosition = new Vector3(0, 14f, 0);
+            beam.transform.localScale = new Vector3(1.6f, 14f, 1.6f);
+            beam.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(new Color(1f, 0.35f, 0.3f), 0.28f);
+
+            var lightGo = new GameObject("BossBeaconLight");
+            lightGo.transform.SetParent(boss.transform, false);
+            lightGo.transform.localPosition = new Vector3(0, 4f, 0);
+            var l = lightGo.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.range = 22f;
+            l.intensity = 2.2f;
+            l.color = new Color(1f, 0.45f, 0.35f);
+        }
+
+        static EnemyTier TierOf(string tier, GoalData goal, System.Random rng)
+        {
+            switch (tier)
+            {
+                case "minion": return EnemyTier.Novice;
+                case "elite": return EnemyTier.Elite;
+                case "chief": return EnemyTier.Chief;
+                default: return TierFor(goal, rng);
+            }
+        }
+
+        /// <summary>
+        /// 把"门口 / 中段 / 深处"翻译成场景里的实际落点。
+        ///
+        /// 门口 = 玩家落点正前方十来米：进场抬头就看得见要打的东西。
+        /// 中段 = 场景中心一带。深处 = 远端，Boss 在那里等着。
+        /// 落点最后一律吸附到导航面上——AI 给的是层次，能不能站人由引擎说了算。
+        /// </summary>
+        static Vector3 PlacedSpot(SiteInstance site, string placement, int index, System.Random rng)
+        {
+            Vector3 spawn = site.playerSpawn;
+            Vector3 center = site.origin + Vector3.up * 1.1f;
+            Vector3 deep = center + (center - spawn);          // 与落点关于中心对称的那一端
+            Vector3 baseAt = placement == "entrance"
+                ? Vector3.Lerp(spawn, center, 0.35f)
+                : placement == "deep" ? deep : center;
+
+            // 同一层次的多个敌人错开，不要叠在一个点上
+            float a = index * 1.9f;
+            baseAt += new Vector3(Mathf.Cos(a) * (3f + index * 1.6f), 0, Mathf.Sin(a) * (3f + index * 1.6f));
+
+            if (UnityEngine.AI.NavMesh.SamplePosition(baseAt, out var hit, 25f,
+                    UnityEngine.AI.NavMesh.AllAreas))
+                return hit.position + Vector3.up * 1.1f;
+            return GroundAt(baseAt) + Vector3.up * 1.1f;
         }
 
         /// <summary>敌人挂到场景根下：场景卸载时一起收走，不会留在世界里游荡。</summary>

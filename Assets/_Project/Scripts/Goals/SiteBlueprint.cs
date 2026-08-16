@@ -14,6 +14,28 @@ namespace AdversityRoad.Goals
         public List<string> props = new List<string>();   // 只能来自已批准道具库
     }
 
+    /// <summary>
+    /// 一条敌人编成（AI 决定"这一关放谁、放几个、放在哪、怎么行动"）。
+    ///
+    /// 以前敌人只有三个扁平字段（externalEnemies / internalEnemies / bossArchetype），
+    /// 引擎拿到之后一律往同一批出生点上摆——于是每一关的战斗排布都一样，
+    /// 而且玩家常常在空地上找不到人。现在把"编成"也交给 AI：
+    /// 同样是"需求膨胀"，可以是门口两个小兵 + 深处一个首领，
+    /// 也可以是一路巡逻的三人组，战斗节奏因此才真的按关卡走。
+    ///
+    /// 坐标仍然不给 AI：placement 只说**远近层次**（门口/中段/深处），
+    /// 具体落点由引擎在已烘焙的导航面上算。
+    /// </summary>
+    [Serializable]
+    public class ChapterEnemySpec
+    {
+        public string enemyType = "";      // 已批准敌人库里的英文名
+        public string tier = "standard";   // minion / standard / elite / chief
+        public int count = 1;              // 1-4
+        public string placement = "middle";// entrance / middle / deep
+        public string role = "guard";      // guard 守点 / patrol 巡逻 / ambush 伏击
+    }
+
     /// <summary>场景里的 NPC（只用角色类型，绝不使用真实姓名）。</summary>
     [Serializable]
     public class SiteNpc

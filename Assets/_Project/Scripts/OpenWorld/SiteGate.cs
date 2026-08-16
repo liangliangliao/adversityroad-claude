@@ -262,6 +262,20 @@ namespace AdversityRoad.OpenWorld
             o._next = 0f;
         }
 
+        /// <summary>把「目标相对镜头的方位角」变成一个一眼能懂的箭头。</summary>
+        static string Arrow(float angle)
+        {
+            float a = Mathf.Repeat(angle + 180f, 360f) - 180f;   // 归一到 [-180,180]
+            if (a > -22.5f && a <= 22.5f) return "↑ ";
+            if (a > 22.5f && a <= 67.5f) return "↗ ";
+            if (a > 67.5f && a <= 112.5f) return "→ ";
+            if (a > 112.5f && a <= 157.5f) return "↘ ";
+            if (a > -67.5f && a <= -22.5f) return "↖ ";
+            if (a > -112.5f && a <= -67.5f) return "← ";
+            if (a > -157.5f && a <= -112.5f) return "↙ ";
+            return "↓ ";
+        }
+
         void OnDisable() => UI.HUDController.SetObjective("");
 
         void Update()
@@ -273,14 +287,25 @@ namespace AdversityRoad.OpenWorld
             if (!SiteGate.InsideSite || SiteGate.InsideChapterId != _chapterId)
             { UI.HUDController.SetObjective(""); return; }
 
+            var player = FindObjectOfType<PlayerController>();
             int alive = 0;
             string bossName = "";
+            Transform target = null;
+            float bestSqr = float.MaxValue;
+            bool targetIsBoss = false;
+
             foreach (var e in _site.root.GetComponentsInChildren<AI.EnemyController>(false))
             {
                 if (e == null || e.State == AI.EnemyState.Dead) continue;
                 alive++;
-                if (e.GetComponent<ChapterGateEnemy>() != null && e.profile != null)
-                    bossName = e.profile.displayName;
+                bool isBoss = e.GetComponent<ChapterGateEnemy>() != null;
+                if (isBoss && e.profile != null) bossName = e.profile.displayName;
+                if (player == null) continue;
+
+                // Boss 优先当指向目标；没有 Boss 时指最近的一个
+                float sqr = (e.transform.position - player.transform.position).sqrMagnitude;
+                if (isBoss && !targetIsBoss) { target = e.transform; bestSqr = sqr; targetIsBoss = true; }
+                else if (isBoss == targetIsBoss && sqr < bestSqr) { target = e.transform; bestSqr = sqr; }
             }
 
             if (alive == 0)
@@ -288,9 +313,26 @@ namespace AdversityRoad.OpenWorld
                 UI.HUDController.SetObjective("◆ " + _title + " —— 这里清空了，从来路走出去");
                 return;
             }
+
+            // 方向 + 距离：这才是"敌人在哪里"的答案。
+            // 户外场景放大之后敌人常在二三十米外、隔着一栋楼，只报"剩余 3"
+            // 等于让玩家在一片空地上自己找——玩家的原话就是"连战斗入口都找不到"。
+            string where = "";
+            if (target != null && player != null)
+            {
+                Vector3 to = target.position - player.transform.position;
+                to.y = 0f;
+                float dist = to.magnitude;
+                var cam = player.cameraTransform;
+                Vector3 fwd = cam != null ? cam.forward : player.transform.forward;
+                fwd.y = 0f;
+                float ang = Vector3.SignedAngle(fwd.normalized, to.normalized, Vector3.up);
+                where = " · " + Arrow(ang) + Mathf.RoundToInt(dist) + "m";
+            }
+
             UI.HUDController.SetObjective("◆ " + _title + " —— " +
                 (string.IsNullOrEmpty(bossName) ? "击败挡路的" : "击败【" + bossName + "】") +
-                " · 剩余 " + alive);
+                " · 剩余 " + alive + where);
         }
     }
 

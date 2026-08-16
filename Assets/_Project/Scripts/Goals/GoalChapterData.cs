@@ -47,6 +47,12 @@ namespace AdversityRoad.Goals
         /// </summary>
         public SiteBlueprint site = new SiteBlueprint();
 
+        /// <summary>
+        /// 敌人编成（AI 给：谁 / 几个 / 放在门口还是深处 / 守点还是巡逻）。
+        /// 为空时由校验器按上面三个扁平字段合成一份，老存档因此仍然能用。
+        /// </summary>
+        public List<ChapterEnemySpec> enemyPlan = new List<ChapterEnemySpec>();
+
         // ---------- 校验与评分（方案 5.5 / 5.6） ----------
         public bool validated;
         public float goalRelevance;

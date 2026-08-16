@@ -254,6 +254,17 @@ namespace AdversityRoad.Goals
             float startAt = Time.realtimeSinceStartup;
 
             string content = null;
+            // HTTP0「Unknown Error」在 340ms 就返回，不是超时也不是服务端拒绝——
+            // 那是连接层直接失败（安卓上常见于瞬时无网、连接被复用中断）。
+            // 同一次会话里台词请求是成功的，说明网络本身通——所以值得重试一次，
+            // 而不是一失败就整批退回本地库（那正是玩家看到"AI 没起作用"的原因）。
+            for (int attempt = 0; attempt < 2 && string.IsNullOrEmpty(content); attempt++)
+            {
+            if (attempt > 0)
+            {
+                CloudDialogueService.AddLog("章节生成重试第 " + attempt + " 次…");
+                yield return new WaitForSecondsRealtime(1.5f);
+            }
             using (var req = new UnityWebRequest(url, "POST"))
             {
                 req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
@@ -278,8 +289,10 @@ namespace AdversityRoad.Goals
                 else
                 {
                     CloudDialogueService.AddLog("章节生成失败 " + Mathf.RoundToInt(ms) + "ms HTTP" +
-                        req.responseCode + " " + req.error + " → 回退本地 Fallback");
+                        req.responseCode + " " + req.error + " · 请求体 " + body.Length + " 字节" +
+                        (attempt == 0 ? " → 重试" : " → 回退本地 Fallback"));
                 }
+            }
             }
 
             int accepted = 0, rejected = 0;
@@ -341,7 +354,7 @@ namespace AdversityRoad.Goals
             sb.Append("每个元素字段：chapterName(不超过12个汉字)、linkedMilestoneId、primaryObstacle、");
             sb.Append("secondaryObstacle、worldDistrictId、externalEnemies(数组)、internalEnemies(数组)、");
             sb.Append("bossArchetype、physicalMechanics(数组)、mentalMechanics(数组)、successCondition、");
-            sb.Append("failureConsequence、safetyTags(数组)、assemblySeed(整数)、site(对象)。");
+            sb.Append("failureConsequence、safetyTags(数组)、assemblySeed(整数)、enemyPlan(数组)、site(对象)。");
             // 说清楚 safetyTags 要填什么：模型默认会填「无报复」「不含自伤」这种**声明**，
             // 那是在回答"我避开了什么"，而这个字段问的是"这一章涉及什么主题"。
             sb.Append("safetyTags 填这一章**实际涉及**的主题词（例：求职压力、自我怀疑、时间紧迫），");
@@ -380,6 +393,15 @@ namespace AdversityRoad.Goals
             sb.Append("必须逐字使用英文名（括号内是它的中文含义，仅供你理解，不要填中文）：");
             sb.Append(string.Join("、", ChapterModuleLibrary.AllEnemyNames().ToArray())).Append("。");
             sb.Append("externalEnemies 填 1-3 个，internalEnemies 填 1-2 个，bossArchetype 填 1 个。");
+            // 敌人编成也交给模型：谁、几个、放门口还是深处、守点还是巡逻。
+            // 只给三个扁平字段的话，每一关的战斗排布都是引擎按同一套规则摆的，
+            // "这一关有它自己的打法"就无从谈起。坐标仍然不给——placement 只说层次。
+            sb.Append("enemyPlan(数组,3-5 条)：每条含 enemyType(同上清单里的英文名)、");
+            sb.Append("tier(minion|standard|elite|chief)、count(1-4)、");
+            sb.Append("placement(entrance 门口|middle 中段|deep 深处)、role(guard 守点|patrol 巡逻|ambush 伏击)。");
+            sb.Append("必须**恰好有一条 tier=chief 且 placement=deep**（它就是这一关的首领与通关条件），");
+            sb.Append("并且**至少有一条 placement=entrance**——玩家一进场就该看得见要打的东西。");
+            sb.Append("编成要贴着这一关的阻力：被围观就多而弱、被一个人挡死就少而强。");
             sb.Append("不得输出任何代码、Prefab 名、资源路径或坐标——世界组装由引擎按 assemblySeed 确定性完成。");
             return sb.ToString();
         }

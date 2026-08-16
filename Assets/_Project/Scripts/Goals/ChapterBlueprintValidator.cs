@@ -144,6 +144,8 @@ namespace AdversityRoad.Goals
             else if (ChapterModuleLibrary.TryEnemy(bp.bossArchetype, out var okBoss))
                 bp.bossArchetype = okBoss.ToString();
 
+            RepairEnemyPlan(bp, repairs);
+
             if (bp.assemblySeed == 0)
                 bp.assemblySeed = Mathf.Abs((bp.chapterName + bp.linkedMilestoneId).GetHashCode());
 
@@ -617,6 +619,74 @@ namespace AdversityRoad.Goals
             }
 
             return 1f;
+        }
+
+        /// <summary>
+        /// 敌人编成清洗与兜底。
+        ///
+        /// AI 写歪的（敌人名对不上、层级拼错、数量离谱）就地修；
+        /// 完全没写的（老存档、或模型漏了这个字段）就按三个扁平字段合成一份，
+        /// 并**强制保证门口有人、深处有 Boss**——玩家进场就该看得见要打的东西，
+        /// 而不是在一片空地上找半天（"连战斗入口都找不到"）。
+        /// </summary>
+        static void RepairEnemyPlan(GoalChapterData bp, List<string> repairs)
+        {
+            if (bp.enemyPlan == null) bp.enemyPlan = new List<ChapterEnemySpec>();
+
+            // ① 清洗 AI 给的编成
+            for (int i = bp.enemyPlan.Count - 1; i >= 0; i--)
+            {
+                var e = bp.enemyPlan[i];
+                if (e == null) { bp.enemyPlan.RemoveAt(i); continue; }
+                if (!ChapterModuleLibrary.TryEnemy(e.enemyType, out var t) &&
+                    !ChapterModuleLibrary.TryEnemyFuzzy(e.enemyType, out t))
+                { bp.enemyPlan.RemoveAt(i); continue; }
+                e.enemyType = t.ToString();
+                e.count = Mathf.Clamp(e.count, 1, 4);
+                if (e.tier != "minion" && e.tier != "elite" && e.tier != "chief") e.tier = "standard";
+                if (e.placement != "entrance" && e.placement != "deep") e.placement = "middle";
+                if (e.role != "patrol" && e.role != "ambush") e.role = "guard";
+            }
+            if (bp.enemyPlan.Count > 6) bp.enemyPlan.RemoveRange(6, bp.enemyPlan.Count - 6);
+
+            // ② 没有编成：用扁平字段合成——外部敌人守门口，内心敌人在中段，Boss 在深处
+            if (bp.enemyPlan.Count == 0)
+            {
+                foreach (var n in bp.externalEnemies)
+                    bp.enemyPlan.Add(new ChapterEnemySpec
+                    { enemyType = n, tier = "standard", count = 1, placement = "entrance", role = "guard" });
+                foreach (var n in bp.internalEnemies)
+                    bp.enemyPlan.Add(new ChapterEnemySpec
+                    { enemyType = n, tier = "standard", count = 1, placement = "middle", role = "ambush" });
+                repairs.Add("合成敌人编成");
+            }
+
+            // ③ 门口必须有人：进场三十米内看不见任何敌人，玩家会以为这关是空的
+            bool hasEntrance = false, hasChief = false;
+            foreach (var e in bp.enemyPlan)
+            {
+                if (e.placement == "entrance") hasEntrance = true;
+                if (e.tier == "chief") hasChief = true;
+            }
+            if (!hasEntrance && bp.enemyPlan.Count > 0)
+            {
+                bp.enemyPlan[0].placement = "entrance";
+                repairs.Add("把一组敌人挪到门口");
+            }
+
+            // ④ 深处必须有 Boss：它是通关条件本身，缺了这一关就没有终点
+            if (!hasChief)
+            {
+                bp.enemyPlan.Add(new ChapterEnemySpec
+                {
+                    enemyType = bp.bossArchetype,
+                    tier = "chief",
+                    count = 1,
+                    placement = "deep",
+                    role = "guard"
+                });
+                repairs.Add("补首领");
+            }
         }
 
         /// <summary>去掉标签里的否定前缀：「无报复」「不含报复」「非报复」→「报复」。</summary>
