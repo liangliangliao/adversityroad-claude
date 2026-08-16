@@ -19,63 +19,38 @@ namespace AdversityRoad.UI
         InputField _sceneInput;
         InputField _modelInput;
         Text _modelHint;
-        readonly List<Button> _presetButtons = new List<Button>();
-
-        /// <summary>
-        /// 各提供商**当前可用**的模型名格式与常用型号。
-        ///
-        /// 三家的命名规则并不一样，这是玩家最容易踩空的地方：
-        ///   · DeepSeek 直连：不带厂商前缀，就叫 deepseek-chat；
-        ///   · OpenRouter：必须是 `厂商/型号`，型号要和它目录里的完全一致；
-        ///   · EdenAI 的 llm/chat：同样是 `厂商/型号`，但目录比 OpenRouter 小得多。
-        /// 写错的后果不是提示"模型不存在"就完事——OpenRouter 上不存在的名字会一直挂到超时。
-        /// </summary>
-        static string[] PresetsFor(string provider)
-        {
-            switch (provider)
-            {
-                case "deepseek":
-                    return new[] { "deepseek-chat", "deepseek-reasoner", "" };
-                case "edenai":
-                    return new[] { "openai/gpt-4o-mini", "anthropic/claude-3-5-sonnet-latest", "google/gemini-1.5-flash" };
-                default: // openrouter
-                    return new[] { "deepseek/deepseek-chat", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet" };
-            }
-        }
+        ModelPickerPanel _picker;
 
         static string HintFor(string provider)
         {
             switch (provider)
             {
                 case "deepseek":
-                    return "格式：型号名，不带厂商前缀（默认 deepseek-chat）";
+                    return "格式：型号名，不带厂商前缀（默认 deepseek-chat）。点右边按钮可列出账号下全部可用模型。";
                 case "edenai":
-                    return "格式：厂商/型号，必须在 EdenAI llm/chat 目录内（默认 openai/gpt-4o-mini）";
+                    return "格式：厂商/型号，必须在 EdenAI llm/chat 目录内（默认 openai/gpt-4o-mini）。点右边按钮拉取完整目录。";
                 default:
-                    return "格式：厂商/型号，须与 OpenRouter 目录完全一致（默认 deepseek/deepseek-chat）";
+                    return "格式：厂商/型号，须与 OpenRouter 目录完全一致。点右边按钮拉取它的全部模型（三百多个，可筛选）。";
             }
         }
 
-        void UsePreset(int slot)
+        /// <summary>
+        /// 打开模型选择器：现问一次这家现在到底有哪些模型，让玩家从真实列表里挑。
+        ///
+        /// 这里原来是三个我按记忆写死的型号按钮。写死的清单从写下的那一刻就开始过期，
+        /// 而模型名写错恰恰是最难自查的一类失败。现在改成向提供商的目录接口要，
+        /// 拉不到才退回内置备选（选择器里会说明是哪种情况）。
+        /// </summary>
+        void OpenPicker()
         {
-            var cfg = AIPromptConfig.Load();
-            var presets = PresetsFor(string.IsNullOrEmpty(_provider) ? cfg.provider : _provider);
-            if (slot < 0 || slot >= presets.Length) return;
-            _modelInput.text = presets[slot];
+            if (_picker == null) _picker = ModelPickerPanel.Create(_panel.transform.parent);
+            _picker.Open(_provider, _keyInput != null ? _keyInput.text : "",
+                id => { if (_modelInput != null) _modelInput.text = id; });
         }
 
         void RefreshModelHints(string provider)
         {
             if (_modelHint != null) _modelHint.text = HintFor(provider);
-            var presets = PresetsFor(provider);
-            for (int i = 0; i < _presetButtons.Count && i < presets.Length; i++)
-            {
-                var label = _presetButtons[i].GetComponentInChildren<Text>();
-                if (label == null) continue;
-                bool empty = string.IsNullOrEmpty(presets[i]);
-                label.text = empty ? "（用默认）" : presets[i];
-                _presetButtons[i].interactable = true;
-            }
         }
 
         InputField _keyInput;
@@ -142,23 +117,19 @@ namespace AdversityRoad.UI
                 TextAnchor.MiddleLeft, Color.white);
             UiUtil.SetRect(mLabel, new Vector2(0.5f, 1f), new Vector2(-540, -566), new Vector2(100, 34));
             _modelInput = UiUtil.MakeInput(_panel.transform, "留空即用该提供商的默认模型",
-                new Vector2(0.5f, 1f), new Vector2(60, -566), new Vector2(1020, 58), false);
+                new Vector2(0.5f, 1f), new Vector2(-40, -566), new Vector2(820, 58), false);
+
+            UiUtil.MakeButton(_panel.transform, "列出可用模型", new Vector2(0.5f, 1f),
+                new Vector2(490, -566), new Vector2(240, 58),
+                new Color(0.22f, 0.34f, 0.42f, 0.96f), OpenPicker, 22);
 
             // 模型名写错是最难自查的一类失败：EdenAI 回的是
             // 「Model 'xai/grok-4.5' in llm/chat does not exist」，OpenRouter 上不存在的模型
             // 则直接挂到超时。与其让玩家凭记忆敲，不如把每家的**正确格式**摆出来点一下就填。
             _modelHint = UiUtil.MakeText(_panel.transform, "MHint", "", 19,
                 TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.5f, 0.85f));
-            UiUtil.SetRect(_modelHint, new Vector2(0.5f, 1f), new Vector2(60, -604), new Vector2(1020, 28));
-
-            for (int i = 0; i < 3; i++)
-            {
-                int slot = i;
-                var pb = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
-                    new Vector2(-360 + i * 350, -640), new Vector2(330, 50),
-                    new Color(0.22f, 0.3f, 0.36f, 0.95f), () => UsePreset(slot), 20);
-                _presetButtons.Add(pb);
-            }
+            UiUtil.SetRect(_modelHint, new Vector2(0.5f, 1f), new Vector2(0, -612), new Vector2(1140, 28));
+            _modelHint.horizontalOverflow = HorizontalWrapMode.Wrap;
 
             var kLabel = UiUtil.MakeText(_panel.transform, "KLabel", "API Key", 24,
                 TextAnchor.MiddleLeft, Color.white);

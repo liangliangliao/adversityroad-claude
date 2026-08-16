@@ -793,6 +793,10 @@ namespace AdversityRoad.Core
             var hud = canvasGo.AddComponent<HUDController>();
             canvasGo.AddComponent<MobileControls>(); // 真机自动显示触屏操控
 
+            // 软键盘避让：手机上弹出输入法会盖住输入框本身和下面的确认按钮
+            // （API Key、目标输入都中招）。UGUI 不管这件事，得自己让位。
+            UI.SoftKeyboardShifter.Attach(canvas);
+
             // 受击暗角（必须不拦截点击）
             var vignetteGo = new GameObject("Vignette", typeof(Image));
             vignetteGo.transform.SetParent(canvasGo.transform, false);
