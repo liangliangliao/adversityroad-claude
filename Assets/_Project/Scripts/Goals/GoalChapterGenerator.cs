@@ -40,6 +40,9 @@ namespace AdversityRoad.Goals
         public const int MinAiChapters = 5;
         public const int MaxAiChapters = 8;
 
+        /// <summary>每次云端请求生成几章（分批，避免长返回被截断或超时）。</summary>
+        const int BatchSize = 2;
+
         bool _busy;
 
         public static void Ensure()
@@ -243,95 +246,96 @@ namespace AdversityRoad.Goals
                     break;
             }
 
-            string body = "{\"model\":\"" + Esc(model) + "\",\"messages\":[" +
-                "{\"role\":\"system\",\"content\":\"" + Esc(GlobalValuePrompt() + OutputContractPrompt()) + "\"}," +
-                "{\"role\":\"user\",\"content\":\"" + Esc(GoalChapterPrompt(goal, want)) + "\"}]," +
-                // 每章带一整套 site（房间/道具/NPC/规则/内外台词），一章就要四五百 token。
-                // 以前按 3 章、2600 token 配的额度，现在最少要 5 章——额度不给够，
-                // 返回内容会在半路被截断，那才是最难查的失败：日志里看着"成功"，
-                // 实际拿回来的是一段解析不了的残缺 JSON。
-                "\"max_tokens\":8000,\"temperature\":0.8}";
-
-            CloudDialogueService.AddLog("章节生成请求 " + cfg.provider + "/" + model +
-                " → 目标「" + goal.title + "」× " + want + " 章");
-            float startAt = Time.realtimeSinceStartup;
-
-            string content = null;
-            // HTTP0「Unknown Error」在 340ms 就返回，不是超时也不是服务端拒绝——
-            // 那是连接层直接失败（安卓上常见于瞬时无网、连接被复用中断）。
-            // 同一次会话里台词请求是成功的，说明网络本身通——所以值得重试一次，
-            // 而不是一失败就整批退回本地库（那正是玩家看到"AI 没起作用"的原因）。
-            for (int attempt = 0; attempt < 2 && string.IsNullOrEmpty(content); attempt++)
-            {
-            if (attempt > 0)
-            {
-                CloudDialogueService.AddLog("章节生成重试第 " + attempt + " 次…");
-                yield return new WaitForSecondsRealtime(1.5f);
-            }
-            using (var req = new UnityWebRequest(url, "POST"))
-            {
-                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
-                req.downloadHandler = new DownloadHandlerBuffer();
-                req.SetRequestHeader("Content-Type", "application/json");
-                req.SetRequestHeader("Authorization", "Bearer " + cfg.apiKey.Trim());
-                req.timeout = 70;
-                yield return req.SendWebRequest();
-
-                float ms = (Time.realtimeSinceStartup - startAt) * 1000f;
-                if (req.result == UnityWebRequest.Result.Success)
-                {
-                    content = CloudDialogueService.ExtractContent(req.downloadHandler.text);
-                    // 返回长度 + 开头，是"通过 0、拒绝 0"唯一能查下去的线索：
-                    // 0 章既可能是没返回内容、也可能是返回了但不是 JSON、还可能是被截断。
-                    // 只打一句"返回 28240ms"什么也说明不了。
-                    string head = string.IsNullOrEmpty(content) ? "(空)"
-                        : content.Substring(0, Mathf.Min(60, content.Length)).Replace("\n", " ");
-                    CloudDialogueService.AddLog("章节生成返回 " + Mathf.RoundToInt(ms) + "ms · 长度 " +
-                        (content == null ? 0 : content.Length) + " · 开头「" + head + "」");
-                }
-                else
-                {
-                    CloudDialogueService.AddLog("章节生成失败 " + Mathf.RoundToInt(ms) + "ms HTTP" +
-                        req.responseCode + " " + req.error + " · 请求体 " + body.Length + " 字节" +
-                        (attempt == 0 ? " → 重试" : " → 回退本地 Fallback"));
-                }
-            }
-            }
-
             int accepted = 0, rejected = 0, replaced = 0;
-            foreach (var bp in Parse(content))
+
+            // 分批请求：一次只要 BatchSize 章。
+            //
+            // 一次要五章、每章还带整套 site，返回动辄一万字——DeepSeek 要二十五秒，
+            // 换成 qwen 直接超时（实机日志：70015ms Request timeout，重试又跑了 173 秒）。
+            // 而且越长越容易被截断。拆成小批之后每次返回只有两章，
+            // 单次两三千字、十几秒回来，超时与截断这两类失败一起消失。
+            for (int done = 0; done < want; done += BatchSize)
             {
-                // 名额满了不代表该丢——先看看占着位子的是不是本地占位关。
-                // 这一行是"AI 生成从来没起作用"的总闸：本地库在二十几秒前就把五个名额
-                // 填满了，于是模型真正返回的章节在**第一次循环**就 break 掉，
-                // 日志上表现为"救回 11 章 / 通过 0、拒绝 0"。
-                if (CountAiChapters(goal) >= want)
+                int askFor = Mathf.Min(BatchSize, want - done);
+                string body = "{\"model\":\"" + Esc(model) + "\",\"messages\":[" +
+                    "{\"role\":\"system\",\"content\":\"" + Esc(GlobalValuePrompt() + OutputContractPrompt()) + "\"}," +
+                    "{\"role\":\"user\",\"content\":\"" + Esc(GoalChapterPrompt(goal, askFor)) + "\"}]," +
+                    "\"max_tokens\":4000,\"temperature\":0.8}";
+
+                CloudDialogueService.AddLog("章节生成请求 " + cfg.provider + "/" + model +
+                    " → 目标「" + goal.title + "」第 " + (done / BatchSize + 1) + " 批 × " + askFor + " 章");
+                float startAt = Time.realtimeSinceStartup;
+
+                string content = null;
+                // 连接层瞬时失败（HTTP0）与超时都值得重试一次——一失败就整批退回本地库，
+                // 正是玩家看到"AI 没起作用"的直接原因。
+                for (int attempt = 0; attempt < 2 && string.IsNullOrEmpty(content); attempt++)
                 {
-                    if (!DropOnePlaceholder(goal)) break;
-                    replaced++;
+                    if (attempt > 0)
+                    {
+                        CloudDialogueService.AddLog("本批重试第 " + attempt + " 次…");
+                        yield return new WaitForSecondsRealtime(1.5f);
+                    }
+                    using (var req = new UnityWebRequest(url, "POST"))
+                    {
+                        req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+                        req.downloadHandler = new DownloadHandlerBuffer();
+                        req.SetRequestHeader("Content-Type", "application/json");
+                        req.SetRequestHeader("Authorization", "Bearer " + cfg.apiKey.Trim());
+                        // 70 秒对慢模型不够：qwen 那次正好卡在 70015ms 被判超时。
+                        // 分批之后单次本该更快，但仍给足余量，宁可等也别白跑一趟。
+                        req.timeout = 150;
+                        yield return req.SendWebRequest();
+
+                        float ms = (Time.realtimeSinceStartup - startAt) * 1000f;
+                        if (req.result == UnityWebRequest.Result.Success)
+                        {
+                            content = CloudDialogueService.ExtractContent(req.downloadHandler.text);
+                            string head = string.IsNullOrEmpty(content) ? "(空)"
+                                : content.Substring(0, Mathf.Min(60, content.Length)).Replace("\n", " ");
+                            CloudDialogueService.AddLog("本批返回 " + Mathf.RoundToInt(ms) + "ms · 长度 " +
+                                (content == null ? 0 : content.Length) + " · 开头「" + head + "」");
+                        }
+                        else
+                        {
+                            CloudDialogueService.AddLog("本批失败 " + Mathf.RoundToInt(ms) + "ms HTTP" +
+                                req.responseCode + " " + req.error + " · 请求体 " + body.Length + " 字节" +
+                                (attempt == 0 ? " → 重试" : " → 放弃本批"));
+                        }
+                    }
                 }
 
-                bp.source = ChapterSource.AIRequired;
-                bp.chapterId = "ai_" + goal.goalId + "_" + (goal.aiGeneratedChapterIds.Count + accepted + 1);
-                // 模型很可能把好几章都挂到同一条障碍上。以前这里直接丢弃后来的那几章——
-                // 但它们本身是好章节，只是"归档位置"重了。改成先给它换一条还没被覆盖的障碍，
-                // 真的所有障碍都覆盖满了才丢。
-                if (HasChapterFor(goal, bp.primaryObstacle)) Rebind(goal, bp);
+                foreach (var bp in Parse(content))
+                {
+                    // 名额满了不代表该丢——先看看占着位子的是不是本地占位关。
+                    if (CountAiChapters(goal) >= want)
+                    {
+                        if (!DropOnePlaceholder(goal)) break;
+                        replaced++;
+                    }
 
-                if (ChapterBlueprintValidator.Validate(bp, goal, out string reason))
-                {
-                    if (HasChapterFor(goal, bp.primaryObstacle)) { rejected++; continue; }
-                    goal.chapters.Add(bp);
-                    goal.aiGeneratedChapterIds.Add(bp.chapterId);
-                    accepted++;
-                }
-                else
-                {
-                    rejected++;
-                    CloudDialogueService.AddLog("章节被校验拒绝：" +
-                        (string.IsNullOrEmpty(bp.chapterName) ? "(无名)" : bp.chapterName) + " —— " + reason);
+                    bp.source = ChapterSource.AIRequired;
+                    bp.chapterId = "ai_" + goal.goalId + "_" + (goal.aiGeneratedChapterIds.Count + accepted + 1);
+                    // 模型很可能把好几章都挂到同一条障碍上：先换一条还没被覆盖的障碍，
+                    // 真的覆盖满了才丢。
+                    if (HasChapterFor(goal, bp.primaryObstacle)) Rebind(goal, bp);
+
+                    if (ChapterBlueprintValidator.Validate(bp, goal, out string reason))
+                    {
+                        if (HasChapterFor(goal, bp.primaryObstacle)) { rejected++; continue; }
+                        goal.chapters.Add(bp);
+                        goal.aiGeneratedChapterIds.Add(bp.chapterId);
+                        accepted++;
+                    }
+                    else
+                    {
+                        rejected++;
+                        CloudDialogueService.AddLog("章节被校验拒绝：" +
+                            (string.IsNullOrEmpty(bp.chapterName) ? "(无名)" : bp.chapterName) + " —— " + reason);
+                    }
                 }
             }
+
             CloudDialogueService.AddLog("章节校验：通过 " + accepted + "、拒绝 " + rejected +
                 "（其中替换本地占位 " + replaced + " 关）");
 

@@ -18,6 +18,66 @@ namespace AdversityRoad.UI
         InputField _globalInput;
         InputField _sceneInput;
         InputField _modelInput;
+        Text _modelHint;
+        readonly List<Button> _presetButtons = new List<Button>();
+
+        /// <summary>
+        /// 各提供商**当前可用**的模型名格式与常用型号。
+        ///
+        /// 三家的命名规则并不一样，这是玩家最容易踩空的地方：
+        ///   · DeepSeek 直连：不带厂商前缀，就叫 deepseek-chat；
+        ///   · OpenRouter：必须是 `厂商/型号`，型号要和它目录里的完全一致；
+        ///   · EdenAI 的 llm/chat：同样是 `厂商/型号`，但目录比 OpenRouter 小得多。
+        /// 写错的后果不是提示"模型不存在"就完事——OpenRouter 上不存在的名字会一直挂到超时。
+        /// </summary>
+        static string[] PresetsFor(string provider)
+        {
+            switch (provider)
+            {
+                case "deepseek":
+                    return new[] { "deepseek-chat", "deepseek-reasoner", "" };
+                case "edenai":
+                    return new[] { "openai/gpt-4o-mini", "anthropic/claude-3-5-sonnet-latest", "google/gemini-1.5-flash" };
+                default: // openrouter
+                    return new[] { "deepseek/deepseek-chat", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet" };
+            }
+        }
+
+        static string HintFor(string provider)
+        {
+            switch (provider)
+            {
+                case "deepseek":
+                    return "格式：型号名，不带厂商前缀（默认 deepseek-chat）";
+                case "edenai":
+                    return "格式：厂商/型号，必须在 EdenAI llm/chat 目录内（默认 openai/gpt-4o-mini）";
+                default:
+                    return "格式：厂商/型号，须与 OpenRouter 目录完全一致（默认 deepseek/deepseek-chat）";
+            }
+        }
+
+        void UsePreset(int slot)
+        {
+            var cfg = AIPromptConfig.Load();
+            var presets = PresetsFor(string.IsNullOrEmpty(_provider) ? cfg.provider : _provider);
+            if (slot < 0 || slot >= presets.Length) return;
+            _modelInput.text = presets[slot];
+        }
+
+        void RefreshModelHints(string provider)
+        {
+            if (_modelHint != null) _modelHint.text = HintFor(provider);
+            var presets = PresetsFor(provider);
+            for (int i = 0; i < _presetButtons.Count && i < presets.Length; i++)
+            {
+                var label = _presetButtons[i].GetComponentInChildren<Text>();
+                if (label == null) continue;
+                bool empty = string.IsNullOrEmpty(presets[i]);
+                label.text = empty ? "（用默认）" : presets[i];
+                _presetButtons[i].interactable = true;
+            }
+        }
+
         InputField _keyInput;
         Text _sceneLabel;
         Button _cloudToggle;
@@ -81,15 +141,30 @@ namespace AdversityRoad.UI
             var mLabel = UiUtil.MakeText(_panel.transform, "MLabel", "模型", 24,
                 TextAnchor.MiddleLeft, Color.white);
             UiUtil.SetRect(mLabel, new Vector2(0.5f, 1f), new Vector2(-540, -566), new Vector2(100, 34));
-            _modelInput = UiUtil.MakeInput(_panel.transform,
-                "留空用默认：deepseek/deepseek-chat | deepseek-chat | openai/gpt-4o-mini",
+            _modelInput = UiUtil.MakeInput(_panel.transform, "留空即用该提供商的默认模型",
                 new Vector2(0.5f, 1f), new Vector2(60, -566), new Vector2(1020, 58), false);
+
+            // 模型名写错是最难自查的一类失败：EdenAI 回的是
+            // 「Model 'xai/grok-4.5' in llm/chat does not exist」，OpenRouter 上不存在的模型
+            // 则直接挂到超时。与其让玩家凭记忆敲，不如把每家的**正确格式**摆出来点一下就填。
+            _modelHint = UiUtil.MakeText(_panel.transform, "MHint", "", 19,
+                TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.5f, 0.85f));
+            UiUtil.SetRect(_modelHint, new Vector2(0.5f, 1f), new Vector2(60, -604), new Vector2(1020, 28));
+
+            for (int i = 0; i < 3; i++)
+            {
+                int slot = i;
+                var pb = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                    new Vector2(-360 + i * 350, -640), new Vector2(330, 50),
+                    new Color(0.22f, 0.3f, 0.36f, 0.95f), () => UsePreset(slot), 20);
+                _presetButtons.Add(pb);
+            }
 
             var kLabel = UiUtil.MakeText(_panel.transform, "KLabel", "API Key", 24,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(kLabel, new Vector2(0.5f, 1f), new Vector2(-540, -640), new Vector2(120, 34));
+            UiUtil.SetRect(kLabel, new Vector2(0.5f, 1f), new Vector2(-540, -702), new Vector2(120, 34));
             _keyInput = UiUtil.MakeInput(_panel.transform, "仅保存在本机，可随时删除",
-                new Vector2(0.5f, 1f), new Vector2(60, -640), new Vector2(1020, 58), false);
+                new Vector2(0.5f, 1f), new Vector2(60, -702), new Vector2(1020, 58), false);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "台词生成有安全约束：只输出抽象心理施压短句，不含真实人名/地名/可操作话术",
@@ -122,6 +197,7 @@ namespace AdversityRoad.UI
             _cloudToggle.GetComponentInChildren<Text>().text = _useCloud ? "云端生成：开" : "云端生成：关";
             foreach (var (btn, p) in _providerButtons)
                 btn.GetComponent<Image>().color = p == _provider ? On : Off;
+            RefreshModelHints(_provider);   // 换提供商即换格式提示与预设按钮
         }
 
         void Save()

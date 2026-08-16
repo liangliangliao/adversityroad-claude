@@ -252,10 +252,48 @@ namespace AdversityRoad.OpenWorld
             float a = index * 1.9f;
             baseAt += new Vector3(Mathf.Cos(a) * (3f + index * 1.6f), 0, Mathf.Sin(a) * (3f + index * 1.6f));
 
-            if (UnityEngine.AI.NavMesh.SamplePosition(baseAt, out var hit, 25f,
+            if (!UnityEngine.AI.NavMesh.SamplePosition(baseAt, out var hit, 25f,
                     UnityEngine.AI.NavMesh.AllAreas))
-                return hit.position + Vector3.up * 1.1f;
-            return GroundAt(baseAt) + Vector3.up * 1.1f;
+                return GroundAt(baseAt) + Vector3.up * 1.1f;
+
+            Vector3 at = hit.position;
+
+            // 门口那一组必须和玩家在**同一片连通空间**里。
+            //
+            // NavMesh 采样只保证"这点站得住"，不保证"从落点走得到"——于是常出现
+            // 目标行写着「剩余 1 · → 2m」，而那 2 米之间隔着一堵墙：敌人在隔壁房间，
+            // 玩家贴着墙怎么也找不到人。NavMesh.Raycast 能在导航面上判断这段直线通不通，
+            // 不通就把它往玩家那边收，直到走得过去为止。
+            if (placement == "entrance")
+            {
+                Vector3 from = spawn;
+                if (UnityEngine.AI.NavMesh.SamplePosition(spawn, out var fromHit, 10f,
+                        UnityEngine.AI.NavMesh.AllAreas))
+                    from = fromHit.position;
+
+                for (int i = 0; i < 5; i++)
+                {
+                    if (!UnityEngine.AI.NavMesh.Raycast(from, at, out _, UnityEngine.AI.NavMesh.AllAreas))
+                        break;   // 这一段导航面上是通的
+                    at = Vector3.Lerp(from, at, 0.6f);
+                    if (UnityEngine.AI.NavMesh.SamplePosition(at, out var closer, 6f,
+                            UnityEngine.AI.NavMesh.AllAreas))
+                        at = closer.position;
+                }
+            }
+
+            // 别卡在几何里：落点半米内有实体就往外推一点（推不开就交给导航面兜底）
+            if (Physics.CheckSphere(at + Vector3.up * 1f, 0.5f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 away = (at - center).normalized;
+                if (away.sqrMagnitude < 0.01f) away = Vector3.forward;
+                Vector3 pushed = at + away * 2.5f;
+                if (UnityEngine.AI.NavMesh.SamplePosition(pushed, out var pHit, 8f,
+                        UnityEngine.AI.NavMesh.AllAreas))
+                    at = pHit.position;
+            }
+
+            return at + Vector3.up * 1.1f;
         }
 
         /// <summary>敌人挂到场景根下：场景卸载时一起收走，不会留在世界里游荡。</summary>
