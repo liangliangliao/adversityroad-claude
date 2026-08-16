@@ -267,7 +267,13 @@ namespace AdversityRoad.Goals
             });
             Persist();
             GameEvents.RaiseSubtitle("【目标达成】" + g.title + " —— 它已经立在你的 Hall of Goals 里。");
+            // 一条字幕两秒就滚走了，配不上"走完一整条旅程"这件事。
+            // 抛给 UI 去做真正的庆祝页（奖杯 + 这一路的数字）。
+            GoalCompleted?.Invoke(g);
         }
+
+        /// <summary>目标达成事件（UI 订阅它弹庆祝页）。</summary>
+        public static event Action<GoalData> GoalCompleted;
 
         // ================= 目标重铸（方案 3.6） =================
 

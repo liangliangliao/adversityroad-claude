@@ -145,8 +145,13 @@ namespace AdversityRoad.OpenWorld
             yield return null;
 
             // ---- 出入口 ----
-            inst.playerSpawn = inst.origin + new Vector3(0, 1.1f, -d / 2 + 4f);
-            inst.exitPoint = inst.origin + new Vector3(0, 0, -d / 2 + 1.5f);
+            // 落点必须**在布局建完之后**再定，而且要确认那儿是空的。
+            //
+            // 原来固定取 -d/2+4，而 BuildOpenBlock 把临街楼放在 -d/2+8、进深 10 米——
+            // 两者正好重叠：玩家一传送进来就卡在那栋楼的肚子里，
+            // 画面是一整面红墙，人动不了也看不见任何东西。
+            inst.playerSpawn = FindClearSpawn(inst, d);
+            inst.exitPoint = inst.playerSpawn - Vector3.up * 1.1f - Vector3.forward * 2.5f;
             BuildEntranceMarker(inst, bp);
 
             // ---- 注册为动态区域（可传送、有名字、有雾色） ----
@@ -1057,6 +1062,30 @@ namespace AdversityRoad.OpenWorld
                     Deco(inst, "Win", wp, ws, new Color(0.95f, 0.86f, 0.58f));
                 }
             }
+        }
+
+        /// <summary>
+        /// 找一个**身体放得下**的落点：从场地南沿往里逐步试，第一个空位就用它。
+        ///
+        /// 布局生成器各自摆楼摆房，谁都不知道落点在哪；与其逐个去躲，
+        /// 不如建完之后统一验一遍——胶囊放得下才算数。这和 ZoneBuilder 对
+        /// 24 个经典关卡做 EnsureSpawnPads 是同一个思路：**兜住结果，别逐处追查**。
+        /// </summary>
+        static Vector3 FindClearSpawn(SiteInstance inst, float d)
+        {
+            Physics.SyncTransforms();   // 刚建出来的碰撞体要先同步，否则检测不到
+            for (int i = 0; i < 12; i++)
+            {
+                float z = -d / 2f + 4f + i * 3.5f;
+                if (z > d / 2f - 4f) break;
+                Vector3 at = inst.origin + new Vector3(0, 1.1f, z);
+                // 半径 0.9、高度约两米的空间：站得下一个人，也留出转身余地
+                if (!Physics.CheckCapsule(at + Vector3.up * 0.4f, at - Vector3.up * 0.4f, 0.9f,
+                        ~0, QueryTriggerInteraction.Ignore))
+                    return at;
+            }
+            // 全被占满（极少见）：退到场地中心，中心永远是布局留出的通行区
+            return inst.origin + new Vector3(0, 1.1f, 0);
         }
 
         /// <summary>看不见但挡得住的边界墙（只有碰撞体，不渲染、不吃绘制开销）。</summary>

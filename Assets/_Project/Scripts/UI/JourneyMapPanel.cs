@@ -17,7 +17,7 @@ namespace AdversityRoad.UI
     /// </summary>
     public class JourneyMapPanel : MonoBehaviour
     {
-        enum Tab { Journey, Obstacles, Chapters }
+        enum Tab { Journey, Route, Obstacles, Chapters }
 
         GameObject _panel;
         Text _bodyText, _tabText;
@@ -45,14 +45,17 @@ namespace AdversityRoad.UI
             UiUtil.SetRect(_tabText, new Vector2(0.5f, 1f), new Vector2(0, -92), new Vector2(1180, 34));
 
             UiUtil.MakeButton(_panel.transform, "旅程", new Vector2(0.5f, 1f),
-                new Vector2(-420, -140), new Vector2(240, 58),
-                new Color(0.2f, 0.32f, 0.4f, 0.95f), () => SetTab(Tab.Journey), 24);
+                new Vector2(-495, -140), new Vector2(210, 58),
+                new Color(0.2f, 0.32f, 0.4f, 0.95f), () => SetTab(Tab.Journey), 23);
+            UiUtil.MakeButton(_panel.transform, "关卡路线", new Vector2(0.5f, 1f),
+                new Vector2(-275, -140), new Vector2(210, 58),
+                new Color(0.22f, 0.36f, 0.3f, 0.95f), () => SetTab(Tab.Route), 23);
             UiUtil.MakeButton(_panel.transform, "障碍图", new Vector2(0.5f, 1f),
-                new Vector2(-140, -140), new Vector2(240, 58),
-                new Color(0.32f, 0.26f, 0.36f, 0.95f), () => SetTab(Tab.Obstacles), 24);
+                new Vector2(-55, -140), new Vector2(210, 58),
+                new Color(0.32f, 0.26f, 0.36f, 0.95f), () => SetTab(Tab.Obstacles), 23);
             UiUtil.MakeButton(_panel.transform, "章节来源", new Vector2(0.5f, 1f),
-                new Vector2(140, -140), new Vector2(240, 58),
-                new Color(0.34f, 0.3f, 0.22f, 0.95f), () => SetTab(Tab.Chapters), 24);
+                new Vector2(165, -140), new Vector2(210, 58),
+                new Color(0.34f, 0.3f, 0.22f, 0.95f), () => SetTab(Tab.Chapters), 23);
 
             _bodyText = UiUtil.MakeText(_panel.transform, "Body", "", 20,
                 TextAnchor.UpperLeft, new Color(0.92f, 0.92f, 0.95f));
@@ -114,10 +117,79 @@ namespace AdversityRoad.UI
 
             switch (_tab)
             {
+                case Tab.Route: BuildRoute(g); break;
                 case Tab.Obstacles: BuildObstacles(g); break;
                 case Tab.Chapters: BuildChapters(g); break;
                 default: BuildJourney(g); break;
             }
+        }
+
+        // ================= 关卡路线 =================
+
+        /// <summary>
+        /// 这条目标要打的**全部关卡**，按里程碑顺序排出来。
+        ///
+        /// 「旅程」页画的是有向图（节点与支线），回答"有哪些走法"；
+        /// 这一页回答的是玩家真正想知道的另一件事：**我一共要打几关、现在打到哪、下一关是谁**。
+        /// AI 专属关与经典关列在同一条线上，标清来源与状态——
+        /// 经典关是附加可选，不打也能抵达目标，这一点必须写在脸上。
+        /// </summary>
+        void BuildRoute(GoalData g)
+        {
+            _tabText.text = "这条目标要走的全部关卡：AI 专属关是必选主线，经典关卡是附加可选。";
+
+            var sb = new StringBuilder();
+            int required = 0, requiredDone = 0, optional = 0, optionalDone = 0;
+            foreach (var c in g.chapters)
+            {
+                bool opt = c.source == ChapterSource.Legacy;
+                if (opt) { optional++; if (c.cleared) optionalDone++; }
+                else { required++; if (c.cleared) requiredDone++; }
+            }
+            sb.Append("必选 ").Append(requiredDone).Append('/').Append(required)
+              .Append("    可选 ").Append(optionalDone).Append('/').Append(optional).Append("\n\n");
+
+            var cur = g.CurrentMilestone();
+            bool markedNext = false;
+
+            for (int m = 0; m < g.milestones.Count; m++)
+            {
+                var ms = g.milestones[m];
+                sb.Append("── ").Append(ms.done ? "✓ " : "").Append("里程碑 ")
+                  .Append(m + 1).Append("：").Append(ms.title);
+                if (cur != null && ms.milestoneId == cur.milestoneId) sb.Append("   ← 当前");
+                sb.Append(" ──\n");
+
+                bool any = false;
+                foreach (var c in g.chapters)
+                {
+                    if (c.linkedMilestoneId != ms.milestoneId) continue;
+                    any = true;
+
+                    string mark = c.cleared ? "✓" : "○";
+                    // 下一关：第一条还没打的必选关
+                    bool isNext = !c.cleared && c.source != ChapterSource.Legacy && !markedNext;
+                    if (isNext) { mark = "▶"; markedNext = true; }
+
+                    sb.Append("   ").Append(mark).Append(' ')
+                      .Append(c.source == ChapterSource.Legacy ? "[可选·经典] " : "[必选·专属] ")
+                      .Append(c.chapterName);
+
+                    var ob = g.FindObstacle(c.primaryObstacle);
+                    if (ob != null) sb.Append("   挡住：").Append(ob.label);
+                    if (c.site != null && !string.IsNullOrEmpty(c.site.siteName))
+                        sb.Append("   场景：").Append(c.site.siteName);
+                    if (isNext) sb.Append("   ← 下一关");
+                    sb.Append('\n');
+                }
+                if (!any) sb.Append("   （这一阶段还没有关卡落地）\n");
+                sb.Append('\n');
+            }
+
+            sb.Append(requiredDone >= required && required > 0
+                ? "全部必选关卡已通关——去打最后的守门人，目标就达成了。"
+                : "打完全部必选关卡并推进里程碑，即可抵达目标。");
+            _bodyText.text = sb.ToString();
         }
 
         // ================= 旅程 =================

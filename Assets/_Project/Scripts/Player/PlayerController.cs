@@ -182,7 +182,15 @@ namespace AdversityRoad.Player
             {
                 Vector3 spawn = World.ZoneBuilder.PlayerSpawnOf(
                     World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId));
-                if (_catchStreak >= 4 || !HasGroundUnder(spawn))
+
+                // 【战斗中绝不把人踢出关卡】
+                // 玩家反馈"打着打着穿越回独居小屋"，就是这条升级逻辑干的：
+                // 被击退摔出边沿 → 连续触发兜底 → 退出场景 → 回到进关时站的地方
+                // （他是从独居小屋用传送面板进来的，于是"回到进入点"就是回小屋）。
+                // 一场打到一半的战斗被这样中断，比掉进坑里还糟。
+                // 附近还有活敌人时，最多把人放回本关入口，绝不退出。
+                bool fighting = EnemyNearby(transform.position, 30f);
+                if (!fighting && (_catchStreak >= 4 || !HasGroundUnder(spawn)))
                 {
                     Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
                         " @" + World.ZoneBuilder.CurrentZoneId + " " + V(transform.position) + " → 退出该场景");
@@ -194,6 +202,7 @@ namespace AdversityRoad.Player
                     Core.GameEvents.RaiseSubtitle("这块地方站不住人——已经把你带出来了。");
                     return;
                 }
+                if (!HasGroundUnder(spawn)) spawn = World.ZoneBuilder.PlayerSpawnOf(0);
                 _lastSafePos = spawn;
                 Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
                     " → 改回本关入口 " + V(spawn));
@@ -241,6 +250,18 @@ namespace AdversityRoad.Player
 
         static string V(Vector3 p) =>
             "(" + Mathf.RoundToInt(p.x) + "," + Mathf.RoundToInt(p.y) + "," + Mathf.RoundToInt(p.z) + ")";
+
+        /// <summary>附近有没有活着的敌人（判断"是不是正在打"，别在战斗中把人传走）。</summary>
+        static bool EnemyNearby(Vector3 pos, float radius)
+        {
+            foreach (var e in Object.FindObjectsByType<AI.EnemyController>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                if ((e.transform.position - pos).sqrMagnitude <= radius * radius) return true;
+            }
+            return false;
+        }
 
         /// <summary>这个点下方 30 米内有没有实地（有就敢往那儿捞人）。</summary>
         static bool HasGroundUnder(Vector3 p)

@@ -958,6 +958,8 @@ namespace AdversityRoad.Core
             var journeyPanel = JourneyMapPanel.Create(canvasGo.transform);
             var historyPanel = AdversityHistoryPanel.Create(canvasGo.transform);
             var advProfilePanel = AdversityProfilePanel.Create(canvasGo.transform);
+            // 目标达成庆祝页：自己订阅 GoalOS.GoalCompleted，不需要别处调用
+            GoalTrophyPanel.Create(canvasGo.transform);
 
             var sysMenu = SystemMenuPanel.Create(canvasGo.transform);
             sysMenu.Add("目标", "目标", goalOsPanel.Toggle);
