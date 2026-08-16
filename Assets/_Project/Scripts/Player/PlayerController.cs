@@ -134,6 +134,18 @@ namespace AdversityRoad.Player
         /// <summary>相对落差兜底：比"最近站稳的地方"低这么多就算掉出去了。</summary>
         const float FallCatchDrop = 12f;
 
+        // ===== 反复踩空的升级处理 =====
+        // 实机日志里这一行连着刷了十几秒，坐标一模一样：
+        //   踩空捞回 掉落点 (20067,-11,-51) → 捞到 (20067,2,-51)
+        // 说明"最近站稳的地方"本身就在一个会掉下去的边沿上：捞回原地 → 立刻再掉 → 再捞。
+        // 而每次捞回都会清零水平速度，玩家的体感就是**推着摇杆却一直在原地被拽住**——
+        // 他反馈的"在自动生成的关卡里不能跑动"，其实就是这个循环，不是移速出了问题。
+        //
+        // 所以捞回不能只是"放回去"，还要**升级**：同一处反复掉，就换更靠谱的落点。
+        Vector3 _lastCatchAt;
+        int _catchStreak;
+        float _lastCatchTime;
+
         void FallGuard()
         {
             if (_cc == null) return;
@@ -157,6 +169,39 @@ namespace AdversityRoad.Player
             // 旧版在 _lastSafePos 还没记下来时用 `当前位置 + 30m`——那儿同样没有地，
             // 于是掉 12m→捞高 30m→再掉，字幕一遍遍刷"脚下踩空了"，永远出不来。
             // 这正是玩家看到的死循环。
+            // 连续踩空计数：3 秒内又掉在同一处（10 米内）就算"卡在同一个坑里"
+            bool sameSpot = Time.time - _lastCatchTime < 3f &&
+                            (transform.position - _lastCatchAt).sqrMagnitude < 100f;
+            _catchStreak = sameSpot ? _catchStreak + 1 : 1;
+            _lastCatchAt = transform.position;
+            _lastCatchTime = Time.time;
+
+            // 掉第二次开始就不再信"最近站稳的地方"——它显然是个边沿。
+            // 直接回本区出生点；再掉就说明这处场景根本站不住人，整个退出去。
+            if (_catchStreak >= 2)
+            {
+                Vector3 spawn = World.ZoneBuilder.PlayerSpawnOf(
+                    World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId));
+                if (_catchStreak >= 4 || !HasGroundUnder(spawn))
+                {
+                    Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                        " @" + World.ZoneBuilder.CurrentZoneId + " " + V(transform.position) + " → 退出该场景");
+                    _catchStreak = 0;
+                    _lastSafePos = Vector3.zero;
+                    // 在生成场景里就送回城；不在的话回独居小屋——总之不能继续困在坑里
+                    if (OpenWorld.SiteGate.InsideSite) OpenWorld.SiteGate.ExitToCity();
+                    else Snap(World.ZoneBuilder.PlayerSpawnOf(0));
+                    Core.GameEvents.RaiseSubtitle("这块地方站不住人——已经把你带出来了。");
+                    return;
+                }
+                _lastSafePos = spawn;
+                Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                    " → 改回本关入口 " + V(spawn));
+                Snap(spawn);
+                Core.GameEvents.RaiseSubtitle("刚才那处站不稳——已经把你送回这一关的入口。");
+                return;
+            }
+
             Vector3 back;
             if (HasGroundUnder(_lastSafePos)) back = _lastSafePos;
             else

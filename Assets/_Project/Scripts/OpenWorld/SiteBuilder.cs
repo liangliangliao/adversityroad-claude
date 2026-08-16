@@ -914,11 +914,25 @@ namespace AdversityRoad.OpenWorld
         static void BuildSurroundings(SiteInstance inst, SiteKitCatalog.SiteKindInfo kind,
             System.Random rng, float w, float d)
         {
-            float gw = w + 150f, gd = d + 150f;
+            float gw = w + 260f, gd = d + 260f;
 
             // ① 大地面（厚 1m，往下压到 -1，任何落点都踩得住）
             Box(inst, "Ground", new Vector3(0, -1f, 0), new Vector3(gw, 1f, gd),
                 new Color(0.24f, 0.25f, 0.27f));
+
+            // ② 隐形边界墙：把玩家关在有地的范围内。
+            //
+            // 实机日志里这一行连刷十几秒、坐标一模一样：
+            //   踩空捞回 掉落点 (20067,-11,-51) → 捞到 (20067,2,-51)
+            // 也就是玩家走到了地面的边沿外侧。与其继续追查每一处几何缝隙，
+            // 不如先让"走出去"这件事不可能发生——这是所有开放场景的通用做法，
+            // 成本只有四块看不见的碰撞体。
+            // 变量名避开下面建楼循环里的 bw/bh/bd（C# 不允许内层局部变量遮蔽外层同名局部变量）
+            float boundX = gw / 2f - 8f, boundZ = gd / 2f - 8f;
+            InvisibleWall(inst, new Vector3(0, 12f, boundZ), new Vector3(gw, 24f, 2f));
+            InvisibleWall(inst, new Vector3(0, 12f, -boundZ), new Vector3(gw, 24f, 2f));
+            InvisibleWall(inst, new Vector3(boundX, 12f, 0), new Vector3(2f, 24f, gd));
+            InvisibleWall(inst, new Vector3(-boundX, 12f, 0), new Vector3(2f, 24f, gd));
 
             // 一条穿过场景南侧的路：让"外面"有方向感，不是一块空地
             Deco(inst, "Road", new Vector3(0, -0.44f, -d / 2f - 26f), new Vector3(gw, 0.08f, 14f),
@@ -963,6 +977,18 @@ namespace AdversityRoad.OpenWorld
                 float a = i / 8f * Mathf.PI * 2f;
                 Lamp(inst, new Vector3(Mathf.Cos(a) * (w / 2f + 14f), 0, Mathf.Sin(a) * (d / 2f + 14f)));
             }
+        }
+
+        /// <summary>看不见但挡得住的边界墙（只有碰撞体，不渲染、不吃绘制开销）。</summary>
+        static void InvisibleWall(SiteInstance inst, Vector3 local, Vector3 size)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "Bound";
+            go.transform.SetParent(inst.root.transform, false);
+            go.transform.localPosition = local;
+            go.transform.localScale = size;
+            var r = go.GetComponent<MeshRenderer>();
+            if (r != null) r.enabled = false;
         }
 
         static void Shell(SiteInstance inst, float w, float d, float h)

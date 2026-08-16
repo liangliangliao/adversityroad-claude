@@ -152,6 +152,8 @@ namespace AdversityRoad.Goals
 
         void FillWithFallback(GoalData goal, int want, string why)
         {
+            // 云端还在路上时铺的这几关是**占位**：等真正的 AI 章节回来要让位。
+            bool asPlaceholder = why == "生成进行中";
             want = Mathf.Clamp(want, MinAiChapters, MaxAiChapters);
             int made = 0;
             int salt = 0;
@@ -162,7 +164,7 @@ namespace AdversityRoad.Goals
                 if (CountAiChapters(goal) >= want) break;
                 if (ob.removed) continue;
                 if (HasChapterFor(goal, ob.obstacleId)) continue;
-                if (TryAddFallback(goal, ob, salt++)) made++;
+                if (TryAddFallback(goal, ob, salt++, asPlaceholder)) made++;
             }
 
             // 第二轮：障碍用完了但还没凑够下限——给已有障碍再造一个不同阶段的关卡。
@@ -174,14 +176,14 @@ namespace AdversityRoad.Goals
                 {
                     if (CountAiChapters(goal) >= want) break;
                     if (ob.removed) continue;
-                    if (TryAddFallback(goal, ob, salt++)) made++;
+                    if (TryAddFallback(goal, ob, salt++, asPlaceholder)) made++;
                 }
 
             FinishJourney(goal, made, "本地 Fallback（" + why + "）");
         }
 
         /// <summary>造一个 Fallback 章节并入库；被拒时记日志并返回 false。</summary>
-        bool TryAddFallback(GoalData goal, GoalObstacle ob, int salt)
+        bool TryAddFallback(GoalData goal, GoalObstacle ob, int salt, bool placeholder = false)
         {
             var bp = FallbackBlueprintLibrary.Build(goal, ob, salt);
             if (bp == null) return false;
@@ -195,6 +197,7 @@ namespace AdversityRoad.Goals
                 CloudDialogueService.AddLog("Fallback 章节被拒：" + bp.chapterName + " —— " + reason);
                 return false;
             }
+            bp.placeholder = placeholder;
             goal.chapters.Add(bp);
             goal.aiGeneratedChapterIds.Add(bp.chapterId);
             return true;
@@ -295,10 +298,19 @@ namespace AdversityRoad.Goals
             }
             }
 
-            int accepted = 0, rejected = 0;
+            int accepted = 0, rejected = 0, replaced = 0;
             foreach (var bp in Parse(content))
             {
-                if (CountAiChapters(goal) >= want) break;
+                // 名额满了不代表该丢——先看看占着位子的是不是本地占位关。
+                // 这一行是"AI 生成从来没起作用"的总闸：本地库在二十几秒前就把五个名额
+                // 填满了，于是模型真正返回的章节在**第一次循环**就 break 掉，
+                // 日志上表现为"救回 11 章 / 通过 0、拒绝 0"。
+                if (CountAiChapters(goal) >= want)
+                {
+                    if (!DropOnePlaceholder(goal)) break;
+                    replaced++;
+                }
+
                 bp.source = ChapterSource.AIRequired;
                 bp.chapterId = "ai_" + goal.goalId + "_" + (goal.aiGeneratedChapterIds.Count + accepted + 1);
                 // 模型很可能把好几章都挂到同一条障碍上。以前这里直接丢弃后来的那几章——
@@ -320,7 +332,8 @@ namespace AdversityRoad.Goals
                         (string.IsNullOrEmpty(bp.chapterName) ? "(无名)" : bp.chapterName) + " —— " + reason);
                 }
             }
-            CloudDialogueService.AddLog("章节校验：通过 " + accepted + "、拒绝 " + rejected);
+            CloudDialogueService.AddLog("章节校验：通过 " + accepted + "、拒绝 " + rejected +
+                "（其中替换本地占位 " + replaced + " 关）");
 
             _busy = false;
             // 强制条款：无论 AI 给了什么，旅程都必须拿到至少一个合法 AI 专属章节
@@ -585,6 +598,25 @@ namespace AdversityRoad.Goals
             int n = 0;
             foreach (var o in goal.obstacles) if (!o.removed) n++;
             return Mathf.Max(n, 1);
+        }
+
+        /// <summary>
+        /// 腾一个名额出来：丢掉一关**还没通关的本地占位**。
+        /// 找不到可丢的（都是玩家已经打过的、或都是真 AI 章节）就返回 false，此时才该停。
+        /// </summary>
+        static bool DropOnePlaceholder(GoalData goal)
+        {
+            for (int i = goal.chapters.Count - 1; i >= 0; i--)
+            {
+                var c = goal.chapters[i];
+                if (!c.placeholder || c.cleared || c.source != ChapterSource.AIRequired) continue;
+                // 占位关可能已经在世界里建出来了，一并收走，免得留下一处没人认领的场景
+                OpenWorld.ProceduralQuestAssembler.DespawnChapter(c.chapterId);
+                goal.aiGeneratedChapterIds.Remove(c.chapterId);
+                goal.chapters.RemoveAt(i);
+                return true;
+            }
+            return false;
         }
 
         /// <summary>把这一章改挂到还没有关卡的那条障碍上（连里程碑一起改，免得两者对不上）。</summary>

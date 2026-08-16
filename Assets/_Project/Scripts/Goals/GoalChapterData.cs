@@ -66,6 +66,15 @@ namespace AdversityRoad.Goals
         /// <summary>入库前被就近修复了哪些字段（玩家可查：这一关有多少是模型给的、多少是补的）。</summary>
         public string repairLog = "";
 
+        /// <summary>
+        /// 这一关是本地库先顶上的**占位**，等云端结果回来就该被替换掉。
+        ///
+        /// 云端一次要二十几秒，不能让玩家干等，所以先用本地库把旅程填满——
+        /// 但填满之后必须记住"这几关是临时的"，否则真正的 AI 章节回来时
+        /// 会因为"名额已满"被整批丢弃（实机日志：救回 11 章，通过 0、拒绝 0）。
+        /// </summary>
+        public bool placeholder;
+
         // ---------- 运行时状态 ----------
         public bool cleared;
         public int attempts;
