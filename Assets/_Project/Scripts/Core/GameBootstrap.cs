@@ -980,6 +980,10 @@ namespace AdversityRoad.Core
             // 目标达成庆祝页：自己订阅 GoalOS.GoalCompleted，不需要别处调用
             GoalTrophyPanel.Create(canvasGo.transform);
 
+            // 换画面板：住处画框走近按交互键就打开它，从手机图片里挑一张挂上去
+            var picturePanel = UserImagePanel.Create(canvasGo.transform);
+            OpenWorld.UserPictureFrame.OpenPicker = slot => picturePanel.OpenFor(slot);
+
             var sysMenu = SystemMenuPanel.Create(canvasGo.transform);
             sysMenu.Add("目标", "目标", goalOsPanel.Toggle);
             sysMenu.Add("目标", "旅程图", journeyPanel.Toggle);

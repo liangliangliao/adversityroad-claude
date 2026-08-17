@@ -198,13 +198,16 @@ namespace AdversityRoad.OpenWorld
             var belt = ZoneBuilder.Box(ctx, "TreadBelt", at + new Vector3(0, 0.44f, -0.2f),
                 new Vector3(1.4f, 0.08f, 3.2f), new Color(0.12f, 0.12f, 0.13f));
 
+            var steel = new Color(0.62f, 0.64f, 0.68f);
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "TreadArm", at + new Vector3(s * 0.75f, 0.95f, 1.6f),
-                    new Vector3(0.12f, 1.5f, 0.12f), new Color(0.62f, 0.64f, 0.68f));
-            ZoneBuilder.Decoration(ctx, "TreadRail", at + new Vector3(0, 1.55f, 1.25f),
-                new Vector3(1.6f, 0.1f, 0.8f), new Color(0.62f, 0.64f, 0.68f));
-            ZoneBuilder.Decoration(ctx, "TreadPanel", at + new Vector3(0, 1.6f, 1.72f),
-                new Vector3(1.5f, 0.55f, 0.12f), new Color(0.18f, 0.22f, 0.28f));
+                VillaKit.Metal(VillaKit.Cyl("TreadArm", at + new Vector3(s * 0.75f, 0.4f, 1.6f),
+                    0.06f, 1.3f, steel), steel);
+            VillaKit.Metal(VillaKit.CylAxis("TreadRail", at + new Vector3(0, 1.7f, 1.6f),
+                0.06f, 1.5f, steel, new Vector3(0, 0, 90f)), steel);
+            // 控制面板略向后仰，像真的操作面而不是一块立着的板
+            VillaKit.Emit(VillaKit.Deco("TreadPanel", at + new Vector3(0, 1.62f, 1.78f),
+                new Vector3(1.4f, 0.5f, 0.08f), new Color(0.18f, 0.22f, 0.28f),
+                new Vector3(-22f, 0, 0)), new Color(0.25f, 0.55f, 0.7f), 0.9f);
 
             var t = body.AddComponent<Treadmill>();
             t._belt = belt.transform;
@@ -233,7 +236,6 @@ namespace AdversityRoad.OpenWorld
             if (tm.font != null) mr.material = tm.font.material;
             t._panel = tm;
 
-            OpenWorldBuilder.HomeSign(at + new Vector3(0, 2.5f, 0), "跑 步 机");
             return t;
         }
 

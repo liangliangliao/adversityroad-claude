@@ -57,6 +57,7 @@ namespace AdversityRoad.OpenWorld
             // 宅基地：房子 + 前院 + 泳池院 + 车库，卡在主干道以南那块新地里
             Lot = new Bounds(h + new Vector3(4f, 4f, 0f), new Vector3(150f, 20f, 74f));
 
+            VillaKit.Begin(ctx, h);
             Site(ctx, h);
             Shell(ctx, h);
             GroundFloorWalls(ctx, h);
@@ -81,6 +82,7 @@ namespace AdversityRoad.OpenWorld
             Garage(ctx, h);
             Garden(ctx, h);
             Cat(ctx, h);
+            Clutter(ctx, h);
             Lights(ctx, h);
             BlockAgents(h);
 
@@ -88,8 +90,8 @@ namespace AdversityRoad.OpenWorld
             IndoorZone.ResetAll();
             IndoorZone.Create(h + new Vector3(0, SlabY * 0.5f + 1f, 0),
                 new Vector3(W - 1f, SlabY + FloorH, D - 1f), "Villa_Indoor");
-            IndoorZone.Create(h + new Vector3(-W / 2f - 14f, 2f, -14f),
-                new Vector3(16f, 4f, 11f), "Garage_Indoor");
+            IndoorZone.Create(h + new Vector3(-W / 2f - 14f, 2f, 8f),
+                new Vector3(17f, 4f, 12f), "Garage_Indoor");
 
             InteriorSpawn = h + new Vector3(0, 1.1f, 24f);        // 玄关正中
             DoorSpawn = h + new Vector3(0, 1.1f, D / 2f + 6f);    // 门廊外
@@ -99,17 +101,17 @@ namespace AdversityRoad.OpenWorld
 
         static void Site(WorldContext ctx, Vector3 h)
         {
-            ZoneBuilder.Box(ctx, "Villa_Lot", h + new Vector3(4f, -0.12f, 0f),
+            VillaKit.Box("Villa_Lot", h + new Vector3(4f, -0.12f, 0f),
                 new Vector3(150f, 0.24f, 74f), new Color(0.36f, 0.44f, 0.30f));
             // 一层地板：起居区木地板，湿区与厨房瓷砖
-            ZoneBuilder.Decoration(ctx, "Floor_G", h + new Vector3(0, 0.03f, 0),
+            VillaKit.Deco("Floor_G", h + new Vector3(0, 0.03f, 0),
                 new Vector3(W - 0.6f, 0.06f, D - 0.6f), FloorWood);
-            ZoneBuilder.Decoration(ctx, "Floor_Tile_K", h + new Vector3(28f, 0.05f, 8f),
+            VillaKit.Deco("Floor_Tile_K", h + new Vector3(28f, 0.05f, 8f),
                 new Vector3(27f, 0.06f, 15f), FloorTile);
-            ZoneBuilder.Decoration(ctx, "Floor_Tile_B", h + new Vector3(-35f, 0.05f, -12f),
+            VillaKit.Deco("Floor_Tile_B", h + new Vector3(-35f, 0.05f, -12f),
                 new Vector3(13f, 0.06f, 11f), FloorTile);
             // 入户步道：一路铺到主干道边，走回家不用在草地上找方向
-            ZoneBuilder.Decoration(ctx, "Path", h + new Vector3(0, 0.06f, D / 2f + 20f),
+            VillaKit.Deco("Path", h + new Vector3(0, 0.06f, D / 2f + 20f),
                 new Vector3(8f, 0.06f, 40f), new Color(0.63f, 0.61f, 0.57f));
         }
 
@@ -122,26 +124,26 @@ namespace AdversityRoad.OpenWorld
                 float y = lv * SlabY;
                 // 外墙：南 / 东 / 西 三面整墙；北面一层留大门（见下）
                 if (lv == 1)
-                    ZoneBuilder.Box(ctx, "Wall_N", h + new Vector3(0, y + FloorH / 2f, hd),
+                    VillaKit.Box("Wall_N", h + new Vector3(0, y + FloorH / 2f, hd),
                         new Vector3(W, FloorH, WallT), Wall);
-                ZoneBuilder.Box(ctx, "Wall_S", h + new Vector3(0, y + FloorH / 2f, -hd),
+                VillaKit.Box("Wall_S", h + new Vector3(0, y + FloorH / 2f, -hd),
                     new Vector3(W, FloorH, WallT), Wall);
-                ZoneBuilder.Box(ctx, "Wall_W", h + new Vector3(-hw, y + FloorH / 2f, 0),
+                VillaKit.Box("Wall_W", h + new Vector3(-hw, y + FloorH / 2f, 0),
                     new Vector3(WallT, FloorH, D), Wall);
-                ZoneBuilder.Box(ctx, "Wall_E", h + new Vector3(hw, y + FloorH / 2f, 0),
+                VillaKit.Box("Wall_E", h + new Vector3(hw, y + FloorH / 2f, 0),
                     new Vector3(WallT, FloorH, D), Wall);
 
                 if (lv == 0)
                 {
                     // 一层北墙：中间留大门（大门朝街——宅子在主干道以南，人从北边走过来）
-                    ZoneBuilder.Box(ctx, "Wall_N_L", h + new Vector3(-(hw + 4.2f) / 2f, y + FloorH / 2f, hd),
+                    VillaKit.Box("Wall_N_L", h + new Vector3(-(hw + 4.2f) / 2f, y + FloorH / 2f, hd),
                         new Vector3(hw - 4.2f, FloorH, WallT), Wall);
-                    ZoneBuilder.Box(ctx, "Wall_N_R", h + new Vector3((hw + 4.2f) / 2f, y + FloorH / 2f, hd),
+                    VillaKit.Box("Wall_N_R", h + new Vector3((hw + 4.2f) / 2f, y + FloorH / 2f, hd),
                         new Vector3(hw - 4.2f, FloorH, WallT), Wall);
-                    ZoneBuilder.Box(ctx, "Wall_N_Head", h + new Vector3(0, y + FloorH - 0.55f, hd),
+                    VillaKit.Box("Wall_N_Head", h + new Vector3(0, y + FloorH - 0.55f, hd),
                         new Vector3(8.4f, 1.1f, WallT), Wall);
-                    DoorLeaf(ctx, h + new Vector3(-2.1f, y, hd), 4.2f, true, -0.35f);
-                    DoorLeaf(ctx, h + new Vector3(2.1f, y, hd), 4.2f, true, 0.35f);
+                    VillaKit.Doorway(h + new Vector3(0, y, hd), 8.4f, 3.0f, true, WoodLight, Wood);
+                    VillaKit.WallSign(h + new Vector3(0, 3.6f, hd + 0.35f), "入 口", Vector3.back, 3.2f);
                 }
 
                 // 窗：南北各三扇、东西各两扇（带窗框，室内看得见外面）
@@ -160,30 +162,42 @@ namespace AdversityRoad.OpenWorld
             // 二层楼板（一层的天花）：中间在楼梯口留一个洞
             Slab(ctx, h);
             // 二层天花 + 屋顶
-            ZoneBuilder.Decoration(ctx, "Ceil_2F", h + new Vector3(0, SlabY + FloorH - 0.12f, 0),
+            VillaKit.Deco("Ceil_2F", h + new Vector3(0, SlabY + FloorH - 0.12f, 0),
                 new Vector3(W - 0.6f, 0.16f, D - 0.6f), Ceil);
-            ZoneBuilder.Box(ctx, "Roof", h + new Vector3(0, SlabY + FloorH + 0.2f, 0),
+            VillaKit.Box("Roof", h + new Vector3(0, SlabY + FloorH + 0.2f, 0),
                 new Vector3(W + 2.2f, 0.4f, D + 2.2f), WallWarm);
-            ZoneBuilder.Decoration(ctx, "Eave", h + new Vector3(0, SlabY + FloorH + 0.55f, 0),
+            // 两坡顶：两块斜板搭在女儿墙里侧。轴对齐的平屋顶正是"像方块"的一大来源
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+                VillaKit.Deco("RoofSlope", h + new Vector3(0, SlabY + FloorH + 2.0f, s2 * (D / 4f)),
+                    new Vector3(W + 2.6f, 0.35f, D / 2f + 2.6f), new Color(0.42f, 0.30f, 0.26f),
+                    new Vector3(s2 * 14f, 0, 0));
+            VillaKit.Deco("RoofRidge", h + new Vector3(0, SlabY + FloorH + 3.6f, 0),
+                new Vector3(W + 3f, 0.4f, 1.2f), new Color(0.34f, 0.24f, 0.21f));
+            // 烟囱：屋顶上有个东西，整栋房子的轮廓才不是一个盒子
+            VillaKit.Box("Chimney", h + new Vector3(-W / 4f, SlabY + FloorH + 3.2f, D / 5f),
+                new Vector3(2.2f, 3.4f, 2.2f), new Color(0.52f, 0.40f, 0.34f));
+            VillaKit.Deco("ChimneyCap", h + new Vector3(-W / 4f, SlabY + FloorH + 5.0f, D / 5f),
+                new Vector3(2.8f, 0.3f, 2.8f), Dark);
+            VillaKit.Deco("Eave", h + new Vector3(0, SlabY + FloorH + 0.55f, 0),
                 new Vector3(W + 3.6f, 0.25f, D + 3.6f), Dark);
             // 女儿墙：屋顶不是一块飘着的板
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Decoration(ctx, "Parapet", h + new Vector3(0, SlabY + FloorH + 0.9f, s * (D / 2f + 1.4f)),
+                VillaKit.Deco("Parapet", h + new Vector3(0, SlabY + FloorH + 0.9f, s * (D / 2f + 1.4f)),
                     new Vector3(W + 3.4f, 1.1f, 0.35f), WallWarm);
-                ZoneBuilder.Decoration(ctx, "Parapet", h + new Vector3(s * (W / 2f + 1.4f), SlabY + FloorH + 0.9f, 0),
+                VillaKit.Deco("Parapet", h + new Vector3(s * (W / 2f + 1.4f), SlabY + FloorH + 0.9f, 0),
                     new Vector3(0.35f, 1.1f, D + 3.4f), WallWarm);
             }
 
             // 门廊
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "Porch_Col", h + new Vector3(s * 5f, 2f, hd + 5f),
+                VillaKit.Box("Porch_Col", h + new Vector3(s * 5f, 2f, hd + 5f),
                     new Vector3(0.7f, 4f, 0.7f), Wall);
-            ZoneBuilder.Decoration(ctx, "Porch_Roof", h + new Vector3(0, 4.2f, hd + 3.5f),
+            VillaKit.Deco("Porch_Roof", h + new Vector3(0, 4.2f, hd + 3.5f),
                 new Vector3(13f, 0.4f, 8f), WallWarm);
-            ZoneBuilder.Box(ctx, "Porch_Step", h + new Vector3(0, 0.1f, hd + 1.6f),
+            VillaKit.Box("Porch_Step", h + new Vector3(0, 0.1f, hd + 1.6f),
                 new Vector3(13f, 0.2f, 3f), FloorTile);
-            OpenWorldBuilder.HomeSign(h + new Vector3(0, 5f, hd + 1f), "我 的 住 处");
+            VillaKit.WallSign(h + new Vector3(0, 4.9f, hd + 0.5f), "我 的 住 处", Vector3.back, 6f);
         }
 
         /// <summary>二层楼板：楼梯口开洞，其余整块。</summary>
@@ -192,20 +206,20 @@ namespace AdversityRoad.OpenWorld
             // 楼板整块铺满，只在楼梯正上方留一个 x∈[17,27]、z∈[14,23] 的井口。
             // 洞开小一点很重要：二层若有一大片空洞，玩家走着走着就掉回一层——
             // 那既不像房子，也是最容易被当成 Bug 的一种体验。
-            ZoneBuilder.Box(ctx, "Slab_A", h + new Vector3(0, SlabY - 0.15f, -8f),
+            VillaKit.Box("Slab_A", h + new Vector3(0, SlabY - 0.15f, -8f),
                 new Vector3(W - 0.6f, 0.3f, 44f), Ceil);
-            ZoneBuilder.Box(ctx, "Slab_B", h + new Vector3(0, SlabY - 0.15f, 26.5f),
+            VillaKit.Box("Slab_B", h + new Vector3(0, SlabY - 0.15f, 26.5f),
                 new Vector3(W - 0.6f, 0.3f, 7f), Ceil);
-            ZoneBuilder.Box(ctx, "Slab_C", h + new Vector3(-12.35f, SlabY - 0.15f, 18.5f),
+            VillaKit.Box("Slab_C", h + new Vector3(-12.35f, SlabY - 0.15f, 18.5f),
                 new Vector3(58.7f, 0.3f, 9f), Ceil);
-            ZoneBuilder.Box(ctx, "Slab_D", h + new Vector3(34.35f, SlabY - 0.15f, 18.5f),
+            VillaKit.Box("Slab_D", h + new Vector3(34.35f, SlabY - 0.15f, 18.5f),
                 new Vector3(14.7f, 0.3f, 9f), Ceil);
 
             // 楼梯井三面护栏（楼梯从南往北上来，北侧那边留出上下口）
-            ZoneBuilder.Box(ctx, "StairRail", h + new Vector3(22f, SlabY + 0.6f, 13.9f),
+            VillaKit.Box("StairRail", h + new Vector3(22f, SlabY + 0.6f, 13.9f),
                 new Vector3(10.4f, 1.2f, 0.16f), Metal);
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "StairRail", h + new Vector3(22f + s * 5.2f, SlabY + 0.6f, 18.5f),
+                VillaKit.Box("StairRail", h + new Vector3(22f + s * 5.2f, SlabY + 0.6f, 18.5f),
                     new Vector3(0.16f, 1.2f, 9f), Metal);
         }
 
@@ -213,11 +227,11 @@ namespace AdversityRoad.OpenWorld
         {
             Vector3 glass = alongZ ? new Vector3(0.1f, 2.4f, width) : new Vector3(width, 2.4f, 0.1f);
             Vector3 frame = alongZ ? new Vector3(0.16f, 2.7f, width + 0.5f) : new Vector3(width + 0.5f, 2.7f, 0.16f);
-            ZoneBuilder.Decoration(ctx, "WindowFrame", at, frame, WoodLight);
-            ZoneBuilder.Decoration(ctx, "Window", at, glass, Glass);
+            VillaKit.Deco("WindowFrame", at, frame, WoodLight);
+            VillaKit.Deco("Window", at, glass, Glass);
             // 中挺：一整块玻璃看着像洞，加一竖一横就像窗
             Vector3 mull = alongZ ? new Vector3(0.14f, 2.4f, 0.12f) : new Vector3(0.12f, 2.4f, 0.14f);
-            ZoneBuilder.Decoration(ctx, "Mullion", at, mull, WoodLight);
+            VillaKit.Deco("Mullion", at, mull, WoodLight);
         }
 
         // ================= 墙与门（真的有门扇） =================
@@ -232,17 +246,16 @@ namespace AdversityRoad.OpenWorld
             {
                 float a = d - DoorW / 2f, b = d + DoorW / 2f;
                 if (a > cursor)
-                    ZoneBuilder.Box(ctx, "Wall", h + new Vector3((cursor + a) / 2f, y + FloorH / 2f, z),
+                    VillaKit.Box("Wall", h + new Vector3((cursor + a) / 2f, y + FloorH / 2f, z),
                         new Vector3(a - cursor, FloorH, WallT), Wall);
                 // 门楣 + 门套 + 门扇
-                ZoneBuilder.Box(ctx, "Wall_Head", h + new Vector3(d, y + (FloorH + DoorH) / 2f, z),
+                VillaKit.Box("Wall_Head", h + new Vector3(d, y + (FloorH + DoorH) / 2f, z),
                     new Vector3(DoorW, FloorH - DoorH, WallT), Wall);
-                DoorFrame(ctx, h + new Vector3(d, y, z), false);
-                DoorLeaf(ctx, h + new Vector3(d, y, z), DoorW, false, 0.42f);
+                VillaKit.Doorway(h + new Vector3(d, y, z), DoorW, DoorH, false, WoodLight, Wood);
                 cursor = b;
             }
             if (x1 > cursor)
-                ZoneBuilder.Box(ctx, "Wall", h + new Vector3((cursor + x1) / 2f, y + FloorH / 2f, z),
+                VillaKit.Box("Wall", h + new Vector3((cursor + x1) / 2f, y + FloorH / 2f, z),
                     new Vector3(x1 - cursor, FloorH, WallT), Wall);
             Skirting(ctx, h, y, z, x0, x1, false);
         }
@@ -257,55 +270,17 @@ namespace AdversityRoad.OpenWorld
             {
                 float a = d - DoorW / 2f, b = d + DoorW / 2f;
                 if (a > cursor)
-                    ZoneBuilder.Box(ctx, "Wall", h + new Vector3(x, y + FloorH / 2f, (cursor + a) / 2f),
+                    VillaKit.Box("Wall", h + new Vector3(x, y + FloorH / 2f, (cursor + a) / 2f),
                         new Vector3(WallT, FloorH, a - cursor), Wall);
-                ZoneBuilder.Box(ctx, "Wall_Head", h + new Vector3(x, y + (FloorH + DoorH) / 2f, d),
+                VillaKit.Box("Wall_Head", h + new Vector3(x, y + (FloorH + DoorH) / 2f, d),
                     new Vector3(WallT, FloorH - DoorH, DoorW), Wall);
-                DoorFrame(ctx, h + new Vector3(x, y, d), true);
-                DoorLeaf(ctx, h + new Vector3(x, y, d), DoorW, true, 0.42f);
+                VillaKit.Doorway(h + new Vector3(x, y, d), DoorW, DoorH, true, WoodLight, Wood);
                 cursor = b;
             }
             if (z1 > cursor)
-                ZoneBuilder.Box(ctx, "Wall", h + new Vector3(x, y + FloorH / 2f, (cursor + z1) / 2f),
+                VillaKit.Box("Wall", h + new Vector3(x, y + FloorH / 2f, (cursor + z1) / 2f),
                     new Vector3(WallT, FloorH, z1 - cursor), Wall);
             Skirting(ctx, h, y, x, z0, z1, true);
-        }
-
-        /// <summary>门套：门洞四边的一圈木线，"有没有它"就是毛坯与装修的差别。</summary>
-        static void DoorFrame(WorldContext ctx, Vector3 at, bool alongZ)
-        {
-            Vector3 side = alongZ ? new Vector3(WallT + 0.14f, DoorH, 0.16f) : new Vector3(0.16f, DoorH, WallT + 0.14f);
-            Vector3 top = alongZ ? new Vector3(WallT + 0.14f, 0.16f, DoorW + 0.3f) : new Vector3(DoorW + 0.3f, 0.16f, WallT + 0.14f);
-            Vector3 offA = alongZ ? new Vector3(0, DoorH / 2f, -DoorW / 2f) : new Vector3(-DoorW / 2f, DoorH / 2f, 0);
-            Vector3 offB = alongZ ? new Vector3(0, DoorH / 2f, DoorW / 2f) : new Vector3(DoorW / 2f, DoorH / 2f, 0);
-            ZoneBuilder.Decoration(ctx, "DoorCase", at + offA, side, WoodLight);
-            ZoneBuilder.Decoration(ctx, "DoorCase", at + offB, side, WoodLight);
-            ZoneBuilder.Decoration(ctx, "DoorCase", at + new Vector3(0, DoorH, 0), top, WoodLight);
-        }
-
-        /// <summary>
-        /// 门扇：半开着靠在门洞一侧。
-        ///
-        /// 不做成可开关的活动门是有意的——它会挡住玩家、需要碰撞回退、还要处理
-        /// "关在门后"的死锁。半开的门在观感上已经完成了"这是一扇门"的表达，
-        /// 而且永远不会把人卡住。
-        /// </summary>
-        static void DoorLeaf(WorldContext ctx, Vector3 at, float width, bool alongZ, float openSide)
-        {
-            // 门扇靠在门洞的一侧、并朝屋里转开约 70°——所以它的厚度方向与门洞垂直
-            float side = Mathf.Sign(openSide) * (width / 2f - 0.5f);
-            Vector3 pos = alongZ
-                ? at + new Vector3(0.5f * Mathf.Sign(openSide), DoorH / 2f, side)
-                : at + new Vector3(side, DoorH / 2f, 0.5f * Mathf.Sign(openSide));
-            Vector3 size = alongZ
-                ? new Vector3(1.0f, DoorH - 0.08f, 0.1f)
-                : new Vector3(0.1f, DoorH - 0.08f, 1.0f);
-            var leaf = ZoneBuilder.Decoration(ctx, "DoorLeaf", pos, size, WoodLight);
-            // 把手
-            Vector3 knob = alongZ ? new Vector3(0, 0, -0.42f * Mathf.Sign(openSide))
-                                  : new Vector3(-0.42f * Mathf.Sign(openSide), 0, 0);
-            ZoneBuilder.Decoration(ctx, "DoorKnob", pos + knob - new Vector3(0, 0.15f, 0),
-                new Vector3(0.14f, 0.14f, 0.14f), Metal);
         }
 
         /// <summary>踢脚线：贴着墙脚的一条深色木线，房间立刻"装修过"。</summary>
@@ -315,7 +290,7 @@ namespace AdversityRoad.OpenWorld
             if (len <= 0.2f) return;
             Vector3 pos = alongZ ? new Vector3(fixedAxis, y + 0.09f, mid) : new Vector3(mid, y + 0.09f, fixedAxis);
             Vector3 size = alongZ ? new Vector3(WallT + 0.1f, 0.18f, len) : new Vector3(len, 0.18f, WallT + 0.1f);
-            ZoneBuilder.Decoration(ctx, "Skirting", h + pos, size, Skirt);
+            VillaKit.Deco("Skirting", h + pos, size, Skirt);
         }
 
         static void GroundFloorWalls(WorldContext ctx, Vector3 h)
@@ -358,24 +333,24 @@ namespace AdversityRoad.OpenWorld
             for (int i = 0; i < steps; i++)
             {
                 float y = rise * (i + 1);
-                ZoneBuilder.Box(ctx, "Step", baseAt + new Vector3(0, y / 2f, i * run),
+                VillaKit.Box("Step", baseAt + new Vector3(0, y / 2f, i * run),
                     new Vector3(5f, y, run + 0.02f), FloorTile);
                 if (i % 3 == 0)
-                    ZoneBuilder.Decoration(ctx, "StepNose", baseAt + new Vector3(0, y + 0.02f, i * run - run / 2f),
+                    VillaKit.Deco("StepNose", baseAt + new Vector3(0, y + 0.02f, i * run - run / 2f),
                         new Vector3(5f, 0.04f, 0.1f), Wood);
             }
             // 扶手
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Decoration(ctx, "Handrail",
+                VillaKit.Deco("Handrail",
                     baseAt + new Vector3(s * 2.5f, SlabY / 2f + 0.95f, steps * run / 2f),
                     new Vector3(0.12f, 0.12f, steps * run), Wood);
                 for (int i = 0; i < steps; i += 4)
-                    ZoneBuilder.Decoration(ctx, "Baluster",
+                    VillaKit.Deco("Baluster",
                         baseAt + new Vector3(s * 2.5f, rise * (i + 1) + 0.5f, i * run),
                         new Vector3(0.08f, 1f, 0.08f), Metal);
             }
-            OpenWorldBuilder.HomeSign(h + new Vector3(22f, 2.6f, 14.2f), "上 二 层");
+            VillaKit.WallSign(h + new Vector3(22f, 2.6f, 13.6f), "上 二 层", Vector3.back, 2.6f);
         }
 
         // ================= 一层 =================
@@ -383,15 +358,15 @@ namespace AdversityRoad.OpenWorld
         static void Foyer(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(0, 0, 24f);
-            ZoneBuilder.Decoration(ctx, "EntryRug", c + new Vector3(0, 0.08f, 2f),
+            VillaKit.Deco("EntryRug", c + new Vector3(0, 0.08f, 2f),
                 new Vector3(5f, 0.05f, 3f), new Color(0.40f, 0.26f, 0.24f));
-            ZoneBuilder.Box(ctx, "ShoeCabinet", c + new Vector3(-6.4f, 0.55f, 0),
+            VillaKit.Box("ShoeCabinet", c + new Vector3(-6.4f, 0.55f, 0),
                 new Vector3(0.7f, 1.1f, 5f), Wood);
-            ZoneBuilder.Decoration(ctx, "EntryMirror", c + new Vector3(6.5f, 1.7f, 0),
+            VillaKit.Deco("EntryMirror", c + new Vector3(6.5f, 1.7f, 0),
                 new Vector3(0.1f, 1.8f, 2.6f), new Color(0.80f, 0.88f, 0.94f));
             Plant(ctx, c + new Vector3(5.4f, 0, 3.4f));
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Decoration(ctx, "Sconce", c + new Vector3(s * 7.6f, 2.4f, -2f),
+                VillaKit.Deco("Sconce", c + new Vector3(s * 7.6f, 2.4f, -2f),
                     new Vector3(0.3f, 0.5f, 0.3f), new Color(0.98f, 0.92f, 0.76f));
         }
 
@@ -399,52 +374,54 @@ namespace AdversityRoad.OpenWorld
         {
             Vector3 c = h + new Vector3(-3f, 0, -6f);
 
-            ZoneBuilder.Decoration(ctx, "Rug", c + new Vector3(0, 0.08f, -2f),
+            VillaKit.Deco("Rug", c + new Vector3(0, 0.08f, -2f),
                 new Vector3(14f, 0.05f, 9f), new Color(0.36f, 0.27f, 0.25f));
             Sofa(ctx, c + new Vector3(0, 0, -6.4f), 0f);
             Sofa(ctx, c + new Vector3(-7.4f, 0, -1.5f), 90f);
             Sofa(ctx, c + new Vector3(7.4f, 0, -1.5f), -90f);
-            ZoneBuilder.Box(ctx, "CoffeeTable", c + new Vector3(0, 0.34f, -1.6f),
+            VillaKit.Box("CoffeeTable", c + new Vector3(0, 0.34f, -1.6f),
                 new Vector3(4.4f, 0.68f, 2.2f), Wood);
-            ZoneBuilder.Decoration(ctx, "TableBooks", c + new Vector3(0.8f, 0.74f, -1.6f),
+            VillaKit.Deco("TableBooks", c + new Vector3(0.8f, 0.74f, -1.6f),
                 new Vector3(0.8f, 0.12f, 0.6f), new Color(0.70f, 0.30f, 0.25f));
-            ZoneBuilder.Decoration(ctx, "Vase", c + new Vector3(-1.2f, 0.86f, -1.6f),
+            VillaKit.Deco("Vase", c + new Vector3(-1.2f, 0.86f, -1.6f),
                 new Vector3(0.35f, 0.36f, 0.35f), new Color(0.55f, 0.70f, 0.72f));
 
             // —— 一整面墙的目标看板 ——
             // 看板挂在客厅南墙、面朝北——大门在北侧，一进屋抬头就是它
-            var frame = ZoneBuilder.Box(ctx, "GoalBoard_Frame", c + new Vector3(0, 2.3f, -11.6f),
+            var frame = VillaKit.Box("GoalBoard_Frame", c + new Vector3(0, 2.3f, -11.6f),
                 new Vector3(17f, 4.6f, 0.34f), Dark);
-            ZoneBuilder.Decoration(ctx, "GoalBoard_Screen", c + new Vector3(0, 2.3f, -11.4f),
+            VillaKit.Deco("GoalBoard_Screen", c + new Vector3(0, 2.3f, -11.4f),
                 new Vector3(16.2f, 4.0f, 0.1f), new Color(0.07f, 0.11f, 0.17f));
             var gb = frame.AddComponent<Combat.GoalBoard>();
             gb.interactRange = 9f;
             HomeFixture.Attach(frame, HomeFixtureKind.GoalBoard);
             GoalBoardDisplay.Attach(frame, c + new Vector3(0, 2.3f, -11.35f), 16.2f, 4.0f, true);
             for (int i = -7; i <= 7; i++)
-                ZoneBuilder.Decoration(ctx, "BoardLed", c + new Vector3(i * 1.1f, 0.28f, -11.3f),
+                VillaKit.Deco("BoardLed", c + new Vector3(i * 1.1f, 0.28f, -11.3f),
                     new Vector3(0.5f, 0.06f, 0.2f), new Color(0.35f, 0.75f, 1f));
 
-            ZoneBuilder.Box(ctx, "Sideboard", c + new Vector3(-9.4f, 0.42f, 4.4f),
+            VillaKit.Box("Sideboard", c + new Vector3(-9.4f, 0.42f, 4.4f),
                 new Vector3(3.4f, 0.84f, 1f), Wood);
             Plant(ctx, c + new Vector3(9.4f, 0, 4.4f));
             FloorLamp(ctx, c + new Vector3(-9.6f, 0, -6.4f));
             CeilingFan(ctx, c + new Vector3(0, FloorH - 0.55f, -2f));
-            AirConditioner(ctx, c + new Vector3(-9f, 2.9f, 5.6f));
+            // 客厅：挂在西侧隔墙（x=-8 那道）上，出风朝东
+            AirConditioner(ctx, h + new Vector3(-19.8f, 2.9f, -6f), Vector3.right);
             Curtain(ctx, h + new Vector3(-24f, 0, -D / 2f + 0.4f), 8f, false);
         }
 
         static void Dining(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(22f, 0, -9f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 6.8f), "餐 厅");
+            VillaKit.WallSign(c + new Vector3(-8f, 2.5f, 0), "餐 厅", Vector3.right, 2.2f);
 
-            ZoneBuilder.Box(ctx, "DiningTable", c + new Vector3(0, 0.76f, 0),
+            VillaKit.Box("DiningTable", c + new Vector3(0, 0.76f, 0),
                 new Vector3(3.2f, 0.14f, 6.2f), Wood);
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
-                    ZoneBuilder.Box(ctx, "TableLeg", c + new Vector3(sx * 1.3f, 0.38f, sz * 2.6f),
-                        new Vector3(0.2f, 0.76f, 0.2f), Wood);
+                    VillaKit.Cyl("TableLeg", c + new Vector3(sx * 1.3f, 0f, sz * 2.6f), 0.09f, 0.76f, Wood, true);
+            // 桌沿一圈线脚：平板和"有做工的桌子"差别就在这一圈
+            VillaKit.Deco("TableEdge", c + new Vector3(0, 0.69f, 0), new Vector3(3.34f, 0.1f, 6.34f), Wood * 0.85f);
 
             for (int i = -1; i <= 1; i++)
                 for (int s = -1; s <= 1; s += 2)
@@ -452,23 +429,23 @@ namespace AdversityRoad.OpenWorld
                     Vector3 seat = c + new Vector3(s * 2.3f, 0, i * 2.1f);
                     DiningChair(ctx, seat, s > 0 ? -90f : 90f);
                     Vector3 plate = c + new Vector3(s * 1.05f, 0.84f, i * 2.1f);
-                    ZoneBuilder.Decoration(ctx, "Plate", plate, new Vector3(0.62f, 0.04f, 0.62f),
+                    VillaKit.Deco("Plate", plate, new Vector3(0.62f, 0.04f, 0.62f),
                         new Color(0.96f, 0.96f, 0.97f));
-                    ZoneBuilder.Decoration(ctx, "Glass", plate + new Vector3(-s * 0.5f, 0.11f, 0.34f),
+                    VillaKit.Deco("Glass", plate + new Vector3(-s * 0.5f, 0.11f, 0.34f),
                         new Vector3(0.16f, 0.26f, 0.16f), new Color(0.82f, 0.9f, 0.95f));
-                    ZoneBuilder.Decoration(ctx, "Cutlery", plate + new Vector3(s * 0.44f, 0, 0),
+                    VillaKit.Deco("Cutlery", plate + new Vector3(s * 0.44f, 0, 0),
                         new Vector3(0.06f, 0.02f, 0.36f), Metal);
                 }
 
-            ZoneBuilder.Decoration(ctx, "FruitBowl", c + new Vector3(0, 0.88f, 0),
+            VillaKit.Deco("FruitBowl", c + new Vector3(0, 0.88f, 0),
                 new Vector3(0.8f, 0.18f, 0.8f), new Color(0.74f, 0.70f, 0.62f));
-            ZoneBuilder.Decoration(ctx, "Fruit", c + new Vector3(0, 0.99f, 0),
+            VillaKit.Deco("Fruit", c + new Vector3(0, 0.99f, 0),
                 new Vector3(0.56f, 0.18f, 0.56f), new Color(0.85f, 0.42f, 0.25f));
             for (int i = -1; i <= 1; i++)
             {
-                ZoneBuilder.Decoration(ctx, "PendantRod", c + new Vector3(0, FloorH - 0.5f, i * 2.1f),
+                VillaKit.Deco("PendantRod", c + new Vector3(0, FloorH - 0.5f, i * 2.1f),
                     new Vector3(0.06f, 1f, 0.06f), Dark);
-                ZoneBuilder.Decoration(ctx, "Pendant", c + new Vector3(0, FloorH - 1.05f, i * 2.1f),
+                VillaKit.Deco("Pendant", c + new Vector3(0, FloorH - 1.05f, i * 2.1f),
                     new Vector3(0.9f, 0.3f, 0.9f), new Color(0.98f, 0.90f, 0.72f));
             }
         }
@@ -476,124 +453,125 @@ namespace AdversityRoad.OpenWorld
         static void Kitchen(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(28f, 0, 8f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 7.2f), "厨 房");
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -7.9f), "厨 房", Vector3.forward, 2.2f);
 
             // U 形橱柜
             Counter(ctx, c + new Vector3(0, 0, 6.4f), new Vector3(24f, 0.92f, 0.9f));
             Counter(ctx, c + new Vector3(-11.5f, 0, 1.5f), new Vector3(0.9f, 0.92f, 10f));
             Counter(ctx, c + new Vector3(11.5f, 0, 1.5f), new Vector3(0.9f, 0.92f, 10f));
             // 吊柜
-            ZoneBuilder.Box(ctx, "UpperCabinet", c + new Vector3(-4f, 2.2f, 6.5f),
+            VillaKit.Box("UpperCabinet", c + new Vector3(-4f, 2.2f, 6.5f),
                 new Vector3(12f, 1.2f, 0.7f), WoodLight);
 
-            ZoneBuilder.Decoration(ctx, "Stove", c + new Vector3(4f, 0.97f, 6.4f),
+            VillaKit.Deco("Stove", c + new Vector3(4f, 0.97f, 6.4f),
                 new Vector3(2.2f, 0.06f, 0.8f), Dark);
             for (int i = 0; i < 4; i++)
-                ZoneBuilder.Decoration(ctx, "Burner",
+                VillaKit.Deco("Burner",
                     c + new Vector3(3.4f + (i % 2) * 1.2f, 1.01f, 6.15f + (i / 2) * 0.5f),
                     new Vector3(0.34f, 0.03f, 0.34f), new Color(0.35f, 0.14f, 0.12f));
-            ZoneBuilder.Box(ctx, "RangeHood", c + new Vector3(4f, 2.5f, 6.5f),
+            VillaKit.Box("RangeHood", c + new Vector3(4f, 2.5f, 6.5f),
                 new Vector3(2.4f, 0.6f, 0.9f), Metal);
-            ZoneBuilder.Decoration(ctx, "Sink", c + new Vector3(-3f, 0.95f, 6.4f),
+            VillaKit.Deco("Sink", c + new Vector3(-3f, 0.95f, 6.4f),
                 new Vector3(1.4f, 0.12f, 0.8f), new Color(0.80f, 0.82f, 0.84f));
-            ZoneBuilder.Decoration(ctx, "SinkTap", c + new Vector3(-3f, 1.22f, 6.7f),
+            VillaKit.Deco("SinkTap", c + new Vector3(-3f, 1.22f, 6.7f),
                 new Vector3(0.08f, 0.44f, 0.08f), Metal);
 
-            var fridge = ZoneBuilder.Box(ctx, "Fridge", c + new Vector3(10.6f, 1.2f, 5.6f),
+            var fridge = VillaKit.Box("Fridge", c + new Vector3(10.6f, 1.2f, 5.6f),
                 new Vector3(1.8f, 2.4f, 1.6f), new Color(0.86f, 0.88f, 0.90f));
             HomeFixture.Attach(fridge, HomeFixtureKind.Fridge);
-            ZoneBuilder.Decoration(ctx, "FridgeSeam", c + new Vector3(10.6f, 1.2f, 4.78f),
+            VillaKit.Deco("FridgeSeam", c + new Vector3(10.6f, 1.2f, 4.78f),
                 new Vector3(1.7f, 0.05f, 0.05f), Dark);
 
             // 中岛 + 吧椅（可以坐）
-            ZoneBuilder.Box(ctx, "Island", c + new Vector3(0, 0.46f, 0f), new Vector3(6f, 0.92f, 2.2f), Wood);
-            ZoneBuilder.Decoration(ctx, "IslandTop", c + new Vector3(0, 0.95f, 0f), new Vector3(6.3f, 0.08f, 2.5f), Dark);
+            VillaKit.Box("Island", c + new Vector3(0, 0.46f, 0f), new Vector3(6f, 0.92f, 2.2f), Wood);
+            VillaKit.Deco("IslandTop", c + new Vector3(0, 0.95f, 0f), new Vector3(6.3f, 0.08f, 2.5f), Dark);
             for (int i = -1; i <= 1; i++)
                 BarStool(ctx, c + new Vector3(i * 1.9f, 0, -2.2f));
 
-            ZoneBuilder.Decoration(ctx, "Microwave", c + new Vector3(-11.4f, 1.25f, 4f),
+            VillaKit.Deco("Microwave", c + new Vector3(-11.4f, 1.25f, 4f),
                 new Vector3(0.9f, 0.55f, 1.1f), Dark);
-            ZoneBuilder.Decoration(ctx, "Kettle", c + new Vector3(-11.4f, 1.1f, 0f),
+            VillaKit.Deco("Kettle", c + new Vector3(-11.4f, 1.1f, 0f),
                 new Vector3(0.36f, 0.36f, 0.36f), Metal);
         }
 
         static void Counter(WorldContext ctx, Vector3 at, Vector3 size)
         {
-            ZoneBuilder.Box(ctx, "Counter", at + new Vector3(0, size.y / 2f, 0), size,
+            VillaKit.Box("Counter", at + new Vector3(0, size.y / 2f, 0), size,
                 new Color(0.58f, 0.56f, 0.54f));
-            ZoneBuilder.Decoration(ctx, "CounterTop", at + new Vector3(0, size.y + 0.04f, 0),
+            VillaKit.Deco("CounterTop", at + new Vector3(0, size.y + 0.04f, 0),
                 new Vector3(size.x + 0.2f, 0.08f, size.z + 0.2f), Dark);
         }
 
         static void GuestBath(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-35f, 0, -12f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 5.4f), "卫 生 间");
+            VillaKit.WallSign(c + new Vector3(6.9f, 2.5f, 0), "卫 生 间", Vector3.left, 2.6f);
             Bathroom(ctx, c, false);
         }
 
         static void Gym(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-31f, 0, 18f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 11f), "健 身 房");
-            ZoneBuilder.Decoration(ctx, "GymMat", c + new Vector3(0, 0.08f, 0),
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -11.9f), "健 身 房", Vector3.forward, 2.6f);
+            VillaKit.Deco("GymMat", c + new Vector3(0, 0.08f, 0),
                 new Vector3(20f, 0.06f, 22f), new Color(0.22f, 0.24f, 0.26f));
 
             // 跑步机（能真的跑起来，见 Treadmill）
             Treadmill.Build(ctx, c + new Vector3(-5f, 0, 6f));
 
             // 哑铃架
-            ZoneBuilder.Box(ctx, "RackBase", c + new Vector3(6f, 0.4f, 9f), new Vector3(4.4f, 0.8f, 0.9f), Dark);
+            VillaKit.Box("RackBase", c + new Vector3(6f, 0.4f, 9f), new Vector3(4.4f, 0.8f, 0.9f), Dark);
             for (int i = 0; i < 6; i++)
             {
                 float x = c.x + 4.2f + i * 0.72f;
-                ZoneBuilder.Decoration(ctx, "DumbbellBar", new Vector3(x, 0.88f, c.z + 9f),
+                VillaKit.Deco("DumbbellBar", new Vector3(x, 0.88f, c.z + 9f),
                     new Vector3(0.12f, 0.12f, 0.5f), Metal);
                 for (int s = -1; s <= 1; s += 2)
-                    ZoneBuilder.Decoration(ctx, "DumbbellPlate", new Vector3(x, 0.88f, c.z + 9f + s * 0.22f),
+                    VillaKit.Deco("DumbbellPlate", new Vector3(x, 0.88f, c.z + 9f + s * 0.22f),
                         new Vector3(0.36f, 0.36f, 0.12f), Dark);
             }
 
             // 卧推凳（可以坐）+ 杠铃架
-            var bench = ZoneBuilder.Box(ctx, "Bench", c + new Vector3(4f, 0.5f, 2f),
+            var bench = VillaKit.Box("Bench", c + new Vector3(4f, 0.5f, 2f),
                 new Vector3(0.8f, 0.18f, 2.6f), new Color(0.30f, 0.16f, 0.16f));
             Sittable.Attach(bench, new Vector3(0, 0.62f, 0), Vector3.forward, false, "卧推凳");
-            ZoneBuilder.Box(ctx, "BenchLeg", c + new Vector3(4f, 0.22f, 2f), new Vector3(0.6f, 0.44f, 2.2f), Dark);
+            VillaKit.Box("BenchLeg", c + new Vector3(4f, 0.22f, 2f), new Vector3(0.6f, 0.44f, 2.2f), Dark);
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "RackPost", c + new Vector3(4f + s * 0.9f, 0.75f, 3.3f),
+                VillaKit.Box("RackPost", c + new Vector3(4f + s * 0.9f, 0.75f, 3.3f),
                     new Vector3(0.14f, 1.5f, 0.14f), Metal);
-            ZoneBuilder.Decoration(ctx, "Barbell", c + new Vector3(4f, 1.52f, 3.3f),
+            VillaKit.Deco("Barbell", c + new Vector3(4f, 1.52f, 3.3f),
                 new Vector3(2.8f, 0.1f, 0.1f), Metal);
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Decoration(ctx, "BarPlate", c + new Vector3(4f + s * 1.3f, 1.52f, 3.3f),
+                VillaKit.Deco("BarPlate", c + new Vector3(4f + s * 1.3f, 1.52f, 3.3f),
                     new Vector3(0.13f, 0.62f, 0.62f), Dark);
 
             // 单车 + 瑜伽垫 + 整面镜子
-            ZoneBuilder.Box(ctx, "BikeBody", c + new Vector3(-5f, 0.5f, -2f), new Vector3(0.6f, 1f, 1.8f), Dark);
-            ZoneBuilder.Decoration(ctx, "BikeSeat", c + new Vector3(-5f, 1.06f, -2.4f), new Vector3(0.42f, 0.14f, 0.7f), Metal);
-            ZoneBuilder.Decoration(ctx, "BikeBar", c + new Vector3(-5f, 1.24f, -1.2f), new Vector3(0.86f, 0.1f, 0.1f), Metal);
-            ZoneBuilder.Decoration(ctx, "BikeWheel", c + new Vector3(-5f, 0.36f, -1f), new Vector3(0.14f, 0.72f, 0.72f), Metal);
-            ZoneBuilder.Decoration(ctx, "YogaMat", c + new Vector3(5f, 0.1f, -4f), new Vector3(1.3f, 0.05f, 2.8f),
+            VillaKit.Box("BikeBody", c + new Vector3(-5f, 0.5f, -2f), new Vector3(0.6f, 1f, 1.8f), Dark);
+            VillaKit.Deco("BikeSeat", c + new Vector3(-5f, 1.06f, -2.4f), new Vector3(0.42f, 0.14f, 0.7f), Metal);
+            VillaKit.Deco("BikeBar", c + new Vector3(-5f, 1.24f, -1.2f), new Vector3(0.86f, 0.1f, 0.1f), Metal);
+            VillaKit.Deco("BikeWheel", c + new Vector3(-5f, 0.36f, -1f), new Vector3(0.14f, 0.72f, 0.72f), Metal);
+            VillaKit.Deco("YogaMat", c + new Vector3(5f, 0.1f, -4f), new Vector3(1.3f, 0.05f, 2.8f),
                 new Color(0.35f, 0.62f, 0.55f));
-            ZoneBuilder.Decoration(ctx, "GymMirror", c + new Vector3(0, 1.8f, 11.3f),
+            VillaKit.Deco("GymMirror", c + new Vector3(0, 1.8f, 11.3f),
                 new Vector3(18f, 2.8f, 0.1f), new Color(0.78f, 0.86f, 0.92f));
-            AirConditioner(ctx, c + new Vector3(-8f, 2.9f, -11.2f));
+            // 健身房：挂在西外墙上，出风朝东
+            AirConditioner(ctx, h + new Vector3(-41.6f, 2.9f, 18f), Vector3.right);
         }
 
         /// <summary>休息厅：沙发、书架、通往楼梯的过厅。</summary>
         static void Lounge(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-3f, 0, 18f);
-            ZoneBuilder.Decoration(ctx, "Rug", c + new Vector3(0, 0.08f, 0),
+            VillaKit.Deco("Rug", c + new Vector3(0, 0.08f, 0),
                 new Vector3(11f, 0.05f, 8f), new Color(0.30f, 0.32f, 0.36f));
             Sofa(ctx, c + new Vector3(0, 0, -3.8f), 0f);
-            ZoneBuilder.Box(ctx, "LowShelf", c + new Vector3(-8f, 0.6f, 3f), new Vector3(1f, 1.2f, 7f), Wood);
+            VillaKit.Box("LowShelf", c + new Vector3(-8f, 0.6f, 3f), new Vector3(1f, 1.2f, 7f), Wood);
             for (int i = 0; i < 10; i++)
-                ZoneBuilder.Decoration(ctx, "Book", c + new Vector3(-8f, 1.36f, 0f + i * 0.62f),
+                VillaKit.Deco("Book", c + new Vector3(-8f, 1.36f, 0f + i * 0.62f),
                     new Vector3(0.7f, 0.34f, 0.22f), BookColor(i * 3));
             Plant(ctx, c + new Vector3(7.5f, 0, 4f));
             FloorLamp(ctx, c + new Vector3(-7f, 0, -5f));
-            var chair = ZoneBuilder.Box(ctx, "ArmChair", c + new Vector3(6f, 0.45f, -2f),
+            var chair = VillaKit.Box("ArmChair", c + new Vector3(6f, 0.45f, -2f),
                 new Vector3(1.8f, 0.9f, 1.8f), new Color(0.42f, 0.30f, 0.32f));
             Sittable.Attach(chair, new Vector3(0, 0.55f, 0), -Vector3.forward, false, "扶手椅");
         }
@@ -603,39 +581,39 @@ namespace AdversityRoad.OpenWorld
         static void MasterBedroom(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-27f, SlabY, -15f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 13.6f), "主 卧");
-            ZoneBuilder.Decoration(ctx, "BedRug", c + new Vector3(0, 0.08f, -2f),
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -15.4f), "主 卧", Vector3.forward, 2.2f);
+            VillaKit.Deco("BedRug", c + new Vector3(0, 0.08f, -2f),
                 new Vector3(12f, 0.05f, 10f), new Color(0.34f, 0.28f, 0.30f));
 
             // 床：床架→床垫→床单→被子→枕头，可以躺上去休息
-            ZoneBuilder.Box(ctx, "BedFrame", c + new Vector3(0, 0.24f, 0), new Vector3(5.2f, 0.48f, 6.8f), Wood);
-            var mattress = ZoneBuilder.Box(ctx, "Mattress", c + new Vector3(0, 0.66f, 0),
+            VillaKit.Box("BedFrame", c + new Vector3(0, 0.24f, 0), new Vector3(5.2f, 0.48f, 6.8f), Wood);
+            var mattress = VillaKit.Box("Mattress", c + new Vector3(0, 0.66f, 0),
                 new Vector3(4.9f, 0.44f, 6.5f), new Color(0.93f, 0.92f, 0.90f));
             Sittable.Attach(mattress, new Vector3(0, 0.55f, 0), Vector3.forward, true, "床");
-            ZoneBuilder.Decoration(ctx, "BedSheet", c + new Vector3(0, 0.9f, 0),
+            VillaKit.Deco("BedSheet", c + new Vector3(0, 0.9f, 0),
                 new Vector3(5.1f, 0.05f, 6.7f), new Color(0.96f, 0.96f, 0.98f));
-            ZoneBuilder.Decoration(ctx, "Quilt", c + new Vector3(0, 1.0f, -1.2f),
+            VillaKit.Deco("Quilt", c + new Vector3(0, 1.0f, -1.2f),
                 new Vector3(5f, 0.24f, 4.2f), new Color(0.29f, 0.39f, 0.57f));
-            ZoneBuilder.Decoration(ctx, "QuiltFold", c + new Vector3(0, 1.08f, 0.95f),
+            VillaKit.Deco("QuiltFold", c + new Vector3(0, 1.08f, 0.95f),
                 new Vector3(5f, 0.16f, 0.55f), new Color(0.38f, 0.48f, 0.66f));
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Decoration(ctx, "Pillow", c + new Vector3(s * 1.15f, 1.1f, 2.6f),
+                VillaKit.Deco("Pillow", c + new Vector3(s * 1.15f, 1.1f, 2.6f),
                     new Vector3(1.9f, 0.3f, 1.0f), new Color(0.97f, 0.97f, 0.98f));
-            ZoneBuilder.Box(ctx, "Headboard", c + new Vector3(0, 1.2f, 3.6f), new Vector3(5.4f, 1.8f, 0.28f), WallWarm);
+            VillaKit.Box("Headboard", c + new Vector3(0, 1.2f, 3.6f), new Vector3(5.4f, 1.8f, 0.28f), WallWarm);
 
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Box(ctx, "Nightstand", c + new Vector3(s * 3.4f, 0.32f, 2.9f),
+                VillaKit.Box("Nightstand", c + new Vector3(s * 3.4f, 0.32f, 2.9f),
                     new Vector3(1.2f, 0.64f, 1.2f), Wood);
-                ZoneBuilder.Decoration(ctx, "LampShade", c + new Vector3(s * 3.4f, 0.92f, 2.9f),
+                VillaKit.Deco("LampShade", c + new Vector3(s * 3.4f, 0.92f, 2.9f),
                     new Vector3(0.6f, 0.52f, 0.6f), new Color(0.98f, 0.92f, 0.75f));
             }
 
-            var wardrobe = ZoneBuilder.Box(ctx, "Wardrobe", c + new Vector3(-8.5f, 1.25f, -1f),
+            var wardrobe = VillaKit.Box("Wardrobe", c + new Vector3(-8.5f, 1.25f, -1f),
                 new Vector3(0.9f, 2.5f, 6f), Wood);
             HomeFixture.Attach(wardrobe, HomeFixtureKind.Wardrobe);
             for (int i = -1; i <= 1; i += 2)
-                ZoneBuilder.Decoration(ctx, "WardrobeHandle", c + new Vector3(-8.0f, 1.25f, -1f + i * 0.8f),
+                VillaKit.Deco("WardrobeHandle", c + new Vector3(-8.0f, 1.25f, -1f + i * 0.8f),
                     new Vector3(0.06f, 0.5f, 0.06f), Metal);
 
             // 墙上的艺术画（可换成玩家自己的图片）
@@ -645,139 +623,159 @@ namespace AdversityRoad.OpenWorld
                 UserImageSlot.BedroomArtB, "");
 
             CeilingFan(ctx, c + new Vector3(0, FloorH - 0.55f, -3f));
-            AirConditioner(ctx, c + new Vector3(5f, 2.9f, 3.8f));
+            // 主卧：挂在南外墙上，出风朝北
+            AirConditioner(ctx, h + new Vector3(-27f, SlabY + 2.9f, -29.6f), Vector3.forward);
             Curtain(ctx, h + new Vector3(-24f, SlabY, -D / 2f + 0.4f), 8f, false);
         }
 
         static void MasterBath(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-33f, SlabY, 7f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 6.6f), "主 卫");
+            VillaKit.WallSign(c + new Vector3(6.9f, 2.5f, 0), "主 卫", Vector3.left, 2.2f);
             Bathroom(ctx, c, true);
         }
 
         /// <summary>一套完整的卫生间：台盆 + 镜子 + 马桶 + 淋浴 +（主卫另加）浴缸。</summary>
         static void Bathroom(WorldContext ctx, Vector3 c, bool withTub)
         {
-            ZoneBuilder.Decoration(ctx, "BathTile", c + new Vector3(0, 0.07f, 0),
+            VillaKit.Deco("BathTile", c + new Vector3(0, 0.07f, 0),
                 new Vector3(11f, 0.05f, 11f), FloorTile);
 
-            ZoneBuilder.Box(ctx, "Vanity", c + new Vector3(0, 0.44f, 4.2f),
+            VillaKit.Box("Vanity", c + new Vector3(0, 0.44f, 4.2f),
                 new Vector3(4.2f, 0.88f, 1.0f), new Color(0.55f, 0.52f, 0.50f));
-            ZoneBuilder.Decoration(ctx, "Basin", c + new Vector3(0, 0.92f, 4.2f),
-                new Vector3(1.3f, 0.16f, 0.8f), new Color(0.95f, 0.95f, 0.96f));
-            ZoneBuilder.Decoration(ctx, "Tap", c + new Vector3(0, 1.1f, 4.5f),
-                new Vector3(0.1f, 0.34f, 0.1f), Metal);
-            var mirror = ZoneBuilder.Box(ctx, "Mirror", c + new Vector3(0, 2.0f, 4.72f),
+            VillaKit.Deco("VanityTop", c + new Vector3(0, 0.9f, 4.2f),
+                new Vector3(4.4f, 0.08f, 1.1f), new Color(0.30f, 0.30f, 0.32f));
+            // 台盆：圆盆而不是一块白板
+            VillaKit.Cyl("Basin", c + new Vector3(0, 0.86f, 4.2f), 0.42f, 0.2f, new Color(0.95f, 0.95f, 0.96f));
+            VillaKit.Cyl("BasinInner", c + new Vector3(0, 0.9f, 4.2f), 0.34f, 0.14f, new Color(0.88f, 0.89f, 0.90f));
+            // 水龙头：立管 + 弯头出水口，按 E 能开
+            var tapBody = VillaKit.Cyl("Tap", c + new Vector3(0, 0.96f, 4.55f), 0.05f, 0.34f, Metal, true);
+            VillaKit.Metal(tapBody, Metal);
+            VillaKit.Metal(VillaKit.CylAxis("TapSpout", c + new Vector3(0, 1.3f, 4.4f), 0.045f, 0.34f,
+                Metal, new Vector3(90f, 0, 0)), Metal);
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+                VillaKit.Metal(VillaKit.Cyl("TapHandle", c + new Vector3(s2 * 0.22f, 0.98f, 4.55f),
+                    0.035f, 0.12f, Metal), Metal);
+            WaterOutlet.Attach(tapBody, c + new Vector3(0, 1.22f, 4.32f), 0.06f, 0.34f, "水 龙 头");
+            var mirror = VillaKit.Box("Mirror", c + new Vector3(0, 2.0f, 4.72f),
                 new Vector3(3.4f, 1.6f, 0.08f), new Color(0.80f, 0.88f, 0.94f));
             HomeFixture.Attach(mirror, HomeFixtureKind.Mirror);
-            ZoneBuilder.Decoration(ctx, "MirrorLight", c + new Vector3(0, 2.9f, 4.6f),
+            VillaKit.Deco("MirrorLight", c + new Vector3(0, 2.9f, 4.6f),
                 new Vector3(3f, 0.1f, 0.22f), new Color(1f, 0.97f, 0.9f));
 
-            ZoneBuilder.Box(ctx, "ToiletBase", c + new Vector3(-4.2f, 0.2f, 0.5f),
+            VillaKit.Box("ToiletBase", c + new Vector3(-4.2f, 0.2f, 0.5f),
                 new Vector3(0.85f, 0.4f, 1.3f), new Color(0.95f, 0.95f, 0.96f));
-            ZoneBuilder.Box(ctx, "ToiletSeat", c + new Vector3(-4.2f, 0.45f, 0.35f),
+            VillaKit.Box("ToiletSeat", c + new Vector3(-4.2f, 0.45f, 0.35f),
                 new Vector3(0.9f, 0.12f, 0.95f), new Color(0.97f, 0.97f, 0.98f));
-            ZoneBuilder.Box(ctx, "ToiletTank", c + new Vector3(-4.2f, 0.7f, 1.15f),
+            VillaKit.Box("ToiletTank", c + new Vector3(-4.2f, 0.7f, 1.15f),
                 new Vector3(0.85f, 0.95f, 0.36f), new Color(0.95f, 0.95f, 0.96f));
 
-            ZoneBuilder.Decoration(ctx, "ShowerTray", c + new Vector3(3.2f, 0.09f, -3f),
+            VillaKit.Deco("ShowerTray", c + new Vector3(3.2f, 0.09f, -3f),
                 new Vector3(3.4f, 0.12f, 3.4f), new Color(0.82f, 0.84f, 0.84f));
-            ZoneBuilder.Decoration(ctx, "ShowerGlass", c + new Vector3(1.5f, 1.25f, -3f),
+            VillaKit.Deco("ShowerGlass", c + new Vector3(1.5f, 1.25f, -3f),
                 new Vector3(0.08f, 2.5f, 3.4f), new Color(0.72f, 0.88f, 0.92f));
-            ZoneBuilder.Decoration(ctx, "ShowerGlass2", c + new Vector3(3.2f, 1.25f, -1.3f),
+            VillaKit.Deco("ShowerGlass2", c + new Vector3(3.2f, 1.25f, -1.3f),
                 new Vector3(3.4f, 2.5f, 0.08f), new Color(0.72f, 0.88f, 0.92f));
-            ZoneBuilder.Decoration(ctx, "ShowerHead", c + new Vector3(3.2f, 2.5f, -4.5f),
-                new Vector3(0.44f, 0.1f, 0.44f), Metal);
-            ZoneBuilder.Decoration(ctx, "ShowerPipe", c + new Vector3(3.2f, 1.9f, -4.75f),
-                new Vector3(0.08f, 1.3f, 0.08f), Metal);
-            ZoneBuilder.Decoration(ctx, "Towel", c + new Vector3(-4.6f, 1.6f, 3f),
+            var head = VillaKit.Cyl("ShowerHead", c + new Vector3(3.2f, 2.44f, -4.4f), 0.24f, 0.1f, Metal, true);
+            VillaKit.Metal(head, Metal);
+            VillaKit.Metal(VillaKit.Cyl("ShowerRiser", c + new Vector3(3.2f, 0.9f, -4.72f), 0.045f, 1.6f, Metal), Metal);
+            VillaKit.Metal(VillaKit.CylAxis("ShowerArm", c + new Vector3(3.2f, 2.5f, -4.56f), 0.04f, 0.4f,
+                Metal, new Vector3(90f, 0, 0)), Metal);
+            WaterOutlet.Attach(head, c + new Vector3(3.2f, 2.38f, -4.4f), 0.34f, 2.3f, "花 洒");
+            VillaKit.Deco("Towel", c + new Vector3(-4.6f, 1.6f, 3f),
                 new Vector3(0.12f, 1.1f, 0.8f), new Color(0.86f, 0.62f, 0.42f));
+            VillaKit.Metal(VillaKit.CylAxis("TowelBar", c + new Vector3(-4.66f, 2.2f, 3f), 0.03f, 1.2f,
+                Metal, new Vector3(90f, 0, 0)), Metal);
+            VillaKit.Cyl("Bin", c + new Vector3(-3.2f, 0, 3.4f), 0.22f, 0.55f, new Color(0.32f, 0.34f, 0.36f), true);
+            VillaKit.Cyl("Drain", c + new Vector3(3.2f, 0.12f, -3f), 0.12f, 0.03f, Metal);
+            VillaKit.Cyl("SoapBottle", c + new Vector3(0.9f, 0.94f, 4.3f), 0.07f, 0.24f, new Color(0.85f, 0.86f, 0.90f));
+            VillaKit.Sph("SoapCap", c + new Vector3(0.9f, 1.2f, 4.3f), 0.12f, new Color(0.45f, 0.62f, 0.72f));
 
             if (!withTub) return;
-            ZoneBuilder.Box(ctx, "Bathtub", c + new Vector3(-2.8f, 0.34f, -3.4f),
+            VillaKit.Box("Bathtub", c + new Vector3(-2.8f, 0.34f, -3.4f),
                 new Vector3(2.2f, 0.68f, 3.8f), new Color(0.95f, 0.95f, 0.96f));
-            ZoneBuilder.Decoration(ctx, "TubWater", c + new Vector3(-2.8f, 0.64f, -3.4f),
+            VillaKit.Deco("TubWater", c + new Vector3(-2.8f, 0.64f, -3.4f),
                 new Vector3(2.0f, 0.06f, 3.6f), new Color(0.55f, 0.80f, 0.88f));
         }
 
         static void Office(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(2f, SlabY, -19f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 10.6f), "办 公 室");
-            ZoneBuilder.Decoration(ctx, "OfficeRug", c + new Vector3(0, 0.08f, 0),
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, 11.4f), "办 公 室", Vector3.back, 2.6f);
+            VillaKit.Deco("OfficeRug", c + new Vector3(0, 0.08f, 0),
                 new Vector3(10f, 0.05f, 8f), new Color(0.28f, 0.30f, 0.34f));
 
-            var desk = ZoneBuilder.Box(ctx, "OfficeDesk", c + new Vector3(0, 0.74f, 2.4f),
+            var desk = VillaKit.Box("OfficeDesk", c + new Vector3(0, 0.74f, 2.4f),
                 new Vector3(6.4f, 0.14f, 2.6f), Wood);
             HomeFixture.Attach(desk, HomeFixtureKind.Desk);
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "DeskLeg", c + new Vector3(s * 2.9f, 0.37f, 2.4f),
+                VillaKit.Box("DeskLeg", c + new Vector3(s * 2.9f, 0.37f, 2.4f),
                     new Vector3(0.18f, 0.74f, 2.3f), Metal);
-            ZoneBuilder.Box(ctx, "Drawer", c + new Vector3(2.1f, 0.33f, 2.4f),
+            VillaKit.Box("Drawer", c + new Vector3(2.1f, 0.33f, 2.4f),
                 new Vector3(1.3f, 0.66f, 2.0f), Wood);
 
             OfficeChair(ctx, c + new Vector3(0, 0, 0.4f));
 
-            var pc = ZoneBuilder.Box(ctx, "Monitor", c + new Vector3(-1.0f, 1.32f, 3.2f),
+            var pc = VillaKit.Box("Monitor", c + new Vector3(-1.0f, 1.32f, 3.2f),
                 new Vector3(2.6f, 1.1f, 0.1f), new Color(0.16f, 0.20f, 0.28f));
             HomeFixture.Attach(pc, HomeFixtureKind.Computer);
-            ZoneBuilder.Decoration(ctx, "MonitorStand", c + new Vector3(-1.0f, 0.88f, 3.2f),
+            VillaKit.Deco("MonitorStand", c + new Vector3(-1.0f, 0.88f, 3.2f),
                 new Vector3(0.32f, 0.3f, 0.32f), Dark);
-            ZoneBuilder.Decoration(ctx, "Keyboard", c + new Vector3(-1.0f, 0.83f, 2.1f),
+            VillaKit.Deco("Keyboard", c + new Vector3(-1.0f, 0.83f, 2.1f),
                 new Vector3(1.8f, 0.05f, 0.6f), Dark);
-            var phone = ZoneBuilder.Box(ctx, "Phone", c + new Vector3(1.4f, 0.84f, 1.9f),
+            var phone = VillaKit.Box("Phone", c + new Vector3(1.4f, 0.84f, 1.9f),
                 new Vector3(0.42f, 0.05f, 0.84f), new Color(0.85f, 0.9f, 1f));
             HomeFixture.Attach(phone, HomeFixtureKind.Phone);
 
             // 桌上带相框的照片（可换成玩家自己的图片）
-            ZoneBuilder.Decoration(ctx, "FrameStand", c + new Vector3(2.4f, 0.86f, 3.0f),
+            VillaKit.Deco("FrameStand", c + new Vector3(2.4f, 0.86f, 3.0f),
                 new Vector3(0.55f, 0.06f, 0.32f), Dark);
             UserPicture(ctx, c + new Vector3(2.4f, 1.2f, 3.1f), new Vector3(1.0f, 0.72f, 0.05f),
                 UserImageSlot.DeskPhoto, "");
-            ZoneBuilder.Decoration(ctx, "FrameEdge", c + new Vector3(2.4f, 1.2f, 3.14f),
+            VillaKit.Deco("FrameEdge", c + new Vector3(2.4f, 1.2f, 3.14f),
                 new Vector3(1.12f, 0.84f, 0.03f), new Color(0.55f, 0.42f, 0.24f));
 
-            ZoneBuilder.Box(ctx, "FileCabinet", c + new Vector3(-6.5f, 0.9f, 2f),
+            VillaKit.Box("FileCabinet", c + new Vector3(-6.5f, 0.9f, 2f),
                 new Vector3(1f, 1.8f, 3.6f), Wood);
             Plant(ctx, c + new Vector3(6f, 0, -2.4f));
-            AirConditioner(ctx, c + new Vector3(-4f, 2.9f, 3.6f));
+            // 办公室：挂在南外墙上，出风朝北
+            AirConditioner(ctx, h + new Vector3(2f, SlabY + 2.9f, -29.6f), Vector3.forward);
         }
 
         static void Study(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(29f, SlabY, -19f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.2f, 10.6f), "书 房");
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, 11.4f), "书 房", Vector3.back, 2.2f);
 
             for (int s = 0; s < 3; s++)
             {
                 float x = c.x - 7f + s * 7f;
-                ZoneBuilder.Box(ctx, "Bookcase", new Vector3(x, c.y + 1.4f, c.z + 9.6f),
+                VillaKit.Box("Bookcase", new Vector3(x, c.y + 1.4f, c.z + 9.6f),
                     new Vector3(6f, 2.8f, 0.55f), Wood);
                 for (int shelf = 0; shelf < 5; shelf++)
                 {
                     float y = c.y + 0.45f + shelf * 0.55f;
-                    ZoneBuilder.Decoration(ctx, "Shelf", new Vector3(x, y, c.z + 9.5f),
+                    VillaKit.Deco("Shelf", new Vector3(x, y, c.z + 9.5f),
                         new Vector3(5.8f, 0.06f, 0.5f), new Color(0.34f, 0.24f, 0.15f));
                     for (int b = 0; b < 18; b++)
-                        ZoneBuilder.Decoration(ctx, "Book",
+                        VillaKit.Deco("Book",
                             new Vector3(x - 2.7f + b * 0.3f, y + 0.2f, c.z + 9.5f),
                             new Vector3(0.21f, 0.34f + ((s + shelf + b) % 4) * 0.03f, 0.4f),
                             BookColor(s * 91 + shelf * 13 + b));
                 }
             }
 
-            var readChair = ZoneBuilder.Box(ctx, "ReadChair", c + new Vector3(-4f, 0.45f, 2f),
+            var readChair = VillaKit.Box("ReadChair", c + new Vector3(-4f, 0.45f, 2f),
                 new Vector3(1.9f, 0.9f, 1.9f), new Color(0.42f, 0.30f, 0.32f));
             Sittable.Attach(readChair, new Vector3(0, 0.55f, 0), Vector3.forward, false, "阅读椅");
-            ZoneBuilder.Box(ctx, "SideTable", c + new Vector3(-1.8f, 0.32f, 2f),
+            VillaKit.Box("SideTable", c + new Vector3(-1.8f, 0.32f, 2f),
                 new Vector3(1.0f, 0.64f, 1.0f), Wood);
-            ZoneBuilder.Decoration(ctx, "Cup", c + new Vector3(-1.8f, 0.72f, 2f),
+            VillaKit.Deco("Cup", c + new Vector3(-1.8f, 0.72f, 2f),
                 new Vector3(0.24f, 0.26f, 0.24f), new Color(0.92f, 0.92f, 0.9f));
             FloorLamp(ctx, c + new Vector3(-6f, 0, 2f));
-            ZoneBuilder.Box(ctx, "StudyDesk", c + new Vector3(4f, 0.74f, 1f),
+            VillaKit.Box("StudyDesk", c + new Vector3(4f, 0.74f, 1f),
                 new Vector3(4.4f, 0.14f, 2f), Wood);
-            var studyChair = ZoneBuilder.Box(ctx, "StudyChair", c + new Vector3(4f, 0.45f, -0.9f),
+            var studyChair = VillaKit.Box("StudyChair", c + new Vector3(4f, 0.45f, -0.9f),
                 new Vector3(1.1f, 0.16f, 1.1f), Dark);
             Sittable.Attach(studyChair, new Vector3(0, 0.55f, 0), Vector3.forward, false, "书桌椅");
         }
@@ -785,20 +783,20 @@ namespace AdversityRoad.OpenWorld
         static void Balcony(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(14f, SlabY, 19f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 3.0f, -2.6f), "露 台");
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -2.6f), "露 台", Vector3.back, 2.2f);
             // 露台在二层北侧：地板由楼板承担，这里只做栏杆与陈设
             for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Decoration(ctx, "Railing", c + new Vector3(s * 13f, 0.6f, 4f),
+                VillaKit.Deco("Railing", c + new Vector3(s * 13f, 0.6f, 4f),
                     new Vector3(0.12f, 1.2f, 20f), Metal);
-            ZoneBuilder.Decoration(ctx, "Railing", c + new Vector3(0, 0.6f, 10f),
+            VillaKit.Deco("Railing", c + new Vector3(0, 0.6f, 10f),
                 new Vector3(26f, 1.2f, 0.12f), Metal);
             for (int i = -1; i <= 1; i += 2)
             {
-                var lounger = ZoneBuilder.Box(ctx, "Lounger", c + new Vector3(i * 4f, 0.35f, 4f),
+                var lounger = VillaKit.Box("Lounger", c + new Vector3(i * 4f, 0.35f, 4f),
                     new Vector3(1.1f, 0.2f, 2.6f), new Color(0.90f, 0.88f, 0.82f));
                 Sittable.Attach(lounger, new Vector3(0, 0.5f, 0), Vector3.forward, true, "躺椅");
             }
-            ZoneBuilder.Box(ctx, "PatioTable", c + new Vector3(0, 0.36f, 4f),
+            VillaKit.Box("PatioTable", c + new Vector3(0, 0.36f, 4f),
                 new Vector3(1.6f, 0.72f, 1.6f), WoodLight);
             Plant(ctx, c + new Vector3(-10f, 0, 8f));
             Plant(ctx, c + new Vector3(10f, 0, 8f));
@@ -809,29 +807,29 @@ namespace AdversityRoad.OpenWorld
         static void Pool(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(W / 2f + 22f, 0, 6f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 2.8f, 13f), "泳 池");
+            VillaKit.WallSign(c + new Vector3(0, 2.4f, 13f), "泳 池", Vector3.back, 2.2f);
 
-            ZoneBuilder.Decoration(ctx, "PoolDeck", c + new Vector3(0, 0.05f, 0),
+            VillaKit.Deco("PoolDeck", c + new Vector3(0, 0.05f, 0),
                 new Vector3(30f, 0.1f, 26f), new Color(0.76f, 0.74f, 0.70f));
-            ZoneBuilder.Decoration(ctx, "PoolWater", c + new Vector3(0, 0.08f, 0),
+            VillaKit.Deco("PoolWater", c + new Vector3(0, 0.08f, 0),
                 new Vector3(18f, 0.06f, 11f), Water);
-            ZoneBuilder.Decoration(ctx, "PoolLine", c + new Vector3(0, 0.1f, 0),
+            VillaKit.Deco("PoolLine", c + new Vector3(0, 0.1f, 0),
                 new Vector3(17.4f, 0.02f, 0.18f), new Color(0.92f, 0.95f, 0.98f));
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Box(ctx, "PoolCurb", c + new Vector3(0, 0.15f, s * 5.8f),
+                VillaKit.Box("PoolCurb", c + new Vector3(0, 0.15f, s * 5.8f),
                     new Vector3(19f, 0.3f, 0.7f), FloorTile);
-                ZoneBuilder.Box(ctx, "PoolCurb", c + new Vector3(s * 9.3f, 0.15f, 0),
+                VillaKit.Box("PoolCurb", c + new Vector3(s * 9.3f, 0.15f, 0),
                     new Vector3(0.7f, 0.3f, 12.3f), FloorTile);
-                var lounger = ZoneBuilder.Box(ctx, "PoolLounger", c + new Vector3(s * 12.5f, 0.35f, 2f),
+                var lounger = VillaKit.Box("PoolLounger", c + new Vector3(s * 12.5f, 0.35f, 2f),
                     new Vector3(1.1f, 0.2f, 2.6f), new Color(0.90f, 0.88f, 0.82f));
                 Sittable.Attach(lounger, new Vector3(0, 0.5f, 0), Vector3.forward, true, "泳池躺椅");
             }
-            ZoneBuilder.Decoration(ctx, "PoolLadder", c + new Vector3(8f, 0.6f, 6.2f),
+            VillaKit.Deco("PoolLadder", c + new Vector3(8f, 0.6f, 6.2f),
                 new Vector3(0.1f, 1.2f, 0.7f), Metal);
-            ZoneBuilder.Box(ctx, "UmbrellaPole", c + new Vector3(12.5f, 1.3f, -2f),
+            VillaKit.Box("UmbrellaPole", c + new Vector3(12.5f, 1.3f, -2f),
                 new Vector3(0.14f, 2.6f, 0.14f), Metal);
-            ZoneBuilder.Decoration(ctx, "Umbrella", c + new Vector3(12.5f, 2.7f, -2f),
+            VillaKit.Deco("Umbrella", c + new Vector3(12.5f, 2.7f, -2f),
                 new Vector3(4f, 0.22f, 4f), new Color(0.85f, 0.40f, 0.32f));
             ZoneBuilder.AddCeilingLight(c + new Vector3(-5f, 0.5f, 0), new Color(0.45f, 0.85f, 1f), 16f);
             ZoneBuilder.AddCeilingLight(c + new Vector3(5f, 0.5f, 0), new Color(0.45f, 0.85f, 1f), 16f);
@@ -839,28 +837,51 @@ namespace AdversityRoad.OpenWorld
 
         static void Garage(WorldContext ctx, Vector3 h)
         {
-            Vector3 c = h + new Vector3(-W / 2f - 14f, 0, -14f);
-            OpenWorldBuilder.HomeSign(c + new Vector3(0, 4.4f, -6.2f), "车 库");
+            // 车库贴在宅子西侧，**卷帘门朝北对着街**——上一版门朝南、还没有车道，
+            // 玩家绕到房子背面也看不到它，自然会问"车库在哪里"。
+            Vector3 c = h + new Vector3(-W / 2f - 14f, 0, 8f);
 
-            ZoneBuilder.Decoration(ctx, "GarageFloor", c + new Vector3(0, 0.06f, 0),
-                new Vector3(16f, 0.08f, 11f), new Color(0.42f, 0.42f, 0.44f));
-            ZoneBuilder.Box(ctx, "GarageWall", c + new Vector3(0, 1.9f, 5.5f), new Vector3(16f, 3.8f, 0.3f), WallWarm);
-            for (int s = -1; s <= 1; s += 2)
-                ZoneBuilder.Box(ctx, "GarageWall", c + new Vector3(s * 8f, 1.9f, 0), new Vector3(0.3f, 3.8f, 11f), WallWarm);
-            ZoneBuilder.Box(ctx, "GarageRoof", c + new Vector3(0, 3.9f, 0), new Vector3(16.6f, 0.3f, 11.6f), WallWarm);
-            ZoneBuilder.Decoration(ctx, "GarageDoor", c + new Vector3(0, 3.4f, -5.4f),
-                new Vector3(15.4f, 0.9f, 0.2f), Metal);
-            ZoneBuilder.Decoration(ctx, "Driveway", c + new Vector3(0, 0.06f, -13f),
-                new Vector3(9f, 0.06f, 16f), new Color(0.48f, 0.48f, 0.50f));
+            VillaKit.Deco("GarageFloor", c + new Vector3(0, 0.06f, 0),
+                new Vector3(17f, 0.08f, 12f), new Color(0.42f, 0.42f, 0.44f));
+            VillaKit.Box("GarageWall", c + new Vector3(0, 1.9f, -6f), new Vector3(17f, 3.8f, 0.3f), WallWarm);
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+                VillaKit.Box("GarageWall", c + new Vector3(s2 * 8.5f, 1.9f, 0), new Vector3(0.3f, 3.8f, 12f), WallWarm);
+            VillaKit.Box("GarageRoof", c + new Vector3(0, 3.95f, 0), new Vector3(17.8f, 0.35f, 12.8f), WallWarm);
 
-            Car(ctx, c + new Vector3(-3.5f, 0, 0.5f), new Color(0.18f, 0.24f, 0.34f));
-            Car(ctx, c + new Vector3(3.5f, 0, 0.5f), new Color(0.42f, 0.16f, 0.16f));
-
-            ZoneBuilder.Box(ctx, "Workbench", c + new Vector3(6f, 0.45f, 4.2f), new Vector3(3f, 0.9f, 1.2f), Wood);
+            // 卷帘门：抬起停在门楣上，门洞两侧有门垛——远远就看得出这是车库
+            VillaKit.Deco("GarageShutter", c + new Vector3(0, 3.45f, 6f),
+                new Vector3(14f, 0.85f, 0.25f), Metal);
             for (int i = 0; i < 6; i++)
-                ZoneBuilder.Decoration(ctx, "Tool", c + new Vector3(4.8f + i * 0.5f, 2.0f, 5.1f),
+                VillaKit.Deco("ShutterSlat", c + new Vector3(0, 3.15f + i * 0.14f, 6f),
+                    new Vector3(14f, 0.1f, 0.3f), Metal * (0.9f - i * 0.03f));
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+                VillaKit.Box("GaragePier", c + new Vector3(s2 * 7.6f, 1.9f, 6f),
+                    new Vector3(1.6f, 3.8f, 0.5f), WallWarm);
+            VillaKit.WallSign(c + new Vector3(0, 4.4f, 6.3f), "车 库", Vector3.back, 3.6f);
+
+            // 车道：从车库门口一直铺到主干道，中间画上引导线
+            VillaKit.Deco("Driveway", c + new Vector3(0, 0.06f, 26f),
+                new Vector3(10f, 0.06f, 40f), new Color(0.48f, 0.48f, 0.50f));
+            for (int i = 0; i < 9; i++)
+                VillaKit.Deco("DriveLine", c + new Vector3(0, 0.09f, 9f + i * 4.2f),
+                    new Vector3(0.3f, 0.02f, 2.2f), new Color(0.86f, 0.84f, 0.72f));
+
+            Car(ctx, c + new Vector3(-4f, 0, 0f), new Color(0.18f, 0.24f, 0.34f));
+            Car(ctx, c + new Vector3(4f, 0, 0f), new Color(0.42f, 0.16f, 0.16f));
+
+            VillaKit.Box("Workbench", c + new Vector3(6.6f, 0.45f, -4.2f), new Vector3(3.4f, 0.9f, 1.2f), Wood);
+            for (int i = 0; i < 6; i++)
+                VillaKit.Deco("Tool", c + new Vector3(5.2f + i * 0.55f, 2.0f, -5.4f),
                     new Vector3(0.12f, 0.62f, 0.1f), i % 2 == 0 ? Metal : new Color(0.8f, 0.5f, 0.2f));
-            ZoneBuilder.AddCeilingLight(c + new Vector3(0, 3.4f, 0), new Color(1f, 0.96f, 0.88f), 18f);
+            // 轮胎、油桶、纸箱：车库空着最假
+            for (int i = 0; i < 3; i++)
+                VillaKit.CylAxis("Tyre", c + new Vector3(-7f, 0.42f + i * 0.34f, -4.6f),
+                    0.42f, 0.3f, new Color(0.12f, 0.12f, 0.13f), new Vector3(90f, 0, 0), true);
+            VillaKit.Cyl("OilDrum", c + new Vector3(7.4f, 0, 2.4f), 0.42f, 1.1f,
+                new Color(0.30f, 0.45f, 0.28f), true);
+            VillaKit.Box("Carton", c + new Vector3(-7.2f, 0.4f, 2.6f), new Vector3(1.2f, 0.8f, 1.2f),
+                new Color(0.62f, 0.48f, 0.32f));
+            ZoneBuilder.AddCeilingLight(c + new Vector3(0, 3.4f, 0), new Color(1f, 0.96f, 0.88f), 20f);
         }
 
         static void Garden(WorldContext ctx, Vector3 h)
@@ -873,35 +894,123 @@ namespace AdversityRoad.OpenWorld
             }
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Decoration(ctx, "GardenLampPole", h + new Vector3(s * 8f, 1.4f, -D / 2f - 14f),
-                    new Vector3(0.14f, 2.8f, 0.14f), Dark);
-                ZoneBuilder.Decoration(ctx, "GardenLampHead", h + new Vector3(s * 8f, 2.9f, -D / 2f - 14f),
-                    new Vector3(0.5f, 0.4f, 0.5f), new Color(1f, 0.94f, 0.78f));
+                VillaKit.Metal(VillaKit.Cyl("GardenLampPole", h + new Vector3(s * 8f, 0, -D / 2f - 14f),
+                    0.07f, 2.8f, Dark), Dark);
+                VillaKit.Emit(VillaKit.Sph("GardenLampHead", h + new Vector3(s * 8f, 3.0f, -D / 2f - 14f),
+                    0.55f, new Color(1f, 0.94f, 0.78f)), new Color(1f, 0.93f, 0.75f), 2.4f);
                 ZoneBuilder.AddCeilingLight(h + new Vector3(s * 8f, 2.9f, -D / 2f - 14f),
                     new Color(1f, 0.92f, 0.74f), 14f);
             }
-            ZoneBuilder.Box(ctx, "Mailbox", h + new Vector3(9f, 0.8f, -D / 2f - 21f),
+            VillaKit.Box("Mailbox", h + new Vector3(9f, 0.8f, -D / 2f - 21f),
                 new Vector3(0.4f, 1.6f, 0.4f), Dark);
-            ZoneBuilder.Decoration(ctx, "MailboxTop", h + new Vector3(9f, 1.75f, -D / 2f - 21f),
+            VillaKit.Deco("MailboxTop", h + new Vector3(9f, 1.75f, -D / 2f - 21f),
                 new Vector3(0.7f, 0.4f, 0.5f), new Color(0.55f, 0.20f, 0.18f));
             // 院墙 + 大门柱：宅基地到哪儿为止要看得出来
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Box(ctx, "FenceWall", h + new Vector3(6f + s * 66f, 0.9f, 0),
+                VillaKit.Box("FenceWall", h + new Vector3(6f + s * 66f, 0.9f, 0),
                     new Vector3(0.5f, 1.8f, 78f), WallWarm);
-                ZoneBuilder.Box(ctx, "FenceWall", h + new Vector3(6f, 0.9f, s * 39f),
+                VillaKit.Box("FenceWall", h + new Vector3(6f, 0.9f, s * 39f),
                     new Vector3(132f, 1.8f, 0.5f), WallWarm);
             }
         }
 
         static void Tree(WorldContext ctx, Vector3 at)
         {
-            ZoneBuilder.Box(ctx, "Trunk", at + new Vector3(0, 1.6f, 0), new Vector3(0.6f, 3.2f, 0.6f),
-                new Color(0.36f, 0.26f, 0.18f));
-            ZoneBuilder.Decoration(ctx, "Canopy", at + new Vector3(0, 4f, 0), new Vector3(4.6f, 3f, 4.6f),
-                new Color(0.22f, 0.44f, 0.24f));
-            ZoneBuilder.Decoration(ctx, "Canopy2", at + new Vector3(0.6f, 5.2f, -0.4f), new Vector3(3.2f, 2.2f, 3.2f),
-                new Color(0.26f, 0.50f, 0.28f));
+            VillaKit.Cyl("Trunk", at, 0.28f, 3.4f, new Color(0.36f, 0.26f, 0.18f), true);
+            VillaKit.Sph("Canopy", at + new Vector3(0, 4.2f, 0), 4.8f, new Color(0.22f, 0.44f, 0.24f));
+            VillaKit.Sph("Canopy", at + new Vector3(0.9f, 5.3f, -0.5f), 3.2f, new Color(0.27f, 0.51f, 0.29f));
+            VillaKit.Sph("Canopy", at + new Vector3(-0.8f, 4.9f, 0.7f), 2.8f, new Color(0.19f, 0.39f, 0.22f));
+        }
+
+
+        /// <summary>
+        /// 把房间填满的那一层小东西。
+        ///
+        /// 玩家说"整个房间靠着空荡荡的"。家具摆得再对，一间十几米见方的屋子
+        /// 只有三五件大件仍然是空的——真实的房间里到处是小物件：
+        /// 杯子、书、遥控器、拖鞋、抱枕、相框、纸箱、挂钩、开关面板。
+        /// 这里按房间补这一层，全部是小尺寸构件，成本极低，观感差别极大。
+        /// </summary>
+        static void Clutter(WorldContext ctx, Vector3 h)
+        {
+            var paper = new Color(0.90f, 0.88f, 0.82f);
+            var mug = new Color(0.86f, 0.90f, 0.92f);
+
+            // 客厅：遥控器、杂志、抱枕、拖鞋、地灯开关
+            VillaKit.Deco("Remote", h + new Vector3(-2.2f, 0.72f, -7.4f), new Vector3(0.12f, 0.05f, 0.4f), Dark);
+            VillaKit.Deco("Magazine", h + new Vector3(-4f, 0.71f, -7.8f), new Vector3(0.5f, 0.04f, 0.36f),
+                new Color(0.72f, 0.32f, 0.28f));
+            VillaKit.Cyl("Mug", h + new Vector3(-1.2f, 0.7f, -8.2f), 0.08f, 0.14f, mug);
+            for (int i = 0; i < 2; i++)
+                VillaKit.Deco("Slipper", h + new Vector3(-6.6f + i * 0.4f, 0.06f, -12.5f),
+                    new Vector3(0.26f, 0.1f, 0.7f), new Color(0.45f, 0.35f, 0.42f));
+
+            // 厨房：碗碟、砧板、调料瓶、果篮、抹布
+            for (int i = 0; i < 4; i++)
+                VillaKit.Cyl("Bowl", h + new Vector3(21f + i * 0.5f, 0.98f, 14f), 0.16f, 0.09f, mug);
+            VillaKit.Deco("Board", h + new Vector3(24.5f, 0.99f, 14.2f), new Vector3(0.7f, 0.05f, 0.45f), WoodLight);
+            for (int i = 0; i < 5; i++)
+                VillaKit.Cyl("Spice", h + new Vector3(30f + i * 0.34f, 0.98f, 14.2f), 0.055f, 0.2f,
+                    i % 2 == 0 ? new Color(0.75f, 0.45f, 0.2f) : new Color(0.35f, 0.55f, 0.3f));
+            VillaKit.Deco("Cloth", h + new Vector3(26f, 0.98f, 14f), new Vector3(0.4f, 0.03f, 0.3f),
+                new Color(0.6f, 0.7f, 0.75f));
+
+            // 餐厅：餐巾、酒瓶、烛台
+            VillaKit.Cyl("Bottle", h + new Vector3(23.4f, 0.84f, -9f), 0.07f, 0.36f,
+                new Color(0.20f, 0.35f, 0.22f));
+            VillaKit.Sph("BottleNeck", h + new Vector3(23.4f, 1.22f, -9f), 0.1f, new Color(0.20f, 0.35f, 0.22f));
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+            {
+                VillaKit.Metal(VillaKit.Cyl("Candlestick", h + new Vector3(20.6f, 0.83f, -9f + s2 * 1.2f),
+                    0.06f, 0.22f, Metal), Metal);
+                VillaKit.Emit(VillaKit.Cyl("Candle", h + new Vector3(20.6f, 1.05f, -9f + s2 * 1.2f),
+                    0.03f, 0.16f, new Color(1f, 0.9f, 0.6f)), new Color(1f, 0.8f, 0.4f), 1.4f);
+            }
+
+            // 书房/办公室：纸堆、笔筒、台灯、废纸篓
+            VillaKit.Deco("Papers", h + new Vector3(3.4f, SlabY + 0.82f, -16.6f),
+                new Vector3(0.5f, 0.06f, 0.66f), paper);
+            VillaKit.Cyl("PenCup", h + new Vector3(4.2f, SlabY + 0.81f, -16.2f), 0.07f, 0.16f, Dark);
+            for (int i = 0; i < 3; i++)
+                VillaKit.CylAxis("Pen", h + new Vector3(4.2f, SlabY + 1.0f, -16.2f), 0.012f, 0.2f,
+                    new Color(0.8f, 0.3f, 0.25f), new Vector3(12f * i, 30f * i, 8f));
+            VillaKit.Cyl("Bin", h + new Vector3(-2.4f, SlabY, -16f), 0.2f, 0.5f,
+                new Color(0.3f, 0.32f, 0.34f), true);
+            VillaKit.Cyl("DeskLampBase", h + new Vector3(-1.6f, SlabY + 0.81f, -16.6f), 0.12f, 0.05f, Dark);
+            VillaKit.Metal(VillaKit.CylAxis("DeskLampArm", h + new Vector3(-1.6f, SlabY + 1.05f, -16.4f),
+                0.02f, 0.5f, Metal, new Vector3(30f, 0, 0)), Metal);
+            VillaKit.Emit(VillaKit.Cyl("DeskLampHead", h + new Vector3(-1.6f, SlabY + 1.25f, -16.1f),
+                0.12f, 0.14f, new Color(1f, 0.95f, 0.8f)), new Color(1f, 0.94f, 0.78f), 1.6f);
+
+            // 主卧：床尾凳、拖鞋、书、闹钟
+            VillaKit.Box("BedBench", h + new Vector3(-27f, SlabY + 0.25f, -19.2f),
+                new Vector3(4.2f, 0.5f, 1.1f), new Color(0.40f, 0.34f, 0.38f));
+            VillaKit.Deco("Book", h + new Vector3(-23.6f, SlabY + 0.68f, -12.1f),
+                new Vector3(0.36f, 0.08f, 0.5f), new Color(0.35f, 0.45f, 0.62f));
+            VillaKit.Deco("Clock", h + new Vector3(-30.4f, SlabY + 0.7f, -12.1f),
+                new Vector3(0.24f, 0.2f, 0.1f), Dark);
+
+            // 健身房：水壶、毛巾、药球
+            VillaKit.Cyl("Bottle", h + new Vector3(-27f, 0.9f, 20f), 0.06f, 0.28f,
+                new Color(0.3f, 0.6f, 0.8f));
+            VillaKit.Sph("MedBall", h + new Vector3(-25.6f, 0.32f, 20.6f), 0.62f,
+                new Color(0.55f, 0.20f, 0.18f));
+            VillaKit.Sph("MedBall", h + new Vector3(-24.8f, 0.28f, 21.4f), 0.5f,
+                new Color(0.25f, 0.35f, 0.45f));
+            VillaKit.Deco("GymTowel", h + new Vector3(-27f, 0.62f, 19.2f),
+                new Vector3(0.5f, 0.08f, 0.34f), new Color(0.9f, 0.9f, 0.86f));
+
+            // 玄关：钥匙盘、伞桶、挂钩
+            VillaKit.Cyl("KeyTray", h + new Vector3(-6.4f, 1.14f, 24f), 0.16f, 0.05f, WoodLight);
+            VillaKit.Cyl("UmbrellaStand", h + new Vector3(6.4f, 0, 26f), 0.22f, 0.6f,
+                new Color(0.35f, 0.38f, 0.42f), true);
+            for (int i = 0; i < 2; i++)
+                VillaKit.CylAxis("Umbrella", h + new Vector3(6.4f, 0.7f, 26f), 0.03f, 0.9f,
+                    new Color(0.3f, 0.35f, 0.5f), new Vector3(8f * (i + 1), 60f * i, 5f));
+            for (int i = -1; i <= 1; i++)
+                VillaKit.Metal(VillaKit.CylAxis("Hook", h + new Vector3(i * 0.5f, 1.9f, 29.7f),
+                    0.025f, 0.18f, Metal, new Vector3(90f, 0, 0)), Metal);
         }
 
         // ================= 宠物 =================
@@ -909,9 +1018,9 @@ namespace AdversityRoad.OpenWorld
         static void Cat(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-12f, 0, -4f);
-            ZoneBuilder.Decoration(ctx, "CatBed", c + new Vector3(0, 0.1f, 0),
+            VillaKit.Deco("CatBed", c + new Vector3(0, 0.1f, 0),
                 new Vector3(1.5f, 0.2f, 1.5f), new Color(0.62f, 0.48f, 0.40f));
-            var bowl = ZoneBuilder.Box(ctx, "CatBowl", c + new Vector3(1.8f, 0.09f, 0),
+            var bowl = VillaKit.Box("CatBowl", c + new Vector3(1.8f, 0.09f, 0),
                 new Vector3(0.5f, 0.18f, 0.5f), new Color(0.85f, 0.72f, 0.35f));
             var cat = PetCat.Create(ctx, c, h);
             cat.wanderRadius = 14f;
@@ -924,16 +1033,16 @@ namespace AdversityRoad.OpenWorld
         {
             var rot = Quaternion.Euler(0, yawDeg, 0);
             Vector3 seatSize = new Vector3(5.2f, 0.5f, 2.0f);
-            var seat = ZoneBuilder.Box(ctx, "Sofa", at + rot * new Vector3(0, 0.25f, 0),
+            var seat = VillaKit.Box("Sofa", at + rot * new Vector3(0, 0.25f, 0),
                 Abs(rot * seatSize), Cloth);
             Sittable.Attach(seat, new Vector3(0, 0.6f, 0), rot * Vector3.forward, false, "沙发");
-            ZoneBuilder.Box(ctx, "SofaBack", at + rot * new Vector3(0, 0.78f, -0.85f),
+            VillaKit.Box("SofaBack", at + rot * new Vector3(0, 0.78f, -0.85f),
                 Abs(rot * new Vector3(5.2f, 1.0f, 0.5f)), Cloth);
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Box(ctx, "SofaArm", at + rot * new Vector3(s * 2.5f, 0.6f, 0),
+                VillaKit.Box("SofaArm", at + rot * new Vector3(s * 2.5f, 0.6f, 0),
                     Abs(rot * new Vector3(0.45f, 0.7f, 2.0f)), Cloth);
-                ZoneBuilder.Decoration(ctx, "Cushion", at + rot * new Vector3(s * 1.4f, 0.66f, -0.3f),
+                VillaKit.Deco("Cushion", at + rot * new Vector3(s * 1.4f, 0.66f, -0.3f),
                     Abs(rot * new Vector3(0.8f, 0.24f, 0.8f)), new Color(0.72f, 0.66f, 0.55f));
             }
         }
@@ -944,62 +1053,62 @@ namespace AdversityRoad.OpenWorld
         static void DiningChair(WorldContext ctx, Vector3 at, float yawDeg)
         {
             var rot = Quaternion.Euler(0, yawDeg, 0);
-            var seat = ZoneBuilder.Box(ctx, "DiningChair", at + new Vector3(0, 0.48f, 0),
+            var seat = VillaKit.Box("DiningChair", at + new Vector3(0, 0.48f, 0),
                 Abs(rot * new Vector3(1.0f, 0.12f, 1.0f)), Wood);
             Sittable.Attach(seat, new Vector3(0, 0.55f, 0), rot * Vector3.forward, false, "餐椅");
-            ZoneBuilder.Box(ctx, "ChairBack", at + rot * new Vector3(0, 0.95f, -0.45f),
-                Abs(rot * new Vector3(1.0f, 1.0f, 0.12f)), Wood);
+            VillaKit.Deco("ChairBack", at + rot * new Vector3(0, 0.95f, -0.45f),
+                new Vector3(1.0f, 1.0f, 0.12f), Wood, new Vector3(-8f, yawDeg, 0));
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
-                    ZoneBuilder.Decoration(ctx, "ChairLeg", at + new Vector3(sx * 0.4f, 0.24f, sz * 0.4f),
-                        new Vector3(0.1f, 0.48f, 0.1f), Wood);
+                    VillaKit.Cyl("ChairLeg", at + new Vector3(sx * 0.4f, 0f, sz * 0.4f), 0.045f, 0.48f, Wood);
+            VillaKit.Deco("ChairCushion", at + new Vector3(0, 0.56f, 0),
+                Abs(rot * new Vector3(0.92f, 0.12f, 0.92f)), Cloth);
         }
 
         static void OfficeChair(WorldContext ctx, Vector3 at)
         {
-            var seat = ZoneBuilder.Box(ctx, "ChairSeat", at + new Vector3(0, 0.52f, 0),
+            var seat = VillaKit.Box("ChairSeat", at + new Vector3(0, 0.52f, 0),
                 new Vector3(1.2f, 0.18f, 1.2f), Dark);
             Sittable.Attach(seat, new Vector3(0, 0.58f, 0), Vector3.forward, false, "办公椅");
-            ZoneBuilder.Box(ctx, "ChairBack", at + new Vector3(0, 1.1f, -0.55f),
+            VillaKit.Box("ChairBack", at + new Vector3(0, 1.1f, -0.55f),
                 new Vector3(1.2f, 1.2f, 0.16f), Dark);
-            ZoneBuilder.Decoration(ctx, "ChairPole", at + new Vector3(0, 0.26f, 0),
-                new Vector3(0.16f, 0.52f, 0.16f), Metal);
+            VillaKit.Metal(VillaKit.Cyl("ChairPole", at, 0.07f, 0.52f, Metal), Metal);
             for (int i = 0; i < 5; i++)
             {
                 float a = i * 72f * Mathf.Deg2Rad;
-                ZoneBuilder.Decoration(ctx, "ChairFoot",
-                    at + new Vector3(Mathf.Cos(a) * 0.5f, 0.06f, Mathf.Sin(a) * 0.5f),
-                    new Vector3(0.55f, 0.1f, 0.16f), Metal);
+                VillaKit.Metal(VillaKit.CylAxis("ChairFoot",
+                    at + new Vector3(Mathf.Cos(a) * 0.28f, 0.06f, Mathf.Sin(a) * 0.28f),
+                    0.035f, 0.56f, Metal, new Vector3(90f, -i * 72f, 0)), Metal);
+                VillaKit.Sph("ChairCaster",
+                    at + new Vector3(Mathf.Cos(a) * 0.54f, 0.05f, Mathf.Sin(a) * 0.54f), 0.1f, Dark);
             }
         }
 
         static void BarStool(WorldContext ctx, Vector3 at)
         {
-            var seat = ZoneBuilder.Box(ctx, "StoolSeat", at + new Vector3(0, 0.76f, 0),
-                new Vector3(0.75f, 0.14f, 0.75f), Wood);
-            Sittable.Attach(seat, new Vector3(0, 0.6f, 0), Vector3.forward, false, "吧椅");
-            ZoneBuilder.Decoration(ctx, "StoolPole", at + new Vector3(0, 0.38f, 0),
-                new Vector3(0.13f, 0.76f, 0.13f), Metal);
-            ZoneBuilder.Decoration(ctx, "StoolFoot", at + new Vector3(0, 0.05f, 0),
-                new Vector3(0.62f, 0.08f, 0.62f), Metal);
+            var seat = VillaKit.Cyl("StoolSeat", at + new Vector3(0, 0.72f, 0), 0.36f, 0.14f, Wood, true);
+            Sittable.Attach(seat, new Vector3(0, 0.1f, 0), Vector3.forward, false, "吧椅");
+            VillaKit.Metal(VillaKit.Cyl("StoolPole", at, 0.06f, 0.72f, Metal), Metal);
+            VillaKit.Metal(VillaKit.Cyl("StoolFoot", at, 0.3f, 0.05f, Metal), Metal);
+            VillaKit.Metal(VillaKit.CylAxis("StoolRing", at + new Vector3(0, 0.28f, 0),
+                0.28f, 0.05f, Metal, Vector3.zero), Metal);
         }
 
         static void Plant(WorldContext ctx, Vector3 at)
         {
-            ZoneBuilder.Box(ctx, "PlantPot", at + new Vector3(0, 0.3f, 0), new Vector3(0.8f, 0.6f, 0.8f),
-                new Color(0.52f, 0.36f, 0.28f));
-            ZoneBuilder.Decoration(ctx, "PlantLeaf", at + new Vector3(0, 1.1f, 0), new Vector3(1.2f, 1.3f, 1.2f),
-                new Color(0.22f, 0.46f, 0.26f));
-            ZoneBuilder.Decoration(ctx, "PlantLeaf", at + new Vector3(0.26f, 1.65f, -0.16f), new Vector3(0.8f, 0.9f, 0.8f),
-                new Color(0.26f, 0.52f, 0.30f));
+            VillaKit.Cyl("PlantPot", at, 0.36f, 0.55f, new Color(0.52f, 0.36f, 0.28f), true);
+            VillaKit.Cyl("PlantPotLip", at + new Vector3(0, 0.5f, 0), 0.4f, 0.08f, new Color(0.46f, 0.31f, 0.24f));
+            VillaKit.Sph("PlantLeaf", at + new Vector3(0, 1.15f, 0), 1.25f, new Color(0.22f, 0.46f, 0.26f));
+            VillaKit.Sph("PlantLeaf", at + new Vector3(0.3f, 1.62f, -0.18f), 0.8f, new Color(0.28f, 0.54f, 0.31f));
+            VillaKit.Sph("PlantLeaf", at + new Vector3(-0.28f, 1.5f, 0.22f), 0.66f, new Color(0.20f, 0.42f, 0.24f));
         }
 
         static void FloorLamp(WorldContext ctx, Vector3 at)
         {
-            ZoneBuilder.Decoration(ctx, "LampBase", at + new Vector3(0, 0.05f, 0), new Vector3(0.55f, 0.1f, 0.55f), Dark);
-            ZoneBuilder.Decoration(ctx, "LampPole", at + new Vector3(0, 0.9f, 0), new Vector3(0.08f, 1.8f, 0.08f), Metal);
-            ZoneBuilder.Decoration(ctx, "LampShade", at + new Vector3(0, 1.95f, 0), new Vector3(0.75f, 0.55f, 0.75f),
-                new Color(0.98f, 0.92f, 0.78f));
+            VillaKit.Metal(VillaKit.Cyl("LampBase", at, 0.26f, 0.06f, Dark), Dark);
+            VillaKit.Metal(VillaKit.Cyl("LampPole", at, 0.035f, 1.85f, Metal), Metal);
+            VillaKit.Emit(VillaKit.Cyl("LampShade", at + new Vector3(0, 1.72f, 0), 0.36f, 0.42f,
+                new Color(0.98f, 0.92f, 0.78f)), new Color(1f, 0.94f, 0.78f), 1.3f);
             ZoneBuilder.AddCeilingLight(at + new Vector3(0, 1.9f, 0), new Color(1f, 0.93f, 0.78f), 10f);
         }
 
@@ -1010,28 +1119,41 @@ namespace AdversityRoad.OpenWorld
                 Vector3 off = alongZ ? new Vector3(0, 1.9f, s * (width / 2f - 0.6f))
                                      : new Vector3(s * (width / 2f - 0.6f), 1.9f, 0);
                 Vector3 size = alongZ ? new Vector3(0.22f, 3.0f, 1.2f) : new Vector3(1.2f, 3.0f, 0.22f);
-                ZoneBuilder.Decoration(ctx, "Curtain", at + off, size, new Color(0.62f, 0.55f, 0.48f));
+                VillaKit.Deco("Curtain", at + off, size, new Color(0.62f, 0.55f, 0.48f));
             }
-            Vector3 rod = alongZ ? new Vector3(0.08f, 0.08f, width + 0.6f) : new Vector3(width + 0.6f, 0.08f, 0.08f);
-            ZoneBuilder.Decoration(ctx, "CurtainRod", at + new Vector3(0, 3.45f, 0), rod, Metal);
+            VillaKit.Metal(VillaKit.CylAxis("CurtainRod", at + new Vector3(0, 3.45f, 0), 0.04f,
+                width + 0.6f, Metal, alongZ ? new Vector3(90f, 0, 0) : new Vector3(0, 0, 90f)), Metal);
         }
 
-        static void AirConditioner(WorldContext ctx, Vector3 at)
+        /// <summary>
+        /// 挂式空调：**贴在墙上**，出风口朝房间。
+        ///
+        /// 上一版是"在房间某个高度放一个白盒子"，于是它悬在半空中。
+        /// 现在按墙面位置 + 朝向摆：机身紧贴墙、导风板朝屋里、指示灯亮着。
+        /// </summary>
+        static void AirConditioner(WorldContext ctx, Vector3 wallAt, Vector3 faceDir)
         {
-            ZoneBuilder.Decoration(ctx, "AC", at, new Vector3(2.2f, 0.65f, 0.55f), new Color(0.96f, 0.96f, 0.97f));
-            ZoneBuilder.Decoration(ctx, "AC_Vent", at + new Vector3(0, -0.24f, -0.18f),
-                new Vector3(2.0f, 0.12f, 0.32f), new Color(0.55f, 0.78f, 0.92f));
-            ZoneBuilder.Decoration(ctx, "AC_Led", at + new Vector3(0.8f, 0.12f, -0.28f),
-                new Vector3(0.16f, 0.08f, 0.05f), new Color(0.3f, 0.95f, 0.5f));
+            faceDir = faceDir.normalized;
+            float yaw = Quaternion.LookRotation(faceDir).eulerAngles.y;
+            Vector3 at = wallAt + faceDir * 0.3f;    // 机身厚度的一半，紧贴墙面
+            VillaKit.Deco("AC", at, new Vector3(2.3f, 0.68f, 0.5f), new Color(0.96f, 0.96f, 0.97f),
+                new Vector3(0, yaw, 0));
+            VillaKit.Deco("AC_Vent", at + faceDir * 0.2f - new Vector3(0, 0.26f, 0),
+                new Vector3(2.0f, 0.14f, 0.3f), new Color(0.55f, 0.78f, 0.92f), new Vector3(-18f, yaw, 0));
+            VillaKit.Emit(VillaKit.Deco("AC_Led", at + faceDir * 0.26f + new Vector3(0.85f, 0.12f, 0),
+                new Vector3(0.14f, 0.07f, 0.05f), new Color(0.3f, 0.95f, 0.5f), new Vector3(0, yaw, 0)),
+                new Color(0.3f, 0.95f, 0.5f), 2f);
+            VillaKit.Deco("AC_Bracket", wallAt + faceDir * 0.06f, new Vector3(2.4f, 0.1f, 0.12f),
+                new Color(0.72f, 0.72f, 0.74f), new Vector3(0, yaw, 0));
         }
 
         static void CeilingFan(WorldContext ctx, Vector3 at)
         {
-            ZoneBuilder.Decoration(ctx, "FanRod", at + new Vector3(0, 0.3f, 0), new Vector3(0.09f, 0.6f, 0.09f), Metal);
-            var hub = ZoneBuilder.Decoration(ctx, "FanHub", at, new Vector3(0.45f, 0.2f, 0.45f), Metal);
+            VillaKit.Deco("FanRod", at + new Vector3(0, 0.3f, 0), new Vector3(0.09f, 0.6f, 0.09f), Metal);
+            var hub = VillaKit.Deco("FanHub", at, new Vector3(0.45f, 0.2f, 0.45f), Metal);
             for (int i = 0; i < 4; i++)
             {
-                var blade = ZoneBuilder.Decoration(ctx, "FanBlade", at, new Vector3(2.8f, 0.07f, 0.45f), Wood);
+                var blade = VillaKit.Deco("FanBlade", at, new Vector3(2.8f, 0.07f, 0.45f), Wood);
                 blade.transform.SetParent(hub.transform, true);
                 blade.transform.localRotation = Quaternion.Euler(0, i * 90f, 0);
             }
@@ -1040,15 +1162,14 @@ namespace AdversityRoad.OpenWorld
 
         static void UserPicture(WorldContext ctx, Vector3 at, Vector3 size, UserImageSlot slot, string sign)
         {
-            var go = ZoneBuilder.Decoration(ctx, "UserPicture_" + slot, at, size, new Color(0.62f, 0.60f, 0.66f));
+            var go = VillaKit.Deco("UserPicture_" + slot, at, size, new Color(0.62f, 0.60f, 0.66f));
             go.AddComponent<UserPictureFrame>().slot = slot;
             // 画框外圈：没有框的画看着像贴在墙上的一块色卡
             Vector3 frame = new Vector3(size.x > 0.2f ? size.x + 0.22f : size.x,
                 size.y + 0.22f, size.z > 0.2f ? size.z + 0.22f : size.z);
-            ZoneBuilder.Decoration(ctx, "PictureFrame", at + new Vector3(0, 0, 0.02f), frame,
+            VillaKit.Deco("PictureFrame", at + new Vector3(0, 0, 0.02f), frame,
                 new Color(0.45f, 0.34f, 0.22f));
-            if (!string.IsNullOrEmpty(sign))
-                OpenWorldBuilder.HomeSign(at + new Vector3(0, size.y / 2f + 0.55f, 0), sign);
+            // 画框自己就说明了它是什么，不再往空中挂一行字
         }
 
         static Color BookColor(int i)
@@ -1067,24 +1188,34 @@ namespace AdversityRoad.OpenWorld
 
         static void Car(WorldContext ctx, Vector3 at, Color body)
         {
-            ZoneBuilder.Box(ctx, "CarBody", at + new Vector3(0, 0.74f, 0), new Vector3(2.0f, 0.9f, 4.8f), body);
-            ZoneBuilder.Box(ctx, "CarCabin", at + new Vector3(0, 1.42f, -0.2f), new Vector3(1.8f, 0.7f, 2.5f),
+            VillaKit.Box("CarBody", at + new Vector3(0, 0.74f, 0), new Vector3(2.0f, 0.9f, 4.8f), body);
+            VillaKit.Box("CarCabin", at + new Vector3(0, 1.42f, -0.2f), new Vector3(1.8f, 0.7f, 2.5f),
                 new Color(body.r * 0.7f, body.g * 0.7f, body.b * 0.7f));
             for (int s = -1; s <= 1; s += 2)
             {
-                ZoneBuilder.Decoration(ctx, "SideGlass", at + new Vector3(s * 0.92f, 1.42f, -0.2f),
+                VillaKit.Deco("SideGlass", at + new Vector3(s * 0.92f, 1.42f, -0.2f),
                     new Vector3(0.06f, 0.52f, 2.3f), Glass);
-                ZoneBuilder.Decoration(ctx, "Headlight", at + new Vector3(s * 0.66f, 0.82f, 2.42f),
+                VillaKit.Deco("Headlight", at + new Vector3(s * 0.66f, 0.82f, 2.42f),
                     new Vector3(0.5f, 0.26f, 0.08f), new Color(0.95f, 0.95f, 0.85f));
-                ZoneBuilder.Decoration(ctx, "Taillight", at + new Vector3(s * 0.66f, 0.88f, -2.42f),
+                VillaKit.Deco("Taillight", at + new Vector3(s * 0.66f, 0.88f, -2.42f),
                     new Vector3(0.46f, 0.2f, 0.08f), new Color(0.75f, 0.15f, 0.12f));
             }
-            ZoneBuilder.Decoration(ctx, "Windshield", at + new Vector3(0, 1.42f, 1.1f), new Vector3(1.7f, 0.62f, 0.1f), Glass);
-            ZoneBuilder.Decoration(ctx, "RearGlass", at + new Vector3(0, 1.42f, -1.5f), new Vector3(1.7f, 0.62f, 0.1f), Glass);
+            VillaKit.Deco("Windshield", at + new Vector3(0, 1.42f, 1.1f), new Vector3(1.7f, 0.62f, 0.1f), Glass);
+            VillaKit.Deco("RearGlass", at + new Vector3(0, 1.42f, -1.5f), new Vector3(1.7f, 0.62f, 0.1f), Glass);
             for (int sx = -1; sx <= 1; sx += 2)
                 for (int sz = -1; sz <= 1; sz += 2)
-                    ZoneBuilder.Decoration(ctx, "Wheel", at + new Vector3(sx * 0.98f, 0.38f, sz * 1.6f),
-                        new Vector3(0.26f, 0.76f, 0.76f), new Color(0.10f, 0.10f, 0.11f));
+                {
+                    VillaKit.CylAxis("Wheel", at + new Vector3(sx * 0.98f, 0.38f, sz * 1.6f),
+                        0.38f, 0.26f, new Color(0.10f, 0.10f, 0.11f), new Vector3(0, 0, 90f), true);
+                    VillaKit.Metal(VillaKit.CylAxis("Hub", at + new Vector3(sx * 1.06f, 0.38f, sz * 1.6f),
+                        0.2f, 0.06f, new Color(0.72f, 0.74f, 0.78f), new Vector3(0, 0, 90f)),
+                        new Color(0.72f, 0.74f, 0.78f));
+                }
+            for (int sx = -1; sx <= 1; sx += 2)
+                VillaKit.Deco("Mirror", at + new Vector3(sx * 1.12f, 1.42f, 1.0f),
+                    new Vector3(0.3f, 0.16f, 0.14f), body * 0.8f);
+            VillaKit.Deco("Bumper", at + new Vector3(0, 0.5f, 2.45f), new Vector3(2.0f, 0.28f, 0.16f), Dark);
+            VillaKit.Deco("Bumper", at + new Vector3(0, 0.5f, -2.45f), new Vector3(2.0f, 0.28f, 0.16f), Dark);
         }
 
         /// <summary>每个房间一盏主灯（灯具 + 光源）——房间没有灯就是黑的。</summary>
@@ -1111,8 +1242,8 @@ namespace AdversityRoad.OpenWorld
             {
                 float ceilY = (s.at.y > 1f ? SlabY : 0f) + FloorH - 0.35f;
                 Vector3 at = h + new Vector3(s.at.x, ceilY, s.at.z);
-                ZoneBuilder.Decoration(ctx, "CeilLamp", at, new Vector3(1.6f, 0.16f, 1.6f), s.color);
-                ZoneBuilder.Decoration(ctx, "LampRing", at - new Vector3(0, 0.1f, 0),
+                VillaKit.Deco("CeilLamp", at, new Vector3(1.6f, 0.16f, 1.6f), s.color);
+                VillaKit.Deco("LampRing", at - new Vector3(0, 0.1f, 0),
                     new Vector3(1.9f, 0.08f, 1.9f), Metal);
                 ZoneBuilder.AddCeilingLight(at - new Vector3(0, 0.2f, 0), s.color, s.range);
             }

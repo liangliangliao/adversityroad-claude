@@ -14,69 +14,151 @@ namespace AdversityRoad.OpenWorld
     }
 
     /// <summary>
-    /// 玩家自己的图片：墙上的艺术画与桌上的相框都读它。
+    /// 玩家自己的图片：墙上的画与桌上的相框都读它。
     ///
-    /// 【为什么是"放进文件夹"而不是弹一个文件选择框】
-    /// Unity 在安卓上没有内建的文件选择器，弹窗要靠原生插件——这个项目
-    /// 从头到尾不引入任何外部资源与插件（世界全是运行时几何）。
-    /// 所以用最直白也最可靠的一条路：约定一个目录，把图片丢进去就生效。
-    /// 目录路径在游戏里能看到（住处的画框走近会念出来），复制得走。
-    ///
-    /// 命名规则（不区分大小写，png/jpg 都认）：
-    ///   art1.png   → 卧室床头大幅
-    ///   art2.png   → 卧室侧墙竖幅
-    ///   photo.png  → 办公桌相框
-    /// 没找到就保持占位色，不报错、不影响任何别的东西。
+    /// 【这一版才算真的实现】
+    /// 上一版只是"约定一个目录、把文件改成指定文件名"——玩家看不到目录、
+    /// 也没有任何界面能确认是否生效，等于没做。现在：
+    ///   · 主动去手机/电脑常见的图片目录里**找**图片（相机、图片、下载、
+    ///     以及游戏自己的 UserImages 目录）；
+    ///   · 安卓上先申请读取权限，被拒也能退回到游戏自己的目录；
+    ///   · 由「换一张画」面板列出找到的文件，点一下就挂上去；
+    ///   · 选择存进 PlayerPrefs，下次进游戏照旧挂着。
     /// </summary>
     public static class UserImageLibrary
     {
         public const string FolderName = "UserImages";
+        const string PrefKey = "villa_picture_";
 
         static readonly Dictionary<UserImageSlot, Texture2D> _cache =
             new Dictionary<UserImageSlot, Texture2D>();
-        static bool _scanned;
+        static List<string> _found;
 
         public static string FolderPath => Path.Combine(Application.persistentDataPath, FolderName);
 
-        static string[] NamesFor(UserImageSlot slot)
+        // ================= 查找 =================
+
+        /// <summary>找出这台设备上能读到的图片文件（去重、按名字排序、最多 200 张）。</summary>
+        public static List<string> FindImages()
         {
-            switch (slot)
+            RequestReadPermission();
+            var list = new List<string>();
+            foreach (var dir in CandidateFolders())
             {
-                case UserImageSlot.BedroomArtA: return new[] { "art1", "art", "picture1" };
-                case UserImageSlot.BedroomArtB: return new[] { "art2", "picture2" };
-                default: return new[] { "photo", "me", "family" };
+                if (string.IsNullOrEmpty(dir)) continue;
+                try
+                {
+                    if (!Directory.Exists(dir)) continue;
+                    foreach (var f in Directory.GetFiles(dir))
+                    {
+                        if (!IsImage(f) || list.Contains(f)) continue;
+                        list.Add(f);
+                        if (list.Count >= 200) break;
+                    }
+                    // 相册通常还有一层子目录（Camera / Screenshots …）
+                    foreach (var sub in Directory.GetDirectories(dir))
+                    {
+                        if (list.Count >= 200) break;
+                        try
+                        {
+                            foreach (var f in Directory.GetFiles(sub))
+                            {
+                                if (!IsImage(f) || list.Contains(f)) continue;
+                                list.Add(f);
+                                if (list.Count >= 200) break;
+                            }
+                        }
+                        catch (System.Exception) { /* 单个子目录没权限就跳过 */ }
+                    }
+                }
+                catch (System.Exception) { /* 某个目录不可读不影响其它目录 */ }
+                if (list.Count >= 200) break;
             }
+            list.Sort(System.StringComparer.Ordinal);
+            _found = list;
+            CloudDialogueService.AddLog("图片扫描：找到 " + list.Count + " 张（游戏目录 " + FolderPath + "）");
+            return list;
         }
 
-        /// <summary>把目录里的图片读进来（只做一次；换了图片可以调 Rescan）。</summary>
-        public static void Scan()
+        static IEnumerable<string> CandidateFolders()
         {
-            if (_scanned) return;
-            _scanned = true;
             EnsureFolder();
-
-            foreach (UserImageSlot slot in System.Enum.GetValues(typeof(UserImageSlot)))
-            {
-                var tex = Load(slot);
-                if (tex != null) _cache[slot] = tex;
-            }
-            CloudDialogueService.AddLog("玩家图片目录：" + FolderPath + "（已载入 " + _cache.Count + " 张）");
+            yield return FolderPath;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            const string ext = "/storage/emulated/0/";
+            yield return ext + "Pictures";
+            yield return ext + "DCIM";
+            yield return ext + "Download";
+            yield return ext + "Documents";
+#else
+            yield return System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures);
+            yield return Path.Combine(
+                System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), "Downloads");
+#endif
         }
 
-        public static void Rescan()
+        static bool IsImage(string path)
         {
-            _scanned = false;
-            _cache.Clear();
-            Scan();
+            string e = Path.GetExtension(path).ToLowerInvariant();
+            return e == ".png" || e == ".jpg" || e == ".jpeg";
+        }
+
+        static void RequestReadPermission()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // 相册要权限；玩家拒绝了也不影响游戏自己的目录
+            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(
+                    UnityEngine.Android.Permission.ExternalStorageRead))
+                UnityEngine.Android.Permission.RequestUserPermission(
+                    UnityEngine.Android.Permission.ExternalStorageRead);
+#endif
+        }
+
+        // ================= 指派与读取 =================
+
+        /// <summary>把某张图片挂到某个画框上（空字符串＝取下）。</summary>
+        public static void Assign(UserImageSlot slot, string path)
+        {
+            PlayerPrefs.SetString(PrefKey + (int)slot, path ?? "");
+            PlayerPrefs.Save();
+            _cache.Remove(slot);
             foreach (var f in Object.FindObjectsByType<UserPictureFrame>(
                          FindObjectsInactive.Include, FindObjectsSortMode.None))
-                f.ApplyTexture();
+                if (f.slot == slot) f.ApplyTexture();
+            GameEvents.RaiseSubtitle(string.IsNullOrEmpty(path)
+                ? "画取下来了。" : "换上了新的一张。");
         }
+
+        public static string PathFor(UserImageSlot slot) => PlayerPrefs.GetString(PrefKey + (int)slot, "");
 
         public static Texture2D Get(UserImageSlot slot)
         {
-            Scan();
-            return _cache.TryGetValue(slot, out var t) ? t : null;
+            if (_cache.TryGetValue(slot, out var t) && t != null) return t;
+
+            string path = PathFor(slot);
+            if (string.IsNullOrEmpty(path))
+            {
+                // 没指派过：沿用老约定（UserImages/art1.png 之类），老用户不用重设
+                path = LegacyPath(slot);
+                if (string.IsNullOrEmpty(path)) return null;
+            }
+            var tex = Load(path);
+            if (tex != null) _cache[slot] = tex;
+            return tex;
+        }
+
+        static string LegacyPath(UserImageSlot slot)
+        {
+            string[] stems = slot == UserImageSlot.BedroomArtA ? new[] { "art1", "art" }
+                : slot == UserImageSlot.BedroomArtB ? new[] { "art2" }
+                : new[] { "photo", "me" };
+            foreach (var stem in stems)
+                foreach (var ext in new[] { ".png", ".jpg", ".jpeg" })
+                {
+                    string p = Path.Combine(FolderPath, stem + ext);
+                    if (File.Exists(p)) return p;
+                }
+            return "";
         }
 
         static void EnsureFolder()
@@ -84,15 +166,11 @@ namespace AdversityRoad.OpenWorld
             try
             {
                 if (!Directory.Exists(FolderPath)) Directory.CreateDirectory(FolderPath);
-                // 放一份说明进去：玩家打开目录第一眼就知道该怎么放
                 string readme = Path.Combine(FolderPath, "把图片放这里.txt");
                 if (!File.Exists(readme))
                     File.WriteAllText(readme,
-                        "把你的图片放进这个文件夹，重新进入游戏（或在住处的画框上按 E 选「重新扫描」）即可生效：\n" +
-                        "  art1.png  → 卧室床头的大幅艺术画\n" +
-                        "  art2.png  → 卧室侧墙的竖幅画\n" +
-                        "  photo.png → 办公桌上的相框照片\n" +
-                        "支持 png 与 jpg。文件名不区分大小写。\n");
+                        "把图片（png / jpg）放进这个文件夹，或直接放在手机的 图片 / 下载 / 相机 目录里，\n" +
+                        "然后在游戏里走到画框前按交互键，从列表里挑一张即可。\n");
             }
             catch (System.Exception e)
             {
@@ -100,62 +178,61 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
-        static Texture2D Load(UserImageSlot slot)
+        static Texture2D Load(string path)
         {
             try
             {
-                if (!Directory.Exists(FolderPath)) return null;
-                foreach (var stem in NamesFor(slot))
-                    foreach (var ext in new[] { ".png", ".jpg", ".jpeg", ".PNG", ".JPG" })
-                    {
-                        string p = Path.Combine(FolderPath, stem + ext);
-                        if (!File.Exists(p)) continue;
-                        var bytes = File.ReadAllBytes(p);
-                        var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                        if (tex.LoadImage(bytes)) return tex;
-                    }
+                if (!File.Exists(path)) return null;
+                var bytes = File.ReadAllBytes(path);
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!tex.LoadImage(bytes)) return null;
+                // 手机相册动辄四千万像素，直接贴上去纯属浪费显存
+                if (tex.width > 1024 || tex.height > 1024) tex.Compress(false);
+                return tex;
             }
             catch (System.Exception e)
             {
                 Debug.LogWarning("[UserImage] 读取失败：" + e.Message);
+                return null;
             }
-            return null;
         }
     }
 
     /// <summary>
-    /// 一个画框/相框：启动时把玩家的图片贴上去；没有图片就保持占位色，
-    /// 并在走近时告诉玩家该把文件放到哪儿。
+    /// 一个画框/相框：把玩家指派的图片贴上去；走近按交互键打开「换一张画」面板。
     /// </summary>
     public class UserPictureFrame : MonoBehaviour
     {
         public UserImageSlot slot = UserImageSlot.BedroomArtA;
-        public float range = 3f;
+        public float range = 3.2f;
+
+        /// <summary>由 GameBootstrap 注入：打开换画面板。</summary>
+        public static System.Action<UserImageSlot> OpenPicker;
 
         float _lastHint = -99f;
-        bool _hasImage;
+        Player.PlayerController _player;
 
         void Start() => ApplyTexture();
 
         public void ApplyTexture()
         {
-            var tex = UserImageLibrary.Get(slot);
             var r = GetComponent<MeshRenderer>();
-            if (tex == null || r == null) return;
+            if (r == null) return;
+            var tex = UserImageLibrary.Get(slot);
 
-            // 材质是按颜色共享的，直接改会把同色的构件一起改掉——这里换一份自己的
             var shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
             var m = new Material(shader);
-            m.color = Color.white;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", Color.white);
-            m.mainTexture = tex;
-            if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+            var tint = tex != null ? Color.white : new Color(0.58f, 0.56f, 0.62f);
+            m.color = tint;
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", tint);
+            if (tex != null)
+            {
+                m.mainTexture = tex;
+                if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+            }
             r.sharedMaterial = m;
-            _hasImage = true;
         }
-
-        Player.PlayerController _player;
 
         void Update()
         {
@@ -166,22 +243,13 @@ namespace AdversityRoad.OpenWorld
             }
             if (Vector3.Distance(transform.position, _player.transform.position) > range) return;
 
-            // 提示十秒一次，按键每帧都收——把按键判断塞进提示的冷却里，
-            // 结果是"只有提示弹出的那一帧按 E 才有用"，玩家会以为这功能坏了
-            if (Time.time - _lastHint > 10f)
+            if (Time.time - _lastHint > 9f)
             {
                 _lastHint = Time.time;
-                GameEvents.RaiseSubtitle(_hasImage
-                    ? "【画框】这是你自己放进来的那张。按 E 重新扫描图片目录。"
-                    : "【画框】还空着——把图片放进 " + UserImageLibrary.FolderPath +
-                      " 命名为 art1/art2/photo，按 E 重新扫描。");
+                GameEvents.RaiseSubtitle("【画框】" + Mobile.MobileInput.UseHint + "换一张自己的图片。");
             }
-
             if (Input.GetKeyDown(KeyCode.E) || Mobile.MobileInput.GetDown("Interact"))
-            {
-                UserImageLibrary.Rescan();
-                GameEvents.RaiseSubtitle("【画框】已重新扫描图片目录。");
-            }
+                OpenPicker?.Invoke(slot);
         }
     }
 }
