@@ -32,17 +32,21 @@ namespace AdversityRoad.OpenWorld
 
         static readonly Dictionary<UserImageSlot, Texture2D> _cache =
             new Dictionary<UserImageSlot, Texture2D>();
-        static List<string> _found;
 
         public static string FolderPath => Path.Combine(Application.persistentDataPath, FolderName);
 
         // ================= 查找 =================
 
-        /// <summary>找出这台设备上能读到的图片文件（去重、按名字排序、最多 200 张）。</summary>
+        /// <summary>找出这台设备上能读到的图片文件（去重、最多 200 张）。</summary>
         public static List<string> FindImages()
         {
             RequestReadPermission();
             var list = new List<string>();
+
+            // 先问系统相册（安卓 10 之后的分区存储下，直接列目录往往什么都读不到，
+            // 必须走 MediaStore；这也是"从手机相册导入"真正该走的那条路）
+            QueryGallery(list);
+
             foreach (var dir in CandidateFolders())
             {
                 if (string.IsNullOrEmpty(dir)) continue;
@@ -74,8 +78,6 @@ namespace AdversityRoad.OpenWorld
                 catch (System.Exception) { /* 某个目录不可读不影响其它目录 */ }
                 if (list.Count >= 200) break;
             }
-            list.Sort(System.StringComparer.Ordinal);
-            _found = list;
             CloudDialogueService.AddLog("图片扫描：找到 " + list.Count + " 张（游戏目录 " + FolderPath + "）");
             return list;
         }
@@ -106,11 +108,61 @@ namespace AdversityRoad.OpenWorld
         static void RequestReadPermission()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // 相册要权限；玩家拒绝了也不影响游戏自己的目录
+            // 安卓 13 起读相册要的是 READ_MEDIA_IMAGES，老系统才是 READ_EXTERNAL_STORAGE。
+            // 两个都申请：系统会忽略与自己版本无关的那一个。
+            const string mediaImages = "android.permission.READ_MEDIA_IMAGES";
+            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(mediaImages))
+                UnityEngine.Android.Permission.RequestUserPermission(mediaImages);
             if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(
                     UnityEngine.Android.Permission.ExternalStorageRead))
                 UnityEngine.Android.Permission.RequestUserPermission(
                     UnityEngine.Android.Permission.ExternalStorageRead);
+#endif
+        }
+
+        /// <summary>
+        /// 向系统相册（MediaStore）要图片列表。
+        ///
+        /// 安卓 10 引入分区存储之后，App 已经不能直接列 /storage/emulated/0/DCIM ——
+        /// 上一版就是这么做的，所以在新手机上"什么都找不到"。相册的正确问法是
+        /// 通过 ContentResolver 查 MediaStore.Images：这条路在有读图权限时一定有效，
+        /// 而且拿到的正是用户在相册里看到的那些照片（按最近拍摄排序）。
+        ///
+        /// 全程包在 try 里：任何一步失败都只是少一个来源，不影响游戏目录那条路。
+        /// </summary>
+        static void QueryGallery(List<string> into)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var resolver = activity.Call<AndroidJavaObject>("getContentResolver"))
+                using (var media = new AndroidJavaClass("android.provider.MediaStore$Images$Media"))
+                {
+                    var uri = media.GetStatic<AndroidJavaObject>("EXTERNAL_CONTENT_URI");
+                    string[] projection = { "_data" };
+                    var cursor = resolver.Call<AndroidJavaObject>("query", uri, projection,
+                        null, null, "date_added DESC");
+                    if (cursor == null) return;
+
+                    int col = cursor.Call<int>("getColumnIndex", "_data");
+                    int guard = 0;
+                    while (cursor.Call<bool>("moveToNext") && into.Count < 200 && guard++ < 600)
+                    {
+                        if (col < 0) break;
+                        string path = cursor.Call<string>("getString", col);
+                        if (string.IsNullOrEmpty(path) || !IsImage(path)) continue;
+                        if (!into.Contains(path)) into.Add(path);
+                    }
+                    cursor.Call("close");
+                    cursor.Dispose();
+                }
+            }
+            catch (System.Exception e)
+            {
+                CloudDialogueService.AddLog("相册查询失败（改用目录扫描）：" + e.Message);
+            }
 #endif
         }
 

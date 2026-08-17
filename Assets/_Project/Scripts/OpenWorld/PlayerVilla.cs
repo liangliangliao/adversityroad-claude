@@ -93,7 +93,9 @@ namespace AdversityRoad.OpenWorld
             IndoorZone.Create(h + new Vector3(-W / 2f - 14f, 2f, 8f),
                 new Vector3(17f, 4f, 12f), "Garage_Indoor");
 
-            InteriorSpawn = h + new Vector3(0, 1.1f, 24f);        // 玄关正中
+            // 开局站在客厅、正对目标看板——上一版落在玄关门洞里，
+            // 玩家看到的是"站在自家大门口"，第一眼既不是家也不是目标
+            InteriorSpawn = h + new Vector3(-3f, 1.1f, -2f);
             DoorSpawn = h + new Vector3(0, 1.1f, D / 2f + 6f);    // 门廊外
         }
 
@@ -215,11 +217,12 @@ namespace AdversityRoad.OpenWorld
             VillaKit.Box("Slab_D", h + new Vector3(34.35f, SlabY - 0.15f, 18.5f),
                 new Vector3(14.7f, 0.3f, 9f), Ceil);
 
-            // 楼梯井三面护栏（楼梯从南往北上来，北侧那边留出上下口）
-            VillaKit.Box("StairRail", h + new Vector3(22f, SlabY + 0.6f, 13.9f),
+            // 楼梯井护栏：楼梯从北往南上、出口在 z=14，所以**南侧不能拦**，
+            // 拦在那里等于把上楼的人堵在最后一级台阶上。北侧与东西两侧各一道。
+            VillaKit.Box("StairRail", h + new Vector3(22f, SlabY + 0.6f, 23.1f),
                 new Vector3(10.4f, 1.2f, 0.16f), Metal);
             for (int s = -1; s <= 1; s += 2)
-                VillaKit.Box("StairRail", h + new Vector3(22f + s * 5.2f, SlabY + 0.6f, 18.5f),
+                VillaKit.Box("StairRail", h + new Vector3(22f + s * 5.1f, SlabY + 0.6f, 18.5f),
                     new Vector3(0.16f, 1.2f, 9f), Metal);
         }
 
@@ -309,7 +312,11 @@ namespace AdversityRoad.OpenWorld
             WallZ(ctx, h, 0, -20f, 6f, 30f, 18f);         // 健身房 ↔ 休息厅
             WallX(ctx, h, 0, 6f, -20f, 14f, -4f);         // 客厅 ↔ 休息厅
             WallZ(ctx, h, 0, 14f, 6f, 30f, 22f);          // 休息厅 ↔ 楼梯厅
-            WallX(ctx, h, 0, 16f, 30f, 42f, 36f);         // 洗衣房
+            // 【厨房与楼梯厅之间必须有墙】上一版 x∈[14,42]、z∈[0,30] 是一整个空间，
+            // 楼梯就直接立在厨房里——玩家的原话是"上二层，从厨房上去？"。
+            // 这道墙把厨房收在 z<14，楼梯厅独立成间，两者之间留一道门。
+            WallX(ctx, h, 0, 14f, 14f, 42f, 19f);         // 厨房 ↔ 楼梯厅
+            WallZ(ctx, h, 0, 30f, 14f, 30f, 26f);         // 楼梯厅 ↔ 洗衣房（东侧，留门）
         }
 
         static void UpperFloorWalls(WorldContext ctx, Vector3 h)
@@ -324,33 +331,56 @@ namespace AdversityRoad.OpenWorld
             WallX(ctx, h, y, 14f, -42f, -12f);            // 主卫北墙
         }
 
-        /// <summary>一部真的能走上去的楼梯（每级 26cm，CharacterController 迈得上）。</summary>
+        /// <summary>
+        /// 一部真的能走上去的楼梯。
+        ///
+        /// 【上一版为什么"要跳过隔板"】台阶按 26cm 一级算，接近角色控制器的
+        /// 迈步上限（0.3），加上楼梯立在厨房当中、上去之后两侧都是楼板洞——
+        /// 走不上去、上去了也没地方落脚。
+        ///
+        /// 现在：楼梯在自己的楼梯厅里，**从北往南上**（正对进厅的门），
+        /// 22 级、每级 18.6cm，长度正好铺满楼梯井到二层楼板边缘——
+        /// 最后一级踏面与二层地面齐平，往前一步就是二层走廊。
+        /// </summary>
         static void Stairs(WorldContext ctx, Vector3 h)
         {
-            Vector3 baseAt = h + new Vector3(22f, 0, 16f);
-            int steps = Mathf.CeilToInt(SlabY / 0.26f);
-            float rise = SlabY / steps, run = 0.42f;
+            const float startZ = 23f, endZ = 14f;     // 与楼板井口（z 14~23）严格对齐
+            const int steps = 22;
+            float run = (startZ - endZ) / steps, rise = SlabY / steps;
+            Vector3 axis = h + new Vector3(22f, 0, 0);
+
             for (int i = 0; i < steps; i++)
             {
                 float y = rise * (i + 1);
-                VillaKit.Box("Step", baseAt + new Vector3(0, y / 2f, i * run),
-                    new Vector3(5f, y, run + 0.02f), FloorTile);
-                if (i % 3 == 0)
-                    VillaKit.Deco("StepNose", baseAt + new Vector3(0, y + 0.02f, i * run - run / 2f),
-                        new Vector3(5f, 0.04f, 0.1f), Wood);
+                float z = startZ - (i + 0.5f) * run;
+                VillaKit.Box("Step", axis + new Vector3(0, y / 2f, z),
+                    new Vector3(5.2f, y, run + 0.02f), FloorTile);
+                // 踏面前沿的木质包边：一级级看得清，不是一堆灰台阶
+                VillaKit.Deco("StepNose", axis + new Vector3(0, y + 0.02f, z + run / 2f),
+                    new Vector3(5.2f, 0.05f, 0.12f), Wood);
             }
-            // 扶手
-            for (int s = -1; s <= 1; s += 2)
+
+            // 两侧扶手：立柱按级排，扶手是一根斜着的圆柱
+            for (int s2 = -1; s2 <= 1; s2 += 2)
             {
-                VillaKit.Deco("Handrail",
-                    baseAt + new Vector3(s * 2.5f, SlabY / 2f + 0.95f, steps * run / 2f),
-                    new Vector3(0.12f, 0.12f, steps * run), Wood);
-                for (int i = 0; i < steps; i += 4)
-                    VillaKit.Deco("Baluster",
-                        baseAt + new Vector3(s * 2.5f, rise * (i + 1) + 0.5f, i * run),
-                        new Vector3(0.08f, 1f, 0.08f), Metal);
+                for (int i = 0; i < steps; i += 3)
+                {
+                    float y = rise * (i + 1);
+                    float z = startZ - (i + 0.5f) * run;
+                    VillaKit.Metal(VillaKit.Cyl("Baluster", axis + new Vector3(s2 * 2.5f, y, z),
+                        0.035f, 0.95f, Metal), Metal);
+                }
+                float midY = SlabY / 2f + 0.95f;
+                float len = Mathf.Sqrt(Mathf.Pow(startZ - endZ, 2f) + SlabY * SlabY);
+                float tilt = Mathf.Atan2(SlabY, startZ - endZ) * Mathf.Rad2Deg;
+                VillaKit.Cyl("Handrail", axis + new Vector3(s2 * 2.5f, 0, (startZ + endZ) / 2f), 0.06f, 0.1f, Wood);
+                VillaKit.CylAxis("Handrail", axis + new Vector3(s2 * 2.5f, midY, (startZ + endZ) / 2f),
+                    0.06f, len, Wood, new Vector3(90f - tilt, 0, 0));
             }
-            VillaKit.WallSign(h + new Vector3(22f, 2.6f, 13.6f), "上 二 层", Vector3.back, 2.6f);
+
+            // 楼梯厅里的指示：牌子钉在进厅那道墙上，而不是飘在空中
+            VillaKit.WallSign(h + new Vector3(14.4f, 2.5f, 26f), "上 二 层", Vector3.right, 2.6f);
+            ZoneBuilder.AddCeilingLight(h + new Vector3(22f, 3.4f, 20f), new Color(1f, 0.95f, 0.86f), 20f);
         }
 
         // ================= 一层 =================
@@ -452,8 +482,8 @@ namespace AdversityRoad.OpenWorld
 
         static void Kitchen(WorldContext ctx, Vector3 h)
         {
-            Vector3 c = h + new Vector3(28f, 0, 8f);
-            VillaKit.WallSign(c + new Vector3(0, 2.5f, -7.9f), "厨 房", Vector3.forward, 2.2f);
+            Vector3 c = h + new Vector3(28f, 0, 7f);
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -6.9f), "厨 房", Vector3.forward, 2.2f);
 
             // U 形橱柜
             Counter(ctx, c + new Vector3(0, 0, 6.4f), new Vector3(24f, 0.92f, 0.9f));
@@ -905,14 +935,66 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(0.4f, 1.6f, 0.4f), Dark);
             VillaKit.Deco("MailboxTop", h + new Vector3(9f, 1.75f, -D / 2f - 21f),
                 new Vector3(0.7f, 0.4f, 0.5f), new Color(0.55f, 0.20f, 0.18f));
-            // 院墙 + 大门柱：宅基地到哪儿为止要看得出来
+            // ---- 院墙与大门 ----
+            //
+            // 【上一版只能翻墙进来】北面是一整道 132 米长、没有任何开口的实墙，
+            // 而房子的入户门正朝北——玩家从街上过来，除了翻墙没有别的走法。
+            // 现在北面正对入户步道的位置留出 10 米宽的大门：两根门柱、门楣、
+            // 两扇推开的铁艺门扇、门柱灯，以及门前一段车行道。
+            const float GateHalf = 5f;
+            float lotHX = 75f, lotHZ = 37f;          // 与 Site() 里的宅基地一致
+            float cx = 4f;                            // 宅基地中心相对 h 的偏移
             for (int s = -1; s <= 1; s += 2)
             {
-                VillaKit.Box("FenceWall", h + new Vector3(6f + s * 66f, 0.9f, 0),
-                    new Vector3(0.5f, 1.8f, 78f), WallWarm);
-                VillaKit.Box("FenceWall", h + new Vector3(6f, 0.9f, s * 39f),
-                    new Vector3(132f, 1.8f, 0.5f), WallWarm);
+                // 东西两道侧墙
+                VillaKit.Box("FenceWall", h + new Vector3(cx + s * lotHX, 1.1f, 0),
+                    new Vector3(0.6f, 2.2f, lotHZ * 2f), WallWarm);
+                // 南面整道 + 北面留门的两段
+                VillaKit.Box("FenceWall", h + new Vector3(cx, 1.1f, -lotHZ),
+                    new Vector3(lotHX * 2f, 2.2f, 0.6f), WallWarm);
             }
+            // 北面：门洞左右两段墙
+            VillaKit.Box("FenceWall_N_L",
+                h + new Vector3((cx - lotHX - GateHalf) / 2f, 1.1f, lotHZ),
+                new Vector3(Mathf.Abs(cx - lotHX + GateHalf), 2.2f, 0.6f), WallWarm);
+            VillaKit.Box("FenceWall_N_R",
+                h + new Vector3((cx + lotHX + GateHalf) / 2f, 1.1f, lotHZ),
+                new Vector3(Mathf.Abs(cx + lotHX - GateHalf), 2.2f, 0.6f), WallWarm);
+
+            // 门柱 + 门楣 + 柱灯
+            for (int s = -1; s <= 1; s += 2)
+            {
+                VillaKit.Box("GatePier", h + new Vector3(s * GateHalf, 1.7f, lotHZ),
+                    new Vector3(1.4f, 3.4f, 1.4f), WallWarm);
+                VillaKit.Deco("GatePierCap", h + new Vector3(s * GateHalf, 3.5f, lotHZ),
+                    new Vector3(1.8f, 0.25f, 1.8f), Dark);
+                VillaKit.Emit(VillaKit.Sph("GateLamp", h + new Vector3(s * GateHalf, 3.85f, lotHZ),
+                    0.5f, new Color(1f, 0.94f, 0.76f)), new Color(1f, 0.92f, 0.72f), 2.4f);
+                ZoneBuilder.AddCeilingLight(h + new Vector3(s * GateHalf, 3.9f, lotHZ),
+                    new Color(1f, 0.92f, 0.74f), 16f);
+            }
+            VillaKit.Deco("GateLintel", h + new Vector3(0, 3.6f, lotHZ),
+                new Vector3(GateHalf * 2f + 1.6f, 0.4f, 0.5f), WallWarm);
+            VillaKit.WallSign(h + new Vector3(0, 4.3f, lotHZ + 0.4f), "我 的 住 处", Vector3.back, 5f);
+
+            // 两扇朝院里推开的铁艺门扇（竖栅栏，不是一块板）
+            for (int s = -1; s <= 1; s += 2)
+                for (int i = 0; i < 8; i++)
+                {
+                    float t = i / 7f;
+                    Vector3 at = h + new Vector3(s * (GateHalf - 0.2f - t * 3.4f), 0.95f,
+                        lotHZ - 0.4f - t * 1.4f);
+                    VillaKit.Metal(VillaKit.Cyl("GateBar", at - new Vector3(0, 0.95f, 0),
+                        0.045f, 1.9f, Metal), Metal);
+                }
+            for (int s = -1; s <= 1; s += 2)
+                VillaKit.Metal(VillaKit.CylAxis("GateRail",
+                    h + new Vector3(s * (GateHalf - 1.9f), 1.85f, lotHZ - 1.1f),
+                    0.05f, 3.9f, Metal, new Vector3(0, s * 22f, 90f)), Metal);
+
+            // 门前车行道：从大门一直铺到主干道，走回家不用在草地上找方向
+            VillaKit.Deco("GateDrive", h + new Vector3(0, 0.06f, lotHZ + 12f),
+                new Vector3(10f, 0.06f, 24f), new Color(0.55f, 0.54f, 0.52f));
         }
 
         static void Tree(WorldContext ctx, Vector3 at)

@@ -78,6 +78,14 @@ namespace AdversityRoad.Player
         readonly Dictionary<Object, float> _slowSources = new Dictionary<Object, float>();
         readonly List<Object> _slowDead = new List<Object>();
 
+        /// <summary>
+        /// 只许走、不许跑（在住处这类室内空间里由 IndoorZone 打开）。
+        ///
+        /// 不是减益：减益会写进"移速倍率"里被当成中了负面状态，也会被清减益的地方抹掉。
+        /// 这是一条场地规则——屋里就是不跑，出门自动恢复。
+        /// </summary>
+        public bool WalkOnly { get; set; }
+
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier
         {
@@ -497,6 +505,9 @@ namespace AdversityRoad.Player
             float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
+            // 室内只走不跑：在自己家里冲刺既不合情理，也是"转一圈就晕"的一部分——
+            // 屋里两三步一堵墙，全速跑动时镜头与碰撞都来不及跟上。
+            if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度

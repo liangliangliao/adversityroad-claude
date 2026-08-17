@@ -30,16 +30,27 @@ namespace AdversityRoad.OpenWorld
 
         void OnTriggerEnter(Collider other)
         {
-            if (other.GetComponentInParent<PlayerController>() == null) return;
+            var pc = other.GetComponentInParent<PlayerController>();
+            if (pc == null) return;
             _inside++;
-            ThirdPersonCamera.IndoorMode = true;
+            Apply(pc, true);
         }
 
         void OnTriggerExit(Collider other)
         {
-            if (other.GetComponentInParent<PlayerController>() == null) return;
+            var pc = other.GetComponentInParent<PlayerController>();
+            if (pc == null) return;
             _inside = Mathf.Max(0, _inside - 1);
-            if (_inside == 0) ThirdPersonCamera.IndoorMode = false;
+            if (_inside == 0) Apply(pc, false);
+        }
+
+        static void Apply(PlayerController pc, bool inside)
+        {
+            ThirdPersonCamera.IndoorMode = inside;
+            // 屋里只走不跑（玩家要求）：也顺带把"全速跑过一间小屋"这个晕动源去掉
+            if (pc != null) pc.WalkOnly = inside;
+            if (inside)
+                Core.GameEvents.RaiseSubtitle("进屋了——在家里只慢慢走。");
         }
 
         /// <summary>重建世界/重载场景时清零：静态计数不会自己归位。</summary>
@@ -47,6 +58,8 @@ namespace AdversityRoad.OpenWorld
         {
             _inside = 0;
             ThirdPersonCamera.IndoorMode = false;
+            var pc = FindFirstObjectByType<PlayerController>();
+            if (pc != null) pc.WalkOnly = false;
         }
     }
 }
