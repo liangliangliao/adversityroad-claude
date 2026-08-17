@@ -232,21 +232,32 @@ namespace AdversityRoad.OpenWorld
         /// 上一版用的是会转向镜头的 TextMesh，且背后什么都没有——
         /// 玩家看到的就是"文字在空中飘着"。字必须贴在一块牌子上、
         /// 牌子必须钉在墙上、朝向必须固定，才像一块门牌。
+        ///
+        /// 【faceDir 的含义只有一种：从墙面指向读牌子的人】
+        /// 这一条必须说死。TextMesh 的可读面在自己的 -Z 方向（所以广告牌的写法是
+        /// 让 forward 背对镜头），字要朝谁就得让 forward 背着谁。上一版几块室外
+        /// 标牌（入口、我的住处、车库）传的是**指向墙里**的方向，于是字朝屋里、
+        /// 人在屋外看到的是镜像的背面——这就是"中文倒过来/反过来"的来源。
+        ///
+        /// 另外把牌子和字整体往外让开 12/22 厘米：内墙有 28 厘米厚，
+        /// 贴着墙心放，半块牌子和字都埋在墙里，从房间里只能看到糊在墙面上的一层。
         /// </summary>
         public static void WallSign(Vector3 at, string text, Vector3 faceDir, float width = 2.4f)
         {
             faceDir = faceDir.normalized;
             float yaw = Quaternion.LookRotation(faceDir).eulerAngles.y;
-            var plate = Make(PrimitiveType.Cube, "SignPlate", at,
+            Vector3 plateAt = at + faceDir * 0.12f;
+            Make(PrimitiveType.Cube, "SignPlate", plateAt,
                 new Vector3(width, 0.62f, 0.09f), new Color(0.18f, 0.19f, 0.22f),
                 new Vector3(0, yaw, 0), false);
-            Make(PrimitiveType.Cube, "SignEdge", at + faceDir * -0.01f,
+            Make(PrimitiveType.Cube, "SignEdge", plateAt + faceDir * -0.02f,
                 new Vector3(width + 0.12f, 0.74f, 0.06f), new Color(0.62f, 0.52f, 0.32f),
                 new Vector3(0, yaw, 0), false);
 
             var go = new GameObject("SignText");
             if (Root != null) go.transform.SetParent(Root, true);
-            go.transform.position = at + faceDir * 0.06f;
+            go.transform.position = at + faceDir * 0.22f;
+            // forward 背对读者：TextMesh 的字面在 -Z 侧，这样正面朝人、不是镜像
             go.transform.rotation = Quaternion.LookRotation(-faceDir);
             var tm = go.AddComponent<TextMesh>();
             tm.text = text;

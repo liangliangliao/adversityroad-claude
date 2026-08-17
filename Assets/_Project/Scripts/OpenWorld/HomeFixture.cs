@@ -111,6 +111,7 @@ namespace AdversityRoad.OpenWorld
 
         void LateUpdate()
         {
+            if (SitController.Busy) return;   // 坐着/躺着时不抢交互键
             if (_candidate != this || _candidateFrame != Time.frameCount) return;
             if (Input.GetKeyDown(KeyCode.E) || Mobile.MobileInput.GetDown("Interact"))
                 Open?.Invoke(kind);

@@ -142,6 +142,7 @@ namespace AdversityRoad.Combat
         int _actionCount;
         float _playLen;    // 本次播放的有效时长/保持标志（起身反播时与默认不同）
         bool _playHold;
+        float _fadeDur;    // 本次播放的淡入时长（0=按招式默认。坐下/躺下这类慢动作要长淡入）
 
         int _cur = -1;
         float _actionT, _actionW, _fadeFrom;
@@ -327,6 +328,65 @@ namespace AdversityRoad.Combat
             return 0f;
         }
 
+        /// <summary>片段名（精确优先、再按包含）→ 动作层输入口；找不到返回 -1。</summary>
+        int IndexOfClip(string key)
+        {
+            key = Norm(key);
+            if (key.Length == 0) return -1;
+            if (_clipIndex.TryGetValue(key, out int i)) return i;
+            foreach (var kv in _clipIndex)
+                if (kv.Key.Contains(key)) return kv.Value;
+            return -1;
+        }
+
+        /// <summary>片段原始时长（秒，不掐头去尾、不算倍速）；无此片段返回 0。</summary>
+        public float RawClipLength(string key)
+        {
+            if (!Valid) return 0f;
+            int i = IndexOfClip(key);
+            return i >= 0 ? _actionRawLen[i] : 0f;
+        }
+
+        /// <summary>动作库里是否有这个片段。</summary>
+        public bool HasClip(string key) => Valid && IndexOfClip(key) >= 0;
+
+        /// <summary>
+        /// 按名字播任意片段：可倒放、可保持末帧、可指定倍速与淡入、可只播其中一段。
+        ///
+        /// 【为什么不走 PoseState】坐下、躺下、睡觉、起身都不是招式：没有判定窗、
+        /// 没有发力窗裁剪、也不该在头顶弹招式名。它们要的恰恰是招式层不提供的东西——
+        /// **完整播完**（不裁头尾）、**停在末帧**（坐着/躺着是持续状态）、
+        /// **倒放**（从椅子上站起来 = 坐下反过来）、**长淡入**（4 秒的慢动作
+        /// 用 0.07 秒硬切上来会"弹"一下）。所以单开这条通路。
+        ///
+        /// 返回本次播放时长（秒）；0 = 动作库里没有这个片段，上层自行兜底。
+        /// </summary>
+        public float PlayNamed(string key, bool reverse = false, bool hold = false,
+            float speed = 1f, float fade = 0.3f, float start01 = 0f, float end01 = 1f)
+        {
+            if (!Valid) return 0f;
+            int idx = IndexOfClip(key);
+            if (idx < 0) return 0f;
+
+            float raw = Mathf.Max(0.05f, _actionRawLen[idx]);
+            start01 = Mathf.Clamp01(start01);
+            end01 = Mathf.Clamp(end01, start01 + 0.02f, 1f);
+            speed = Mathf.Max(0.05f, speed);
+
+            for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
+            var cp = (AnimationClipPlayable)_actions.GetInput(idx);
+            cp.SetSpeed(reverse ? -speed : speed);
+            cp.SetTime(raw * (reverse ? end01 : start01));
+            cp.SetDone(false);
+            _cur = idx;
+            _actionT = 0f;
+            _playLen = raw * (end01 - start01) / speed;
+            _playHold = hold;
+            _fadeDur = Mathf.Max(0f, fade);
+            _fadeFrom = _actionW;   // 连着上一段休息动作接下去，权重不掉回 0
+            return _playLen;
+        }
+
         void PlayIndex(int idx, float targetDuration = 0f)
         {
             for (int i = 0; i < _actionCount; i++) _actions.SetInputWeight(i, i == idx ? 1f : 0f);
@@ -349,6 +409,7 @@ namespace AdversityRoad.Combat
             _actionT = 0f;
             _playLen = _actionHold[idx] ? _actionLen[idx] : Mathf.Max(0.05f, window / speed);
             _playHold = _actionHold[idx];
+            _fadeDur = 0f;          // 招式一律用短淡入（快、脆），与休息动作区分开
             _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
         }
 
@@ -372,6 +433,7 @@ namespace AdversityRoad.Combat
             _actionT = 0f;
             _playLen = clipLen / getUpSpeed;
             _playHold = false;   // 播完（站起）即淡回移动层
+            _fadeDur = 0f;
             _fadeFrom = Mathf.Max(_actionW, 0.9f);   // 从躺地姿态无缝续接，不闪回站立
         }
 
@@ -411,7 +473,9 @@ namespace AdversityRoad.Combat
                 // 有近半程在与移动层混权，拳就"软"了。短招用短过渡，姿态立得住。
                 // 下限 0.04（原 0.025）：过渡太短会让连段每一段都"啪"地硬切上来，
                 // 硬切同样读作卡顿而不是快——快要靠动作本身，不能靠切换。
-                float fadeInDur = _playHold ? 0.07f : Mathf.Clamp(len * 0.18f, 0.04f, 0.07f);
+                float fadeInDur = _fadeDur > 0.001f
+                    ? _fadeDur
+                    : (_playHold ? 0.07f : Mathf.Clamp(len * 0.18f, 0.04f, 0.07f));
                 float fadeIn = Mathf.Lerp(_fadeFrom, 1f, Mathf.Clamp01(_actionT / fadeInDur));
                 if (_playHold)
                 {

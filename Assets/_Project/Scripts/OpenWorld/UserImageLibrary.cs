@@ -288,6 +288,7 @@ namespace AdversityRoad.OpenWorld
 
         void Update()
         {
+            if (SitController.Busy) return;   // 坐着/躺着时不抢交互键（床边就挂着画）
             if (_player == null)
             {
                 _player = FindObjectOfType<Player.PlayerController>();

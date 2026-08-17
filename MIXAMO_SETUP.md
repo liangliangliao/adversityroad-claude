@@ -68,6 +68,13 @@ Assets/_Project/Resources/Characters/
 > 动作文件名里的 `@Idle` / `@Side Kick` / `@Great Sword Slash` 这些**后缀**是关键，
 > Unity 会用它给动画片段命名，代码据此匹配。别去掉 `@` 后缀就行。
 
+> **没有 `@` 后缀的文件（如 `Sitting.fbx`）必须连 `.fbx.meta` 一起提交。**
+> Mixamo 导出的 take 一律叫 `mixamo.com`，Unity 在没有 meta 时就用这个名字命名片段，
+> 而代码会把 `mixamo.com` 这个名字直接过滤掉（十几个文件都叫同一个名字，没法匹配）。
+> meta 里的 `clipAnimations.name` 才是片段真正的名字。直接从网页上传 FBX 不会带 meta，
+> 这时片段等于没导进来——照着同目录里任何一个 `.meta` 复制一份，改 `guid`、
+> `clipAnimations.name`（= 文件名）与 `lastFrame`（帧数 = FBX 里的 LocalTime ÷ 30fps）即可。
+
 ---
 
 ## 一·补、动作库覆盖面补充清单（去 Mixamo 搜索下载，放进 `Anims/` 即自动生效）
@@ -83,10 +90,28 @@ Assets/_Project/Resources/Characters/
 | **Great Sword Casting**（或 Warming Up / Taunt） | 重键蓄力姿态 | 施法聚气 |
 | **Leg Sweep** | 扫堂腿（蹲+腿） | 空翻踢低位 |
 
+## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
+
+这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
+可倒放），由 `SitController` 串成一条链：
+
+| 片段（`Anims/` 下的文件名） | 生效位置 |
+| --- | --- |
+| **Sitting** | 站→坐（椅子/凳子/沙发/床沿）；**倒放**即从椅子上站起来 |
+| **Lying Down** | 坐→躺（床、沙发、躺椅、卧推凳） |
+| **Sleeping Idle** | 躺着的持续姿态（带呼吸起伏，循环播放） |
+| **Getting Up** | 从躺姿起身；**倒放**即"就地躺下"（健身房瑜伽垫） |
+| Stand Up / Standing Up | 备用的起身片段（现用 Getting Up，它最利落） |
+
+> 这些片段自带**动作骨架自己的座面高度**（那把椅子约 45cm、那张床约 67cm）。
+> 家里每件家具高度都不同，所以休息期间 `HumanoidAnimator` 改用**骨盆锚定**：
+> 量家具包围盒顶面，把骨盆对到座面而不是把脚底对到地面。换家具不用调参数。
+
 可选增强（有则更好，无不影响）：
 
 | 动作名 | 生效位置 |
 | --- | --- |
+| Sitting Idle | 坐稳后的待机（现用 Sitting 末段循环） |
 | Great Sword Idle | 持剑临战待机（现用 Fighting Idle） |
 | Great Sword Walk / Great Sword Run | 持剑走/跑（现用 Walking/Running） |
 | Great Sword Impact | 持剑受击（现用 Hit Reaction） |

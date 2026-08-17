@@ -65,6 +65,9 @@ namespace AdversityRoad.OpenWorld
 
         void Update()
         {
+            // 坐着/躺着的时候不抢交互键（消费式读取，只能有一个消费者）——
+            // 否则在床上按"起身"会被旁边的水龙头吃掉，人永远起不来
+            if (SitController.Busy) return;
             if (_player == null)
             {
                 _player = FindObjectOfType<PlayerController>();

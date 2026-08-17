@@ -169,6 +169,7 @@ namespace AdversityRoad.OpenWorld
 
         void Update()
         {
+            if (SitController.Busy) return;   // 坐着/躺着时不抢交互键
             if (_player == null)
             {
                 _player = FindObjectOfType<PlayerController>();
@@ -179,7 +180,7 @@ namespace AdversityRoad.OpenWorld
             if (Time.time - _lastHint > 8f)
             {
                 _lastHint = Time.time;
-                GameEvents.RaiseSubtitle("【猫食盆】按 E 添一点粮。");
+                GameEvents.RaiseSubtitle("【猫食盆】" + Mobile.MobileInput.UseHint + "添一点粮。");
             }
             if (!Input.GetKeyDown(KeyCode.E) && !Mobile.MobileInput.GetDown("Interact")) return;
             if (Time.time - _lastFeed < 3f) return;

@@ -145,7 +145,7 @@ namespace AdversityRoad.OpenWorld
                     VillaKit.Box("Wall_N_Head", h + new Vector3(0, y + FloorH - 0.55f, hd),
                         new Vector3(8.4f, 1.1f, WallT), Wall);
                     VillaKit.Doorway(h + new Vector3(0, y, hd), 8.4f, 3.0f, true, WoodLight, Wood);
-                    VillaKit.WallSign(h + new Vector3(0, 3.6f, hd + 0.35f), "入 口", Vector3.back, 3.2f);
+                    VillaKit.WallSign(h + new Vector3(0, 3.6f, hd + 0.35f), "入 口", Vector3.forward, 3.2f);
                 }
 
                 // 窗：南北各三扇、东西各两扇（带窗框，室内看得见外面）
@@ -199,7 +199,7 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(13f, 0.4f, 8f), WallWarm);
             VillaKit.Box("Porch_Step", h + new Vector3(0, 0.1f, hd + 1.6f),
                 new Vector3(13f, 0.2f, 3f), FloorTile);
-            VillaKit.WallSign(h + new Vector3(0, 4.9f, hd + 0.5f), "我 的 住 处", Vector3.back, 6f);
+            VillaKit.WallSign(h + new Vector3(0, 4.9f, hd + 0.5f), "我 的 住 处", Vector3.forward, 6f);
         }
 
         /// <summary>二层楼板：楼梯口开洞，其余整块。</summary>
@@ -564,7 +564,7 @@ namespace AdversityRoad.OpenWorld
             // 卧推凳（可以坐）+ 杠铃架
             var bench = VillaKit.Box("Bench", c + new Vector3(4f, 0.5f, 2f),
                 new Vector3(0.8f, 0.18f, 2.6f), new Color(0.30f, 0.16f, 0.16f));
-            Sittable.Attach(bench, new Vector3(0, 0.62f, 0), Vector3.forward, false, "卧推凳");
+            Sittable.Attach(bench, Vector3.back, "卧推凳", true);   // 躺下时头朝杠铃架那一头
             VillaKit.Box("BenchLeg", c + new Vector3(4f, 0.22f, 2f), new Vector3(0.6f, 0.44f, 2.2f), Dark);
             for (int s = -1; s <= 1; s += 2)
                 VillaKit.Box("RackPost", c + new Vector3(4f + s * 0.9f, 0.75f, 3.3f),
@@ -580,8 +580,10 @@ namespace AdversityRoad.OpenWorld
             VillaKit.Deco("BikeSeat", c + new Vector3(-5f, 1.06f, -2.4f), new Vector3(0.42f, 0.14f, 0.7f), Metal);
             VillaKit.Deco("BikeBar", c + new Vector3(-5f, 1.24f, -1.2f), new Vector3(0.86f, 0.1f, 0.1f), Metal);
             VillaKit.Deco("BikeWheel", c + new Vector3(-5f, 0.36f, -1f), new Vector3(0.14f, 0.72f, 0.72f), Metal);
-            VillaKit.Deco("YogaMat", c + new Vector3(5f, 0.1f, -4f), new Vector3(1.3f, 0.05f, 2.8f),
-                new Color(0.35f, 0.62f, 0.55f));
+            // 瑜伽垫：躺在地上的那个"健身动作"——躺下拉伸/仰卧，起来时是撑地起身
+            var mat = VillaKit.Deco("YogaMat", c + new Vector3(5f, 0.1f, -4f),
+                new Vector3(1.3f, 0.05f, 2.8f), new Color(0.35f, 0.62f, 0.55f));
+            Sittable.Attach(mat, Vector3.back, "瑜伽垫", true, true);
             VillaKit.Deco("GymMirror", c + new Vector3(0, 1.8f, 11.3f),
                 new Vector3(18f, 2.8f, 0.1f), new Color(0.78f, 0.86f, 0.92f));
             // 健身房：挂在西外墙上，出风朝东
@@ -603,7 +605,7 @@ namespace AdversityRoad.OpenWorld
             FloorLamp(ctx, c + new Vector3(-7f, 0, -5f));
             var chair = VillaKit.Box("ArmChair", c + new Vector3(6f, 0.45f, -2f),
                 new Vector3(1.8f, 0.9f, 1.8f), new Color(0.42f, 0.30f, 0.32f));
-            Sittable.Attach(chair, new Vector3(0, 0.55f, 0), -Vector3.forward, false, "扶手椅");
+            Sittable.Attach(chair, -Vector3.forward, "扶手椅");
         }
 
         // ================= 二层 =================
@@ -611,7 +613,7 @@ namespace AdversityRoad.OpenWorld
         static void MasterBedroom(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-27f, SlabY, -15f);
-            VillaKit.WallSign(c + new Vector3(0, 2.5f, -15.4f), "主 卧", Vector3.forward, 2.2f);
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -14.85f), "主 卧", Vector3.forward, 2.2f);
             VillaKit.Deco("BedRug", c + new Vector3(0, 0.08f, -2f),
                 new Vector3(12f, 0.05f, 10f), new Color(0.34f, 0.28f, 0.30f));
 
@@ -619,7 +621,7 @@ namespace AdversityRoad.OpenWorld
             VillaKit.Box("BedFrame", c + new Vector3(0, 0.24f, 0), new Vector3(5.2f, 0.48f, 6.8f), Wood);
             var mattress = VillaKit.Box("Mattress", c + new Vector3(0, 0.66f, 0),
                 new Vector3(4.9f, 0.44f, 6.5f), new Color(0.93f, 0.92f, 0.90f));
-            Sittable.Attach(mattress, new Vector3(0, 0.55f, 0), Vector3.forward, true, "床");
+            Sittable.Attach(mattress, Vector3.back, "床", true);
             VillaKit.Deco("BedSheet", c + new Vector3(0, 0.9f, 0),
                 new Vector3(5.1f, 0.05f, 6.7f), new Color(0.96f, 0.96f, 0.98f));
             VillaKit.Deco("Quilt", c + new Vector3(0, 1.0f, -1.2f),
@@ -661,7 +663,7 @@ namespace AdversityRoad.OpenWorld
         static void MasterBath(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(-33f, SlabY, 7f);
-            VillaKit.WallSign(c + new Vector3(6.9f, 2.5f, 0), "主 卫", Vector3.left, 2.2f);
+            VillaKit.WallSign(c + new Vector3(8.85f, 2.5f, 0), "主 卫", Vector3.left, 2.2f);
             Bathroom(ctx, c, true);
         }
 
@@ -797,7 +799,7 @@ namespace AdversityRoad.OpenWorld
 
             var readChair = VillaKit.Box("ReadChair", c + new Vector3(-4f, 0.45f, 2f),
                 new Vector3(1.9f, 0.9f, 1.9f), new Color(0.42f, 0.30f, 0.32f));
-            Sittable.Attach(readChair, new Vector3(0, 0.55f, 0), Vector3.forward, false, "阅读椅");
+            Sittable.Attach(readChair, Vector3.forward, "阅读椅");
             VillaKit.Box("SideTable", c + new Vector3(-1.8f, 0.32f, 2f),
                 new Vector3(1.0f, 0.64f, 1.0f), Wood);
             VillaKit.Deco("Cup", c + new Vector3(-1.8f, 0.72f, 2f),
@@ -807,13 +809,13 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(4.4f, 0.14f, 2f), Wood);
             var studyChair = VillaKit.Box("StudyChair", c + new Vector3(4f, 0.45f, -0.9f),
                 new Vector3(1.1f, 0.16f, 1.1f), Dark);
-            Sittable.Attach(studyChair, new Vector3(0, 0.55f, 0), Vector3.forward, false, "书桌椅");
+            Sittable.Attach(studyChair, Vector3.forward, "书桌椅");
         }
 
         static void Balcony(WorldContext ctx, Vector3 h)
         {
             Vector3 c = h + new Vector3(14f, SlabY, 19f);
-            VillaKit.WallSign(c + new Vector3(0, 2.5f, -2.6f), "露 台", Vector3.back, 2.2f);
+            VillaKit.WallSign(c + new Vector3(0, 2.5f, -10.85f), "露 台", Vector3.forward, 2.2f);
             // 露台在二层北侧：地板由楼板承担，这里只做栏杆与陈设
             for (int s = -1; s <= 1; s += 2)
                 VillaKit.Deco("Railing", c + new Vector3(s * 13f, 0.6f, 4f),
@@ -824,7 +826,7 @@ namespace AdversityRoad.OpenWorld
             {
                 var lounger = VillaKit.Box("Lounger", c + new Vector3(i * 4f, 0.35f, 4f),
                     new Vector3(1.1f, 0.2f, 2.6f), new Color(0.90f, 0.88f, 0.82f));
-                Sittable.Attach(lounger, new Vector3(0, 0.5f, 0), Vector3.forward, true, "躺椅");
+                Sittable.Attach(lounger, Vector3.back, "躺椅", true);
             }
             VillaKit.Box("PatioTable", c + new Vector3(0, 0.36f, 4f),
                 new Vector3(1.6f, 0.72f, 1.6f), WoodLight);
@@ -853,7 +855,7 @@ namespace AdversityRoad.OpenWorld
                     new Vector3(0.7f, 0.3f, 12.3f), FloorTile);
                 var lounger = VillaKit.Box("PoolLounger", c + new Vector3(s * 12.5f, 0.35f, 2f),
                     new Vector3(1.1f, 0.2f, 2.6f), new Color(0.90f, 0.88f, 0.82f));
-                Sittable.Attach(lounger, new Vector3(0, 0.5f, 0), Vector3.forward, true, "泳池躺椅");
+                Sittable.Attach(lounger, Vector3.back, "泳池躺椅", true);
             }
             VillaKit.Deco("PoolLadder", c + new Vector3(8f, 0.6f, 6.2f),
                 new Vector3(0.1f, 1.2f, 0.7f), Metal);
@@ -887,7 +889,7 @@ namespace AdversityRoad.OpenWorld
             for (int s2 = -1; s2 <= 1; s2 += 2)
                 VillaKit.Box("GaragePier", c + new Vector3(s2 * 7.6f, 1.9f, 6f),
                     new Vector3(1.6f, 3.8f, 0.5f), WallWarm);
-            VillaKit.WallSign(c + new Vector3(0, 4.4f, 6.3f), "车 库", Vector3.back, 3.6f);
+            VillaKit.WallSign(c + new Vector3(0, 4.4f, 6.3f), "车 库", Vector3.forward, 3.6f);
 
             // 车道：从车库门口一直铺到主干道，中间画上引导线
             VillaKit.Deco("Driveway", c + new Vector3(0, 0.06f, 26f),
@@ -975,7 +977,7 @@ namespace AdversityRoad.OpenWorld
             }
             VillaKit.Deco("GateLintel", h + new Vector3(0, 3.6f, lotHZ),
                 new Vector3(GateHalf * 2f + 1.6f, 0.4f, 0.5f), WallWarm);
-            VillaKit.WallSign(h + new Vector3(0, 4.3f, lotHZ + 0.4f), "我 的 住 处", Vector3.back, 5f);
+            VillaKit.WallSign(h + new Vector3(0, 4.3f, lotHZ + 0.4f), "我 的 住 处", Vector3.forward, 5f);
 
             // 两扇朝院里推开的铁艺门扇（竖栅栏，不是一块板）
             for (int s = -1; s <= 1; s += 2)
@@ -1117,7 +1119,7 @@ namespace AdversityRoad.OpenWorld
             Vector3 seatSize = new Vector3(5.2f, 0.5f, 2.0f);
             var seat = VillaKit.Box("Sofa", at + rot * new Vector3(0, 0.25f, 0),
                 Abs(rot * seatSize), Cloth);
-            Sittable.Attach(seat, new Vector3(0, 0.6f, 0), rot * Vector3.forward, false, "沙发");
+            Sittable.Attach(seat, rot * Vector3.forward, "沙发", true, false, rot * Vector3.right);
             VillaKit.Box("SofaBack", at + rot * new Vector3(0, 0.78f, -0.85f),
                 Abs(rot * new Vector3(5.2f, 1.0f, 0.5f)), Cloth);
             for (int s = -1; s <= 1; s += 2)
@@ -1137,7 +1139,7 @@ namespace AdversityRoad.OpenWorld
             var rot = Quaternion.Euler(0, yawDeg, 0);
             var seat = VillaKit.Box("DiningChair", at + new Vector3(0, 0.48f, 0),
                 Abs(rot * new Vector3(1.0f, 0.12f, 1.0f)), Wood);
-            Sittable.Attach(seat, new Vector3(0, 0.55f, 0), rot * Vector3.forward, false, "餐椅");
+            Sittable.Attach(seat, rot * Vector3.forward, "餐椅");
             VillaKit.Deco("ChairBack", at + rot * new Vector3(0, 0.95f, -0.45f),
                 new Vector3(1.0f, 1.0f, 0.12f), Wood, new Vector3(-8f, yawDeg, 0));
             for (int sx = -1; sx <= 1; sx += 2)
@@ -1151,7 +1153,7 @@ namespace AdversityRoad.OpenWorld
         {
             var seat = VillaKit.Box("ChairSeat", at + new Vector3(0, 0.52f, 0),
                 new Vector3(1.2f, 0.18f, 1.2f), Dark);
-            Sittable.Attach(seat, new Vector3(0, 0.58f, 0), Vector3.forward, false, "办公椅");
+            Sittable.Attach(seat, Vector3.forward, "办公椅");
             VillaKit.Box("ChairBack", at + new Vector3(0, 1.1f, -0.55f),
                 new Vector3(1.2f, 1.2f, 0.16f), Dark);
             VillaKit.Metal(VillaKit.Cyl("ChairPole", at, 0.07f, 0.52f, Metal), Metal);
@@ -1169,7 +1171,7 @@ namespace AdversityRoad.OpenWorld
         static void BarStool(WorldContext ctx, Vector3 at)
         {
             var seat = VillaKit.Cyl("StoolSeat", at + new Vector3(0, 0.72f, 0), 0.36f, 0.14f, Wood, true);
-            Sittable.Attach(seat, new Vector3(0, 0.1f, 0), Vector3.forward, false, "吧椅");
+            Sittable.Attach(seat, Vector3.forward, "吧椅");
             VillaKit.Metal(VillaKit.Cyl("StoolPole", at, 0.06f, 0.72f, Metal), Metal);
             VillaKit.Metal(VillaKit.Cyl("StoolFoot", at, 0.3f, 0.05f, Metal), Metal);
             VillaKit.Metal(VillaKit.CylAxis("StoolRing", at + new Vector3(0, 0.28f, 0),
