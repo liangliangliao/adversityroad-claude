@@ -18,6 +18,41 @@ namespace AdversityRoad.UI
         InputField _globalInput;
         InputField _sceneInput;
         InputField _modelInput;
+        Text _modelHint;
+        ModelPickerPanel _picker;
+
+        static string HintFor(string provider)
+        {
+            switch (provider)
+            {
+                case "deepseek":
+                    return "格式：型号名，不带厂商前缀（默认 deepseek-chat）。点右边按钮可列出账号下全部可用模型。";
+                case "edenai":
+                    return "格式：厂商/型号，必须在 EdenAI llm/chat 目录内（默认 openai/gpt-4o-mini）。点右边按钮拉取完整目录。";
+                default:
+                    return "格式：厂商/型号，须与 OpenRouter 目录完全一致。点右边按钮拉取它的全部模型（三百多个，可筛选）。";
+            }
+        }
+
+        /// <summary>
+        /// 打开模型选择器：现问一次这家现在到底有哪些模型，让玩家从真实列表里挑。
+        ///
+        /// 这里原来是三个我按记忆写死的型号按钮。写死的清单从写下的那一刻就开始过期，
+        /// 而模型名写错恰恰是最难自查的一类失败。现在改成向提供商的目录接口要，
+        /// 拉不到才退回内置备选（选择器里会说明是哪种情况）。
+        /// </summary>
+        void OpenPicker()
+        {
+            if (_picker == null) _picker = ModelPickerPanel.Create(_panel.transform.parent);
+            _picker.Open(_provider, _keyInput != null ? _keyInput.text : "",
+                id => { if (_modelInput != null) _modelInput.text = id; });
+        }
+
+        void RefreshModelHints(string provider)
+        {
+            if (_modelHint != null) _modelHint.text = HintFor(provider);
+        }
+
         InputField _keyInput;
         Text _sceneLabel;
         Button _cloudToggle;
@@ -81,15 +116,26 @@ namespace AdversityRoad.UI
             var mLabel = UiUtil.MakeText(_panel.transform, "MLabel", "模型", 24,
                 TextAnchor.MiddleLeft, Color.white);
             UiUtil.SetRect(mLabel, new Vector2(0.5f, 1f), new Vector2(-540, -566), new Vector2(100, 34));
-            _modelInput = UiUtil.MakeInput(_panel.transform,
-                "留空用默认：deepseek/deepseek-chat | deepseek-chat | openai/gpt-4o-mini",
-                new Vector2(0.5f, 1f), new Vector2(60, -566), new Vector2(1020, 58), false);
+            _modelInput = UiUtil.MakeInput(_panel.transform, "留空即用该提供商的默认模型",
+                new Vector2(0.5f, 1f), new Vector2(-40, -566), new Vector2(820, 58), false);
+
+            UiUtil.MakeButton(_panel.transform, "列出可用模型", new Vector2(0.5f, 1f),
+                new Vector2(490, -566), new Vector2(240, 58),
+                new Color(0.22f, 0.34f, 0.42f, 0.96f), OpenPicker, 22);
+
+            // 模型名写错是最难自查的一类失败：EdenAI 回的是
+            // 「Model 'xai/grok-4.5' in llm/chat does not exist」，OpenRouter 上不存在的模型
+            // 则直接挂到超时。与其让玩家凭记忆敲，不如把每家的**正确格式**摆出来点一下就填。
+            _modelHint = UiUtil.MakeText(_panel.transform, "MHint", "", 19,
+                TextAnchor.MiddleLeft, new Color(1f, 0.85f, 0.5f, 0.85f));
+            UiUtil.SetRect(_modelHint, new Vector2(0.5f, 1f), new Vector2(0, -612), new Vector2(1140, 28));
+            _modelHint.horizontalOverflow = HorizontalWrapMode.Wrap;
 
             var kLabel = UiUtil.MakeText(_panel.transform, "KLabel", "API Key", 24,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(kLabel, new Vector2(0.5f, 1f), new Vector2(-540, -640), new Vector2(120, 34));
+            UiUtil.SetRect(kLabel, new Vector2(0.5f, 1f), new Vector2(-540, -702), new Vector2(120, 34));
             _keyInput = UiUtil.MakeInput(_panel.transform, "仅保存在本机，可随时删除",
-                new Vector2(0.5f, 1f), new Vector2(60, -640), new Vector2(1020, 58), false);
+                new Vector2(0.5f, 1f), new Vector2(60, -702), new Vector2(1020, 58), false);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "台词生成有安全约束：只输出抽象心理施压短句，不含真实人名/地名/可操作话术",
@@ -122,6 +168,7 @@ namespace AdversityRoad.UI
             _cloudToggle.GetComponentInChildren<Text>().text = _useCloud ? "云端生成：开" : "云端生成：关";
             foreach (var (btn, p) in _providerButtons)
                 btn.GetComponent<Image>().color = p == _provider ? On : Off;
+            RefreshModelHints(_provider);   // 换提供商即换格式提示与预设按钮
         }
 
         void Save()

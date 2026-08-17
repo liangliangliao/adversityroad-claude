@@ -358,7 +358,12 @@ namespace AdversityRoad.Core
         /// </summary>
         public bool ZoneUnlocked(int zoneIndex)
         {
+            // 开放城区（V2.0 主承载结构）与安全屋一样永远可回——
+            // Goal OS 的旅程随时可以开始，不由 V1 主线进度决定
             if (AllCleared || zoneIndex == 0) return true;
+            if (zoneIndex == World.ZoneBuilder.IndexOfZone("city")) return true;
+            // AI 运行时生成的场景由 Goal OS 的旅程决定能不能进，不受 V1 主线进度限制
+            if (World.ZoneBuilder.IsDynamicZone(zoneIndex)) return true;
             for (int i = 0; i <= Chapter && i < Chapters.Length; i++)
                 if (Chapters[i].zoneIndex == zoneIndex) return true;
             return false;

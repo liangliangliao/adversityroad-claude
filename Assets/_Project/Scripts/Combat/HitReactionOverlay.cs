@@ -25,15 +25,16 @@ namespace AdversityRoad.Combat
         bool _scanned;
 
         /// <summary>在 root 上触发一次部位受击（无该组件会自动补挂）。
-        /// hitDir = 打击推动方向（攻击者 → 受击者）。</summary>
-        public static void Trigger(Transform root, Vector3 contact, Vector3 hitDir, bool heavy)
+        /// hitDir = 打击推动方向（攻击者 → 受击者）；power = 力度倍率（1=标准）。</summary>
+        public static void Trigger(Transform root, Vector3 contact, Vector3 hitDir, bool heavy,
+            float power = 1f)
         {
             var o = root.GetComponentInChildren<HitReactionOverlay>();
             if (o == null) o = root.gameObject.AddComponent<HitReactionOverlay>();
-            o.AddHit(contact, hitDir, heavy);
+            o.AddHit(contact, hitDir, heavy, power);
         }
 
-        public void AddHit(Vector3 contact, Vector3 hitDir, bool heavy)
+        public void AddHit(Vector3 contact, Vector3 hitDir, bool heavy, float power = 1f)
         {
             if (!_scanned) Scan();
             hitDir.y = 0;
@@ -49,6 +50,8 @@ namespace AdversityRoad.Combat
             Consider(_legL, "左腿", heavy ? 24f : 15f, contact, ref bone, ref label, ref amp, ref best);
             Consider(_legR, "右腿", heavy ? 24f : 15f, contact, ref bone, ref label, ref amp, ref best);
             if (bone == null) return;
+            // 力度直接放大甩头/折身的幅度：越重的一击，身体被打得越夸张
+            amp *= Mathf.Clamp(power, 0.6f, 2f);
 
             // 反应轴：绕「与打击方向垂直的水平轴」正转 = 部位向打击方向倒去
             Vector3 axis = Vector3.Cross(Vector3.up, hitDir);
@@ -62,8 +65,18 @@ namespace AdversityRoad.Combat
                 dur = heavy ? 0.42f : 0.26f
             });
 
-            // 部位标签贴在接触点旁：连击同一部位就连续弹出，次数所见即所得
-            CombatFeedback.HitPartLabel(contact, "·" + label, new Color(1f, 0.55f, 0.35f));
+            // 部位标签贴在接触点旁：连击同一部位就连续弹出，次数所见即所得。
+            // 按部位分色 + 头部标「会心」：一眼读出"打中了哪里、这一下值不值"
+            // （头部本就吃 1.35 倍伤害、腿部削韧 1.4 倍，见 EnemyController 的部位结算）。
+            bool head = label == "头部";
+            bool leg = label == "左腿" || label == "右腿";
+            Color labelCol = head ? new Color(1f, 0.72f, 0.2f)
+                : leg ? new Color(0.6f, 0.85f, 1f)
+                : new Color(1f, 0.62f, 0.45f);
+            CombatFeedback.HitPartLabel(contact,
+                head ? "会心 · 头部" : "· " + label, labelCol);
+            // 命中部位再补一簇同色火花：打在头上和打在腿上，画面反馈不该长得一样
+            CombatFeedback.HitSpark(contact - Vector3.up * 1.2f, labelCol, head ? 8 : 5);
         }
 
         static void Consider(Transform b, string name, float strength, Vector3 contact,

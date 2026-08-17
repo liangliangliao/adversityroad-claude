@@ -286,6 +286,18 @@ namespace AdversityRoad.Player
         const float MaxAutoYawAccel = 1100f;
         float _autoYawRate;                // 上一帧自动运镜的角速度（限幅用）
 
+        /// <summary>
+        /// 室内舒适模式：在住处这类封闭空间里生效（由 IndoorZone 触发盒开关）。
+        ///
+        /// 屋里墙多、门多、拐弯多，镜头的三件事都会变成晕动源：吊杆被墙反复推缩、
+        /// 景别在小房间里不停切、跟随运镜绕着人转。室内一律关掉它们——
+        /// 换来的是"镜头老老实实待在你身后"，这在室内正是玩家想要的。
+        /// </summary>
+        public static bool IndoorMode;
+
+        /// <summary>室内吊杆长度：短到墙基本碰不到它。</summary>
+        const float IndoorBoom = 2.9f;
+
         // ===== 取景窗（camera window）：镜头运动的第一原则 =====
         // 出自 Mark Haigh-Hutchinson《Real-Time Cameras》，也是所有成熟动作游戏的骨架：
         // **主体在窗内 ⇒ 镜头一动不动；主体出窗 ⇒ 只把它推回窗沿，不推到画面中央。**
@@ -1264,7 +1276,9 @@ namespace AdversityRoad.Player
                     //   · 离轴 < 死区（开阔 28°）⇒ 跟随本身不成立 ⇒ 一动不动；
                     //   · 死区 → 死区+60° 之间线性升到满速；
                     //   · 再往上封顶。于是日常的小幅走位完全不动镜，只有真的换方向才缓缓跟。
-                    if (player != null && !enemyNet)
+                    // 室内不做跟随绕行：屋里两三步一堵墙，镜头绕着人转就是晕动的主因，
+                    // 而房间里本来也不需要"看见远处的路"——那正是这条运镜存在的理由。
+                    if (player != null && !enemyNet && !IndoorMode)
                     {
                         Vector3 sw = player.StickWorldDir;
                         if (sw.sqrMagnitude > 0.04f)
@@ -1557,6 +1571,21 @@ namespace AdversityRoad.Player
             Vector3 boomDir = (rot * offset).normalized;
             float maxDist = offset.magnitude * _lenFactor * (1f + _turnBurst * TurnDollyOut);
 
+            // ===== 室内舒适模式（玩家反馈"在房间里转一圈就晕"）=====
+            //
+            // 成因不是帧率，是**吊杆在屋里一直被墙推来推去**：4.6 米的吊杆在一间
+            // 十来米的房间里，每转一次身、每过一道门，碰撞回缩就在 1.9 与 4.6 之间
+            // 抽一次——那是一次次幅度近 3 米的推轨，而人对"景深忽远忽近"最敏感。
+            // 叠上跟随运镜的缓慢绕行，走一圈下来就是晕动。
+            //
+            // 屋里本来也不需要那么长的吊杆：把它收到 2.9 米、并且**两个方向用同一个
+            // 平滑时间**（不再"回缩快、伸出慢"），墙就几乎碰不到它，画面稳下来。
+            if (IndoorMode)
+            {
+                maxDist = Mathf.Min(maxDist, IndoorBoom);
+                _lenFactor = Mathf.MoveTowards(_lenFactor, 1f, dt);   // 不做景别推拉
+            }
+
             // ---- 碰撞：回缩快、伸出慢，避免弹跳 ----
             // 只对【环境】做遮挡回缩：忽略触发器（受击/攻击判定盒）、玩家与敌人的
             // 身体胶囊、飞散的物理碎屑——此前近身缠斗时敌人身体反复穿过吊杆，
@@ -1585,7 +1614,8 @@ namespace AdversityRoad.Player
             // 遮挡持续计时：供上方的换角决策使用（0.6m 以上的回缩才算真被挡）
             _occludedT = wantDist < maxDist - 0.6f ? _occludedT + dt : 0f;
 
-            float smooth = wantDist < _boomDist ? 0.03f : 0.14f;
+            // 室内两个方向同一个时间常数：一快一慢正是"推拉抽动"的来源
+            float smooth = IndoorMode ? 0.10f : (wantDist < _boomDist ? 0.03f : 0.14f);
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 

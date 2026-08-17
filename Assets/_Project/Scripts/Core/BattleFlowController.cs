@@ -33,6 +33,25 @@ namespace AdversityRoad.Core
             Time.timeScale = 1f;
         }
 
+        /// <summary>兜底看门狗：只要玩家已经没血，就一定要把复盘面板弹出来。
+        ///
+        /// 「倒地后一直卡住、过不下去」的成因是死亡面板依赖 `OnPlayerDied` 这一个事件，
+        /// 而该事件只在 `PlayerStats.TakePhysicalDamage` 里抛。任何别的途径把血打到 0
+        /// （道具/机制/未来新增的伤害源直接改 hp），事件就不会来；而 `CombatState.Death`
+        /// 是**不可退出**的终态（`RequestState` 对 Death 直接 return false），
+        /// 于是角色永远躺在那里，玩家只能杀进程。
+        /// 状态（死了）比事件（死亡那一刻）可靠——这里按状态兜底。</summary>
+        Player.PlayerController _pc;
+        float _nextDeathCheck;
+
+        void Update()
+        {
+            if (_deathShown || Time.unscaledTime < _nextDeathCheck) return;
+            _nextDeathCheck = Time.unscaledTime + 0.5f;   // 每秒两次足够，别每帧全场搜
+            if (_pc == null) _pc = FindObjectOfType<Player.PlayerController>();
+            if (_pc != null && _pc.Stats != null && _pc.Stats.IsDead) HandlePlayerDied("watchdog");
+        }
+
         void HandlePlayerDied(string reason)
         {
             if (_deathShown) return;
@@ -42,9 +61,27 @@ namespace AdversityRoad.Core
             StartCoroutine(ShowDeathDelayed());
         }
 
+        /// <summary>倒地死亡动作实际需要多久播完（秒）。
+        ///
+        /// 之前这里写死 2.4 秒。而动作库里的 `Dying` 片段本身就有 3~4 秒，
+        /// 于是 2.4 秒一到面板弹出、`Time.timeScale = 0` 把整个世界冻住——
+        /// 角色正好停在倒了一半的姿势上。玩家看到的"倒地死亡卡住、没有完整倒地动画、
+        /// 复盘界面提早弹出"其实是同一件事：**面板比动作先到**。
+        /// 现在直接问动画系统这段要播多久（ActionClipLength 返回的就是裁剪与倍速之后
+        /// 的实际时长），播完再留半秒让画面沉一下。没有片段时（程序化倒地）沿用旧的 2.4 秒。
+        /// </summary>
+        static float DeathAnimSeconds()
+        {
+            var pc = FindObjectOfType<Player.PlayerController>();
+            var anim = pc != null ? pc.GetComponent<Combat.HumanoidAnimator>() : null;
+            float len = anim != null ? anim.ActionClipLength(Combat.PoseState.Death) : 0f;
+            return Mathf.Clamp(len > 0.1f ? len + 0.6f : 2.4f, 2.0f, 6.5f);
+        }
+
         IEnumerator ShowDeathDelayed()
         {
-            yield return new WaitForSecondsRealtime(2.4f);
+            // 用非缩放时间等待：期间 timeScale 仍是 1，倒地动作照常播完
+            yield return new WaitForSecondsRealtime(DeathAnimSeconds());
 
             // 个性化失败诊断：为什么这次输了 + 针对性策略（围绕心理数值轴）
             var pc = FindObjectOfType<Player.PlayerController>();

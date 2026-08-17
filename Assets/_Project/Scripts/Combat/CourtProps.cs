@@ -91,13 +91,13 @@ namespace AdversityRoad.Combat
             if (_released) return;
             var p = other.GetComponentInParent<PlayerController>();
             if (p == null) return;
-            p.MoveSpeedMultiplier = boundSpeed;
+            p.SetSlow(this, boundSpeed);
         }
 
         void OnTriggerExit(Collider other)
         {
             var p = other.GetComponentInParent<PlayerController>();
-            if (p != null) p.MoveSpeedMultiplier = 1f;
+            if (p != null) p.ClearSlow(this);
         }
     }
 

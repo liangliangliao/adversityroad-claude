@@ -116,7 +116,7 @@ namespace AdversityRoad.Combat
             tm.text = text;
             tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tm.fontSize = 46;
-            tm.characterSize = 0.048f;
+            tm.characterSize = 0.058f;   // 放大一档：部位反馈是打击确认的一部分，要读得到
             tm.anchor = TextAnchor.MiddleLeft;
             tm.color = color;
             var r = go.GetComponent<MeshRenderer>();
@@ -222,24 +222,48 @@ namespace AdversityRoad.Combat
             if (go != null) Destroy(go);
         }
 
-        // ---------- 顿帧 ----------
+        // ---------- 顿帧（打击"分量"的第一来源）----------
+        // 卡肉是动作游戏表达力道最有效的手段：刀砍进身体的那一瞬间，画面短暂停住，
+        // 玩家才会觉得"这一下砸实了"。两处关键修正：
+        // ① 强度分级——轻拳 0.035s、连段末段 0.06s、重击 0.09s、处决 0.13s，
+        //    此前重击与轻击几乎一样，于是所有攻击都读作"挠痒痒"；
+        //    上限从 0.115 收到 0.10、冻结深度从 0.05 放宽到 0.07：一记 0.30 秒的
+        //    轻击里塞 0.115 秒的近乎全停，占了三分之一时长，读出来就是"打着打着
+        //    人不动了"。顿帧要短到只当作"撞击的那一下"，不能长到像掉帧；
+        // ② 可续期——此前"正在顿帧中"会直接丢掉新的顿帧请求，而群战/连段里
+        //    命中往往密集发生，重击顿帧常被前一记轻击的顿帧吃掉。改为取更晚的
+        //    截止时刻续期：每一下都吃得到与自己力度相称的顿挫。
+
+        static float _hitStopUntil;
+        static bool _slowMoing;
 
         public static void HitStop(float duration = 0.05f)
         {
             Ensure();
-            if (_hitStopping || Time.timeScale < 0.9f) return; // 不与暂停/面板冲突
-            _i.StartCoroutine(_i.DoHitStop(duration));
+            if (_hitStopping)
+            {
+                if (_slowMoing) return;   // 慢镜演出优先，不被顿帧打断
+                _hitStopUntil = Mathf.Max(_hitStopUntil, Time.unscaledTime + duration);
+                return;
+            }
+            if (Time.timeScale < 0.9f) return;   // 不与暂停/面板冲突
+            _hitStopUntil = Time.unscaledTime + duration;
+            _i.StartCoroutine(_i.DoHitStop());
         }
 
-        IEnumerator DoHitStop(float duration)
+        IEnumerator DoHitStop()
         {
             _hitStopping = true;
             float prev = Time.timeScale;
-            Time.timeScale = 0.08f;
-            yield return new WaitForSecondsRealtime(duration);
+            Time.timeScale = 0.07f;
+            while (Time.unscaledTime < _hitStopUntil) yield return null;
             if (Time.timeScale < 0.9f) Time.timeScale = prev; // 期间未被面板改动才恢复
             _hitStopping = false;
         }
+
+        /// <summary>按打击力度给顿帧（power01：0=轻拳，1=终结技级）。</summary>
+        public static void HitStopByPower(float power01) =>
+            HitStop(Mathf.Lerp(0.035f, 0.10f, Mathf.Clamp01(power01)));
 
         // ---------- 命中火花：放射状光条爆开（打击感核心） ----------
 
@@ -283,19 +307,24 @@ namespace AdversityRoad.Combat
         static float _lastComboT;
 
         /// <summary>在世界坐标 contact 处打出命中冲击。heavy=重击（更强反馈+特写）。
-        /// countCombo=玩家打中敌人才计连击（被打不计）。</summary>
-        public static void HitImpact(Vector3 contact, Color color, bool heavy, bool countCombo = true)
+        /// countCombo=玩家打中敌人才计连击（被打不计）。
+        /// power01≥0 时按打击力度连续分级火花密度/闪核大小/顿帧时长——
+        /// 一记轻拳与一记终结斩的反馈从此不再长得一样（"攻击力显得很弱"的直接来源）。</summary>
+        public static void HitImpact(Vector3 contact, Color color, bool heavy,
+            bool countCombo = true, float power01 = -1f)
         {
             Ensure();
-            SparksAt(contact, Color.Lerp(color, Color.white, 0.55f), heavy ? 16 : 10);
+            float p = power01 >= 0f ? Mathf.Clamp01(power01) : (heavy ? 0.85f : 0.25f);
+            SparksAt(contact, Color.Lerp(color, Color.white, 0.55f),
+                Mathf.RoundToInt(Mathf.Lerp(9f, 22f, p)));
             // 命中点亮闪核（一枚朝镜头的高亮小球，瞬现瞬灭）：一眼锁定"打中了这里"
             var core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             StripCol(core);
             core.transform.position = contact;
-            core.transform.localScale = Vector3.one * (heavy ? 0.5f : 0.34f);
+            core.transform.localScale = Vector3.one * Mathf.Lerp(0.3f, 0.62f, p);
             core.GetComponent<MeshRenderer>().sharedMaterial =
                 MatFX(Color.Lerp(color, Color.white, 0.85f), 0.9f);
-            _i.StartCoroutine(_i.FlashPop(core, heavy ? 0.7f : 0.45f));
+            _i.StartCoroutine(_i.FlashPop(core, Mathf.Lerp(0.4f, 0.85f, p)));
 
             // 格斗游戏式连击计数：2.2 秒内连续命中累计。
             // 计数改为屏幕固定位置的 HUD 计数器（格斗游戏惯例）——之前跟着接触点
@@ -309,7 +338,7 @@ namespace AdversityRoad.Combat
             }
 
             // 命中点圆盘已按用户要求停用（不再渲染圆圈）——命中位置由火花/闪核标出。
-            HitStop(heavy ? 0.07f : 0.035f);   // 短促卡肉（非晃屏）
+            HitStopByPower(p);   // 短促卡肉（非晃屏），力度越大顿得越久
         }
 
         /// <summary>在指定世界点爆一簇放射火花（不加内部高度偏移，用于精确命中点）。</summary>
@@ -553,9 +582,11 @@ namespace AdversityRoad.Combat
         IEnumerator DoSlowMo(float scale, float realDuration)
         {
             _hitStopping = true;
+            _slowMoing = true;
             Time.timeScale = scale;
             yield return new WaitForSecondsRealtime(realDuration);
             if (Time.timeScale < 0.9f) Time.timeScale = 1f;
+            _slowMoing = false;
             _hitStopping = false;
         }
 

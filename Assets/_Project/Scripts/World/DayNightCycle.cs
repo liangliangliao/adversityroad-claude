@@ -18,9 +18,10 @@ namespace AdversityRoad.World
         public readonly List<Renderer> lampHeads = new List<Renderer>();
 
         static readonly Color DayAmbient = new Color(0.56f, 0.56f, 0.6f);
-        // 夜晚保底亮度上调：录屏实测夜战/暗场景整体过暗，敌我动作看不清——
-        // 战斗可读性优先于氛围，保底照度要能看清双方的拳脚与前摇
-        static readonly Color NightAmbient = new Color(0.3f, 0.31f, 0.42f);
+        // 夜晚保底亮度再上调（实测截图：黄昏/夜间的地面与建筑几乎全黑，只剩天空有色）。
+        // 0.30 的环境光在 URP 下配合 0.14 的主光，物体表面照度不足 0.2，手机屏幕上
+        // 就是一片糊黑。抬到 0.42 并给一点冷蓝色，暗调仍在，但地面/墙面能分辨出层次。
+        static readonly Color NightAmbient = new Color(0.42f, 0.44f, 0.55f);
         static readonly Color DaySun = new Color(1f, 0.96f, 0.9f);
         static readonly Color DuskSun = new Color(1f, 0.55f, 0.3f);
 
@@ -34,7 +35,10 @@ namespace AdversityRoad.World
             if (sun != null)
             {
                 sun.transform.rotation = Quaternion.Euler(time01 * 360f, 40f, 0);
-                sun.intensity = Mathf.Lerp(0.14f, 1.15f, dayFactor);   // 夜晚也留主光轮廓
+                // 夜间主光 0.14→0.30：只留轮廓是没错，但 0.14 下连轮廓都看不出来，
+                // 角色身上大片区域直接黑掉（截图里"角色身上有影子"的主因——
+                // 那不是投影，是背光面根本没有照度）
+                sun.intensity = Mathf.Lerp(0.30f, 1.15f, dayFactor);
                 sun.color = Color.Lerp(DuskSun, DaySun, Mathf.Clamp01(dayFactor * 2f));
             }
 
@@ -42,8 +46,11 @@ namespace AdversityRoad.World
 
             // 镜头补光随昼夜收放：白天足量补光去除迎镜脸部阴影；夜晚收到很低，
             // 保留夜的暗调氛围（不把整片场景照成平光白昼）。
+            // 镜头补光随昼夜收放，但夜间下限从 0.12 抬到 0.34：
+            // 补光是照亮"迎着镜头那一面"的，玩家角色永远迎镜——它塌到 0.12 时，
+            // 主光又在身后，角色正面就没有任何光源，看上去像蒙了一层灰。
             if (cameraFill != null)
-                cameraFill.intensity = Mathf.Lerp(0.12f, cameraFillDay, dayFactor);
+                cameraFill.intensity = Mathf.Lerp(0.34f, cameraFillDay, dayFactor);
 
             // 距离雾：极淡，只作远景层次，不遮挡视野（可看清整片区域与远方建筑）。
             // 雾色改为跟随"当前所在区域"的专属色彩脚本——沼泽偏绿、断桥幽蓝、
@@ -56,7 +63,9 @@ namespace AdversityRoad.World
             Color fogTarget = Color.Lerp(zoneFog, dayFog, dayFactor);
             RenderSettings.fogColor = Color.Lerp(RenderSettings.fogColor, fogTarget, Time.deltaTime * 2.5f);
 
-            bool night = dayFactor < 0.25f;
+            // 路灯提前点亮（0.25→0.40）：黄昏时段场景已经暗下来了，灯却还没亮，
+            // 那段时间最难看清——现实里的路灯也是天还没全黑就亮了
+            bool night = dayFactor < 0.40f;
             if (night != _lampsOn)
             {
                 _lampsOn = night;

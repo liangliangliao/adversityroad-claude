@@ -1,0 +1,553 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+using AdversityRoad.AI;
+using AdversityRoad.Core;
+using AdversityRoad.Goals;
+
+namespace AdversityRoad.OpenWorld
+{
+    /// <summary>一个已经落进世界的章节遭遇（运行时对象，不入存档）。</summary>
+    public class AssembledEncounter
+    {
+        public string chapterId;
+        public string districtId;
+        public Vector3 anchor;
+        public readonly List<GameObject> enemies = new List<GameObject>();
+        public string bossEnemyId = "";
+        public bool live;
+        /// <summary>本章节现场生成的场景（AI 章节必有；Legacy 走裂隙复用 V1 关卡）。</summary>
+        public SiteInstance site;
+        public SiteGate gate;
+    }
+
+    /// <summary>
+    /// Procedural Quest Assembler（方案 5.4 / 19.5 / 19.6）：
+    ///
+    /// 蓝图过了 Validator 之后，由这里按 assemblySeed 确定性地挑选
+    /// World Cell → Encounter Slot → Enemy Spawn Profile → Mechanic Package → Reward Package。
+    /// **相同 Seed + 相同版本必须组装出相同的关卡**，这样 Bug 才能定位、验收才能复现。
+    ///
+    /// AI 永远拿不到坐标，也永远不能生成几何：它只说"在工作区、用这几种机制、
+    /// 打这几种敌人"，落地的位置全部来自已烘焙、已导航验证的 EncounterSlot。
+    /// </summary>
+    public static class ProceduralQuestAssembler
+    {
+        /// <summary>由 GameBootstrap 注入的敌人生成器（type, tier, pos, uniqueId → GameObject）。</summary>
+        public static System.Func<EnemyType, EnemyTier, Vector3, bool, GameObject> Spawner;
+
+        /// <summary>世界构建上下文（贴图/材质缓存），由 GameBootstrap 注入给场景生成器。</summary>
+        public static World.WorldContext WorldCtx;
+
+        static readonly Dictionary<string, AssembledEncounter> _live =
+            new Dictionary<string, AssembledEncounter>();
+
+        public static IEnumerable<AssembledEncounter> Live => _live.Values;
+
+        public static void ClearAll()
+        {
+            foreach (var e in _live.Values) Despawn(e);
+            _live.Clear();
+        }
+
+        public static bool IsAssembled(string chapterId) =>
+            !string.IsNullOrEmpty(chapterId) && _live.ContainsKey(chapterId);
+
+        /// <summary>
+        /// 给这一章挑一个**没被别的章节占着**的遭遇位。
+        ///
+        /// 【这是"点了 A 关，进去却是 B 关"的根因】
+        /// 遭遇位原来是 `EncounterSlot(区域, 种子, 0)` 直接算出来的：
+        /// 位置 = |种子/7| % 该区遭遇位数量。一个区只有几个遭遇位，而同一条旅程
+        /// 常有两三关落在同一个区——两个种子撞进同一个格子的概率相当高。
+        /// 撞上之后，两道门就**立在同一个坐标上**：玩家走过去按 E，
+        /// 响应的是那一帧里先轮到 Update 的那道门，于是他明明站在 A 的门牌下，
+        /// 进去的却是 B 的场景。场景没建错，是门叠在一起了。
+        ///
+        /// 现在按顺序试这个区的每一个遭遇位，跳过已经被其它活动章节占用的，
+        /// 实在都占满了才在原位上错开——至少不会两道门重合。
+        /// </summary>
+        static Vector3 PickFreeAnchor(string districtId, int seed)
+        {
+            const float MinGap = 22f;   // 两道门之间至少隔这么远，走近时不会同时进范围
+            Vector3 first = Vector3.zero;
+            for (int i = 0; i < 16; i++)
+            {
+                var p = DistrictCatalog.EncounterSlot(districtId, seed, i);
+                if (p == Vector3.zero) return p;
+                if (i == 0) first = p;
+
+                bool taken = false;
+                foreach (var kv in _live)
+                {
+                    var other = kv.Value;
+                    if (other == null || !other.live) continue;
+                    if ((other.anchor - p).sqrMagnitude < MinGap * MinGap) { taken = true; break; }
+                }
+                if (!taken) return p;
+            }
+
+            // 这个区的遭遇位全被占了：按已用数量往外错开，绝不和别人重合
+            return first + new Vector3(_live.Count * MinGap, 0f, 0f);
+        }
+
+        /// <summary>
+        /// 这一章在**城里**的入口位置（那道 Site Gate 立着的地方）。
+        ///
+        /// 打完/失败之后该回到这里：生成关卡是这条旅程长出来的，它的门开在城区，
+        /// 出来就该站在自己的门口——而不是被送回"当初碰巧从哪儿点的传送"。
+        /// </summary>
+        public static bool TryGateAnchor(string chapterId, out Vector3 anchor)
+        {
+            anchor = Vector3.zero;
+            if (string.IsNullOrEmpty(chapterId) || !_live.TryGetValue(chapterId, out var enc)) return false;
+            if (enc.gate != null) { anchor = enc.gate.transform.position; return true; }
+            if (enc.anchor.sqrMagnitude > 0.01f) { anchor = enc.anchor; return true; }
+            return false;
+        }
+
+        /// <summary>
+        /// 把一个章节蓝图组装进开放世界（分帧进行，避免走近入口时卡一下）。
+        /// Legacy 章节不在这里组装——它们通过心理裂隙进入 V1 原关卡（资产复用，不重复造）。
+        ///
+        /// 由 GoalWorldBinder 以协程驱动；组装期间先占位登记，防止同一章节被重复组装。
+        /// </summary>
+        public static IEnumerator AssembleRoutine(GoalChapterData bp, GoalData goal)
+        {
+            if (bp == null || Spawner == null || !DistrictCatalog.Ready) yield break;
+            if (!bp.validated) yield break;
+            if (_live.ContainsKey(bp.chapterId)) yield break;
+
+            if (bp.source == ChapterSource.Legacy)
+            {
+                // Legacy：在它对应的区域打开心理裂隙，走进去就是原汁原味的 V1 关卡
+                WorldState.OpenRift(bp.worldDistrictId, bp.legacyZoneIndex, bp.chapterName);
+                yield break;
+            }
+
+            var district = DistrictCatalog.Get(bp.worldDistrictId);
+            if (district == null) yield break;
+
+            var enc = new AssembledEncounter
+            {
+                chapterId = bp.chapterId,
+                districtId = bp.worldDistrictId,
+                anchor = PickFreeAnchor(bp.worldDistrictId, bp.assemblySeed),
+                live = true
+            };
+            _live[bp.chapterId] = enc;   // 先占位：分帧期间不会被再次触发组装
+
+            // ---------- 现场把这一章自己的场景建出来（V2.0 的关键一步） ----------
+            // 不再是"在固定关卡里换几个敌人"：AI 描述的房间、道具、NPC、灯光、规则
+            // 会在这里被真的建成一处可以走进去的地方，并按 seed 完全可复现。
+            yield return SiteBuilder.BuildRoutine(bp, WorldCtx, built => enc.site = built);
+
+            var rng = new System.Random(bp.assemblySeed);
+
+            if (enc.site != null)
+            {
+                // 入口开在所属区域的遭遇位上：从城里走过去，推门进入这个新场景
+                enc.gate = SiteGate.Create(GroundAt(enc.anchor), bp.chapterId,
+                    bp.site.siteName, new Color(0.55f, 0.8f, 1f));
+                SpawnIntoSite(bp, goal, enc, rng);
+            }
+            else
+            {
+                // 极端情况（场景蓝图缺失）：退回在城区遭遇位上就地布置，保证章节仍可玩
+                SpawnIntoDistrict(bp, goal, enc, rng);
+                BuildMechanicProps(bp, enc.anchor);
+            }
+
+            WorldState.Get(bp.worldDistrictId).hasChapter = true;
+            GoalOS.NoteChapterAttempt(bp.chapterId);
+
+            CloudDialogueService.AddLog("章节已组装：" + bp.chapterName + " @" +
+                DistrictCatalog.NameOf(bp.worldDistrictId) + " seed=" + bp.assemblySeed +
+                " 敌人×" + enc.enemies.Count);
+            GameEvents.RaiseSubtitle("〔章节展开〕" + bp.chapterName + " —— " + bp.successCondition);
+        }
+
+        /// <summary>
+        /// 敌人名 → 敌人类型：先精确、再就近。
+        ///
+        /// 校验器入库时已经把名字统一成枚举名了，但**旧存档**里的章节是按老规则存下来的，
+        /// 里面还留着模型当初写的叫法。这里再兜一层，免得升级之后老旅程的关卡
+        /// 一个敌人都刷不出来——那种"能进去但里面空无一人"比直接报错更难查。
+        /// </summary>
+        static bool ResolveEnemy(string name, out EnemyType type)
+        {
+            if (ChapterModuleLibrary.TryEnemy(name, out type)) return true;
+            return ChapterModuleLibrary.TryEnemyFuzzy(name, out type);
+        }
+
+        /// <summary>把敌人放进**生成出来的场景**里（不是放在城区街上）。</summary>
+        static void SpawnIntoSite(GoalChapterData bp, GoalData goal,
+            AssembledEncounter enc, System.Random rng)
+        {
+            var site = enc.site;
+
+            // 同时参战人数由它管：场上人可以多，一起打你的最多三个（含 Boss）
+            var director = SiteEncounterDirector.Attach(site.root);
+
+            // 按 AI 给的编成放人：谁、几个、门口还是深处、守点还是巡逻。
+            // 坐标仍由引擎算——placement 只表达远近层次。
+            int idx = 0;
+            foreach (var spec in bp.enemyPlan)
+            {
+                if (!ResolveEnemy(spec.enemyType, out var t)) continue;
+                var tier = TierOf(spec.tier, goal, rng);
+                for (int k = 0; k < spec.count; k++)
+                {
+                    Vector3 at = PlacedSpot(site, spec.placement, idx++, rng);
+                    var go = Spawner(t, tier, at, true);
+                    if (go == null) continue;
+                    enc.enemies.Add(go);
+                    Reparent(go, site);
+                    if (director != null) director.Register(go);
+
+                    if (spec.tier != "chief") continue;
+                    var ec = go.GetComponent<EnemyController>();
+                    if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
+                    go.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                    BossBeacon(go);
+                }
+            }
+
+            // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着
+            BuildMechanicProps(bp, site.origin, site);
+        }
+
+        static void SpawnIntoDistrict(GoalChapterData bp, GoalData goal,
+            AssembledEncounter enc, System.Random rng)
+        {
+            int slot = 0;
+            foreach (var name in bp.externalEnemies)
+            {
+                if (!ResolveEnemy(name, out var t)) continue;
+                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
+                var go = Spawner(t, TierFor(goal, rng), pos, true);
+                if (go != null) enc.enemies.Add(go);
+            }
+            foreach (var name in bp.internalEnemies)
+            {
+                if (!ResolveEnemy(name, out var t)) continue;
+                var pos = Offset(DistrictCatalog.EncounterSlot(bp.worldDistrictId, bp.assemblySeed, slot++), rng);
+                var go = Spawner(t, EnemyTier.Standard, pos, true);
+                if (go != null) enc.enemies.Add(go);
+            }
+            if (ResolveEnemy(bp.bossArchetype, out var bossType))
+            {
+                var bossGo = Spawner(bossType, EnemyTier.Chief, Offset(enc.anchor, rng), true);
+                if (bossGo != null)
+                {
+                    enc.enemies.Add(bossGo);
+                    var ec = bossGo.GetComponent<EnemyController>();
+                    if (ec != null && ec.profile != null) enc.bossEnemyId = ec.profile.enemyId;
+                    bossGo.AddComponent<ChapterGateEnemy>().chapterId = bp.chapterId;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Boss 头顶的光柱。
+        ///
+        /// 户外场景放大之后有一百多米宽，Boss 常在三十米外、隔着一栋楼；
+        /// 目标行只写"剩余 3"的话，玩家在空地上转半天也找不到打谁——
+        /// 他的原话是"连战斗的入口都找不到，boss 都没有出现"。
+        /// 一根远处就能看见的光柱，比任何文字提示都直接。
+        /// </summary>
+        static void BossBeacon(GameObject boss)
+        {
+            if (boss == null) return;
+            var beam = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            beam.name = "BossBeacon";
+            Object.DestroyImmediate(beam.GetComponent<Collider>());
+            beam.transform.SetParent(boss.transform, false);
+            beam.transform.localPosition = new Vector3(0, 14f, 0);
+            beam.transform.localScale = new Vector3(1.6f, 14f, 1.6f);
+            beam.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(new Color(1f, 0.35f, 0.3f), 0.28f);
+
+            var lightGo = new GameObject("BossBeaconLight");
+            lightGo.transform.SetParent(boss.transform, false);
+            lightGo.transform.localPosition = new Vector3(0, 4f, 0);
+            var l = lightGo.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.range = 22f;
+            l.intensity = 2.2f;
+            l.color = new Color(1f, 0.45f, 0.35f);
+        }
+
+        static EnemyTier TierOf(string tier, GoalData goal, System.Random rng)
+        {
+            switch (tier)
+            {
+                case "minion": return EnemyTier.Novice;
+                case "elite": return EnemyTier.Elite;
+                case "chief": return EnemyTier.Chief;
+                default: return TierFor(goal, rng);
+            }
+        }
+
+        /// <summary>
+        /// 把"门口 / 中段 / 深处"翻译成场景里的实际落点。
+        ///
+        /// 门口 = 玩家落点正前方十来米：进场抬头就看得见要打的东西。
+        /// 中段 = 场景中心一带。深处 = 远端，Boss 在那里等着。
+        /// 落点最后一律吸附到导航面上——AI 给的是层次，能不能站人由引擎说了算。
+        /// </summary>
+        static Vector3 PlacedSpot(SiteInstance site, string placement, int index, System.Random rng)
+        {
+            Vector3 spawn = site.playerSpawn;
+            Vector3 center = site.origin + Vector3.up * 1.1f;
+
+            // "深处"也要有上限：与落点关于中心对称的那一端在大场地里能有九十多米，
+            // 玩家看着目标行上的距离数字走十几秒，路上什么都遇不到——
+            // 那不是纵深，那是空跑。四十米足够形成"要走过去打"的层次。
+            const float MaxDeep = 40f;
+            Vector3 deepDir = center - spawn;
+            deepDir.y = 0f;
+            if (deepDir.sqrMagnitude < 1f) deepDir = Vector3.forward;
+            Vector3 deep = spawn + deepDir.normalized * Mathf.Min(deepDir.magnitude * 2f, MaxDeep);
+
+            Vector3 baseAt = placement == "entrance"
+                ? Vector3.Lerp(spawn, center, 0.28f)
+                : placement == "deep" ? deep : Vector3.Lerp(spawn, deep, 0.55f);
+
+            // 同一层次的多个敌人错开，不要叠在一个点上
+            float a = index * 1.9f;
+            baseAt += new Vector3(Mathf.Cos(a) * (3f + index * 1.6f), 0, Mathf.Sin(a) * (3f + index * 1.6f));
+
+            if (!UnityEngine.AI.NavMesh.SamplePosition(baseAt, out var hit, 25f,
+                    UnityEngine.AI.NavMesh.AllAreas))
+                return GroundAt(baseAt) + Vector3.up * 1.1f;
+
+            Vector3 at = hit.position;
+
+            // 门口那一组必须和玩家在**同一片连通空间**里。
+            //
+            // NavMesh 采样只保证"这点站得住"，不保证"从落点走得到"——于是常出现
+            // 目标行写着「剩余 1 · → 2m」，而那 2 米之间隔着一堵墙：敌人在隔壁房间，
+            // 玩家贴着墙怎么也找不到人。NavMesh.Raycast 能在导航面上判断这段直线通不通，
+            // 不通就把它往玩家那边收，直到走得过去为止。
+            if (placement == "entrance")
+            {
+                Vector3 from = spawn;
+                if (UnityEngine.AI.NavMesh.SamplePosition(spawn, out var fromHit, 10f,
+                        UnityEngine.AI.NavMesh.AllAreas))
+                    from = fromHit.position;
+
+                for (int i = 0; i < 5; i++)
+                {
+                    if (!UnityEngine.AI.NavMesh.Raycast(from, at, out _, UnityEngine.AI.NavMesh.AllAreas))
+                        break;   // 这一段导航面上是通的
+                    at = Vector3.Lerp(from, at, 0.6f);
+                    if (UnityEngine.AI.NavMesh.SamplePosition(at, out var closer, 6f,
+                            UnityEngine.AI.NavMesh.AllAreas))
+                        at = closer.position;
+                }
+            }
+
+            // 别卡在几何里：落点半米内有实体就往外推一点（推不开就交给导航面兜底）
+            if (Physics.CheckSphere(at + Vector3.up * 1f, 0.5f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                Vector3 away = (at - center).normalized;
+                if (away.sqrMagnitude < 0.01f) away = Vector3.forward;
+                Vector3 pushed = at + away * 2.5f;
+                if (UnityEngine.AI.NavMesh.SamplePosition(pushed, out var pHit, 8f,
+                        UnityEngine.AI.NavMesh.AllAreas))
+                    at = pHit.position;
+            }
+
+            return at + Vector3.up * 1.1f;
+        }
+
+        /// <summary>敌人挂到场景根下：场景卸载时一起收走，不会留在世界里游荡。</summary>
+        static void Reparent(GameObject go, SiteInstance site)
+        {
+            if (go != null && site != null && site.root != null)
+                go.transform.SetParent(site.root.transform, true);
+        }
+
+        static Vector3 GroundAt(Vector3 p)
+        {
+            if (UnityEngine.AI.NavMesh.SamplePosition(p, out var hit, 8f, UnityEngine.AI.NavMesh.AllAreas))
+                return hit.position;
+            return p;
+        }
+
+        /// <summary>章节通关或玩家离开时收起（不销毁世界，只收起这次遭遇的内容）。</summary>
+        public static void Despawn(AssembledEncounter enc)
+        {
+            if (enc == null) return;
+            foreach (var go in enc.enemies)
+                if (go != null) Object.Destroy(go);
+            enc.enemies.Clear();
+            if (enc.gate != null) Object.Destroy(enc.gate.gameObject);
+            if (enc.site != null)
+            {
+                World.ZoneBuilder.UnregisterDynamicZone(enc.site.siteId);
+                SiteBuilder.Unload(enc.chapterId);
+            }
+            enc.live = false;
+        }
+
+        /// <summary>
+        /// 收起某一章的遭遇内容。
+        ///
+        /// 【绝不收走玩家脚下这一处】
+        /// 这条以前是无条件执行的，于是出现过这样一串：玩家进了一处本地占位关开打，
+        /// 后台云端生成刚好返回，`DropOnePlaceholder` 为了腾名额把这一章连场景一起销毁——
+        /// 地板、墙、灯在他脚下消失，区域 id 被改成 `xxx_closed`，
+        /// 于是踩空兜底反查区域表查不到，落到 0 号区，人就出现在独居小屋里。
+        /// 人在里面时这处场景就是不能动的：等他走出来（ExitToCity 之后）再收。
+        /// </summary>
+        public static void DespawnChapter(string chapterId)
+        {
+            if (string.IsNullOrEmpty(chapterId)) return;
+            if (!_live.TryGetValue(chapterId, out var enc)) return;
+            if (SiteGate.InsideSite && SiteGate.InsideChapterId == chapterId)
+            {
+                Core.CloudDialogueService.AddLog("跳过卸载 " + chapterId + "：玩家正站在这处场景里");
+                return;
+            }
+            Despawn(enc);
+            _live.Remove(chapterId);
+        }
+
+        /// <summary>难度取自逆境预算：不由 AI 决定，也不在动画里偷偷改判定。</summary>
+        static EnemyTier TierFor(GoalData goal, System.Random rng)
+        {
+            var intensity = goal != null ? goal.intensity : MentalIntensity.Standard;
+            switch (intensity)
+            {
+                case MentalIntensity.Light: return EnemyTier.Novice;
+                case MentalIntensity.HighPressure:
+                    return rng.Next(100) < 55 ? EnemyTier.Elite : EnemyTier.Standard;
+                default:
+                    return rng.Next(100) < 35 ? EnemyTier.Standard : EnemyTier.Novice;
+            }
+        }
+
+        static Vector3 Offset(Vector3 basePos, System.Random rng)
+        {
+            if (basePos == Vector3.zero) return basePos;
+            float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
+            float rad = 2.5f + (float)rng.NextDouble() * 5f;
+            var p = basePos + new Vector3(Mathf.Cos(ang) * rad, 0, Mathf.Sin(ang) * rad);
+            if (UnityEngine.AI.NavMesh.SamplePosition(p, out var hit, 8f, UnityEngine.AI.NavMesh.AllAreas))
+                return hit.position + Vector3.up * 1.1f;
+            return basePos;
+        }
+
+        /// <summary>机制包：把蓝图里的机制标签变成场上看得见、摸得到的物件。</summary>
+        static void BuildMechanicProps(GoalChapterData bp, Vector3 anchor, SiteInstance site = null)
+        {
+            if (anchor == Vector3.zero) return;
+            int i = 0;
+            foreach (var id in bp.physicalMechanics)
+            {
+                var info = ChapterModuleLibrary.Mechanic(id);
+                if (info == null) continue;
+                Vector3 p = anchor + Quaternion.Euler(0, 70f * i++, 0) * Vector3.forward * 9f;
+                if (UnityEngine.AI.NavMesh.SamplePosition(p, out var mh, 10f,
+                        UnityEngine.AI.NavMesh.AllAreas)) p = mh.position;
+
+                ChapterProp made;
+                switch (id)
+                {
+                    case "beacon_ignite":
+                        made = ChapterProp.Create(p, "行动灯台", new Color(1f, 0.65f, 0.25f), info.description);
+                        break;
+                    case "evidence_collect":
+                        made = ChapterProp.Create(p, "事实碎片", new Color(0.55f, 0.85f, 1f), info.description);
+                        break;
+                    case "resource_scavenge":
+                        made = ChapterProp.Create(p, "补给点", new Color(0.45f, 0.9f, 0.6f), info.description);
+                        break;
+                    case "protect_zone":
+                        made = ChapterProp.Create(p, "稳定区", new Color(0.5f, 0.75f, 1f), info.description);
+                        break;
+                    case "timed_actions":
+                        made = ChapterProp.Create(p, "限时台", new Color(1f, 0.5f, 0.35f), info.description);
+                        break;
+                    default:
+                        made = ChapterProp.Create(p, info.name, new Color(0.8f, 0.75f, 0.95f), info.description);
+                        break;
+                }
+                if (made != null && site != null && site.root != null)
+                    made.transform.SetParent(site.root.transform, true);
+            }
+        }
+    }
+
+    /// <summary>章节机制的世界化身：走近给出可读提示（机制必须看得见，而不是只写在蓝图里）。</summary>
+    public class ChapterProp : MonoBehaviour
+    {
+        public string label = "";
+        public string hint = "";
+        float _lastHint = -99f;
+
+        public static ChapterProp Create(Vector3 pos, string label, Color color, string hint)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "ChapterProp_" + label;
+            go.transform.position = pos + Vector3.up * 0.7f;
+            go.transform.localScale = new Vector3(1.2f, 1.4f, 1.2f);
+            go.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(color, 0.5f);
+            OpenWorldBuilder.HomeSign(pos + Vector3.up * 2.2f, label);
+
+            var p = go.AddComponent<ChapterProp>();
+            p.label = label;
+            p.hint = hint;
+            return p;
+        }
+
+        void Update()
+        {
+            if (Time.time - _lastHint < 10f) return;
+            var player = FindObjectOfType<Player.PlayerController>();
+            if (player == null) return;
+            if (Vector3.Distance(transform.position, player.transform.position) > 3.5f) return;
+            _lastHint = Time.time;
+            GameEvents.RaiseSubtitle("【" + label + "】" + hint);
+        }
+    }
+
+    /// <summary>章节守门人：击败它即判定该章节通关，并把结果回写给 Goal OS。</summary>
+    public class ChapterGateEnemy : MonoBehaviour
+    {
+        public string chapterId = "";
+        bool _reported;
+
+        void OnEnable() => GameEvents.OnEnemyKilled += OnKilled;
+        void OnDisable() => GameEvents.OnEnemyKilled -= OnKilled;
+
+        void OnKilled(string enemyId)
+        {
+            if (_reported) return;
+            var ec = GetComponent<EnemyController>();
+            if (ec == null || ec.profile == null || ec.profile.enemyId != enemyId) return;
+            _reported = true;
+
+            GoalOS.ChapterCleared(chapterId);
+            var goal = GoalOS.Active;
+            var bp = goal != null ? goal.FindChapter(chapterId) : null;
+            if (bp != null)
+            {
+                WorldState.OnMilestoneReached(bp.worldDistrictId);
+                GameEvents.RaiseSubtitle("〔章节完成〕" + bp.chapterName + " —— " +
+                    GoalJourneyGraph.ProgressLine(goal));
+            }
+            // 在生成场景里打完 → 先把玩家送回城里，再卸载这处场景（否则会被留在虚空里）
+            if (SiteGate.InsideSite && SiteGate.InsideChapterId == chapterId)
+            {
+                var host = new GameObject("SiteExitDelay");
+                host.AddComponent<SiteExitDelay>().Setup(chapterId, 3.5f);
+            }
+            else ProceduralQuestAssembler.DespawnChapter(chapterId);
+        }
+    }
+}
+

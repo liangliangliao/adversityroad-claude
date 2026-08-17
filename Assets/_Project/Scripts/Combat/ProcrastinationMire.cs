@@ -20,7 +20,7 @@ namespace AdversityRoad.Combat
         {
             var p = other.GetComponentInParent<PlayerController>();
             if (p == null) return;
-            p.MoveSpeedMultiplier = Mathf.Min(p.MoveSpeedMultiplier, speedMultiplier);
+            p.SetSlow(this, speedMultiplier);   // 按来源登记：退出时只撤自己这一条
             p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Procrastination,
                 actionDrainPerSec * Time.deltaTime);
         }
@@ -28,7 +28,7 @@ namespace AdversityRoad.Combat
         void OnTriggerExit(Collider other)
         {
             var p = other.GetComponentInParent<PlayerController>();
-            if (p != null) p.MoveSpeedMultiplier = 1f;
+            if (p != null) p.ClearSlow(this);
         }
 
         // 临时深泥（明天之王浇灌的）到时干涸销毁：玩家还站在里面时 OnTriggerExit
@@ -36,7 +36,7 @@ namespace AdversityRoad.Combat
         void OnDestroy()
         {
             var p = FindObjectOfType<PlayerController>();
-            if (p != null) p.MoveSpeedMultiplier = 1f;
+            if (p != null) p.ClearSlow(this);
         }
     }
 }

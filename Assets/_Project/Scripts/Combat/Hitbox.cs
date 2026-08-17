@@ -17,6 +17,13 @@ namespace AdversityRoad.Combat
     public class Hitbox : MonoBehaviour
     {
         public DamageInfo pendingDamage;
+
+        /// <summary>判定盒的额外容差（米）。
+        /// 玩家侧保持 0.15 的宽容（宁可打到也不漏打，手感好）；
+        /// 敌人侧调到 0.04——同样的容差用在敌人身上就变成"明明跳过去了还是被扫到"，
+        /// 尤其是正踢/侧踹这类贴地招，0.15 的上下外扩正好吃掉玩家起跳让开的高度差。
+        /// 攻防两侧的容差本来就不该同号：一个是"帮玩家"，一个是"坑玩家"。</summary>
+        public float pad = 0.15f;
         /// <summary>命中回调（连段积势、命中特效等）。</summary>
         public System.Action<Hurtbox> onHit;
         Collider _col;
@@ -76,8 +83,8 @@ namespace AdversityRoad.Combat
                 var b = _col.bounds;
                 center = b.center; half = b.extents; rot = Quaternion.identity;
             }
-            // 略微放大判定盒，容错动画与判定的细微错位（宁可打到也不漏打）
-            half += Vector3.one * 0.15f;
+            // 略微放大判定盒，容错动画与判定的细微错位（容差见 pad 字段的说明）
+            half += Vector3.one * pad;
 
             int n = Physics.OverlapBoxNonAlloc(center, half, _overlap, rot,
                 ~0, QueryTriggerInteraction.Collide);

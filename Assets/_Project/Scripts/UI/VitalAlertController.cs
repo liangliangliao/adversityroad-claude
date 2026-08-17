@@ -10,17 +10,24 @@ namespace AdversityRoad.UI
     /// 能量分级警告系统：
     /// · 每项能量两级警告——偏低（&lt;40%，字幕提醒）与告急（&lt;20%，字幕+警示音）；
     ///   负向能量（反刍/关系消耗）反向判定（&gt;70% / &gt;85%）；带迟滞回差避免反复刷屏；
-    /// · 生命特殊三级：偏低（35%）→ 危险（20%）→ 垂危（15%）——垂危时红色脉冲罩屏
-    ///   并弹出模态弹窗，由玩家决定是否暂停休整、进入答题补充能量（或继续战斗）；
+    /// · 生命字幕两级：偏低（35%）→ 危险（20%）；
+    /// · 【休整答题弹窗只有一个触发条件：生命 &lt; 30%】——模态弹窗会冻结画面，
+    ///   多一个触发口就多一次战斗被打断，所以这里刻意只留一条路；
     /// · 低生命期间持续红色边缘脉冲提示（非缩放时间驱动，暂停中也可见）。
     /// </summary>
     public class VitalAlertController : MonoBehaviour
     {
         const float LowRatio = 0.40f;       // 一级：偏低
         const float SevereRatio = 0.20f;    // 二级：告急
-        const float HpCriticalRatio = Player.PlayerStats.CriticalHpRatio; // 生命垂危（弹窗，与数据层同源）
+        // 【休整答题弹窗的唯一触发条件】：生命 < 30%。
+        // 之前是两条路都能弹——① 每帧轮询 hp < CriticalHpRatio(15%)；
+        // ② OnLifeThreatened 事件（穿越垂危线 / 濒死守护）无视静默期强制弹。
+        // 模态弹窗会把 timeScale 归零、整块盖住画面，战斗中被它打断一次就等于送一次死，
+        // 玩家明确要求"只在生命低于 30% 时出现，其他都不出现"。
+        // 现在只保留这一条：一个阈值、一处判断，行为完全可预测。
+        const float RestPromptRatio = 0.30f;
         const float Hysteresis = 0.08f;     // 迟滞回差：回升超过阈值+8%才允许再次警告
-        const float PromptCooldown = 30f;   // 玩家选择「继续战斗」后弹窗静默时长
+        const float PromptCooldown = 45f;   // 玩家选择「继续战斗」后弹窗静默时长
 
         QuizPanel _quiz;
         PlayerController _player;
@@ -40,21 +47,6 @@ namespace AdversityRoad.UI
             comp._quiz = quiz;
             comp.Build(canvas);
             return comp;
-        }
-
-        void OnEnable() => GameEvents.OnLifeThreatened += ForcePrompt;
-        void OnDisable() => GameEvents.OnLifeThreatened -= ForcePrompt;
-
-        /// <summary>事件驱动的强制垂危弹窗：掉血穿越垂危线或濒死守护触发时立即弹出——
-        /// 不依赖每帧轮询（单次高伤害快速穿越会漏检），并且无视「继续战斗」的 30 秒静默期
-        /// （生死关头必须重新给出选择）。</summary>
-        void ForcePrompt()
-        {
-            if (_promptOpen || _prompt == null) return;
-            if (_quiz != null && _quiz.Active) return;   // 已在答题中恢复，不叠加弹窗
-            if (_player == null) _player = FindObjectOfType<PlayerController>();
-            if (_player == null || _player.Stats == null || _player.Stats.IsDead) return;
-            OpenPrompt(_player.Stats);
         }
 
         void Build(Transform canvas)
@@ -80,7 +72,7 @@ namespace AdversityRoad.UI
             prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one;
             prt.offsetMin = Vector2.zero; prt.offsetMax = Vector2.zero;
 
-            var title = UiUtil.MakeText(_prompt.transform, "Title", "⚠ 生命垂危 ⚠", 56,
+            var title = UiUtil.MakeText(_prompt.transform, "Title", "⚠ 生命不足三成 ⚠", 52,
                 TextAnchor.MiddleCenter, new Color(1f, 0.3f, 0.25f));
             UiUtil.SetRect(title, new Vector2(0.5f, 0.5f), new Vector2(0, 230), new Vector2(1200, 90));
             title.fontStyle = FontStyle.Bold;
@@ -139,11 +131,18 @@ namespace AdversityRoad.UI
                 "关系消耗偏高——注意力与精力被持续索取。",
                 "关系消耗告急！技能调息已变慢——守住边界。");
 
-            // ---- 生命垂危弹窗：由玩家决定是否休整答题 ----
-            if (!_promptOpen && Time.timeScale > 0f && !_quiz.Active &&
-                s.hp / s.maxHp < HpCriticalRatio &&
-                Time.unscaledTime >= _nextPromptAllowed)
-                OpenPrompt(s);
+            // ---- 休整答题弹窗：唯一触发条件是生命 < 30% ----
+            // 额外两道让路（不是新的触发条件，是"该弹也先别弹"）：
+            // 言语攻防正在计时、或标题/暂停菜单开着的时候插一个模态弹窗，
+            // 只会让玩家两个都做不成。
+            if (_promptOpen || _quiz == null || _quiz.Active) return;
+            if (Time.timeScale <= 0f) return;
+            if (MainMenuPanel.AtTitle) return;
+            if (VerbalDefenseController.Instance != null &&
+                VerbalDefenseController.Instance.IsActive) return;
+            if (s.hp / s.maxHp >= RestPromptRatio) return;
+            if (Time.unscaledTime < _nextPromptAllowed) return;
+            OpenPrompt(s);
         }
 
         // ===================== 分级警告 =====================
@@ -245,7 +244,7 @@ namespace AdversityRoad.UI
             int hpPct = Mathf.RoundToInt(s.hp / s.maxHp * 100f);
             string imbalance = QuizSystem.ImbalanceLabel(s);
             _promptDetail.text =
-                "当前生命仅剩 " + hpPct + "%——再战斗下去随时可能倒下。\n\n" +
+                "当前生命仅剩 " + hpPct + "%（低于 30% 才会出现这个提示）——再打下去随时可能倒下。\n\n" +
                 (string.IsNullOrEmpty(imbalance) ? "" : "当前状态：" + imbalance + "\n\n") +
                 "是否暂停休整、进入答题补充能量？\n" +
                 "（每答对 1 题：所有未满正能量 +20、负能量 −20）";

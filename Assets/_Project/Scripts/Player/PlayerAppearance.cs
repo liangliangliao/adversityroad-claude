@@ -123,6 +123,55 @@ namespace AdversityRoad.Player
             return names.ToArray();
         }
 
+        // ===== 面具微调（每面具持久化）=====
+        // 面具的贴脸位置本来是【量测顶点】算出来的：沿纵向切片量截面宽，
+        // 猫耳这类窄突起会被排除，脸板顶下方 30% 即眼线。但这套量测依赖
+        // Mesh.isReadable——而 .glb 走 glTFast 的 ScriptedImporter，网格默认不可读，
+        // 量测必然失败，于是一路退到"中心上移 0.18 头宽"这个对谁都不准的常数。
+        // 那正是"面具的洞没对准眼睛、眼睛被挡住"的来源：不是算错，是根本没算。
+        //
+        // 结构性修复（Editor/ReadableMeshPostprocessor）只能救 FBX；.glb 这条路
+        // 短期内没有可靠的通用解。所以再给一条**玩家自己能拧的**：上下/前后/大小
+        // 三个微调量，按面具名持久化，戴上即生效。任何面具都能对准，不必等我猜常数。
+        public static float MaskUp { get; private set; }
+        public static float MaskFwd { get; private set; }
+        public static float MaskScale { get; private set; } = 1f;
+
+        string MaskKey(string suffix) => "mask_adj_" + CurrentMask + "_" + suffix;
+
+        void LoadMaskAdjust()
+        {
+            MaskUp = PlayerPrefs.GetFloat(MaskKey("up"), 0f);
+            MaskFwd = PlayerPrefs.GetFloat(MaskKey("fwd"), 0f);
+            MaskScale = PlayerPrefs.GetFloat(MaskKey("scale"), 1f);
+        }
+
+        /// <summary>微调当前面具：dUp/dFwd 以头宽为单位，dScale 为倍率增量。</summary>
+        public void AdjustMask(float dUp, float dFwd, float dScale)
+        {
+            if (string.IsNullOrEmpty(CurrentMask)) return;
+            MaskUp = Mathf.Clamp(MaskUp + dUp, -1.2f, 1.2f);
+            MaskFwd = Mathf.Clamp(MaskFwd + dFwd, -1f, 1f);
+            MaskScale = Mathf.Clamp(MaskScale + dScale, 0.5f, 2f);
+            PlayerPrefs.SetFloat(MaskKey("up"), MaskUp);
+            PlayerPrefs.SetFloat(MaskKey("fwd"), MaskFwd);
+            PlayerPrefs.SetFloat(MaskKey("scale"), MaskScale);
+            PlayerPrefs.Save();
+            ApplyMask();
+        }
+
+        /// <summary>面具微调复位。</summary>
+        public void ResetMaskAdjust()
+        {
+            if (string.IsNullOrEmpty(CurrentMask)) return;
+            MaskUp = 0f; MaskFwd = 0f; MaskScale = 1f;
+            PlayerPrefs.DeleteKey(MaskKey("up"));
+            PlayerPrefs.DeleteKey(MaskKey("fwd"));
+            PlayerPrefs.DeleteKey(MaskKey("scale"));
+            PlayerPrefs.Save();
+            ApplyMask();
+        }
+
         /// <summary>戴上/摘下面具（null/"" = 摘下），重选即替换，持久化。</summary>
         public void EquipMask(string maskName)
         {
@@ -322,13 +371,23 @@ namespace AdversityRoad.Player
                     FitAndGripWeapon(w.transform, hand, out Vector3 bladeLocal, out Vector3 gripW);
                     var pv = WrapWeaponPivot(w.transform, hand, bladeLocal, gripW);
                     hand.gameObject.AddComponent<FingerGrip>().Setup(hand, bladeLocal, gripW);
-                    if (poser != null) poser.weaponPivot = pv;
+                    if (poser != null)
+                    {
+                        poser.weaponPivot = pv;
+                        poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                            pv, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                    }
                 }
             }
             else if (builtin != null)
             {
                 // 默认（自带武器）：模型原生兵器，不隐藏、不叠加程序化剑
-                if (poser != null) poser.weaponPivot = builtin;
+                if (poser != null)
+                {
+                    poser.weaponPivot = builtin;
+                    poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                        builtin, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                }
             }
             else if (hand != null)
             {
@@ -435,6 +494,40 @@ namespace AdversityRoad.Player
             foreach (var mf in w.GetComponentsInChildren<MeshFilter>(true)) Consider(mf.transform, mf.sharedMesh);
             foreach (var smr in w.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Consider(smr.transform, smr.sharedMesh);
             foreach (var t in adopt) t.SetParent(scab, true);
+        }
+
+        /// <summary>
+        /// 量一端的截面半径：取靠近 endL 的那 18% 长度内的顶点，
+        /// 求它们到鞘轴的平均垂距。刀鞘从鞘口向鞘尾收细，所以这个值大的一端就是鞘口。
+        ///
+        /// 之所以不用"顶点数量"或"包围盒宽度"：前者受布线密度影响，
+        /// 后者会把挂环、鞘铊之类的附件算进去。垂距的平均值只描述鞘管本身有多粗。
+        /// 顶点不可读（模型未开 Read/Write）时返回 0，调用处会退回长轴约定。
+        /// </summary>
+        static float EndRadius(Transform tubeT, Mesh mesh, Vector3 endL, Vector3 otherL)
+        {
+            if (mesh == null || !mesh.isReadable) return 0f;
+            var verts = mesh.vertices;
+            if (verts == null || verts.Length < 12) return 0f;
+
+            Vector3 axis = otherL - endL;
+            float len = axis.magnitude;
+            if (len < 1e-6f) return 0f;
+            axis /= len;
+            float band = len * 0.18f;
+
+            double sum = 0; int n = 0;
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector3 d = verts[i] - endL;
+                float along = Vector3.Dot(d, axis);
+                if (along < 0f || along > band) continue;
+                sum += (d - axis * along).magnitude;   // 到轴线的垂距
+                n++;
+            }
+            if (n < 6) return 0f;
+            // 换算到世界尺度，两端才可比（同一网格同一缩放，其实只影响可读性）
+            return (float)(sum / n) * Mathf.Abs(tubeT.lossyScale.x);
         }
 
         /// <summary>刃身中轴精修：篮状护手等单侧突出的附件会把包围盒长轴挤离真实刃轴
@@ -564,9 +657,20 @@ namespace AdversityRoad.Player
             bool gripAtA = DecideGripEnd(blade, bb, ba0, ba1);
             Vector3 gripL = gripAtA ? ba0 : ba1, tipL = gripAtA ? ba1 : ba0;
 
-            // 鞘轴取【鞘管网格自身包围盒】（排除挂环，紧致=真实鞘管中轴）；
-            // 鞘口端沿用长轴高端约定（与整体包围盒方向对齐取向）
+            // ================= 鞘口是哪一端 =================
+            //
+            // 【原来这里根本没有判定】：直接写 `mouthL = sa1, botL = sa0`——
+            // 也就是"包围盒长轴的高端就当成鞘口"。这只是一个坐标约定，
+            // 和模型哪一头真的开着口毫无关系；一旦模型的朝向与约定相反，
+            // 剑就会被送向**鞘底**那一端。玩家说的"收剑时还是没找到剑鞘入口、
+            // 是盲目插入的、剑鞘入口位置在哪里还没搞清楚"，说的正是这件事。
+            //
+            // 鞘口在物理上有一个稳定可测的特征：**刀鞘从鞘口向鞘尾收细**。
+            // 鞘口要让整个刃身连同护手根部进去，必然是最粗的一端；鞘尾封死、通常还带铊，
+            // 明显更细。于是只要量一下两端的截面半径，粗的那端就是鞘口——
+            // 这个判据与模型的坐标朝向、导入设置、缩放都无关。
             Vector3 mouthL = sa1, botL = sa0;
+            string mouthDiag = "鞘口判定：无鞘管网格，沿用长轴约定";
             {
                 Transform tubeT = null; Mesh tubeMesh = null; int tubeV = 0;
                 foreach (var mf3 in scab.GetComponentsInChildren<MeshFilter>(true))
@@ -580,10 +684,31 @@ namespace AdversityRoad.Player
                     LongAxisEnds(tubeMesh.bounds, out Vector3 t0, out Vector3 t1);
                     Vector3 e0 = scab.InverseTransformPoint(tubeT.TransformPoint(t0));
                     Vector3 e1 = scab.InverseTransformPoint(tubeT.TransformPoint(t1));
-                    Vector3 boxDir = sa1 - sa0;
-                    bool e1IsMouth = Vector3.Dot(e1 - e0, boxDir) >= 0f;
-                    mouthL = e1IsMouth ? e1 : e0;
-                    botL = e1IsMouth ? e0 : e1;
+
+                    float r0 = EndRadius(tubeT, tubeMesh, t0, t1);   // 靠 t0 那一端的截面半径
+                    float r1 = EndRadius(tubeT, tubeMesh, t1, t0);   // 靠 t1 那一端的截面半径
+                    bool clear = Mathf.Max(r0, r1) > 1e-6f &&
+                                 Mathf.Abs(r0 - r1) / Mathf.Max(r0, r1) > 0.08f;
+                    if (clear)
+                    {
+                        bool e1IsMouth = r1 > r0;               // 粗的那端＝鞘口
+                        mouthL = e1IsMouth ? e1 : e0;
+                        botL = e1IsMouth ? e0 : e1;
+                        mouthDiag = "鞘口判定：取较粗一端（" +
+                            (e1IsMouth ? "高端" : "低端") + "，半径 " +
+                            Mathf.Max(r0, r1).ToString("F3") + " vs " +
+                            Mathf.Min(r0, r1).ToString("F3") + "）";
+                    }
+                    else
+                    {
+                        // 两端一样粗（等径直筒鞘）：退回长轴约定，并如实说明
+                        Vector3 boxDir = sa1 - sa0;
+                        bool e1IsMouth = Vector3.Dot(e1 - e0, boxDir) >= 0f;
+                        mouthL = e1IsMouth ? e1 : e0;
+                        botL = e1IsMouth ? e0 : e1;
+                        mouthDiag = "鞘口判定：两端等粗（" + r0.ToString("F3") + " / " +
+                            r1.ToString("F3") + "），沿用长轴约定";
+                    }
                 }
             }
 
@@ -641,9 +766,10 @@ namespace AdversityRoad.Player
             Vector3 scabCtrW = scab.TransformPoint(sb.center);
             float scabLenW = (scab.TransformPoint(sa1) - scab.TransformPoint(sa0)).magnitude;
             bool seated = scabLenW > 1e-4f && (bladeCtrW - scabCtrW).magnitude < scabLenW * 0.35f;
-            _sheathDiag = seated
+            _sheathDiag = (seated
                 ? "剑已入鞘（左手持鞘，按「拔刀」出鞘）"
-                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长";
+                : "剑鞘装配偏差：偏离 " + ((bladeCtrW - scabCtrW).magnitude / Mathf.Max(scabLenW, 1e-4f)).ToString("F2") + " 鞘长")
+                + "\n" + mouthDiag;
             Core.GameEvents.RaiseSubtitle(_sheathDiag);
 
             if (_sheath != null) Destroy(_sheath);
@@ -658,7 +784,12 @@ namespace AdversityRoad.Player
                     var g = rh.GetComponent<FingerGrip>();
                     if (g == null) g = rh.gameObject.AddComponent<FingerGrip>();
                     g.Setup(rh, bl, gw);
-                    if (poser != null) poser.weaponPivot = _drawnPivot;
+                    if (poser != null)
+                    {
+                        poser.weaponPivot = _drawnPivot;
+                        poser.weaponTrail = WeaponFactory.AttachTipTrail(
+                            _drawnPivot, baseMaterial, new Color(0.75f, 0.9f, 1f, 0.85f));
+                    }
                 },
                 // 收刀入座：撤右手握拳与掌心枢轴（先把剑身救出再销毁枢轴）
                 rh =>
@@ -671,13 +802,14 @@ namespace AdversityRoad.Player
                         Destroy(_drawnPivot.gameObject);
                         _drawnPivot = null;
                     }
-                    if (poser != null) poser.weaponPivot = null;
+                    if (poser != null) { poser.weaponPivot = null; poser.weaponTrail = null; }
                 });
             // 自然携持：每帧把鞘摆竖直(柄朝上微前倾)、鞘中点贴左手掌心——
             // 不再依赖装备瞬间的手掌姿势（T-pose 烘焙是"整套横穿身前"的根因）
             _sheath.SetCarry(set, lhand, visualRoot, mouthL, botL, (mouthL + botL) * 0.5f,
                 lhand.InverseTransformPoint(palm));
-            if (poser != null) poser.weaponPivot = null;   // 收刀状态：耍花/刀光不驱动剑身
+            // 收刀状态：耍花/刀光不驱动剑身
+            if (poser != null) { poser.weaponPivot = null; poser.weaponTrail = null; }
         }
 
         /// <summary>戴面具：自动定尺（面具宽≈头宽）、法向对齐面部朝向、贴脸就位，
@@ -699,6 +831,7 @@ namespace AdversityRoad.Player
                 if (p != null && p.name == CurrentMask) { prefab = p; break; }
             if (prefab == null) return;
 
+            LoadMaskAdjust();
             var mk = Object.Instantiate(prefab, head, false);
             mk.name = EquippedMaskName;
             FitMask(mk.transform, head);
@@ -811,8 +944,12 @@ namespace AdversityRoad.Player
             // 座位偏移：胸骨中心在躯干内部，外移【躯干半厚+0.34 包厚】——背板贴紧背表面
             // （略微嵌入=“融合一体”的贴合感）、肩带环嵌向双肩；抬升让包顶到肩线。
             // 实际摆位交给 BackpackRig 每帧执行（含随双肩连线的躯干扭转）。
+            // 后移量收紧：0.85 躯干半厚 + 0.34 包厚，在包体较厚（packD 量到的是
+            // 包的"鼓面深度"）时会把整包推离后背半个身位——截图里背包明显浮在
+            // 身后一段距离、没有贴住。背包本来就该微微嵌进后背才读作"背着"，
+            // 所以两项系数都下调，并对总量按身高封顶（再厚的包也不许离背太远）。
             float torsoHalf = bodyH * 0.07f;
-            float backOff = torsoHalf * 0.85f + packD * 0.34f;
+            float backOff = Mathf.Min(torsoHalf * 0.55f + packD * 0.20f, bodyH * 0.075f);
             float liftOff = bodyH * 0.12f - packH * 0.5f;
 
             bp.gameObject.AddComponent<BackpackRig>().Setup(visualRoot,
@@ -963,7 +1100,7 @@ namespace AdversityRoad.Player
             float curW = (mk.TransformPoint(lb.center + axisOf(mid) * sz[mid] * 0.5f)
                 - mk.TransformPoint(lb.center - axisOf(mid) * sz[mid] * 0.5f)).magnitude;
             if (curW > 1e-5f)
-                mk.localScale *= Mathf.Clamp(headW / curW, 0.05f, 40f);
+                mk.localScale *= Mathf.Clamp(headW / curW * MaskScale, 0.05f, 40f);
 
             // 朝向：法向→角色前方，纵向→世界上方
             Vector3 nW = mk.TransformDirection(nLocal).normalized;
@@ -1000,7 +1137,8 @@ namespace AdversityRoad.Player
             // 正面完整呈现、不与头穿插（对齐后面具法向已转到角色前方 fwd）。
             float halfDepthW = (mk.TransformPoint(lb.center + axisOf(thin) * sz[thin] * 0.5f)
                 - mk.TransformPoint(lb.center)).magnitude;
-            Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f);
+            Vector3 seat = target + fwd * (halfDepthW + headW * 0.04f)
+                + Vector3.up * (headW * MaskUp) + fwd * (headW * MaskFwd);   // 玩家微调
             mk.position += seat - mk.TransformPoint(anchorLocal);
         }
 
@@ -1356,6 +1494,28 @@ namespace AdversityRoad.Player
             Vector3 wrist = hand.position;
             Vector3 midP = mid != null ? mid.position : wrist + hand.forward * 0.1f;
             palm = Vector3.Lerp(wrist, midP, 0.55f);          // 掌心（略偏向指根）
+
+            // 【柄心外移到掌面之外】——"手插进剑柄里"的根因就在这一行的缺失。
+            // palm 是掌【内部】的一个点；把柄心直接对到它，柄轴就从手掌中间穿过去，
+            // 手与柄互相嵌套，无论手指怎么卷曲都读作"手插在剑柄上"而不是"握住"。
+            // 真实握持是：柄贴在掌面上，四指绕过去合拢。所以要沿【掌面法向】
+            // 把柄心推出去大约半个柄粗（≈0.32 拳宽）。
+            // 法向 = 柄轴 × 手掌纵向，符号用拇指定（拇指恒在握持侧）。
+            {
+                Vector3 across = (idx != null && pky != null)
+                    ? (idx.position - pky.position) : hand.right;
+                Vector3 along = midP - wrist;
+                Vector3 n = Vector3.Cross(across.normalized, along.normalized);
+                if (n.sqrMagnitude > 1e-6f)
+                {
+                    n.Normalize();
+                    if (thb != null && Vector3.Dot(n, thb.position - palm) < 0f) n = -n;
+                    float w = (idx != null && pky != null)
+                        ? (idx.position - pky.position).magnitude
+                        : Mathf.Max(0.06f, (midP - wrist).magnitude);
+                    palm += n * (w * 0.32f);
+                }
+            }
 
             // 柄轴 = 横穿手掌（小指根→食指根）——握拳时刀柄正穿过蜷曲四指
             if (idx != null && pky != null)

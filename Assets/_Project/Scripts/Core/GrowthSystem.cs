@@ -290,6 +290,13 @@ namespace AdversityRoad.Core
             GoalSystem.DeleteAll();
             ActionSystem.DeleteAll();
             FailureLog.DeleteAll();
+            // V2.0：目标旅程、世界状态、逆境画像、宿敌与勇气记录同样本地保存，
+            // 同样必须能被这一个开关一次删干净（方案 18.4 数据隐私）
+            Goals.GoalOS.DeleteAll();
+            OpenWorld.WorldState.DeleteAll();
+            Adversity.AdversityProfile.DeleteAll();
+            Adversity.NemesisSystem.DeleteAll();
+            Adversity.CourageSystem.DeleteAll();
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Combat;
 using AdversityRoad.Mobile;
@@ -31,8 +32,18 @@ namespace AdversityRoad.Player
 
         [Header("闪避（翻跟头）")]
         public float dodgeSpeed = 10f;
-        public float dodgeDuration = 0.35f;
-        public float dodgeIFrames = 0.25f;
+        public float dodgeDuration = 0.32f;
+        // 无敌帧不再是一个独立的短常数，而是【按翻滚时长的比例】给（见下方 IFrameRatio）。
+        // 旧配置 0.25s 固定值配上 0.42~0.70s 的滚翻片段，意味着后半段整整
+        // 0.2~0.45 秒里：人被锁在翻滚里动不了、判定框却已经能打到你。
+        // 玩家反馈的"闪避太慢、很容易闪避失败还是被打到"就是这一段。
+        public float dodgeIFrames = 0.28f;
+
+        /// <summary>无敌帧占整个翻滚时长的比例：滚动主体全程无敌，只有收势的尾巴可被打中。</summary>
+        const float IFrameRatio = 0.72f;
+
+        /// <summary>翻滚可被攻击/再次翻滚打断的起点（占总时长比例）：过了这里就能接下一手。</summary>
+        const float DodgeCancelAt = 0.62f;
         public float dodgeStaminaCost = 20f;
 
         public PlayerStats Stats = new PlayerStats();
@@ -47,12 +58,314 @@ namespace AdversityRoad.Player
         float _vy;
         float _dodgeTimer, _iframeTimer;
         float _dodgeSpd = 10f;   // 本次翻滚的实际速度（时长匹配片段时反比缩放）
+        float _dodgeDur = 0.32f; // 本次翻滚的总时长（取消窗按它的比例算）
         Vector3 _dodgeDir;
         Vector3 _lastPos;
         Vector3 _hVel;   // 平滑后的水平速度
 
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
-        public float MoveSpeedMultiplier { get; set; } = 1f;
+        // ===== 移速减益：按【来源】登记，每帧取最小 =====
+        //
+        // 原来这是一个所有人共写的标量：拖延沼泽、冻结 debuff、法庭束缚、责任球、
+        // 技能解冻五个系统各自 `Min(cur, x)` 压低、各自无条件写回 `1f`。两个后果：
+        //   ① 两个减益重叠时，**先退出的那个会顺手替另一个解除**（写 1f 是无条件的）；
+        //   ② 某个来源的 OnTriggerExit / OnDestroy 没跑到（被传送出触发体是典型情形），
+        //      倍率就**永久卡低**——玩家从此只能慢走，且没有任何办法恢复。
+        //
+        // 改成登记制：谁减速谁登记，解除时只撤自己那一条，最终倍率 = 所有在册来源
+        // 取最小。关键收益是**自愈**：来源对象一旦被销毁（组件没了、触发体没了），
+        // 下一帧就会因为 Unity 的空判定被自动清掉，不再需要谁"记得"去解除。
+        readonly Dictionary<Object, float> _slowSources = new Dictionary<Object, float>();
+        readonly List<Object> _slowDead = new List<Object>();
+
+        /// <summary>
+        /// 只许走、不许跑（在住处这类室内空间里由 IndoorZone 打开）。
+        ///
+        /// 不是减益：减益会写进"移速倍率"里被当成中了负面状态，也会被清减益的地方抹掉。
+        /// 这是一条场地规则——屋里就是不跑，出门自动恢复。
+        /// </summary>
+        public bool WalkOnly { get; set; }
+
+        /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
+        public float MoveSpeedMultiplier
+        {
+            get
+            {
+                float m = 1f;
+                _slowDead.Clear();
+                foreach (var kv in _slowSources)
+                {
+                    if (kv.Key == null) { _slowDead.Add(kv.Key); continue; }   // 来源已销毁：自愈
+                    if (kv.Value < m) m = kv.Value;
+                }
+                foreach (var d in _slowDead) _slowSources.Remove(d);
+                return Mathf.Clamp(m, 0.05f, 1f);
+            }
+            // 兼容旧写法：写 1 视为"清空我造成的减速"，写小于 1 视为一条匿名减益。
+            // 新代码请直接用 SetSlow / ClearSlow，把来源说清楚。
+            set { if (value >= 0.999f) ClearAllSlow(); else SetSlow(this, value); }
+        }
+
+        /// <summary>登记一条移速减益（同一来源重复登记即覆盖）。</summary>
+        public void SetSlow(Object source, float mult)
+        {
+            if (source == null) return;
+            _slowSources[source] = Mathf.Clamp(mult, 0.05f, 1f);
+        }
+
+        /// <summary>撤销某个来源的减益（只撤自己这一条，不影响别人）。</summary>
+        public void ClearSlow(Object source)
+        {
+            if (source != null) _slowSources.Remove(source);
+        }
+
+        /// <summary>清空全部减益（「燃火·解冻」这类明确的全面解除才用）。</summary>
+        public void ClearAllSlow() => _slowSources.Clear();
+
+        // ===== 移动平台承载 =====
+        // CharacterController 不会自动跟随脚下移动的物体：车在动、脚下的碰撞体在动，
+        // 而角色的世界坐标是自己算出来的，于是"跳上车顶后车开走、人留在原地"。
+        // Unity 从来没有内建这个——所有第三人称游戏都得自己补：每帧记住脚下那个
+        // 物体的位移，原样加到角色身上。
+        Transform _platform;
+        Vector3 _platformLastPos;
+
+        // ===== 掉出世界兜底 =====
+        // 出生点/传送点偶尔会落在几何体外或寻路烘焙完成前的空档，人一路掉下去，
+        // 画面只剩天空与雾——既没有死亡判定（不掉血），也没有任何出口。
+        // 与其继续追查每一个可能的落点错误，不如先兜住结果：**低于世界底面就捞回来**。
+        // 这是所有开放场景都会加的一条保险，成本只有一次 y 比较。
+        const float WorldFloorY = -25f;
+        Vector3 _lastSafePos;
+        float _safeStamp;
+
+        /// <summary>相对落差兜底：比"最近站稳的地方"低这么多就算掉出去了。</summary>
+        const float FallCatchDrop = 12f;
+
+        // ===== 反复踩空的升级处理 =====
+        // 实机日志里这一行连着刷了十几秒，坐标一模一样：
+        //   踩空捞回 掉落点 (20067,-11,-51) → 捞到 (20067,2,-51)
+        // 说明"最近站稳的地方"本身就在一个会掉下去的边沿上：捞回原地 → 立刻再掉 → 再捞。
+        // 而每次捞回都会清零水平速度，玩家的体感就是**推着摇杆却一直在原地被拽住**——
+        // 他反馈的"在自动生成的关卡里不能跑动"，其实就是这个循环，不是移速出了问题。
+        //
+        // 所以捞回不能只是"放回去"，还要**升级**：同一处反复掉，就换更靠谱的落点。
+        Vector3 _lastCatchAt;
+        int _catchStreak;
+        float _lastCatchTime;
+
+        void FallGuard()
+        {
+            if (_cc == null) return;
+            // 记录最近一次"站在实地上"的位置，作为捞回目标（每 0.4s 记一次足够）
+            if (_cc.isGrounded && transform.position.y > WorldFloorY + 5f &&
+                Time.time - _safeStamp > 0.4f)
+            {
+                _safeStamp = Time.time;
+                _lastSafePos = transform.position;
+            }
+            // 捞回条件从"掉到世界底板（y=-25）"改成"绝对底板 **或** 比刚才站稳处低 12 米"。
+            // 只看绝对底板的问题是：各区地板都在 y≈0，从边缘掉下去要坠落约 2.2 秒才够到
+            // -25——那两秒钟玩家看到的就是自己在无尽虚空里往下掉（"掉进深渊"）。
+            // 12 米约合 1.5 秒内触发，且远高于任何正常跳跃/落差，不会误捞。
+            bool belowFloor = transform.position.y <= WorldFloorY;
+            bool longDrop = _vy < -1f && _lastSafePos.sqrMagnitude > 0.01f &&
+                            transform.position.y <= _lastSafePos.y - FallCatchDrop;
+            if (!belowFloor && !longDrop) return;
+
+            // 捞回目标必须是**脚下确实有地**的地方，否则就是把人从虚空捞进虚空：
+            // 旧版在 _lastSafePos 还没记下来时用 `当前位置 + 30m`——那儿同样没有地，
+            // 于是掉 12m→捞高 30m→再掉，字幕一遍遍刷"脚下踩空了"，永远出不来。
+            // 这正是玩家看到的死循环。
+            // 连续踩空计数：3 秒内又掉在同一处（10 米内）就算"卡在同一个坑里"
+            bool sameSpot = Time.time - _lastCatchTime < 3f &&
+                            (transform.position - _lastCatchAt).sqrMagnitude < 100f;
+            _catchStreak = sameSpot ? _catchStreak + 1 : 1;
+            _lastCatchAt = transform.position;
+            _lastCatchTime = Time.time;
+
+            // 掉第二次开始就不再信"最近站稳的地方"——它显然是个边沿。
+            // 直接回本区出生点；再掉就说明这处场景根本站不住人，整个退出去。
+            if (_catchStreak >= 2)
+            {
+                // 【落点只能在人现在待的那处地方里找】
+                bool insideSite = OpenWorld.SiteGate.InsideSite;
+                Vector3 spawn = HomeSpawn(out bool spawnTrusted);
+
+                // 【在生成场景里，任何情况都不把人送出关卡】
+                // 玩家两次报的"穿越回独居小屋 / 训练武馆"，这条升级逻辑是其中一路：
+                // 被击退摔出边沿 → 连续触发兜底 → ExitToCity → 回到进关时站的地方。
+                // 之前只用"附近 30 米有没有活敌人"挡了一下，可击退能把人抛出三十米开外，
+                // 于是照样漏过去。现在的规则简单得多：**人在生成场景里就只在场景内部捞**，
+                // 场景自己的入口下面无条件铺了实地板，一定站得住；
+                // 只有这处场景连同地板真的已经不存在了（被卸载），才谈得上退出去。
+                if (insideSite && spawnTrusted)
+                {
+                    _lastSafePos = spawn;
+                    Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                        " @" + World.ZoneBuilder.CurrentZoneId + " → 回本关入口 " + V(spawn));
+                    Snap(spawn);
+                    Core.GameEvents.RaiseSubtitle("刚才那处站不稳——已经把你送回这一关的入口。");
+                    return;
+                }
+
+                bool fighting = EnemyNearby(transform.position, 30f);
+                if (!fighting && (_catchStreak >= 4 || !spawnTrusted))
+                {
+                    Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                        " @" + World.ZoneBuilder.CurrentZoneId + " " + V(transform.position) + " → 退出该场景");
+                    _catchStreak = 0;
+                    _lastSafePos = Vector3.zero;
+                    // 走到这里说明场景已经没了（或人本来就不在场景里）：回城/回小屋
+                    if (insideSite) OpenWorld.SiteGate.ExitToCity();
+                    else Snap(World.ZoneBuilder.PlayerSpawnOf(0));
+                    Core.GameEvents.RaiseSubtitle("这块地方站不住人——已经把你带出来了。");
+                    return;
+                }
+                _lastSafePos = spawn;
+                Core.CloudDialogueService.AddLog("同一处反复踩空 ×" + _catchStreak +
+                    " → 改回本关入口 " + V(spawn));
+                Snap(spawn);
+                Core.GameEvents.RaiseSubtitle("刚才那处站不稳——已经把你送回这一关的入口。");
+                return;
+            }
+
+            Vector3 back;
+            if (HasGroundUnder(_lastSafePos)) back = _lastSafePos;
+            else
+            {
+                back = HomeSpawn(out _);
+                _lastSafePos = back;   // 同时把"安全点"本身修正掉，不然下一次又回到虚空
+                Core.CloudDialogueService.AddLog("踩空且无安全点 @" + World.ZoneBuilder.CurrentZoneId +
+                    " 掉落点 " + V(transform.position) + " → 送回 " + V(back));
+                Core.GameEvents.RaiseSubtitle("刚才那块地不存在——已经把你送回安全的落点。");
+                Snap(back);
+                return;
+            }
+
+            back.y += 1.2f;
+            // 掉出去的**位置**记进日志：这是唯一能查出"从哪儿掉的"的线索。
+            // 只发一句字幕的话，玩家截图给我的永远只有"又踩空了"，查不下去。
+            Core.CloudDialogueService.AddLog("踩空捞回 @" + World.ZoneBuilder.CurrentZoneId +
+                " 掉落点 " + V(transform.position) + " → 捞到 " + V(back));
+            Snap(back);
+            Core.GameEvents.RaiseSubtitle("脚下踩空了——已经把你拉回刚才站稳的地方。");
+        }
+
+        /// <summary>
+        /// "这一关的入口在哪"——捞人时唯一该用的落点。
+        ///
+        /// 【为什么不能直接查区域表】
+        /// 老代码写的是 `PlayerSpawnOf(IndexOfZone(CurrentZoneId))`，而 `IndexOfZone`
+        /// 查不到时会**静默返回 0**，0 号区就是独居小屋。生成场景被卸载后 id 会被改成
+        /// `xxx_closed`，此时这一行就把"我在自己关卡里"翻译成了"我在独居小屋"，
+        /// 于是玩家在战斗中被一脚踢回经典关卡。
+        /// 现在按可靠性排序找：场景自己的落点 → 区域表里**确实查到**的那一条 →
+        /// 最后才是 0 号区。<paramref name="trusted"/> 为 false 表示"只剩最后的兜底了"，
+        /// 调用方可以据此判断这处地方是不是真的没救了。
+        /// </summary>
+        static Vector3 HomeSpawn(out bool trusted)
+        {
+            if (OpenWorld.SiteGate.TryCurrentSiteSpawn(out var siteSpawn))
+            {
+                trusted = true;   // 落点下面有无条件铺的 GroundPad，不用再验地
+                return siteSpawn;
+            }
+            int zone = World.ZoneBuilder.IndexOfZone(World.ZoneBuilder.CurrentZoneId);
+            if (zone >= 0)
+            {
+                var p = World.ZoneBuilder.PlayerSpawnOf(zone);
+                if (HasGroundUnder(p)) { trusted = true; return p; }
+            }
+            trusted = false;
+            return World.ZoneBuilder.PlayerSpawnOf(0);
+        }
+
+        void Snap(Vector3 to)
+        {
+            _cc.enabled = false;
+            transform.position = to + Vector3.up * 0.2f;
+            _cc.enabled = true;
+            _vy = 0f;
+            _hVel = Vector3.zero;
+        }
+
+        static string V(Vector3 p) =>
+            "(" + Mathf.RoundToInt(p.x) + "," + Mathf.RoundToInt(p.y) + "," + Mathf.RoundToInt(p.z) + ")";
+
+        /// <summary>附近有没有活着的敌人（判断"是不是正在打"，别在战斗中把人传走）。</summary>
+        static bool EnemyNearby(Vector3 pos, float radius)
+        {
+            foreach (var e in Object.FindObjectsByType<AI.EnemyController>(
+                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                if ((e.transform.position - pos).sqrMagnitude <= radius * radius) return true;
+            }
+            return false;
+        }
+
+        /// <summary>这个点下方 30 米内有没有实地（有就敢往那儿捞人）。</summary>
+        static bool HasGroundUnder(Vector3 p)
+        {
+            if (p.sqrMagnitude < 0.01f) return false;
+            return Physics.Raycast(p + Vector3.up * 2f, Vector3.down, 30f,
+                ~0, QueryTriggerInteraction.Ignore);
+        }
+
+        /// <summary>
+        /// 传送之后必须调用：清掉上一处的"最近站稳点"。
+        ///
+        /// 不清的话，人刚被传到新关卡、还没落地就触发一次兜底，会被**拽回上一关**——
+        /// 表现成"刚进去就被弹出来"，比掉进虚空更让人摸不着头脑。
+        /// </summary>
+        public void NotifyTeleported()
+        {
+            _lastSafePos = Vector3.zero;
+            _safeStamp = 0f;
+            _vy = 0f;
+            _hVel = Vector3.zero;
+
+            // 传送 = 离开了此前所有触发体，所以在册的减速一律作废。
+            //
+            // 实机日志：连着三次「进入场景 … · 移速倍率 0.45 · 行动力 100 · 蹲伏 否」——
+            // 0.45 正是拖延泥潭的减速值。玩家在独居小屋的泥潭里被登记了一条减速，
+            // 然后传送进生成关卡：泥潭对象还在原地好好的（所以"来源销毁即自愈"不生效），
+            // OnTriggerExit 也因为人是被瞬移走的而没跑到，于是这条减速**永久跟着他**。
+            // 他反馈的"在自动生成的关卡里不能跑动"就是这个——不是关卡的问题。
+            ClearAllSlow();
+        }
+
+        void CarryByPlatform()
+        {
+            if (_cc == null) return;
+            Transform found = null;
+            if (_cc.isGrounded)
+            {
+                // 从腰部往下扫一个略小于胶囊半径的球：命中脚下的实体碰撞体
+                // 起点/长度必须按胶囊体算：角色 transform 原点在胶囊【中部】，
+                // 上一版从 +0.7（胸口）只往下扫 1.3m，最远到 -0.6——而脚底在 -1.0，
+                // 射线**从来没够到过地面**，所以车顶承载一直不生效。
+                Vector3 castO = transform.position + _cc.center + Vector3.up * 0.1f;
+                float castLen = _cc.height * 0.5f + 0.5f;
+                if (Physics.SphereCast(castO,
+                        Mathf.Max(0.1f, _cc.radius * 0.85f), Vector3.down,
+                        out RaycastHit hit, castLen, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    var t = hit.collider != null ? hit.collider.transform : null;
+                    if (t != null && !t.IsChildOf(transform)) found = t;
+                }
+            }
+
+            if (found != null && found == _platform)
+            {
+                Vector3 delta = found.position - _platformLastPos;
+                // 只跟随合理幅度的位移：平台被瞬移/重生时不要把角色一起甩飞
+                if (delta.sqrMagnitude > 1e-8f && delta.sqrMagnitude < 25f) _cc.Move(delta);
+            }
+            _platform = found;
+            if (found != null) _platformLastPos = found.position;
+        }
 
         /// <summary>本帧摇杆的世界方向（相机相对，零向量=未推杆）。
         /// 技能连招据此判断玩家是否正在主动引导方向，从而让出自动吸附。</summary>
@@ -125,7 +438,17 @@ namespace AdversityRoad.Player
                 _dodgeTimer -= dt;
                 _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
-                return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次（连续翻滚）
+                // 【收势取消】：滚动主体走完（>62%）之后，攻击/跳/再次翻滚可以立刻打断收势。
+                // 此前必须把整段滚翻播完才能做别的事——"闪完还要等一下才打得出来"，
+                // 于是玩家的体感是闪避又慢又亏。大作里翻滚的收招帧都是可取消的。
+                if (_dodgeTimer > 0f && _dodgeTimer < _dodgeDur * (1f - DodgeCancelAt) &&
+                    (_inputBuf.Has("Dodge", DodgeBufferWindow) || _inputBuf.Has("Jump", JumpBufferWindow) ||
+                     (_pcc != null && _pcc.HasBufferedAttack)))
+                {
+                    _dodgeTimer = 0f;
+                    if (_combat != null) _combat.RequestState(CombatState.Locomotion);
+                }
+                if (_dodgeTimer > 0f) return;   // 翻滚中按下的闪避已入缓冲，滚完立刻接下一次
             }
 
             bool dodgePressed = _inputBuf.Has("Dodge", DodgeBufferWindow);
@@ -182,6 +505,9 @@ namespace AdversityRoad.Player
             float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
+            // 室内只走不跑：在自己家里冲刺既不合情理，也是"转一圈就晕"的一部分——
+            // 屋里两三步一堵墙，全速跑动时镜头与碰撞都来不及跟上。
+            if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
@@ -228,6 +554,12 @@ namespace AdversityRoad.Player
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
                 // 有专用翻滚片段时：闪避时长匹配片段（完整呈现整个滚翻动作），
                 // 总位移保持恒定（速度反比时长），无片段沿用默认参数
+                // 翻滚时长：**不再迁就片段长度**。
+                // 之前是 clip×0.85 夹到 [0.42,0.70]——一段 0.8 秒的滚翻片段会让翻滚
+                // 整整锁 0.68 秒，比大作里的翻滚（0.35~0.5s）慢一半，敌人一套连招
+                // 打完你还在地上滚。现在固定夹到 [0.30,0.42]，片段由 PlayableAnimator
+                // 按时长驱动加速播完（本作动作系统本来就是时长驱动的），
+                // 动作照样完整演，只是演得跟得上战斗节奏。
                 float dur = dodgeDuration;
                 _dodgeSpd = dodgeSpeed;
                 if (_anim != null)
@@ -235,12 +567,16 @@ namespace AdversityRoad.Player
                     float clipLen = _anim.ActionClipLength(PoseState.Dodge);
                     if (clipLen > 0.1f)
                     {
-                        dur = Mathf.Clamp(clipLen * 0.85f, 0.42f, 0.7f);
+                        dur = Mathf.Clamp(clipLen * 0.55f, 0.30f, 0.42f);
                         _dodgeSpd = dodgeSpeed * dodgeDuration / dur;   // 位移总量不变
                     }
                 }
+                _dodgeDur = dur;
                 _dodgeTimer = dur;
-                _iframeTimer = dodgeIFrames;
+                if (_anim != null) _anim.DodgeDuration = dur;   // 动画按同一时长播完
+                // 无敌帧覆盖滚动主体（72%），只留收势尾巴可被打中：
+                // "读招成功却还是被打到"必须是玩家读错了，而不是系统没给够帧。
+                _iframeTimer = Mathf.Max(dodgeIFrames, dur * IFrameRatio);
                 if (_combat != null) _combat.RequestState(CombatState.Dodge);
                 return;
             }
@@ -253,6 +589,8 @@ namespace AdversityRoad.Player
             Vector3 targetVel = moveDir * speed;
             float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
             _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
+            CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
+            FallGuard();                // 掉出世界的兜底捞回
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
             // 快速灵活转身：目标夹角越大转得越快

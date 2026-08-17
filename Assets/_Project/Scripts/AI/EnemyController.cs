@@ -54,11 +54,26 @@ namespace AdversityRoad.AI
         Material _dangerRingMat;  // 红圈材质（危险攻击时染更亮的橙红）
         bool _perilous;           // 本次攻击为「危险攻击」：不可格挡，只能闪避（大作红光警示）
 
+        /// <summary>起手前摇下限（秒）：对玩家的可反应性承诺，任何敌人都不得低于此值。</summary>
+        public const float MinWindup = 0.5f;
+
+        /// <summary>连击追加段的前摇（秒）：比起手短，但绝不为零。</summary>
+        public const float ComboWindup = 0.34f;
+
+        /// <summary>是否正处于攻击前摇（威胁指示器据此在屏幕边缘标出看不见的敌人）。</summary>
+        public bool Telegraphing => _telegraphing;
+
+        /// <summary>本次前摇是否为不可格挡的危险攻击。</summary>
+        public bool PerilousTelegraph => _telegraphing && _perilous;
+
         static readonly Color TeleNormal = new Color(0.9f, 0.15f, 0.1f);
         static readonly Color TelePerilous = new Color(1f, 0.35f, 0f);
         bool _telegraphing;       // 是否处于前摇（脉冲放大红圈/警示，让读招更醒目）
         Vector3 _dangerRingBaseScale;
         float _telegraphT;
+
+        /// <summary>敌方武术类型（方案 10.5）：决定它的动作语言与它考验玩家的那一项能力。</summary>
+        [HideInInspector] public MartialArchetype archetype = MartialArchetype.Fist;
 
         /// <summary>兵器/心念弹的主题色（生成时由外部注入）。</summary>
         [HideInInspector] public Color themeColor = new Color(0.7f, 0.4f, 0.9f);
@@ -69,6 +84,20 @@ namespace AdversityRoad.AI
 
         /// <summary>安抚状态（旧我整合阶段）：停止一切攻击与追击，站在原地等待整合。</summary>
         [HideInInspector] public bool pacified;
+
+        /// <summary>
+        /// 候场状态（群战人数上限）：这一个还没轮到上场——不追击、不出手、不喊话，
+        /// 在自己那一带待着。但它**照样能被打到**，而且挨一下就立刻入场（见 TakeHit）。
+        ///
+        /// 与 pacified 的区别：pacified 是剧情态（连伤害都免疫），
+        /// 这个只是排队。玩家反馈"四个以上敌人加大 Boss 一起围上来，不公平"——
+        /// 攻击令牌只挡住了同时**出手**的人数，挡不住同时**围过来喊话**的人数，
+        /// 场面上仍然是六个打一个。真正要限的是同时参战的人头。
+        /// </summary>
+        [HideInInspector] public bool holdPosition;
+
+        /// <summary>玩家主动打过它：从此不再被排进候场队列（打了就得认真打完）。</summary>
+        [HideInInspector] public bool provoked;
 
         /// <summary>血线保护（0-1）：血量不会被打到该比例以下（旧我必须走整合结局而非击杀）。</summary>
         [HideInInspector] public float minHpFloor = 0f;
@@ -124,11 +153,18 @@ namespace AdversityRoad.AI
             _dangerRing.transform.localScale = new Vector3(2.6f, 0.03f, 2.6f);
             _dangerRingBaseScale = _dangerRing.transform.localScale;
             var rr = _dangerRing.GetComponent<MeshRenderer>();
-            Material m = baseMaterial != null ? new Material(baseMaterial)
-                : new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-            m.color = new Color(0.9f, 0.15f, 0.1f);
+            // 【必须用 Unlit】：红圈是给玩家看的警示 UI，不是场景里的一块地板。
+            // 之前跟着敌人的 Lit 材质走，夜间/暗巷关卡里环境光一低，红圈就跟着变成
+            // 一圈几乎看不见的深褐色——玩家反馈的"看不清敌人的状况、突然就掉血"
+            // 有一半是这么来的：警示确实亮了，只是在那种光照下看不见。
+            // Unlit 不受光照影响，白天黑夜一样醒目；再关掉投影与接收阴影，避免它自己发黑。
+            Material m = new Material(
+                Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+            m.color = TeleNormal;
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
             rr.sharedMaterial = m;
+            rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rr.receiveShadows = false;
             _dangerRingMat = m;
             _dangerRing.SetActive(false);
         }
@@ -221,6 +257,24 @@ namespace AdversityRoad.AI
                     if (poser != null) poser.SetPose(PoseState.Idle);
                 }
                 UpdateEmotion("平静");
+                return;
+            }
+
+            // 候场：还没轮到上场的那几个，站在自己那一带，不追不打不喊话。
+            // 硬直中不打断——被打飞的那一下要播完，否则会看到人被打中却瞬间站直。
+            if (holdPosition && State != EnemyState.Stagger)
+            {
+                if (State == EnemyState.Chase || State == EnemyState.Attack ||
+                    State == EnemyState.MentalAttack)
+                {
+                    Combat.CombatDirector.Release(this);
+                    ShowTelegraph(false);
+                    if (attackHitbox != null) attackHitbox.DisableHitbox();
+                    StopMoving();
+                    State = EnemyState.Idle;
+                }
+                PatrolTick();
+                UpdateEmotion("旁观");
                 return;
             }
 
@@ -476,8 +530,12 @@ namespace AdversityRoad.AI
 
             // 前摇（等级越高越短，越难反应）：头顶「！/危」跳动 + 脚下红圈脉冲 + 警示音
             // = 明确读招/闪避窗口，蓄势姿态先行，判定框随后才开。
-            float windup = Mathf.Lerp(0.7f, 0.42f, profile.aggression);
-            if (_perilous) windup += 0.12f;   // 危险攻击前摇略长：给足闪避反应窗口
+            // 前摇下限 MinWindup 是【对玩家的硬承诺】：无论敌人多凶，
+            // 从亮警示到判定框开启至少有这么久，玩家总有反应余地。
+            // 上一版最快只有 0.42s——扣掉人的视觉反应（~0.25s）和翻滚起始帧，
+            // 高攻击性精英的招几乎是不可躲的，读作"没有征兆"。
+            float windup = Mathf.Max(MinWindup, Mathf.Lerp(0.75f, 0.5f, profile.aggression));
+            if (_perilous) windup += 0.15f;   // 危险攻击前摇更长：给足闪避反应窗口
             ShowTelegraph(true, _perilous);
             GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.5f, _perilous ? 0.02f : 0.08f);
             if (poser != null) poser.SetPose(PoseState.Charge);
@@ -529,7 +587,15 @@ namespace AdversityRoad.AI
                 var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
                 _attackPose = pool[Random.Range(0, pool.Length)];
                 FaceTarget();
-                Invoke(nameof(OpenAttackHitbox), 0.26f);
+                // 【连击段同样要有前摇】——此前这里直接排 OpenAttackHitbox，
+                // 也就是说敌人一套连招里只有第一下亮「！」，第二、三下是**零征兆**打到脸上。
+                // 玩家反馈的"毫无理由、毫无征兆就掉血"，绝大多数就是这两下。
+                // 连击段的前摇比起手短（保留连招的压迫感），但绝不为零：
+                // 本作对玩家的承诺是「任何一次会造成伤害的攻击，出手前必定有可见警示」。
+                _perilous = false;   // 连击段不做不可格挡（不可格挡只出现在有完整前摇的起手）
+                ShowTelegraph(true, false);
+                GameAudio.Play(GameAudio.Sfx.Alert, 0.4f, 0.12f);
+                Invoke(nameof(OpenAttackHitbox), ComboWindup);
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
             else
@@ -681,6 +747,11 @@ namespace AdversityRoad.AI
                     new Color(0.7f, 0.85f, 1f), 1.15f);
                 return;
             }
+            // 候场中被打：立刻入场。排队是为了不围殴玩家，不是给玩家一个
+            // 站着挨打不还手的木桩——主动上去打它，它当然该还手。
+            holdPosition = false;
+            provoked = true;
+
             // Boss 护体（明天之王泥壳等）：伤害大幅削减时给出机制提示
             if (externalDamageMult <= 0.35f && Time.time - _lastHurtT > 3f)
                 CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.4f, "护体",
@@ -733,22 +804,45 @@ namespace AdversityRoad.AI
                 }
             }
 
-            // ---- 对攻：敌人正处于出招前摇时被打 = 双方硬碰硬，都掉血；
-            //      攻击力高的一方受伤更小、给对方造成更大伤害（必中技不触发对攻反伤）----
-            if (_telegraphing && _player != null && !dmg.unblockable)
+            // ---- 打断前摇：敌人在出招前摇里被打中，出招被打断 ----
+            //
+            // 【这里原来是本作最严重的一处设计错误】
+            // 旧逻辑是"对攻"：只要在敌人前摇期间打中它，就【无条件反弹一份伤害给玩家】。
+            // 它同时踩了三个大忌，玩家的"防不胜防、做什么防御都没用"基本全出自这里：
+            //   ① 这份伤害【躲不掉】。它由玩家自己的攻击触发，而玩家正在出招——
+            //      既不可能同时按住格挡，也不在翻滚无敌帧里。跳、闪、挡一个都用不上。
+            //   ② 这份伤害【看不出来源】。玩家的招式判定框长达 2~4 米，站在三米外
+            //      挥一刀照样触发，于是屏幕上就是"离得老远突然掉血"。
+            //   ③ 它【惩罚了游戏自己教的东西】。全套读招系统（前摇警示、危险攻击、
+            //      威胁指示器）都在教玩家"看见前摇就抢攻"，抢攻却要挨一下无法规避的伤害。
+            //
+            // 成熟动作游戏在这一格的通行规则是相反的：**打中前摇＝打断它**，这就是读招的奖励；
+            // 精英/首领可以有霸体（轻击打不断），但那时它的攻击【依然带着完整前摇打出来】，
+            // 玩家仍然能闪能挡——风险始终是可规避的，而不是凭空扣血。照此重写：
+            // 破绽期要在【打断之前】就判定完：下面的打断会把敌人推进 Stagger，
+            // 如果之后再看 State，等于"每一次成功打断都算处决"——处决横幅与慢镜会满屏刷，
+            // 且把削韧破防这条正经循环的收益冲淡。处决只认真正靠削韧打出来的破绽。
+            bool wasStaggered = State == EnemyState.Stagger;
+
+            if (_telegraphing && !dmg.unblockable)
             {
-                var pc = _player.GetComponent<PlayerCombatController>();
-                if (pc != null)
+                // 霸体：精英/首领对轻击不吃打断（但重击/绝招仍打得断）
+                bool superArmor = (profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
+                                  && !DamageResolver.IsHeavy(dmg);
+                Vector3 mid = _player != null
+                    ? (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f
+                    : transform.position + Vector3.up * 1.3f;
+                if (superArmor)
                 {
-                    bool playerStronger = dmg.physicalDamage >= profile.physicalDamage;
-                    pc.TakeHit(new DamageInfo
-                    {
-                        physicalDamage = profile.physicalDamage * (playerStronger ? 0.35f : 0.75f),
-                        sourcePosition = transform.position
-                    });
-                    Vector3 mid = (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f;
-                    CombatFeedback.DamageNumber(mid, "对攻！", new Color(1f, 0.6f, 0.2f), 1.5f);
-                    CombatFeedback.WeaponClash(mid);   // 双方兵器硬碰硬：撞击火花
+                    // 打不断：明确告诉玩家"这一下没能打断，它的招还会出来"——
+                    // 招还带着前摇，所以仍然躲得掉，玩家知道该准备闪了
+                    CombatFeedback.DamageNumber(mid, "霸体·未打断", new Color(0.8f, 0.8f, 0.85f), 1.1f);
+                }
+                else
+                {
+                    ForceBreak(0.9f);   // 出招被打断 + 短硬直：读招抢攻的正收益
+                    CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
+                    CombatFeedback.WeaponClash(mid);
                 }
             }
 
@@ -769,9 +863,9 @@ namespace AdversityRoad.AI
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法。
             // 处决（大作破韧终结）：破绽期用重击/大招命中 = 巨额增伤 + 横幅 + 强顿帧慢镜，
             // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
-            bool execHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            bool execHeavy = DamageResolver.IsHeavy(dmg);
             bool execution = false;
-            if (State == EnemyState.Stagger)
+            if (wasStaggered)
             {
                 if (execHeavy)
                 {
@@ -796,22 +890,25 @@ namespace AdversityRoad.AI
             // 命中点：优先用判定框算出的【真实接触身体点】，退回估算（朝攻击者一侧胸口）
             Vector3 contact = dmg.hasContact ? dmg.contactPoint
                 : transform.position + dirA * 0.55f + Vector3.up * 1.25f;
-            // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定
-            bool fbHeavy = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
-            CombatFeedback.HitImpact(contact, sparkCol, fbHeavy);
+            // 重击判定用原始招式数值（不受调试减伤影响），保证打击手感稳定；
+            // 力度 0-1 连续分级：火花密度、闪核大小、顿帧时长、受击冲量都按它给，
+            // 一记直拳与一记裂地跳劈的反馈差距一眼可辨
+            bool fbHeavy = DamageResolver.IsHeavy(dmg);
+            float power = DamageResolver.Power01(dmg);
+            CombatFeedback.HitImpact(contact, sparkCol, fbHeavy, true, power);
             // 血花：兵器/拳脚实打实击中血肉（格挡住的不出血）——从接触点顺打击方向外喷
             if (!guardedHit && dmg.physicalDamage > 0.5f)
                 CombatFeedback.BloodSpray(contact, -dirA);
             // 部位受击反应：命中头就甩头、命中腿就屈弯，接触点弹部位标签；
             // 连续两次打中同一部位就有两次可见反应（冲量叠加，打几下动几下）
             if (!guardedHit)
-                HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy);
+                HitReactionOverlay.Trigger(transform, contact, -dirA, fbHeavy, 0.85f + power * 0.75f);
             CombatFeedback.HitFlash(gameObject);
             _lastHurtT = Time.time;   // 受击眩晕计时：攻势未停就没能力还手
             // 处决命中：仪式感反馈——横幅「处决」+ 强顿帧 + 短慢镜 + 能量爆发
             if (execution)
             {
-                CombatFeedback.HitStop(0.12f);
+                CombatFeedback.HitStop(0.13f);
                 CombatFeedback.SlowMo(0.4f, 0.16f);
                 CombatFeedback.EnergyBurst(contact, new Color(1f, 0.8f, 0.3f), 1.2f);
                 CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近
@@ -829,8 +926,12 @@ namespace AdversityRoad.AI
                 // 位移驱动的步态会同步迈脚，读作"被打得连退几步"。
                 // 重击不走这里：位移完全交给 KnockFly 与倒地动画同步（否则双重
                 // 位移=先漂移一段再倒下，不真实）
+                // knockback 是【力度记号】(1~16)，不是米数——这里必须换算。
+                // 上一版直接 ×0.85 当米用：巨剑横斩 knockback 4.5 → 一记轻击把人推开
+                // 3.8 米，连招直接脱靶。动作游戏的普通连段推开量在 0.2~0.8 米，
+                // 目的是「打得动」而不是「打飞」——推远了反而接不上下一段。
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * dmg.knockback * 0.5f;
+                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f);
                 StartCoroutine(KnockSlide(kb));
             }
 
@@ -850,10 +951,14 @@ namespace AdversityRoad.AI
             // 受击反应（去掉"铁桩感"的关键）：
             // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
             // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
-            bool heavyHit = dmg.postureDamage >= 22f || dmg.physicalDamage >= 28f;
+            bool heavyHit = fbHeavy;
             if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
             {
-                _flinchCd = profile.category == EnemyCategory.Boss ? 2.4f : 1.1f;
+                // 受击霸体冷却 1.1→0.7s（Boss 2.4→1.9s）：原值下杂兵在一整套连段里
+                // 只踉跄一次，剩下四五下全程站着不动——这是"打上去没反应/攻击力弱"
+                // 最刺眼的一处。缩短后普通敌人几乎每两下就吃一次硬直，但仍保留
+                // 霸体窗口，不至于被彻底连到死。
+                _flinchCd = profile.category == EnemyCategory.Boss ? 1.9f : 0.7f;
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
                 CancelInvoke(nameof(FireProjectile));
@@ -868,14 +973,22 @@ namespace AdversityRoad.AI
                 if (heavyHit)
                 {
                     _downed = true;
-                    bool bigLaunch = dmg.knockback >= 4f || dmg.physicalDamage >= 45f;
+                    // 「击飞」是少数招式的特权，不是重击的默认表现。
+                    // 门槛从 knockback≥4 抬到 ≥8：4 这条线连巨剑横斩(4.5)都算数，
+                    // 于是普通连段每隔几下就把人抛出去一次——既接不上连招，
+                    // 也不是大作的做法（大作里只有专门的吹飞技/终结技才击飞）。
+                    // ≥8 之后只剩旋身空翻踢(9)与成招终结(×1.8)能触发。
+                    bool bigLaunch = dmg.knockback >= 8f || dmg.physicalDamage >= 60f;
                     Vector3 flyDir = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position);
                     if (bigLaunch)
                     {
                         float flyDur = 0.55f;
                         _staggerTimer = Mathf.Max(_staggerTimer, flyDur + 0.6f);
                         if (poser != null) poser.PlayTumble(flyDur);
-                        StartCoroutine(KnockFly(flyDir, 5.5f + dmg.knockback * 0.6f, flyDur));
+                        // 距离同样要换算并封顶：原式 5.5+knockback*0.6 在 knockback=16
+                        // （成招终结的旋身空翻踢）时算出 15 米，人直接飞出视野。
+                        StartCoroutine(KnockFly(flyDir,
+                            Mathf.Clamp(1.6f + dmg.knockback * 0.22f, 1.6f, 4.2f), flyDur));
                     }
                     else
                     {

@@ -32,41 +32,104 @@ namespace AdversityRoad.World
     {
         public static string CurrentZoneId = "home";
 
-        static readonly string[] ZoneIds =
+        // V2.0：区域表改为可在运行时追加——AI 生成的场景会作为**动态区域**注册进来，
+        // 于是传送、雾色、剧情锁、存档里的当前区域都能像对待原生区域一样对待它。
+        static readonly List<string> ZoneIds = new List<string>
             { "home", "dojo", "street", "job", "plaza", "court", "judgment", "swamp", "echo",
               "gamble", "carpark", "gazehall", "crossroad", "goalroom", "favorhall", "paycorridor",
               "alley", "garage", "ward",
-              "library", "hall", "bridge", "exhibit", "tower" };
-        static readonly string[] ZoneNames =
+              "library", "hall", "bridge", "exhibit", "tower",
+              "city" };
+        static readonly List<string> ZoneNames = new List<string>
             { "独居小屋", "训练武馆", "噪声街区", "求职荒原", "城市广场", "责任转嫁法院",
               "小题大做审判庭", "拖延沼泽", "旧事回声馆",
               "两元赌桌", "债务车影", "眼神审判走廊", "陌生挑衅路口",
               "目标遗忘房", "老实人消耗局", "无限代付走廊",
               "饥饿荒巷", "车库寒夜", "病房回廊",
-              "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔" };
+              "哲学虚无图书馆", "无限追问大厅", "意志断桥", "失败展览馆", "意志塔",
+              "开放城区" };
+
+        /// <summary>静态区域数量（含开放城区）。索引 ≥ 此值的都是运行时生成的动态场景。</summary>
+        public const int StaticZoneCount = 25;
 
         public static string ZoneIdOf(int index) =>
-            index >= 0 && index < ZoneIds.Length ? ZoneIds[index] : "home";
+            index >= 0 && index < ZoneIds.Count ? ZoneIds[index] : "home";
 
         public static string ZoneNameOf(int index) =>
-            index >= 0 && index < ZoneNames.Length ? ZoneNames[index] : "";
+            index >= 0 && index < ZoneNames.Count ? ZoneNames[index] : "";
 
-        public static int ZoneCount => ZoneIds.Length;
+        public static int ZoneCount => ZoneIds.Count;
 
-        /// <summary>按区域 id 反查索引（找不到回退 0）。</summary>
+        /// <summary>是不是运行时生成的动态场景（AI 章节现造的地方）。</summary>
+        public static bool IsDynamicZone(int index) => index >= StaticZoneCount;
+
+        /// <summary>
+        /// 按区域 id 反查索引，**查不到返回 -1**。
+        ///
+        /// 【这里曾经是"打着打着穿越回独居小屋"的源头】
+        /// 老版本查不到就回退 0，而 0 号区正是独居小屋。于是任何一次查不到——
+        /// 生成场景被卸载后 id 改成了 `xxx_closed`、或区域表还没注册上——
+        /// 都会被静默翻译成"你在独居小屋"，下游的落点计算照单全收，
+        /// 把正在别处打架的玩家直接送回小屋。
+        /// 查不到就是查不到：返回 -1，让调用方自己决定该怎么兜底。
+        /// 需要"查不到当独居小屋"的老语义时用 <see cref="IndexOfZoneOrHome"/>，
+        /// 但那只该用在显示上，绝不该用来算传送落点。
+        /// </summary>
         public static int IndexOfZone(string id)
         {
-            for (int i = 0; i < ZoneIds.Length; i++)
+            if (string.IsNullOrEmpty(id)) return -1;
+            for (int i = 0; i < ZoneIds.Count; i++)
                 if (ZoneIds[i] == id) return i;
-            return 0;
+            return -1;
+        }
+
+        /// <summary>同上，但查不到时回退到 0 号区（仅供显示用途）。</summary>
+        public static int IndexOfZoneOrHome(string id)
+        {
+            int i = IndexOfZone(id);
+            return i < 0 ? 0 : i;
         }
 
         // 各区域玩家出生点的静态副本（BuildAll 时填充）：关卡选择面板传送用
-        static Vector3[] _spawnTable;
+        static readonly List<Vector3> _spawnTable = new List<Vector3>();
 
         public static Vector3 PlayerSpawnOf(int index) =>
-            _spawnTable != null && index >= 0 && index < _spawnTable.Length
-                ? _spawnTable[index] : Vector3.up * 1.1f;
+            index >= 0 && index < _spawnTable.Count ? _spawnTable[index] : Vector3.up * 1.1f;
+
+        /// <summary>
+        /// 注册一个运行时生成的场景为新区域，返回它的索引。
+        /// 同名场景重复注册时复用原索引并更新出生点（避免区域表无限增长）。
+        /// </summary>
+        public static int RegisterDynamicZone(string id, string name, Vector3 playerSpawn)
+        {
+            if (string.IsNullOrEmpty(id)) return 0;
+            for (int i = StaticZoneCount; i < ZoneIds.Count; i++)
+                if (ZoneIds[i] == id)
+                {
+                    ZoneNames[i] = name;
+                    while (_spawnTable.Count <= i) _spawnTable.Add(Vector3.up * 1.1f);
+                    _spawnTable[i] = playerSpawn;
+                    return i;
+                }
+
+            ZoneIds.Add(id);
+            ZoneNames.Add(string.IsNullOrEmpty(name) ? id : name);
+            while (_spawnTable.Count < ZoneIds.Count - 1) _spawnTable.Add(Vector3.up * 1.1f);
+            _spawnTable.Add(playerSpawn);
+            return ZoneIds.Count - 1;
+        }
+
+        /// <summary>卸载动态场景时注销（保留占位以免既有索引错位，改名为已关闭）。</summary>
+        public static void UnregisterDynamicZone(string id)
+        {
+            for (int i = StaticZoneCount; i < ZoneIds.Count; i++)
+                if (ZoneIds[i] == id)
+                {
+                    ZoneIds[i] = id + "_closed";
+                    ZoneNames[i] = ZoneNames[i] + "（已关闭）";
+                    return;
+                }
+        }
 
         public static void BuildAll(WorldContext ctx)
         {
@@ -96,7 +159,8 @@ namespace AdversityRoad.World
                 new Vector3(6000, 0, 0),
                 new Vector3(6300, 0, 0),
                 new Vector3(6600, 0, 0),
-                new Vector3(6900, 0, 0)
+                new Vector3(6900, 0, 0),
+                new Vector3(7400, 0, 0)      // 24 开放城区（连续城市，占地更大，间距拉到 500）
             };
             ctx.playerSpawns = new[]
             {
@@ -123,7 +187,8 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[20] + new Vector3(0, 1.1f, -32),
                 ctx.zoneOrigins[21] + new Vector3(0, 1.1f, -42),
                 ctx.zoneOrigins[22] + new Vector3(0, 1.1f, -28),
-                ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30)
+                ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[24] + new Vector3(-96, 1.1f, 20)   // 开放城区：从家中醒来
             };
             ctx.enemySpawns = new[]
             {
@@ -150,10 +215,12 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[20] + new Vector3(0, 1.1f, 26),
                 ctx.zoneOrigins[21] + new Vector3(0, 1.1f, 34),
                 ctx.zoneOrigins[22] + new Vector3(0, 1.1f, 16),
-                ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26)
+                ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26),
+                ctx.zoneOrigins[24] + new Vector3(88, 1.1f, 35)    // 开放城区：边缘区小巷
             };
 
-            _spawnTable = (Vector3[])ctx.playerSpawns.Clone();
+            _spawnTable.Clear();
+            _spawnTable.AddRange(ctx.playerSpawns);
 
             BuildHome(ctx);
             BuildDojo(ctx);
@@ -179,6 +246,71 @@ namespace AdversityRoad.World
             BuildWillBridge(ctx);
             BuildFailureExhibit(ctx);
             BuildWillTower(ctx);
+
+            OpenWorld.OpenWorldBuilder.Build(ctx, 24);   // V2.0：一片连续可自由移动的城市
+
+            EnsureZoneLighting(ctx);
+            EnsureSpawnPads(ctx);
+        }
+
+        /// <summary>
+        /// 落点保底：确保每个区域的玩家出生点脚下有实地。
+        ///
+        /// 传送的落点统一取该区的出生点，而 24 个区的地板是各自手工摆的——
+        /// 只要有一个区的地板没覆盖到它自己的出生点坐标，玩家一进这一关就直接下坠。
+        /// 玩家反馈的"通关进入下一关掉进深渊"就是这么来的，而且这种问题
+        /// 靠肉眼审 24 个建场函数根本查不全。
+        ///
+        /// 这里改成**建完世界统一验一遍**：从出生点上方往下探，探不到地面就补一块
+        /// 6×6 的落地台。已经有地板的区域一块都不会多加，所以对现有关卡零影响。
+        /// </summary>
+        static void EnsureSpawnPads(WorldContext ctx)
+        {
+            if (ctx.playerSpawns == null) return;
+            Physics.SyncTransforms();   // 刚建出来的碰撞体要先同步，否则射线打不到
+            for (int z = 0; z < ctx.playerSpawns.Length; z++)
+            {
+                Vector3 c = ctx.playerSpawns[z];
+                // 从出生点上方 3 米往下探 8 米：够穿过角色胶囊高度，也够发现低一点的台阶
+                if (Physics.Raycast(c + Vector3.up * 3f, Vector3.down, out RaycastHit hit, 8f,
+                        ~0, QueryTriggerInteraction.Ignore)
+                    && hit.point.y > c.y - 4f)
+                    continue;
+                Box(ctx, "GroundPad_Spawn_" + ZoneIdOf(z), new Vector3(c.x, -0.25f, c.z),
+                    new Vector3(6f, 0.5f, 6f), new Color(0.34f, 0.36f, 0.42f));
+            }
+        }
+
+        /// <summary>
+        /// 补灯：24 个区域里只有 6 个手工摆了路灯（街道/求职荒原/广场/挑衅路口/饥饿荒巷等），
+        /// 其余 18 个——包括截图里的小题大做审判庭——**一盏灯都没有**。
+        /// 夜里只剩环境光与一盏斜射主光，地面和墙面就糊成一片黑。
+        ///
+        /// 与其在十八个建场函数里逐个手摆，不如统一补一遍：凡是自身半径 60m 内
+        /// 没有任何灯的区域，围着它的出生点补一圈四盏。已经手工布过灯的区域
+        /// （灯就在附近）自动跳过，不会叠加。
+        /// </summary>
+        static void EnsureZoneLighting(WorldContext ctx)
+        {
+            if (ctx.dayNight == null || ctx.playerSpawns == null) return;
+            for (int z = 0; z < ctx.playerSpawns.Length; z++)
+            {
+                Vector3 c = ctx.playerSpawns[z];
+                c.y = 0f;
+                bool hasLamp = false;
+                foreach (var l in ctx.dayNight.lamps)
+                {
+                    if (l == null) continue;
+                    Vector3 lp = l.transform.position; lp.y = 0f;
+                    if ((lp - c).sqrMagnitude < 60f * 60f) { hasLamp = true; break; }
+                }
+                if (hasLamp) continue;
+                // 出生点四周一圈（错开正前方，免得挡住玩家出门的视线）
+                Lamp(ctx, c + new Vector3(-11f, 0, 6f));
+                Lamp(ctx, c + new Vector3(11f, 0, 6f));
+                Lamp(ctx, c + new Vector3(-13f, 0, 26f));
+                Lamp(ctx, c + new Vector3(13f, 0, 26f));
+            }
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -232,7 +364,12 @@ namespace AdversityRoad.World
             Mire(ctx, o + new Vector3(-3, 0, -5), new Vector3(7, 2, 5));
 
             // 出门传送门 → 训练武馆
-            MakePortal(ctx, o + new Vector3(0, 0, -10.5f), 1, ctx.playerSpawns[1]);
+            // 序章第一关只有一扇门：往前去训练武馆（没有上一关，所以没有回头门）
+            MakePortal(ctx, o + new Vector3(0, 0, -10.5f), PortalRole.Forward);
+            // V2.0：北墙的另一扇门 → 开放城区（走出去就是连续的真实城市，不再回菜单选关）。
+            // 城区不在章节序列里——它一直开着，也不参与"上一关/下一关"的推进，
+            // 所以这扇门用显式目标，不走章节解析。
+            MakePortal(ctx, o + new Vector3(-4, 0, 10.4f), 24, "开放城区");
         }
 
         // ================= 第二区：训练武馆 =================
@@ -255,10 +392,10 @@ namespace AdversityRoad.World
                 Box(ctx, "TrainingPost", o + new Vector3(-14 + i * 3, 1f, -14),
                     new Vector3(0.5f, 2f, 0.5f), new Color(0.6f, 0.45f, 0.3f));
 
-            MakePortal(ctx, o + new Vector3(-24f, 0, 0), 0, ctx.playerSpawns[0]);
-            MakePortal(ctx, o + new Vector3(24f, 0, 0), 2, ctx.playerSpawns[2]);
-            // 武馆后门 → 两元赌桌（公平与承诺线 其一，序章通关后解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, 22), 9, ctx.playerSpawns[9]);
+            // 门往里收到 ±21（地板边缘在 ±25）：加上门前地台后，门口前后左右都还有余量，
+            // 站定等待期间怎么走都不会走出地板。
+            MakePortal(ctx, o + new Vector3(-21f, 0, 0), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(21f, 0, 0), PortalRole.Forward);
         }
 
         // ================= 第三区：噪声街区 =================
@@ -340,12 +477,8 @@ namespace AdversityRoad.World
                 ctx.pedestrianSpawns.Add(o + new Vector3(-20 + i * 22, 1f, -9));
             }
 
-            MakePortal(ctx, o + new Vector3(-50f, 0, 8), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(50f, 0, 8), 3, ctx.playerSpawns[3]);
-            // 拖延线主入口：街道尽头东南侧——先进「目标遗忘房」找回目标，再入沼泽
-            MakePortal(ctx, o + new Vector3(42f, 0, -9), 13, ctx.playerSpawns[13]);
-            // 眼神审判走廊入口：街道西南侧（刺激线其二）
-            MakePortal(ctx, o + new Vector3(-42f, 0, -9), 11, ctx.playerSpawns[11]);
+            MakePortal(ctx, o + new Vector3(-50f, 0, 8), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(50f, 0, 8), PortalRole.Forward);
         }
 
         // ================= 第四区：求职荒原 =================
@@ -408,8 +541,8 @@ namespace AdversityRoad.World
             Lamp(ctx, o + new Vector3(-16, 0, 12));
             Lamp(ctx, o + new Vector3(20, 0, -12));
 
-            MakePortal(ctx, o + new Vector3(-40f, 0, 0), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(40f, 0, 0), 4, ctx.playerSpawns[4]);
+            MakePortal(ctx, o + new Vector3(-40f, 0, 0), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(40f, 0, 0), PortalRole.Forward);
         }
 
         // ================= 第五区：城市广场 =================
@@ -485,9 +618,9 @@ namespace AdversityRoad.World
             for (int i = 0; i < 4; i++)
                 ctx.pedestrianSpawns.Add(o + new Vector3(-18 + i * 12, 1f, 12 - i * 8));
 
-            MakePortal(ctx, o + new Vector3(-53f, 0, 0), 3, ctx.playerSpawns[3] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-53f, 0, 0), PortalRole.Back);
             // 边界与责任线入口：广场东门先入「老实人消耗局」，再到法院
-            MakePortal(ctx, o + new Vector3(44f, 0, 0), 14, ctx.playerSpawns[14]);
+            MakePortal(ctx, o + new Vector3(44f, 0, 0), PortalRole.Forward);
         }
 
         // ================= 第六区：责任转嫁法院 =================
@@ -604,10 +737,8 @@ namespace AdversityRoad.World
                 new Color(0.42f, 0.32f, 0.2f));
 
             // 返回老实人消耗局（边界线来路）/ 通往无限代付走廊（边界线其三）
-            MakePortal(ctx, o + new Vector3(15f, 0, -42), 14, ctx.playerSpawns[14] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(-18f, 0, 42), 15, ctx.playerSpawns[15]);
-            // 通往小题大做审判庭（审判席东侧，正对主通道尽头，一眼可见）——公平与承诺线继续
-            MakePortal(ctx, o + new Vector3(18f, 0, 28), 6, ctx.playerSpawns[6]);
+            MakePortal(ctx, o + new Vector3(15f, 0, -42), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(-18f, 0, 42), PortalRole.Forward);
         }
 
         // ================= 第七区：小题大做审判庭 =================
@@ -681,8 +812,8 @@ namespace AdversityRoad.World
                 new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
 
             // 传送门：回债务车影（公平线来路）/ 通往责任转嫁法院（边界线时代的通道）
-            MakePortal(ctx, o + new Vector3(-14f, 0, -35), 10, ctx.playerSpawns[10] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(14f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-14f, 0, -35), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(14f, 0, -35), PortalRole.Forward);
         }
 
         /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
@@ -803,8 +934,8 @@ namespace AdversityRoad.World
             SparkAltar(ctx, o + new Vector3(0, 0, 40));
 
             // 传送门：回目标遗忘房（拖延线来路）/ 通往旧事回声馆（旧我线开启即解锁）
-            MakePortal(ctx, o + new Vector3(-10f, 0, -46), 13, ctx.playerSpawns[13] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(28f, 0, 44), 8, ctx.playerSpawns[8]);
+            MakePortal(ctx, o + new Vector3(-10f, 0, -46), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(28f, 0, 44), PortalRole.Forward);
         }
 
         /// <summary>沼泽泥地：视觉贴片 + 减速/耗行动力触发区。深泥颜色更深。</summary>
@@ -974,8 +1105,8 @@ namespace AdversityRoad.World
             }
 
             // 传送门：回拖延沼泽 / 回独居小屋（安全屋——终局之后回家）
-            MakePortal(ctx, o + new Vector3(-14f, 0, -42), 7, ctx.playerSpawns[7] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(14f, 0, -42), 0, ctx.playerSpawns[0]);
+            MakePortal(ctx, o + new Vector3(-14f, 0, -42), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(14f, 0, -42), PortalRole.Forward);
         }
 
         /// <summary>旧事展柜：底座+半透明玻璃罩+内容物+回声光+标签，归档交互。</summary>
@@ -1088,8 +1219,8 @@ namespace AdversityRoad.World
             }
 
             // 传送门：回训练武馆（南）/ 通往债务车影（北，击败赖账王章节推进即解锁）
-            MakePortal(ctx, o + new Vector3(-8f, 0, -12), 1, ctx.playerSpawns[1] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(8f, 0, 12), 10, ctx.playerSpawns[10]);
+            MakePortal(ctx, o + new Vector3(-8f, 0, -12), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(8f, 0, 12), PortalRole.Forward);
         }
 
         // ================= 第十一区：债务车影（公平与承诺线 其二） =================
@@ -1179,8 +1310,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(14, 7f, 6), new Color(0.8f, 0.85f, 1f), 30);
 
             // 传送门：回两元赌桌（南）/ 通往小题大做审判庭（东北，公平线其三）
-            MakePortal(ctx, o + new Vector3(-10f, 0, -28), 9, ctx.playerSpawns[9] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(30f, 0, 26), 6, ctx.playerSpawns[6]);
+            MakePortal(ctx, o + new Vector3(-10f, 0, -28), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(30f, 0, 26), PortalRole.Forward);
         }
 
         // ================= 第十二区：眼神审判走廊（外界刺激线 其二） =================
@@ -1257,8 +1388,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 8f, 27), new Color(0.75f, 0.7f, 1f), 32);
 
             // 传送门：回噪声街区（南）/ 通往陌生挑衅路口（镜厅东北角）
-            MakePortal(ctx, o + new Vector3(0f, 0, -31), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(11f, 0, 35), 12, ctx.playerSpawns[12]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -31), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(11f, 0, 35), PortalRole.Forward);
         }
 
         // ================= 第十三区：陌生挑衅路口（外界刺激线 其三） =================
@@ -1338,8 +1469,8 @@ namespace AdversityRoad.World
             Lamp(ctx, o + new Vector3(-16, 0, 16));
 
             // 传送门：回眼神审判走廊（西南）/ 回噪声街区（东南，刺激线终战方向）
-            MakePortal(ctx, o + new Vector3(-30f, 0, -30), 11, ctx.playerSpawns[11] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(30f, 0, -30), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
+            MakePortal(ctx, o + new Vector3(-30f, 0, -30), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(30f, 0, -30), PortalRole.Forward);
         }
 
         // ================= 第十四区：目标遗忘房（拖延与目标线 其一） =================
@@ -1409,8 +1540,8 @@ namespace AdversityRoad.World
             lamp.color = new Color(1f, 0.88f, 0.68f);
 
             // 传送门：回噪声街区（南）/ 通往拖延沼泽（东北，拖延线其二）
-            MakePortal(ctx, o + new Vector3(-9f, 0, -14), 2, ctx.playerSpawns[2] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(13f, 0, 14), 7, ctx.playerSpawns[7]);
+            MakePortal(ctx, o + new Vector3(-9f, 0, -14), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(13f, 0, 14), PortalRole.Forward);
         }
 
         // ================= 第十五区：老实人消耗局（边界与责任线 其一） =================
@@ -1475,8 +1606,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 8f, 0), new Color(0.95f, 0.92f, 0.85f), 44);
 
             // 传送门：回城市广场（南）/ 通往责任转嫁法院（东北，边界线其二）
-            MakePortal(ctx, o + new Vector3(-10f, 0, -24), 4, ctx.playerSpawns[4] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(22f, 0, 22), 5, ctx.playerSpawns[5]);
+            MakePortal(ctx, o + new Vector3(-10f, 0, -24), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(22f, 0, 22), PortalRole.Forward);
         }
 
         // ================= 第十六区：无限代付走廊（边界与责任线 其三） =================
@@ -1552,8 +1683,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 8f, 30), new Color(0.9f, 0.95f, 0.9f), 32);
 
             // 传送门：回责任转嫁法院（南）/ 通往饥饿荒巷（圆厅东北，低谷线开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -35), 5, ctx.playerSpawns[5] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(11f, 0, 36), 16, ctx.playerSpawns[16]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -35), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(11f, 0, 36), PortalRole.Forward);
         }
 
         // ================= 第十七区：饥饿荒巷（低谷与生存线 其一） =================
@@ -1614,8 +1745,8 @@ namespace AdversityRoad.World
             wl.color = new Color(1f, 0.75f, 0.45f);
 
             // 传送门：回无限代付走廊（南）/ 通往车库寒夜（尽头西侧）
-            MakePortal(ctx, o + new Vector3(0f, 0, -31), 15, ctx.playerSpawns[15] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(-12f, 0, 30), 17, ctx.playerSpawns[17]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -31), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(-12f, 0, 30), PortalRole.Forward);
         }
 
         // ================= 第十八区：车库寒夜（低谷与生存线 其二） =================
@@ -1690,8 +1821,8 @@ namespace AdversityRoad.World
             booth.AddComponent<Combat.HelpPhoneBooth>();
 
             // 传送门：回饥饿荒巷（南）/ 通往病房回廊（东北）
-            MakePortal(ctx, o + new Vector3(-8f, 0, -25), 16, ctx.playerSpawns[16] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(26f, 0, 24), 18, ctx.playerSpawns[18]);
+            MakePortal(ctx, o + new Vector3(-8f, 0, -25), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(26f, 0, 24), PortalRole.Forward);
         }
 
         // ================= 第十九区：病房回廊（低谷与生存线 终战） =================
@@ -1763,8 +1894,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 7f, 30), new Color(0.95f, 0.97f, 1f), 34);
 
             // 传送门：回车库寒夜（南）/ 通往哲学虚无图书馆（大厅东北，哲学线开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -33), 17, ctx.playerSpawns[17] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(12f, 0, 36), 19, ctx.playerSpawns[19]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -33), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(12f, 0, 36), PortalRole.Forward);
         }
 
         // ================= 第二十区：哲学虚无图书馆（哲学与行动线 其一） =================
@@ -1828,8 +1959,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 7f, 18), new Color(0.85f, 0.75f, 0.55f), 38);
 
             // 传送门：回病房回廊（南）/ 通往无限追问大厅（北，其二开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -34), 18, ctx.playerSpawns[18] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(0f, 0, 34), 20, ctx.playerSpawns[20]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -34), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(0f, 0, 34), PortalRole.Forward);
         }
 
         // ================= 第二十一区：无限追问大厅（哲学与行动线 其二） =================
@@ -1893,8 +2024,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 7.5f, 12), new Color(0.75f, 0.7f, 0.95f), 36);
 
             // 传送门：回图书馆（南）/ 通往意志断桥（北，其三开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -35), 19, ctx.playerSpawns[19] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(0f, 0, 35), 21, ctx.playerSpawns[21]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -35), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(0f, 0, 35), PortalRole.Forward);
         }
 
         // ================= 第二十二区：意志断桥（哲学与行动线 终战） =================
@@ -1958,8 +2089,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 6f, 30), new Color(0.6f, 0.7f, 0.95f), 36);
 
             // 传送门：回追问大厅（桥头）/ 通往失败展览馆（Boss 平台北，旧我线开启即解锁）
-            MakePortal(ctx, o + new Vector3(-7f, 0, -46), 20, ctx.playerSpawns[20] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(12f, 0, 42), 22, ctx.playerSpawns[22]);
+            MakePortal(ctx, o + new Vector3(-7f, 0, -46), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(12f, 0, 42), PortalRole.Forward);
         }
 
         // ================= 第二十三区：失败展览馆（旧我与新我线 其一） =================
@@ -2058,8 +2189,8 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 7f, 16), new Color(0.9f, 0.9f, 0.95f), 36);
 
             // 传送门：回意志断桥（南）/ 通往意志塔（北，其二开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -30), 21, ctx.playerSpawns[21] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(0f, 0, 30), 23, ctx.playerSpawns[23]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -30), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(0f, 0, 30), PortalRole.Forward);
         }
 
         // ================= 第二十四区：意志塔（旧我与新我线 其二） =================
@@ -2125,11 +2256,11 @@ namespace AdversityRoad.World
             AddCeilingLight(o + new Vector3(0, 8f, -10), new Color(0.8f, 0.78f, 0.95f), 38);
 
             // 传送门：回失败展览馆（南）/ 通往旧事回声馆（塔侧，终局开启即解锁）
-            MakePortal(ctx, o + new Vector3(0f, 0, -32), 22, ctx.playerSpawns[22] + new Vector3(2, 0, 0));
-            MakePortal(ctx, o + new Vector3(-20f, 0, 24), 8, ctx.playerSpawns[8]);
+            MakePortal(ctx, o + new Vector3(0f, 0, -32), PortalRole.Back);
+            MakePortal(ctx, o + new Vector3(-20f, 0, 24), PortalRole.Forward);
         }
 
-        static void AddCeilingLight(Vector3 pos, Color color, float range)
+        public static void AddCeilingLight(Vector3 pos, Color color, float range)
         {
             var go = new GameObject("Court_Light");
             go.transform.position = pos;
@@ -2196,6 +2327,7 @@ namespace AdversityRoad.World
             /*21 意志断桥*/    M(new Color(0.82f,0.90f,1.12f),  -8, 16, 0.40f, new Color(0.06f,0.09f,0.18f)),
             /*22 失败展览馆*/  M(new Color(0.96f,0.97f,1.03f),  -6, 16, 0.32f, new Color(0.30f,0.32f,0.40f)),
             /*23 意志塔*/      M(new Color(1.04f,0.96f,0.80f),   6, 10, 0.28f, new Color(0.22f,0.22f,0.30f)),
+            /*24 开放城区*/    M(new Color(0.99f,0.98f,0.99f),   2, 6,  0.18f, new Color(0.58f,0.63f,0.72f)),
         };
 
         /// <summary>该区专属雾色（DayNightCycle 按当前所在区取用；越界回退中性）。</summary>
@@ -2252,16 +2384,38 @@ namespace AdversityRoad.World
                         4f, UnityEngine.AI.NavMesh.AllAreas))
                     pos = navHit.position + Vector3.up * 1f;
                 else continue;
-                var ped = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                ped.name = "Pedestrian";
+                // 行人此前就是一个【胶囊基元】——"完全没有人样"是字面意义上的：
+                // 那真的只是 CreatePrimitive(Capsule) 涂了个随机颜色。
+                // 改用项目里已有的程序化人形骨骼（HumanoidRig，玩家无模型时的同一套
+                // 兜底），十几个方块拼出头/躯干/四肢，手机上开销可忽略，
+                // 但一眼就是个人；再挂 SimpleAnimator 让他们走路时摆臂迈腿。
+                var ped = new GameObject("Pedestrian");
                 ped.transform.position = pos;
-                ped.transform.localScale = new Vector3(0.8f, 0.9f, 0.8f);
-                Paint(ctx, ped, new Color(
-                    0.4f + (float)rng.NextDouble() * 0.5f,
-                    0.4f + (float)rng.NextDouble() * 0.5f,
-                    0.4f + (float)rng.NextDouble() * 0.5f));
-                ped.AddComponent<UnityEngine.AI.NavMeshAgent>();
-                ped.AddComponent<PedestrianWanderer>();
+
+                var visual = new GameObject("Visual").transform;
+                visual.SetParent(ped.transform, false);
+                var rig = Combat.HumanoidRig.Build(visual, PedestrianLook(rng), ctx.mat);
+
+                // 用 HumanoidAnimator（驱动各关节的那个）而不是 SimpleAnimator
+                //（后者只整体倾斜 visual，没有 rig 字段，对方块骨骼等于没动）
+                var anim = ped.AddComponent<Combat.HumanoidAnimator>();
+                anim.visual = visual;
+                anim.rig = rig;
+
+                // NavMeshAgent 自己不需要碰撞体，但行人要能被兵器判定扫到/挡住镜头，
+                // 补一个与原胶囊等效的碰撞体
+                var col = ped.AddComponent<CapsuleCollider>();
+                col.height = 1.8f; col.radius = 0.32f; col.center = new Vector3(0, -0.1f, 0);
+
+                var agent = ped.AddComponent<UnityEngine.AI.NavMeshAgent>();
+                agent.radius = 0.32f;
+                agent.height = 1.8f;
+                // NavMeshAgent 会把 transform 原点**吸附到导航面**，出生时给的 +1m 抬升
+                // 会被立刻抹掉。而 HumanoidRig 的骨架是以腰为原点、脚在 -1 左右，
+                // 于是整个下半身埋进地里（实机截图：路人只露上半身）。
+                // baseOffset 正是为此存在的：告诉 Agent「我的原点离脚底有多高」。
+                agent.baseOffset = 1f;
+                ped.AddComponent<PedestrianWanderer>().anim = anim;
             }
 
             var carRng = new System.Random(23);
@@ -2330,7 +2484,7 @@ namespace AdversityRoad.World
 
         static readonly Color WallColor = new Color(0.72f, 0.68f, 0.6f);
 
-        static GameObject Box(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
+        public static GameObject Box(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
@@ -2341,17 +2495,17 @@ namespace AdversityRoad.World
         }
 
         /// <summary>无碰撞装饰件（路面标线、地毯、窗户等），不干扰 NavMesh。</summary>
-        static GameObject Decoration(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
+        public static GameObject Decoration(WorldContext ctx, string name, Vector3 pos, Vector3 scale, Color color)
         {
             var go = Box(ctx, name, pos, scale, color);
             Object.DestroyImmediate(go.GetComponent<Collider>());
             return go;
         }
 
-        static void Ring(WorldContext ctx, Vector3 center, float half, float h, Color c) =>
+        public static void Ring(WorldContext ctx, Vector3 center, float half, float h, Color c) =>
             Ring(ctx, center, new Vector2(half, half), h, c);
 
-        static void Ring(WorldContext ctx, Vector3 center, Vector2 half, float h, Color c)
+        public static void Ring(WorldContext ctx, Vector3 center, Vector2 half, float h, Color c)
         {
             Box(ctx, "Wall", center + new Vector3(0, h / 2, half.y), new Vector3(half.x * 2, h, 1), c);
             Box(ctx, "Wall", center + new Vector3(0, h / 2, -half.y), new Vector3(half.x * 2, h, 1), c);
@@ -2359,7 +2513,7 @@ namespace AdversityRoad.World
             Box(ctx, "Wall", center + new Vector3(-half.x, h / 2, 0), new Vector3(1, h, half.y * 2), c);
         }
 
-        static void Building(WorldContext ctx, Vector3 basePos, float w, float h, float d, System.Random rng)
+        public static void Building(WorldContext ctx, Vector3 basePos, float w, float h, float d, System.Random rng)
         {
             Color bodyColor = new Color(
                 0.45f + (float)rng.NextDouble() * 0.25f,
@@ -2414,7 +2568,56 @@ namespace AdversityRoad.World
                 }
         }
 
-        static void Lamp(WorldContext ctx, Vector3 basePos)
+        /// <summary>
+        /// 造一个"看得出是人"的 NPC 躯体：程序化人形骨骼 + 关节动画 + 碰撞体 + NavMeshAgent。
+        ///
+        /// 开放城区的市民、AI 现场生成场景里的 NPC 与经典关卡的路人共用这一套。
+        /// 各建各的会立刻露馅：同一条街上一半是方块人、一半是纯色胶囊——
+        /// 而胶囊正是上面 SpawnLife 注释里刚被判过死刑的那种"完全没有人样"。
+        /// </summary>
+        public static GameObject MakeHumanoidNpc(WorldContext ctx, string name,
+            Vector3 groundPos, System.Random rng)
+        {
+            var go = new GameObject(name);
+            go.transform.position = groundPos + Vector3.up * 1f;
+
+            var visual = new GameObject("Visual").transform;
+            visual.SetParent(go.transform, false);
+            var rig = Combat.HumanoidRig.Build(visual, PedestrianLook(rng), ctx != null ? ctx.mat : null);
+
+            var anim = go.AddComponent<Combat.HumanoidAnimator>();
+            anim.visual = visual;
+            anim.rig = rig;
+
+            var col = go.AddComponent<CapsuleCollider>();
+            col.height = 1.8f; col.radius = 0.32f; col.center = new Vector3(0, -0.1f, 0);
+
+            var agent = go.AddComponent<UnityEngine.AI.NavMeshAgent>();
+            agent.radius = 0.32f;
+            agent.height = 1.8f;
+            agent.baseOffset = 1f;   // 骨架原点在腰、脚底在 -1，不补这一米就半身入地
+            return go;
+        }
+
+        /// <summary>随机行人外观：肤色/衣裤/鞋各自小幅随机，路人之间看得出差别。</summary>
+        public static Combat.HumanoidRig.Config PedestrianLook(System.Random rng)
+        {
+            float R() => (float)rng.NextDouble();
+            return new Combat.HumanoidRig.Config
+            {
+                skin = Color.Lerp(new Color(0.94f, 0.78f, 0.64f), new Color(0.55f, 0.40f, 0.30f), R()),
+                top = new Color(0.25f + R() * 0.5f, 0.25f + R() * 0.5f, 0.3f + R() * 0.5f),
+                bottom = new Color(0.18f + R() * 0.3f, 0.18f + R() * 0.3f, 0.22f + R() * 0.35f),
+                shoes = new Color(0.14f + R() * 0.15f, 0.14f + R() * 0.15f, 0.16f + R() * 0.15f),
+                hair = Color.Lerp(new Color(0.08f, 0.07f, 0.07f), new Color(0.35f, 0.24f, 0.14f), R()),
+                eye = new Color(0.1f, 0.1f, 0.12f),
+                hasHat = R() < 0.18f,
+                hatColor = new Color(0.3f + R() * 0.4f, 0.3f + R() * 0.35f, 0.3f + R() * 0.35f),
+                bulk = 0.86f + R() * 0.3f
+            };
+        }
+
+        public static void Lamp(WorldContext ctx, Vector3 basePos)
         {
             var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             pole.name = "LampPole";
@@ -2564,9 +2767,38 @@ namespace AdversityRoad.World
             zone.AddComponent<ProcrastinationMire>();
         }
 
-        static void MakePortal(WorldContext ctx, Vector3 basePos, int targetZone, Vector3 targetPos)
+        /// <summary>
+        /// 建一扇门。
+        ///
+        /// 目标【不再由调用处写死】，而是由 Portal 在运行时按章节顺序解析（见 Portal.Resolve）：
+        /// 每个关卡只有两扇门——回上一关（Back）与去下一关（Forward）。
+        /// 以前是每个 Build 函数各自硬编码目标区号，于是训练武馆同时开着通往
+        /// 噪声街区、两元赌桌、独居小屋的三扇门，其中大半既不是相邻关、也进不去，
+        /// 显示出来纯属干扰。
+        ///
+        /// 门所属的区域由横坐标反推：各区原点是 (300·i, 0, 0)，而门相对区原点的偏移
+        /// 最大不过 ±60 米，所以 round(x/300) 必然等于区号——不需要每个 Build 函数
+        /// 再多传一个参数进来。
+        /// </summary>
+        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
+            => MakePortal(ctx, basePos, role, -1, null);
+
+        /// <summary>
+        /// 建一扇【显式目标】的门：目标区号写死，不参与章节解析。
+        ///
+        /// 只给**不在章节序列里的区域**用：开放城区常开常在，AI 现场生成的临时站点
+        /// 更是压根没有章节号——它们都算不出"上一关/下一关"。
+        /// 经典 24 关一律走上面那个按章节解析的版本，免得又退回"每扇门硬编码目标"的老问题。
+        /// </summary>
+        public static void MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
+            string label = null)
+            => MakePortal(ctx, basePos, PortalRole.Forward, targetZone, label);
+
+        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
+            int explicitZone, string explicitLabel)
         {
-            var root = new GameObject("Portal_" + ZoneIdOf(targetZone));
+            int homeZone = Mathf.Clamp(Mathf.RoundToInt(basePos.x / 300f), 0, ZoneCount - 1);
+            var root = new GameObject("Portal_" + ZoneIdOf(homeZone) + "_" + role);
             root.transform.position = basePos;
 
             Box(ctx, "PortalPillar", basePos + new Vector3(-1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
@@ -2575,15 +2807,16 @@ namespace AdversityRoad.World
                 new Color(0.3f, 0.5f, 0.7f));
             Decoration(ctx, "PortalTop", basePos + new Vector3(0, 3.4f, 0), new Vector3(3.7f, 0.4f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
-            Decoration(ctx, "PortalGlow", basePos + new Vector3(0, 1.6f, 0), new Vector3(2.7f, 2.8f, 0.15f),
-                new Color(0.55f, 0.85f, 1f));
+            var glow = Decoration(ctx, "PortalGlow", basePos + new Vector3(0, 1.6f, 0),
+                new Vector3(2.7f, 2.8f, 0.15f),
+                role == PortalRole.Back ? new Color(0.85f, 0.8f, 0.55f) : new Color(0.55f, 0.85f, 1f));
 
-            // 门顶标牌
+            // 门顶标牌（文字由 Portal 按解析结果实时刷新）
             var signGo = new GameObject("PortalSign");
             signGo.transform.SetParent(root.transform, false);
             signGo.transform.position = basePos + new Vector3(0, 4.2f, 0);
             var tm = signGo.AddComponent<TextMesh>();
-            tm.text = "→ " + ZoneNameOf(targetZone);
+            tm.text = "";
             tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             tm.fontSize = 56;
             tm.characterSize = 0.07f;
@@ -2593,15 +2826,26 @@ namespace AdversityRoad.World
             if (tm.font != null) mr.material = tm.font.material;
             signGo.AddComponent<FaceCamera>();
 
+            // 【门前地台】——每扇门下面都保证有实地可站。
+            // 传送改成「站定才走」之后暴露了一个一直存在的关卡问题：
+            // 训练武馆的东西两扇门开在 x=±24，而武馆地板只到 ±25，触发体 3 米宽
+            // 有半米悬在虚空上，玩家往门里再走一步就掉下去。与其逐个挪几十扇门的坐标，
+            // 不如让 MakePortal 自己铺一块比触发体更大的地台：任何门口从此都踩得住。
+            Box(ctx, "GroundPad_Portal", basePos + new Vector3(0, -0.25f, 0),
+                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f));
+
             var trigger = new GameObject("PortalTrigger");
             trigger.transform.SetParent(root.transform, false);
             trigger.transform.position = basePos + new Vector3(0, 1.5f, 0);
             var col = trigger.AddComponent<BoxCollider>();
             col.size = new Vector3(3f, 3f, 2.2f);
             var portal = trigger.AddComponent<Portal>();
-            portal.targetZoneIndex = targetZone;
-            portal.targetPosition = targetPos;
-            portal.targetName = ZoneNameOf(targetZone);
+            portal.homeZone = homeZone;
+            portal.role = role;
+            portal.explicitZone = explicitZone;
+            portal.explicitLabel = explicitLabel;
+            portal.sign = tm;
+            portal.glow = glow;
         }
 
         /// <summary>世界空间铭牌（3D 文字，常朝镜头）：给展品/展台等标注可读文本。</summary>
@@ -2623,7 +2867,7 @@ namespace AdversityRoad.World
 
         static readonly Dictionary<string, Material> MatCache = new Dictionary<string, Material>();
 
-        static void Paint(WorldContext ctx, GameObject go, Color c)
+        public static void Paint(WorldContext ctx, GameObject go, Color c)
         {
             var r = go.GetComponent<MeshRenderer>();
             if (r == null) return;
