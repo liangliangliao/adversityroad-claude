@@ -430,6 +430,9 @@ namespace AdversityRoad.OpenWorld
                 VillaKit.Deco("BoardLed", c + new Vector3(i * 1.1f, 0.28f, -11.3f),
                     new Vector3(0.5f, 0.06f, 0.2f), new Color(0.35f, 0.75f, 1f));
 
+            // 看板旁边的兵器架：出门取剑、回家放下（见 WeaponRack）
+            WeaponRack.Build(ctx, c + new Vector3(-9.8f, 0, -10.4f), Vector3.forward);
+
             VillaKit.Box("Sideboard", c + new Vector3(-9.4f, 0.42f, 4.4f),
                 new Vector3(3.4f, 0.84f, 1f), Wood);
             Plant(ctx, c + new Vector3(9.4f, 0, 4.4f));
@@ -1203,7 +1206,9 @@ namespace AdversityRoad.OpenWorld
                 Vector3 off = alongZ ? new Vector3(0, 1.9f, s * (width / 2f - 0.6f))
                                      : new Vector3(s * (width / 2f - 0.6f), 1.9f, 0);
                 Vector3 size = alongZ ? new Vector3(0.22f, 3.0f, 1.2f) : new Vector3(1.2f, 3.0f, 0.22f);
-                VillaKit.Deco("Curtain", at + off, size, new Color(0.62f, 0.55f, 0.48f));
+                // 实体：窗帘是 3 米高的一块布，镜头退到它背后就只剩一片布，
+                // 而没有碰撞体的话镜头根本不知道自己被挡了（同门扇）
+                VillaKit.Box("Curtain", at + off, size, new Color(0.62f, 0.55f, 0.48f));
             }
             VillaKit.Metal(VillaKit.CylAxis("CurtainRod", at + new Vector3(0, 3.45f, 0), 0.04f,
                 width + 0.6f, Metal, alongZ ? new Vector3(90f, 0, 0) : new Vector3(0, 0, 90f)), Metal);

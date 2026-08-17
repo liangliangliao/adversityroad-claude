@@ -204,8 +204,11 @@ namespace AdversityRoad.OpenWorld
                 Vector3 dir = alongZ ? new Vector3(0.94f, 0, -s * 0.26f) : new Vector3(-s * 0.26f, 0, 0.94f);
                 Vector3 center = at + hinge + dir * (leafW / 2f) + new Vector3(0, height / 2f, 0);
                 Vector3 euler = alongZ ? new Vector3(0, 15f * -s, 0) : new Vector3(0, 90f + 15f * s, 0);
+                // 门扇给碰撞体：① 门板本来就不该能穿过去；② 镜头的遮挡回缩只认
+                // 碰撞体，没有碰撞体的门扇会**挡住画面而镜头毫不知情**——
+                // 玩家截图里"镜头被门板遮住"就是这么来的。
                 var leaf = Make(PrimitiveType.Cube, "DoorLeaf", center,
-                    new Vector3(leafW, height - 0.1f, 0.08f), leafColor, euler, false);
+                    new Vector3(leafW, height - 0.1f, 0.08f), leafColor, euler, true);
                 // 门芯板（两块凹格）与把手
                 for (int k = -1; k <= 1; k += 2)
                 {
@@ -259,15 +262,9 @@ namespace AdversityRoad.OpenWorld
             go.transform.position = at + faceDir * 0.22f;
             // forward 背对读者：TextMesh 的字面在 -Z 侧，这样正面朝人、不是镜像
             go.transform.rotation = Quaternion.LookRotation(-faceDir);
-            var tm = go.AddComponent<TextMesh>();
-            tm.text = text;
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 64;
-            tm.characterSize = 0.055f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(1f, 0.93f, 0.72f);
-            var mr = go.GetComponent<MeshRenderer>();
-            if (tm.font != null) mr.material = tm.font.material;
+            // 走 WorldText：内置字体材质是 ZTest Always（字会穿墙，满屋飘字），
+            // 这里的字必须被墙挡住，见 WorldText 的说明
+            WorldText.Attach(go, text, 64, 0.055f, new Color(1f, 0.93f, 0.72f));
         }
 
         /// <summary>墙面护墙板：一条腰线 + 下半墙的分色，房间立刻不像毛坯。</summary>

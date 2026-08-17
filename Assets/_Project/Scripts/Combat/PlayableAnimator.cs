@@ -157,6 +157,15 @@ namespace AdversityRoad.Combat
 
         readonly string _folder;   // 动作库目录（不同角色可有各自的动作库）
 
+        /// <summary>
+        /// 公共补充库：主库里没有的片段名从这里再取一遍。
+        ///
+        /// 拔剑/收剑这类**与角色无关**的通用动作放在 Anims2 下，两个角色都该用得上；
+        /// 而 Anims2 本身缺 idle/walk/run，作为"主库"是不成立的（会整体回退）。
+        /// 于是把它降级成补充库：谁做主库都行，主库没有的名字从这里补进来。
+        /// </summary>
+        const string ExtraFolder = "Characters/Anims2";
+
         public PlayableAnimator(Animator animator, string animsFolder = null)
         {
             _animator = animator;
@@ -196,6 +205,14 @@ namespace AdversityRoad.Combat
                 string k = Norm(c.name);
                 if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
             }
+            // 补充库（见 ExtraFolder）：主库同名的不覆盖，只补主库没有的
+            if (_folder != ExtraFolder)
+                foreach (var c in Resources.LoadAll<AnimationClip>(ExtraFolder))
+                {
+                    if (c == null) continue;
+                    string k = Norm(c.name);
+                    if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
+                }
 
             var idle = Pick(byName, "idle", "breathing idle", "standing idle");
             var walk = Pick(byName, "walking", "great sword walk", "walk");

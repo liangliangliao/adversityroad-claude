@@ -294,6 +294,30 @@ namespace AdversityRoad.Combat
         /// <summary>当前是否处在坐/躺的休息姿态里。</summary>
         public bool Resting => _rest;
 
+        /// <summary>
+        /// 按一串候选名播第一个找得到的片段（拔剑/收剑/放下兵器这类一次性动作）。
+        /// 前面的候选优先——不同角色各自偏好的片段放在前面，后面的是通用兜底。
+        /// 返回时长（秒）；0 = 一个都没有。
+        /// </summary>
+        public float PlayFirstClip(float speed, float fade, params string[] keys)
+        {
+            if (!Mecanim || keys == null) return 0f;
+            foreach (var k in keys)
+            {
+                float len = _mecanim.PlayNamed(k, false, false, speed, fade);
+                if (len > 0f) return len;
+            }
+            return 0f;
+        }
+
+        /// <summary>这一串候选里有没有片段（界面据此决定要不要显示对应按钮）。</summary>
+        public bool HasAnyClip(params string[] keys)
+        {
+            if (!Mecanim || keys == null) return false;
+            foreach (var k in keys) if (_mecanim.HasClip(k)) return true;
+            return false;
+        }
+
         string _lastMoveName;
         float _lastMoveNameAt;
 

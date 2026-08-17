@@ -517,15 +517,9 @@ namespace AdversityRoad.OpenWorld
             // 跑步的人在履带上（面板的 -z 那边），所以 forward 要朝 +z ——
             // 上一版转了 180°，字正好背对读它的人，读出来是镜像的（"文字反过来"）。
             panelGo.transform.rotation = Quaternion.identity;
-            var tm = panelGo.AddComponent<TextMesh>();
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 46; tm.characterSize = 0.05f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(0.55f, 0.95f, 0.85f);
-            tm.text = "跑步机 · 待机";
-            var mr = panelGo.GetComponent<MeshRenderer>();
-            if (tm.font != null) mr.material = tm.font.material;
-            t._panel = tm;
+            // 读数走 WorldText：内置字体材质不做深度测试，字会穿墙飘到别的房间去
+            t._panel = WorldText.Attach(panelGo, "跑步机 · 待机", 46, 0.05f,
+                new Color(0.55f, 0.95f, 0.85f));
 
             return t;
         }

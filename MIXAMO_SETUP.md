@@ -102,6 +102,18 @@ Assets/_Project/Resources/Characters/
 | **Sleeping Idle** | 躺着的持续姿态（带呼吸起伏，循环播放） |
 | **Getting Up** | 从躺姿起身；**倒放**即"就地躺下"（健身房瑜伽垫） |
 | Stand Up / Standing Up | 备用的起身片段（现用 Getting Up，它最利落） |
+| **Putting Down** | 在兵器架上放下 / 取回兵器（弯身那一刻交换手里与架上的剑） |
+
+拔剑 / 收剑（两个角色各有一套，缺的自动用另一套）：
+
+| 片段 | 目录 | 用在 |
+| --- | --- | --- |
+| Draw A Great Sword 2 / Sheath A Great Sword 1 | `Anims/` | 角色·壹优先 |
+| Withdrawing Sword / Sheathing Sword (1) | `Anims2/` | 角色·贰优先 |
+
+> `Anims2/` 现在是**公共补充库**而不是"角色·贰专属库"：它缺 idle/walk/run，
+> 当主库是不成立的；但里面的通用片段（拔剑/收剑）会被两个角色一起装进动作库
+> （见 `PlayableAnimator.ExtraFolder`）。
 
 > 这些片段自带**动作骨架自己的座面高度**（那把椅子约 45cm、那张床约 67cm）。
 > 家里每件家具高度都不同，所以休息期间 `HumanoidAnimator` 改用**骨盆锚定**：

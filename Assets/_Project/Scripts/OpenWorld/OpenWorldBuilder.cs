@@ -418,15 +418,7 @@ namespace AdversityRoad.OpenWorld
         {
             var go = new GameObject("Sign_" + text);
             go.transform.position = pos;
-            var tm = go.AddComponent<TextMesh>();
-            tm.text = text;
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 52;
-            tm.characterSize = 0.08f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(0.95f, 0.92f, 0.8f);
-            var mr = go.GetComponent<MeshRenderer>();
-            if (tm.font != null) mr.material = tm.font.material;
+            World.WorldText.Attach(go, text, 52, 0.08f, new Color(0.95f, 0.92f, 0.8f));
             go.AddComponent<FaceCamera>();
         }
     }
