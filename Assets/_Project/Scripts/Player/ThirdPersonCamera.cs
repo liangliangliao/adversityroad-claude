@@ -296,7 +296,22 @@ namespace AdversityRoad.Player
         public static bool IndoorMode;
 
         /// <summary>室内吊杆长度：短到墙基本碰不到它。</summary>
-        const float IndoorBoom = 2.9f;
+        const float IndoorBoom = 2.6f;
+
+        /// <summary>
+        /// 碰撞回缩的下限（镜头最近能贴到取景点多近）。
+        ///
+        /// 【上一版为什么会"镜头被挡住"】下限写死 1.9 米，理由是"1.6 米处角色占屏
+        /// 113%，太挤"。但这个下限是**无条件**的：当障碍物离取景点只有 0.6 米时
+        /// （屋里的门扇、床头、书柜、柜门后面），回缩到 1.9 米等于**把镜头按在
+        /// 障碍物内部**——画面就是玩家截图里那样：半屏是门板、半屏是柜子的背面。
+        /// 「角色占屏太大」是构图问题，「镜头在柜子里」是画面报废，孰轻孰重很清楚。
+        ///
+        /// 所以下限必须让位给通透：室内 0.5 米（贴到肩后，等同越肩视角），
+        /// 室外 1.2 米。镜头真的贴近时由 CharacterCloseFade 把角色淡开
+        /// （它 1.1 米起淡、0.45 米最透），所以近到 0.5 米也不会"整屏一张脸"。
+        /// </summary>
+        const float BoomFloorIndoor = 0.5f, BoomFloorOutdoor = 1.2f;
 
         // ===== 取景窗（camera window）：镜头运动的第一原则 =====
         // 出自 Mark Haigh-Hutchinson《Real-Time Cameras》，也是所有成熟动作游戏的骨架：
@@ -1603,11 +1618,10 @@ namespace AdversityRoad.Player
                     continue;                                               // 飞散碎屑
                 if (col.GetComponentInParent<PlayerController>() != null) continue;
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                // 回缩下限抬高：贴墙也绝不缩进角色身体里（缩得再近由
-                // CharacterCloseFade 把角色淡透，不出现"整屏白模糊脸"）
-                // 下限 1.6→1.9m：1.6m 处角色占屏高达 113%（整个画面被身体填满），
-                // 是贴墙时"突然极度压抑"的来源。1.9m 仍不穿模，画面留得住东西。
-                wantDist = Mathf.Min(wantDist, Mathf.Max(1.9f, hit.distance - 0.1f));
+                // 下限见 BoomFloorIndoor/Outdoor：**下限不能高过障碍物的距离**，
+                // 否则镜头就被按在障碍物里面（那才是玩家看到的"镜头被遮挡"）
+                float floor = IndoorMode ? BoomFloorIndoor : BoomFloorOutdoor;
+                wantDist = Mathf.Min(wantDist, Mathf.Max(floor, hit.distance - 0.1f));
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄

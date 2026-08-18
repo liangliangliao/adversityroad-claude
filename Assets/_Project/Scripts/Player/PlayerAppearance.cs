@@ -38,11 +38,36 @@ namespace AdversityRoad.Player
         /// <summary>当前是否装备了带剑鞘的成套武器（UI 决定是否显示「拔刀/收刀」按钮）。</summary>
         public bool HasSheathWeapon => _sheath != null;
 
+        /// <summary>
+        /// 拔剑 / 收剑的候选片段（前面的优先）。
+        ///
+        /// 两个角色各有一套偏好：角色·壹用 Anims/ 里的 Draw A Great Sword 2 与
+        /// Sheath A Great Sword 1，角色·贰用 Anims2/ 里的 Withdrawing Sword 与
+        /// Sheathing Sword (1)；哪一套缺片段就自动用另一套（两个目录的片段都会
+        /// 装进动作库，见 PlayableAnimator.ExtraFolder）。
+        ///
+        /// 【为什么不能只按 "draw"/"sheath" 关键词找】Withdrawing Sword 的名字里
+        /// 根本没有 draw——上一版按关键词匹配，这个片段永远不会被选中。
+        /// </summary>
+        string[] DrawClipKeys => Preset == 1
+            ? new[] { "withdrawing sword", "draw a great sword 2", "draw a great sword", "draw sword 2", "draw" }
+            : new[] { "draw a great sword 2", "draw a great sword", "withdrawing sword", "draw sword 2", "draw" };
+
+        string[] SheathClipKeys => Preset == 1
+            ? new[] { "sheathing sword (1)", "sheath a great sword 1", "sheath a great sword", "sheathing sword", "sheath" }
+            : new[] { "sheath a great sword 1", "sheath a great sword", "sheathing sword (1)", "sheathing sword", "sheath" };
+
         /// <summary>手动拔刀/收刀（在两状态间切换）：拔刀=剑身抽到右手正确握位、剑鞘留左手；
-        /// 收刀=剑身插回鞘。同时播放对应的拔刀/收刀动画（Draw / Sheathing Sword）。
+        /// 收刀=剑身插回鞘。同时播放对应的拔剑/收剑动画（见 DrawClipKeys）。
         /// 仅对带剑鞘的成套武器生效。</summary>
         public void ToggleWeaponDrawn()
         {
+            if (_weaponHidden)
+            {
+                // 兵器放在家里的兵器架上（见 WeaponRack），先去取回来
+                Core.GameEvents.RaiseSubtitle("兵器放在兵器架上，先去取回来。");
+                return;
+            }
             if (_sheath == null)
             {
                 // 无剑鞘时按键 = 查看装配诊断（开机装配时字幕系统可能尚未就绪，
@@ -52,12 +77,57 @@ namespace AdversityRoad.Player
                 return;
             }
             bool willDraw = !_sheath.IsDrawn;
-            string key = willDraw ? "draw" : "sheath";
-            // 过渡时长与拔刀/收刀动画同步：取动作库对应片段时长，无片段则兜底
-            float dur = poser != null ? poser.ClipLengthContaining(key) : 0f;
+            var keys = willDraw ? DrawClipKeys : SheathClipKeys;
+            // 剑身出鞘/回鞘的过渡时长 = 动画时长，两者严格同步（否则剑先到位、
+            // 手还在动，或者反过来）。片段一个都没有时退回一个保守值。
+            float dur = poser != null ? poser.PlayFirstClip(1f, 0.12f, keys) : 0f;
             if (dur <= 0.05f) dur = 0.7f;
-            if (poser != null) poser.PlayClipContaining(key);   // 拔刀/收刀动画
             _sheath.Toggle(dur);
+        }
+
+        /// <summary>
+        /// 手里的兵器暂时收起 / 取回（把兵器放到武器架上时用，见 WeaponRack）。
+        ///
+        /// 不动装配管线，只切渲染开关：模型自带兵器、外装武器（含剑鞘那一套）
+        /// 全部一起隐藏/恢复。这样放下再拿起来，握位、刀光、剑鞘状态一切照旧。
+        /// </summary>
+        public void SetWeaponVisible(bool visible)
+        {
+            _weaponHidden = !visible;
+            foreach (var t in WeaponObjects())
+                foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+                    r.enabled = visible;   // 刀光拖尾也一起收（放下的剑不该还在发光）
+        }
+
+        bool _weaponHidden;
+
+        /// <summary>兵器此刻是不是被放下了（在武器架上）。</summary>
+        public bool WeaponStashed => _weaponHidden;
+
+        /// <summary>手上有兵器可放吗（模型自带的或外装的）。</summary>
+        public bool HasWeaponInHand()
+        {
+            foreach (var unused in WeaponObjects()) return unused != null;
+            return false;
+        }
+
+        /// <summary>手里所有兵器物体（自带兵器 + 挂在双手上的外装武器）。</summary>
+        IEnumerable<Transform> WeaponObjects()
+        {
+            if (visualRoot == null || visualRoot.childCount == 0) yield break;
+            var model = visualRoot.GetChild(0);
+            var builtin = MecanimCharacter.FindWeaponInModel(model);
+            if (builtin != null) yield return builtin;
+            foreach (var boneName in new[] { "righthand", "lefthand" })
+            {
+                var h = MecanimCharacter.FindBone(model, boneName);
+                if (h == null) continue;
+                for (int i = 0; i < h.childCount; i++)
+                {
+                    var c = h.GetChild(i);
+                    if (c.name.StartsWith(EquippedName)) yield return c;
+                }
+            }
         }
 
         /// <summary>当前武器名（"" = 默认佩剑：模型自带兵器或 Characters/Weapon）。</summary>

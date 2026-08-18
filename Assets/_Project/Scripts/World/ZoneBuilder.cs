@@ -832,15 +832,8 @@ namespace AdversityRoad.World
             var tmGo = new GameObject("LabelText");
             tmGo.transform.SetParent(root.transform, false);
             tmGo.transform.localPosition = new Vector3(0, 0, -0.1f);
-            var tm = tmGo.AddComponent<TextMesh>();
-            tm.text = text;
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 48;
-            tm.characterSize = 0.045f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(0.15f, 0.1f, 0.08f);
-            var tmr = tmGo.GetComponent<MeshRenderer>();
-            if (tm.font != null) tmr.material = tm.font.material;
+            // 会被遮挡的字（内置字体材质 ZTest Always，字会穿墙，见 WorldText）
+            WorldText.Attach(tmGo, text, 48, 0.045f, new Color(0.15f, 0.1f, 0.08f));
 
             var col = root.AddComponent<BoxCollider>();
             col.isTrigger = true;
@@ -1138,15 +1131,7 @@ namespace AdversityRoad.World
 
             var tmGo = new GameObject("EchoCaseLabel");
             tmGo.transform.position = basePos + new Vector3(0, 3.9f, 0);
-            var tm = tmGo.AddComponent<TextMesh>();
-            tm.text = label;
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 44;
-            tm.characterSize = 0.05f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(0.8f, 0.82f, 0.95f);
-            var tmr = tmGo.GetComponent<MeshRenderer>();
-            if (tm.font != null) tmr.material = tm.font.material;
+            WorldText.Attach(tmGo, label, 44, 0.05f, new Color(0.8f, 0.82f, 0.95f));
             tmGo.AddComponent<FaceCamera>();
 
             var echoCase = pedestal.AddComponent<Combat.EchoDisplayCase>();
@@ -1642,15 +1627,7 @@ namespace AdversityRoad.World
                     new Vector3(0.3f, 4f, 2.6f), new Color(0.22f, 0.2f, 0.24f));
                 var tmGo = new GameObject("PayDoorSign");
                 tmGo.transform.position = o + new Vector3(side * 6.9f, 3.2f, z);
-                var tm = tmGo.AddComponent<TextMesh>();
-                tm.text = doors[i];
-                tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                tm.fontSize = 44;
-                tm.characterSize = 0.045f;
-                tm.anchor = TextAnchor.MiddleCenter;
-                tm.color = new Color(0.85f, 0.9f, 0.85f);
-                var mr = tmGo.GetComponent<MeshRenderer>();
-                if (tm.font != null) mr.material = tm.font.material;
+                WorldText.Attach(tmGo, doors[i], 44, 0.045f, new Color(0.85f, 0.9f, 0.85f));
                 tmGo.AddComponent<FaceCamera>();
             }
 
@@ -2815,15 +2792,7 @@ namespace AdversityRoad.World
             var signGo = new GameObject("PortalSign");
             signGo.transform.SetParent(root.transform, false);
             signGo.transform.position = basePos + new Vector3(0, 4.2f, 0);
-            var tm = signGo.AddComponent<TextMesh>();
-            tm.text = "";
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 56;
-            tm.characterSize = 0.07f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(0.7f, 0.95f, 1f);
-            var mr = signGo.GetComponent<MeshRenderer>();
-            if (tm.font != null) mr.material = tm.font.material;
+            var tm = WorldText.Attach(signGo, "", 56, 0.07f, new Color(0.7f, 0.95f, 1f));
             signGo.AddComponent<FaceCamera>();
 
             // 【门前地台】——每扇门下面都保证有实地可站。
@@ -2853,15 +2822,7 @@ namespace AdversityRoad.World
         {
             var go = new GameObject("Plaque");
             go.transform.position = pos;
-            var tm = go.AddComponent<TextMesh>();
-            tm.text = text;
-            tm.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            tm.fontSize = 44;
-            tm.characterSize = 0.05f;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = color;
-            var mr = go.GetComponent<MeshRenderer>();
-            if (tm.font != null) mr.material = tm.font.material;
+            WorldText.Attach(go, text, 44, 0.05f, color);
             go.AddComponent<FaceCamera>();
         }
 

@@ -507,6 +507,8 @@ namespace AdversityRoad.Player
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             // 室内只走不跑：在自己家里冲刺既不合情理，也是"转一圈就晕"的一部分——
             // 屋里两三步一堵墙，全速跑动时镜头与碰撞都来不及跟上。
+            // 唯一的例外由 IndoorZone.SetRunPass 开出来：健身房的跑步机就是用来跑的，
+            // 走速正好等于履带速度，不许跑等于那台机器是坏的。
             if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。

@@ -59,6 +59,16 @@ namespace AdversityRoad.Combat
         float _modelBaseY;
         float _feetOffset, _feetTarget;
 
+        // ---- 休息姿态（坐 / 躺）----
+        // 坐下与躺下的片段带着**动作骨架自己的座面高度**（Mixamo 那把椅子约 45cm、
+        // 那张床约 67cm）。家里的沙发、餐椅、吧椅、床、躺椅、瑜伽垫高度各不相同，
+        // 直接播片段必然出现"悬空坐"或"陷进床里"。所以休息期间改一条锚定规则：
+        // 不再把【脚底】对到地面，而是把【骨盆】对到这件家具的座面/床面高度。
+        // 权重 _restW 让这段修正随动作渐入渐出——坐下的过程里身体本来就该从
+        // 站姿一路沉到座面，一上来就锚死会把人按进地板。
+        bool _rest;
+        float _restPelvisY, _restW, _restBase;
+
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
 
@@ -139,6 +149,29 @@ namespace AdversityRoad.Combat
                 _hips.position = _mocapModel.TransformPoint(lp);
             }
 
+            // 休息姿态（坐/躺）：把骨盆锚到座面高度，而不是把脚底锚到地面。
+            // 坐着的人脚是悬着/前伸的，躺着的人脚离地更远——沿用站立那套校准
+            // 会把整个人往上顶（因为它总想把最低的那只脚放到地面上）。
+            if (_rest && _hips != null && visual != null)
+            {
+                float nowY = visual.InverseTransformPoint(_hips.position).y;
+                float wantY = visual.InverseTransformPoint(
+                    new Vector3(_hips.position.x, _restPelvisY, _hips.position.z)).y;
+                // full = 让骨盆正好落在座面上所需的模型偏移（与当前偏移无关的定值：
+                // nowY 会随偏移一起动，两者相加抵消）。权重 0 时沿用站立校准值，
+                // 1 时完全按座面锚定——于是坐下的过程没有任何跳变。
+                float full = _feetOffset + (wantY - nowY);
+                _feetTarget = Mathf.Clamp(Mathf.Lerp(_restBase, full, _restW), -2.5f, 2.5f);
+                _feetOffset = Mathf.Lerp(_feetOffset, _feetTarget, 6f * Time.deltaTime);
+                if (_mocapModel != null)
+                {
+                    var rp = _mocapModel.localPosition;
+                    rp.y = _modelBaseY + _feetOffset;
+                    _mocapModel.localPosition = rp;
+                }
+                return;
+            }
+
             // 双脚贴地校准：动作数据把髋骨抬到【动作骨架】的高度，体型腿长不同的
             // 角色会踮脚悬空/陷地。持续量测最低脚的局部高度，平滑修正模型整体 Y。
             // 只在贴地常规姿态下更新目标（翻滚/击倒/腾空沿用上次校准值）。
@@ -216,6 +249,74 @@ namespace AdversityRoad.Combat
         /// <summary>按关键词返回匹配片段时长（拔刀/收刀过渡与动画同步用）；无则 0。</summary>
         public float ClipLengthContaining(string key) =>
             Mecanim ? _mecanim.ClipLengthContaining(key) : 0f;
+
+        // ================= 休息姿态（坐下 / 躺下 / 睡觉 / 起身） =================
+
+        /// <summary>动作库里有这个片段吗（没有就让上层退回到不带动画的兜底做法）。</summary>
+        public bool HasClip(string key) => Mecanim && _mecanim.HasClip(key);
+
+        /// <summary>休息动作片段的原始时长（秒）；无此片段返回 0。</summary>
+        public float RestClipLength(string key) => Mecanim ? _mecanim.RawClipLength(key) : 0f;
+
+        /// <summary>
+        /// 播一段休息动作（坐下/躺下/睡觉/起身）。reverse=倒放（从椅子上站起来
+        /// 就是"坐下"反过来放），hold=播完停在末帧（坐着、躺着都是持续状态），
+        /// start01/end01 只取片段中的一段（坐稳之后循环末段，人才有呼吸感）。
+        /// 返回本次时长（秒）；0 = 没有这个片段。
+        /// </summary>
+        public float PlayRestClip(string key, bool reverse = false, bool hold = true,
+            float speed = 1f, float fade = 0.35f, float start01 = 0f, float end01 = 1f) =>
+            Mecanim ? _mecanim.PlayNamed(key, reverse, hold, speed, fade, start01, end01) : 0f;
+
+        /// <summary>进入休息姿态：把骨盆锚到 pelvisWorldY（座面/床面高度 + 一点）。</summary>
+        public void BeginRest(float pelvisWorldY)
+        {
+            _rest = true;
+            _restPelvisY = pelvisWorldY;
+            _restW = 0f;
+            _restBase = _feetOffset;   // 从站立时的贴地校准值起算，入座那一瞬不跳
+        }
+
+        /// <summary>休息期间随时修正骨盆目标高度（换姿势：坐→躺，床面比座面高）。</summary>
+        public void SetRestPelvisY(float pelvisWorldY) => _restPelvisY = pelvisWorldY;
+
+        /// <summary>锚定权重 0→1：坐下/躺下的过程里渐入，起身的过程里渐出。</summary>
+        public void SetRestWeight(float w01) => _restW = Mathf.Clamp01(w01);
+
+        /// <summary>退出休息姿态，动作层交还给移动层。</summary>
+        public void EndRest()
+        {
+            _rest = false;
+            _restW = 0f;
+            if (Mecanim) _mecanim.StopAction();
+        }
+
+        /// <summary>当前是否处在坐/躺的休息姿态里。</summary>
+        public bool Resting => _rest;
+
+        /// <summary>
+        /// 按一串候选名播第一个找得到的片段（拔剑/收剑/放下兵器这类一次性动作）。
+        /// 前面的候选优先——不同角色各自偏好的片段放在前面，后面的是通用兜底。
+        /// 返回时长（秒）；0 = 一个都没有。
+        /// </summary>
+        public float PlayFirstClip(float speed, float fade, params string[] keys)
+        {
+            if (!Mecanim || keys == null) return 0f;
+            foreach (var k in keys)
+            {
+                float len = _mecanim.PlayNamed(k, false, false, speed, fade);
+                if (len > 0f) return len;
+            }
+            return 0f;
+        }
+
+        /// <summary>这一串候选里有没有片段（界面据此决定要不要显示对应按钮）。</summary>
+        public bool HasAnyClip(params string[] keys)
+        {
+            if (!Mecanim || keys == null) return false;
+            foreach (var k in keys) if (_mecanim.HasClip(k)) return true;
+            return false;
+        }
 
         string _lastMoveName;
         float _lastMoveNameAt;
@@ -315,7 +416,11 @@ namespace AdversityRoad.Combat
                 if (_poseSerial != _lastMecanimSerial)
                 {
                     _lastMecanimSerial = _poseSerial;
-                    if (_pose == PoseState.Idle)
+                    // 休息中（坐着/躺着）：战斗状态机把状态收回 Idle 是常态（人没在动），
+                    // 但那会走到下面的 StopAction 把坐姿片段收掉——人会突然站起来。
+                    // 休息姿态由 SitController 全权控制，这里一律不插手。
+                    if (_rest) { }
+                    else if (_pose == PoseState.Idle)
                     {
                         // 回到 Idle：从倒地恢复时先倒放起身，否则直接收招回移动层
                         if (_pendingGetUp) { _pendingGetUp = false; _mecanim.PlayGetUp(); }
