@@ -29,7 +29,7 @@ namespace AdversityRoad.UI
         readonly List<Texture2D> _thumbs = new List<Texture2D>();
         UserImageSlot _slot = UserImageSlot.BedroomArtA;
         int _page;
-        Coroutine _loading;
+        Coroutine _loading, _scanning;
 
         const int Cols = 3, Rows = 3;
         const int PageSize = Cols * Rows;
@@ -66,8 +66,8 @@ namespace AdversityRoad.UI
                     () => { _slot = (UserImageSlot)idx; _page = 0; Refresh(); }, 22);
             }
 
-            UiUtil.MakeButton(_panel.transform, "打开相册", new Vector2(0.5f, 0f), new Vector2(-420, 70),
-                new Vector2(210, 72), new Color(0.24f, 0.34f, 0.30f, 0.95f), Scan, 24);
+            UiUtil.MakeButton(_panel.transform, "打开手机相册", new Vector2(0.5f, 0f), new Vector2(-420, 70),
+                new Vector2(210, 72), new Color(0.24f, 0.40f, 0.32f, 0.98f), OpenSystemGallery, 22);
             UiUtil.MakeButton(_panel.transform, "上一页", new Vector2(0.5f, 0f), new Vector2(-205, 70),
                 new Vector2(180, 72), new Color(0.24f, 0.26f, 0.32f, 0.95f), () => Turn(-1), 24);
             UiUtil.MakeButton(_panel.transform, "下一页", new Vector2(0.5f, 0f), new Vector2(0, 70),
@@ -77,6 +77,13 @@ namespace AdversityRoad.UI
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f), new Vector2(420, 70),
                 new Vector2(180, 72), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
 
+            UiUtil.MakeButton(_panel.transform, "打 开 手 机 相 册", new Vector2(0.5f, 1f),
+                new Vector2(0, -232), new Vector2(520, 66),
+                new Color(0.26f, 0.44f, 0.34f, 0.98f), OpenSystemGallery, 26);
+            UiUtil.MakeButton(_panel.transform, "重新扫描", new Vector2(0.5f, 1f),
+                new Vector2(330, -232), new Vector2(160, 66),
+                new Color(0.24f, 0.26f, 0.32f, 0.95f), Scan, 22);
+
             _panel.SetActive(false);
         }
 
@@ -84,32 +91,90 @@ namespace AdversityRoad.UI
         {
             if (_panel == null) return;
             if (_panel.activeSelf) { Hide(); return; }
-            Open();
+            Open(true);
         }
 
-        /// <summary>打开面板并直接选中某个画框（走近画框按键时用）。</summary>
+        /// <summary>打开面板并直接选中某个画框（走近画框按键时用）。
+        /// 手机上**先直接拉起系统相册**——玩家要的就是那个界面；
+        /// 取消或这台设备拉不起来，才用面板里的游戏内列表兜底。</summary>
         public void OpenFor(UserImageSlot slot)
         {
             _slot = slot;
             _page = 0;
-            Open();
+            // 能拉起系统相册时**不要**同时扫描游戏内列表：那会立刻弹一个"允许读取相册"
+            // 的权限框，和正在打开的系统相册撞在一起，两个弹窗叠着谁也看不懂。
+            // 系统选图本来就不需要那个权限。
+            Open(!NativeGallery.Available);
+            OpenSystemGallery();
         }
 
-        void Open()
+        void Open(bool autoScan)
         {
             if (_panel == null) return;
             _panel.SetActive(true);
             _panel.transform.SetAsLastSibling();
             Time.timeScale = 0f;
-            Scan();
+            if (autoScan) Scan(); else Refresh();
+        }
+
+        /// <summary>拉起系统相册（安卓）。</summary>
+        void OpenSystemGallery()
+        {
+            if (_status != null)
+                _status.text = "正在打开手机相册……选完会自动挂到「" + SlotName(_slot) + "」上。";
+            var slot = _slot;
+            bool started = NativeGallery.Pick(uri =>
+            {
+                if (string.IsNullOrEmpty(uri))
+                {
+                    if (_status != null)
+                        _status.text = "没有选图（可以在下面的列表里挑，或再点一次「打开手机相册」）。";
+                    return;
+                }
+                if (UserImageLibrary.AssignFromUri(slot, uri))
+                {
+                    GameEvents.RaiseSubtitle("图片已挂到「" + SlotName(slot) + "」上。");
+                    Hide();
+                }
+                else if (_status != null)
+                {
+                    _status.text = "这张图读不出来，换一张试试。";
+                }
+            });
+            if (!started) Scan();   // 编辑器/PC：直接用游戏内列表
         }
 
         void Scan()
         {
+            if (_scanning != null) StopCoroutine(_scanning);
+            _scanning = StartCoroutine(ScanRoutine());
+        }
+
+        /// <summary>
+        /// 扫描游戏内可读到的图片。
+        ///
+        /// 【上一版为什么"点了没反应"】权限弹窗是**异步**的，而上一版申请完立刻就查
+        /// MediaStore——那一刻用户还没点"允许"，于是永远查到 0 张、界面毫无变化。
+        /// 这里改成先申请、再等弹窗结果（最多 20 秒），全程把状态写在面板上。
+        /// </summary>
+        IEnumerator ScanRoutine()
+        {
             _images.Clear();
-            _images.AddRange(UserImageLibrary.Browse());
             _page = 0;
+            if (!UserImageLibrary.HasReadPermission)
+            {
+                if (_status != null) _status.text = "正在申请相册权限……请在系统弹窗里选择「允许」。";
+                UserImageLibrary.RequestReadPermission();
+                float waited = 0f;
+                while (!UserImageLibrary.HasReadPermission && waited < 20f)
+                {
+                    waited += Time.unscaledDeltaTime;
+                    yield return null;
+                }
+            }
+            _images.AddRange(UserImageLibrary.Browse());
             Refresh();
+            _scanning = null;
         }
 
         void Turn(int d)
@@ -143,8 +208,8 @@ namespace AdversityRoad.UI
             int pages = Mathf.Max(1, Mathf.CeilToInt(_images.Count / (float)PageSize));
 
             _status.text = _images.Count == 0
-                ? "相册里没读到图片。请在系统弹窗里允许访问照片，然后点「打开相册」；" +
-                  "也可以把图片放进 " + UserImageLibrary.FolderPath
+                ? "点上面的【打 开 手 机 相 册】直接从手机相册里挑一张（不需要任何权限）。\n" +
+                  "下面这个列表是备用的：它需要「读取相册」权限，点「重新扫描」并允许即可。"
                 : "共 " + _images.Count + " 张（第 " + (_page + 1) + "/" + pages + " 页）——点一张即挂上。" +
                   (string.IsNullOrEmpty(cur) ? "" : "  当前：" + Path.GetFileName(cur));
 
@@ -157,7 +222,7 @@ namespace AdversityRoad.UI
                 var img = _images[idx];
                 int col = i % Cols, row = i / Cols;
                 var btn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
-                    new Vector2(-340 + col * 340, -300 - row * 200), new Vector2(320, 186),
+                    new Vector2(-340 + col * 340, -338 - row * 190), new Vector2(320, 176),
                     new Color(0.16f, 0.19f, 0.24f, 0.95f), () => Pick(img), 18);
                 _cells.Add(btn.gameObject);
 
@@ -221,6 +286,7 @@ namespace AdversityRoad.UI
         void Hide()
         {
             if (_loading != null) { StopCoroutine(_loading); _loading = null; }
+            if (_scanning != null) { StopCoroutine(_scanning); _scanning = null; }
             foreach (var t in _thumbs) if (t != null) Destroy(t);
             _thumbs.Clear();
             if (_panel != null) _panel.SetActive(false);

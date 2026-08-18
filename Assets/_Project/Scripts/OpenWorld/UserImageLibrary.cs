@@ -125,7 +125,24 @@ namespace AdversityRoad.OpenWorld
             return e == ".png" || e == ".jpg" || e == ".jpeg";
         }
 
-        static void RequestReadPermission()
+        /// <summary>相册读取权限拿到了吗（安卓以外一律视为有）。</summary>
+        public static bool HasReadPermission
+        {
+            get
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return UnityEngine.Android.Permission.HasUserAuthorizedPermission(
+                           "android.permission.READ_MEDIA_IMAGES")
+                    || UnityEngine.Android.Permission.HasUserAuthorizedPermission(
+                           UnityEngine.Android.Permission.ExternalStorageRead);
+#else
+                return true;
+#endif
+            }
+        }
+
+        /// <summary>发起权限申请（弹窗是异步的，调用方要自己等结果）。</summary>
+        public static void RequestReadPermission()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             // 安卓 13 起读相册要的是 READ_MEDIA_IMAGES，老系统才是 READ_EXTERNAL_STORAGE。
@@ -227,9 +244,22 @@ namespace AdversityRoad.OpenWorld
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (string.IsNullOrEmpty(uriString)) return "";
-            string dst = Path.Combine(Application.temporaryCachePath, "picked_image.tmp");
+            string dst = Path.Combine(Application.temporaryCachePath,
+                "picked_" + System.DateTime.Now.Ticks + ".tmp");
             try
             {
+                // 首选自带插件里的复制（普通读写循环，所有安卓版本都成立）
+                using (var picker = new AndroidJavaClass("com.adversityroad.gallery.GalleryPicker"))
+                    if (picker.CallStatic<bool>("copyToFile", uriString, dst) && File.Exists(dst))
+                        return dst;
+            }
+            catch (System.Exception e)
+            {
+                CloudDialogueService.AddLog("插件复制失败，改用 FileUtils：" + e.Message);
+            }
+            try
+            {
+                // 兜底：系统的 FileUtils.copy（API 29+）
                 using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
                 using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
                 using (var resolver = activity.Call<AndroidJavaObject>("getContentResolver"))
@@ -296,6 +326,18 @@ namespace AdversityRoad.OpenWorld
             }
             Assign(slot, dst);
             return true;
+        }
+
+        /// <summary>
+        /// 系统相册选完之后的那一步：把 content:// URI 的图片挂到画框上。
+        ///
+        /// 系统选图给的授权只覆盖"这一张、这一次"，所以必须**当场复制到自己的目录**，
+        /// 否则下次进游戏就读不到了（那正是"选了却没显示"的另一种死法）。
+        /// </summary>
+        public static bool AssignFromUri(UserImageSlot slot, string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return false;
+            return Assign(slot, new GalleryImage { uri = uri, album = "系统相册" });
         }
 
         /// <summary>直接指定一个本机文件路径（空字符串＝取下）。</summary>
@@ -415,7 +457,10 @@ namespace AdversityRoad.OpenWorld
     public class UserPictureFrame : MonoBehaviour
     {
         public UserImageSlot slot = UserImageSlot.BedroomArtA;
-        public float range = 3.2f;
+        /// <summary>交互距离。画挂在 2.5 米高的墙上，站在墙前时【竖直方向】就已经
+        /// 占掉 2.5 米，3.2 米的范围意味着几乎要贴着墙站——那也是"按了没反应"的
+        /// 一种：根本没进范围。放宽到 4.5 米。</summary>
+        public float range = 4.5f;
 
         /// <summary>由 GameBootstrap 注入：打开相册面板。</summary>
         public static System.Action<UserImageSlot> OpenPicker;
@@ -468,7 +513,11 @@ namespace AdversityRoad.OpenWorld
                 GameEvents.RaiseSubtitle("【画框】" + Mobile.MobileInput.UseHint + "打开相册，挑一张自己的图片。");
             }
             if (Input.GetKeyDown(KeyCode.E) || Mobile.MobileInput.GetDown("Interact"))
+            {
+                // 先给一句反馈：相册要拉起来需要一两秒，中间不能是"点了没动静"
+                GameEvents.RaiseSubtitle("正在打开手机相册……");
                 OpenPicker?.Invoke(slot);
+            }
         }
     }
 }
