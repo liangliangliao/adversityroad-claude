@@ -15,6 +15,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.unity3d.player.UnityPlayer;
 
 /**
@@ -46,20 +49,48 @@ import com.unity3d.player.UnityPlayer;
 public class WebScreen {
 
     /**
-     * How a video is controlled once it plays.
+     * Two ways to get a YouTube video onto the screen, because neither one works
+     * everywhere. C# starts with mode 0 and automatically retries with mode 1 when
+     * nothing is playing a few seconds later (see probe()).
      *
-     * We load https://www.youtube.com/embed/<id> DIRECTLY instead of hand building a
-     * page around the IFrame API. A hand built page has to be handed to the WebView
-     * through loadDataWithBaseURL("https://www.youtube.com", ...), which only pretends
-     * to come from youtube.com: the origin cannot be verified, and YouTube answers a
-     * good part of the catalogue with "this video cannot be watched here" - which is
-     * exactly what the player saw. The real embed page has a real origin and plays.
+     * MODE 0 - our own page around the IFrame API, handed over with
+     *   loadDataWithBaseURL("https://www.youtube.com", ...). This is what the widely
+     *   used android-youtube-player library does. The `origin` player var matters:
+     *   without it the API cannot verify where it is running and answers with
+     *   "this video cannot be watched here" even for videos that embed fine.
      *
-     * The price is that the IFrame JS API is gone. It is not needed: the embed page IS
-     * the player page, so its own <video> element sits in the document evaluateJavascript
-     * runs in, and play / pause / mute are plain DOM calls.
+     * MODE 1 - load https://www.youtube.com/embed/<id> directly, WITH a Referer
+     *   header. A WebView sends no Referer of its own, and YouTube answers a
+     *   referer-less embed request with "error 153 - video player configuration
+     *   error", which is exactly what the player saw.
+     *
+     * Playback control differs per mode: mode 0 drives the IFrame API functions
+     * defined in PAGE; mode 1 talks to the embed page's own <video> element (that
+     * page IS the player, so its video element is in the document we evaluate in).
      */
     private static final String VIDEO = "document.querySelector('video')";
+
+    private static final String PAGE =
+        "<!DOCTYPE html><html><head>" +
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
+        "<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}" +
+        "#p{width:100vw;height:100vh}</style></head><body><div id='p'></div>" +
+        "<script src='https://www.youtube.com/iframe_api'></script><script>" +
+        "var pl=null,arErr=0,want='__ID__',mute=__MUTE__;" +
+        "function onYouTubeIframeAPIReady(){pl=new YT.Player('p',{videoId:want," +
+        "playerVars:{autoplay:1,playsinline:1,rel:0,controls:0,modestbranding:1,fs:0," +
+        "iv_load_policy:3,origin:'https://www.youtube.com'}," +
+        "events:{onReady:function(e){if(mute)e.target.mute();e.target.playVideo();}," +
+        "onError:function(e){arErr=e.data;}," +
+        "onStateChange:function(e){if(e.data==0)e.target.playVideo();}}});}" +
+        "function arPlay(){if(pl)pl.playVideo();}" +
+        "function arPause(){if(pl)pl.pauseVideo();}" +
+        "function arMute(m){if(pl){if(m)pl.mute();else pl.unMute();}}" +
+        "function arState(){try{if(arErr!=0)return '0';" +
+        "var s=pl?pl.getPlayerState():-9;return (s==1||s==3)?'1':'0';}catch(e){return '0';}}" +
+        "</script></body></html>";
+
+    private static int sMode;           // 0 = IFrame API page, 1 = embed page
 
     private static WebView sWeb;
     private static PassThrough sHost;
@@ -126,14 +157,22 @@ public class WebScreen {
         });
     }
 
-    /** Load a YouTube video by its 11 character id. */
-    public static void playYouTube(final String videoId, final boolean muted) {
+    /** Load a YouTube video by its 11 character id. mode: see the class comment. */
+    public static void playYouTube(final String videoId, final boolean muted, final int mode) {
         final Activity a = UnityPlayer.currentActivity;
         if (a == null || videoId == null) return;
         a.runOnUiThread(new Runnable() {
             public void run() {
                 if (!ensure(a)) return;
                 sReady = false;
+                sMode = mode == 1 ? 1 : 0;
+                if (sMode == 0) {
+                    sWeb.loadDataWithBaseURL("https://www.youtube.com",
+                        PAGE.replace("__ID__", videoId)
+                            .replace("__MUTE__", muted ? "true" : "false"),
+                        "text/html", "utf-8", null);
+                    return;
+                }
                 // loop=1 needs playlist=<same id> - that is YouTube's own rule for
                 // looping a single video. controls=0 because touches never reach the
                 // page anyway (see PassThrough); the game panel is the remote.
@@ -141,7 +180,9 @@ public class WebScreen {
                     + "?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=0"
                     + "&iv_load_policy=3&loop=1&playlist=" + videoId
                     + (muted ? "&mute=1" : "");
-                sWeb.loadUrl(url);
+                Map<String, String> headers = new HashMap<String, String>();
+                headers.put("Referer", "https://www.youtube.com/");
+                sWeb.loadUrl(url, headers);
             }
         });
     }
@@ -159,12 +200,17 @@ public class WebScreen {
         });
     }
 
-    public static void play() { post("var v=" + VIDEO + ";if(v)v.play();"); }
+    public static void play() {
+        post(sMode == 0 ? "arPlay()" : "var v=" + VIDEO + ";if(v)v.play();");
+    }
 
-    public static void pause() { post("var v=" + VIDEO + ";if(v)v.pause();"); }
+    public static void pause() {
+        post(sMode == 0 ? "arPause()" : "var v=" + VIDEO + ";if(v)v.pause();");
+    }
 
     public static void mute(final boolean m) {
-        post("var v=" + VIDEO + ";if(v)v.muted=" + (m ? "true" : "false") + ";");
+        post(sMode == 0 ? ("arMute(" + (m ? "true" : "false") + ")")
+                        : ("var v=" + VIDEO + ";if(v)v.muted=" + (m ? "true" : "false") + ";"));
     }
 
     /**
@@ -185,9 +231,11 @@ public class WebScreen {
                     return;
                 }
                 try {
-                    sWeb.evaluateJavascript(
-                        "(function(){var v=" + VIDEO
-                        + ";return (v&&v.readyState>0)?'1':'0';})()",
+                    String q = sMode == 0
+                        ? "arState()"
+                        : "(function(){var v=" + VIDEO
+                          + ";return (v&&v.readyState>0&&!v.paused)?'1':'0';})()";
+                    sWeb.evaluateJavascript(q,
                         new ValueCallback<String>() {
                             public void onReceiveValue(String value) {
                                 send(callbackObject,

@@ -70,10 +70,16 @@ namespace AdversityRoad.Platform
         /// <summary>收起画面，但**不停播**——走开时声音继续，才叫"后台播放"。</summary>
         public static void Hide() => Call("hide");
 
-        public static void PlayYouTube(string videoId, bool muted)
+        /// <summary>
+        /// 放一条 YouTube 视频。
+        /// mode 0 = 自建 IFrame API 页面（默认，最通用）；
+        /// mode 1 = 直接加载 embed 页并补上 Referer（对付"错误 153 播放器配置错误"）。
+        /// 两条路都可能被个别视频拒绝，所以由调用方在探测失败后换一条重试。
+        /// </summary>
+        public static void PlayYouTube(string videoId, bool muted, int mode = 0)
         {
             if (string.IsNullOrEmpty(videoId)) return;
-            Call("playYouTube", videoId, muted);
+            Call("playYouTube", videoId, muted, mode);
         }
 
         public static void LoadUrl(string url) => Call("loadUrl", url);

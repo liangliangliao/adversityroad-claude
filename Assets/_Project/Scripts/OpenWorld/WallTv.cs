@@ -149,8 +149,13 @@ namespace AdversityRoad.OpenWorld
         bool _pausedByLeaving;      // 是"切后台"把它暂停的（回来要恢复），不是玩家按的
         Camera _cam;
         readonly RaycastHit[] _sightHits = new RaycastHit[8];
+        readonly float[] _sortBuf = new float[4];
+        readonly Vector3[] _corners = new Vector3[4];
         float _nextSight, _nextProbe;
         bool _sightOk;
+        int _loadMode;              // 0/1：两种把视频弄上屏的方式，见 OnPlaybackChecked
+        Rect _placed;               // 上一次真正摆上去的矩形（死区判定用）
+        bool _screenBlanked;        // 网页层盖住时，世界里的屏幕画纯黑当衬底
 
         // ================= 频道表 =================
 
@@ -332,10 +337,16 @@ namespace AdversityRoad.OpenWorld
                 return;
             }
             if (!WebScreen.Available) return;      // 屏幕仍会显示程序生成的画面
-            if (!string.IsNullOrEmpty(c.id)) WebScreen.PlayYouTube(c.id, Muted);
+            _loadMode = 0;
+            Load(c);
+        }
+
+        void Load(Chan c)
+        {
+            if (!string.IsNullOrEmpty(c.id)) WebScreen.PlayYouTube(c.id, Muted, _loadMode);
             else WebScreen.LoadUrl(c.url);
             // 过几秒回头查一次到底播起来没有（见 OnPlaybackChecked）
-            _nextProbe = Time.unscaledTime + 6f;
+            _nextProbe = Time.unscaledTime + 7f;
         }
 
         /// <summary>
@@ -347,7 +358,19 @@ namespace AdversityRoad.OpenWorld
         void OnPlaybackChecked(bool playing)
         {
             if (!On || playing) return;
-            GameEvents.RaiseSubtitle("这条视频不允许在应用里嵌入播放——换个台，"
+
+            // 【为什么要换一种方式再试一次】两条加载路各有各的拒绝理由：
+            // 自建页面（mode 0）会被"验证不了来源"挡掉；直接加载 embed 页（mode 1）
+            // 少了 Referer 会得到"错误 153 · 视频播放器配置错误"。
+            // 哪条能通只有真机上试了才知道，所以第一条不成就自动换第二条。
+            if (_loadMode == 0)
+            {
+                _loadMode = 1;
+                GameEvents.RaiseSubtitle("这个台没放起来，换一种方式重新加载……");
+                Load(Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)]);
+                return;
+            }
+            GameEvents.RaiseSubtitle("这条视频不让在应用里嵌入播放——换个台，"
                 + "或在电视面板里用「在 YouTube 打开」。");
         }
 
@@ -362,9 +385,16 @@ namespace AdversityRoad.OpenWorld
                 return;
             }
 
-            // 世界里的屏幕：一直在动（侧面看过去也是亮的）
-            if (Time.unscaledTime >= _nextFrame)
+            // 世界里的屏幕：一直在动（侧面看过去也是亮的）。
+            // 但网页层盖上来时改画纯黑：网页层比屏幕略小一圈（见 TryScreenRect），
+            // 底下露出的那一圈得是黑边框，不能是一圈乱跳的彩条。
+            if (_overlayShown)
             {
+                if (!_screenBlanked) { _screenBlanked = true; DrawBlack(); }
+            }
+            else if (Time.unscaledTime >= _nextFrame)
+            {
+                _screenBlanked = false;
                 _nextFrame = Time.unscaledTime + 0.1f;
                 _phase += 0.1f;
                 DrawChannelFrame();
@@ -381,7 +411,14 @@ namespace AdversityRoad.OpenWorld
             bool blocked = Suppressed || Time.timeScale < 0.01f;
             if (!blocked && TryScreenRect(out Rect rect) && rect.width > 40f && rect.height > 24f)
             {
-                WebScreen.Place(rect);
+                // 【死区：站着不动时别让它一帧一动】投影每帧都会有亚像素抖动，
+                // 而原生视图的布局要晚一两帧才生效——逐帧下发就成了肉眼可见的左右跳。
+                // 变化不到 2 像素就不重新下发，画面在屏幕里是钉死的。
+                if (!_overlayShown || Moved(rect, _placed, 2f))
+                {
+                    WebScreen.Place(rect);
+                    _placed = rect;
+                }
                 _overlayShown = true;
             }
             else if (_overlayShown)
@@ -394,8 +431,9 @@ namespace AdversityRoad.OpenWorld
 
         /// <summary>
         /// 把屏幕四角投影到屏幕空间，算出网页层该占的矩形。
-        /// 只在玩家大致处于电视正面、且四角都在镜头前时才给——
-        /// 斜着看时一块轴对齐的矩形贴不上一个透视的四边形，那种错位比不显示更糟。
+        /// 四道门槛缺一不可：在正面（法线点积）、不太远、看得见（视线检测）、
+        /// 四角都在镜头前。都过了之后取**内接**矩形并往里收一圈，
+        /// 保证画面始终嵌在液晶屏里面，而不是溢到边框和墙上。
         /// </summary>
         bool TryScreenRect(out Rect rect)
         {
@@ -415,20 +453,48 @@ namespace AdversityRoad.OpenWorld
             Vector3 up = Vector3.up;
             float hw = widthM * 0.5f, hh = heightM * 0.5f;
 
-            float x0 = float.MaxValue, x1 = float.MinValue, y0 = float.MaxValue, y1 = float.MinValue;
+            // 四角投影
             for (int i = 0; i < 4; i++)
             {
                 Vector3 p = c + right * ((i & 1) == 0 ? -hw : hw) + up * ((i & 2) == 0 ? -hh : hh);
                 Vector3 sp = _cam.WorldToScreenPoint(p);
                 if (sp.z < 0.2f) return false;                            // 有角落在镜头后面
-                x0 = Mathf.Min(x0, sp.x); x1 = Mathf.Max(x1, sp.x);
-                y0 = Mathf.Min(y0, sp.y); y1 = Mathf.Max(y1, sp.y);
+                _corners[i] = sp;
             }
+
+            // 【取内接矩形，不是包围盒】斜着看时，屏幕在画面里是个梯形；
+            // 包围盒一定比它大，网页层就会溢出边框、盖到墙上去。
+            // 取"第二小 ~ 第二大"这一对，得到的矩形一定落在梯形里面——
+            // 玩家要的"嵌进液晶屏中"就是这个。
+            Inner(_corners[0].x, _corners[1].x, _corners[2].x, _corners[3].x, out float x0, out float x1);
+            Inner(_corners[0].y, _corners[1].y, _corners[2].y, _corners[3].y, out float y0, out float y1);
+            if (x1 - x0 < 8f || y1 - y0 < 8f) return false;
+
+            // 再往里收一点：原生视图的布局比 Unity 画面晚一两帧，镜头一动就会有几像素
+            // 的错位。留一圈黑边（屏幕本体这时画纯黑）把这点错位吃掉，
+            // 视频就始终在屏幕里面，不会切到边框上。
+            float insetX = (x1 - x0) * 0.035f, insetY = (y1 - y0) * 0.035f;
+            x0 += insetX; x1 -= insetX; y0 += insetY; y1 -= insetY;
+
             // 完全在屏幕外就不必摆了
             if (x1 < 0 || y1 < 0 || x0 > Screen.width || y0 > Screen.height) return false;
             rect = new Rect(x0, y0, x1 - x0, y1 - y0);
             return true;
         }
+
+        /// <summary>四个数里取"第二小"和"第二大"——凸四边形的内接轴对齐矩形。</summary>
+        void Inner(float a, float b, float c, float d, out float lo, out float hi)
+        {
+            _sortBuf[0] = a; _sortBuf[1] = b; _sortBuf[2] = c; _sortBuf[3] = d;
+            System.Array.Sort(_sortBuf);
+            lo = _sortBuf[1];
+            hi = _sortBuf[2];
+        }
+
+        /// <summary>两个矩形差得够不够多（够多才值得重新下发一次原生布局）。</summary>
+        static bool Moved(Rect a, Rect b, float eps) =>
+            Mathf.Abs(a.xMin - b.xMin) > eps || Mathf.Abs(a.yMin - b.yMin) > eps ||
+            Mathf.Abs(a.width - b.width) > eps || Mathf.Abs(a.height - b.height) > eps;
 
         /// <summary>
         /// 镜头和电视之间有没有实体挡着。
@@ -502,6 +568,15 @@ namespace AdversityRoad.OpenWorld
             _ledMat.color = c;
             if (_ledMat.HasProperty("_BaseColor")) _ledMat.SetColor("_BaseColor", c);
             if (_ledMat.HasProperty("_EmissionColor")) _ledMat.SetColor("_EmissionColor", c * 1.4f);
+        }
+
+        /// <summary>网页层盖上来时的衬底：纯黑，让露出的一圈看着就是屏幕的黑边。</summary>
+        void DrawBlack()
+        {
+            if (_tex == null) return;
+            for (int i = 0; i < _px.Length; i++) _px[i] = new Color32(4, 4, 5, 255);
+            _tex.SetPixels32(_px);
+            _tex.Apply(false, false);
         }
 
         void DrawStandby()
