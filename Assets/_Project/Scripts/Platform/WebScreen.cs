@@ -51,7 +51,11 @@ namespace AdversityRoad.Platform
 
         /// <summary>
         /// 把网页层摆到屏幕上的这个矩形里（Unity 屏幕坐标，原点在左下）。
-        /// 安卓的视图坐标原点在左上，这里负责翻过来。
+        /// 安卓的视图坐标原点在左上，这里负责翻过来；
+        /// 同时把"这个矩形是按多大的 Unity 画面量出来的"一起传过去——
+        /// Unity 的画面像素数和安卓视图的像素数**不一定相等**（分辨率缩放、刘海、
+        /// 分屏、悬浮小窗都会让两者对不上），Java 侧按这个比例换算，
+        /// 否则画面会摆到电视旁边去，还会随着差值缩放。
         /// </summary>
         public static void Place(Rect r)
         {
@@ -60,7 +64,7 @@ namespace AdversityRoad.Platform
             int y = Mathf.RoundToInt(Screen.height - r.yMax);
             int w = Mathf.RoundToInt(r.width);
             int h = Mathf.RoundToInt(r.height);
-            Call("place", x, y, w, h);
+            Call("place", x, y, w, h, Screen.width, Screen.height);
         }
 
         /// <summary>收起画面，但**不停播**——走开时声音继续，才叫"后台播放"。</summary>
@@ -73,12 +77,44 @@ namespace AdversityRoad.Platform
         }
 
         public static void LoadUrl(string url) => Call("loadUrl", url);
+
+        /// <summary>
+        /// 查一下"到底有没有在播"，结果通过 <see cref="PlaybackChecked"/> 回来。
+        /// 有些视频不许嵌入播放，页面上会出现 YouTube 自己的"此视频不能观看"卡片，
+        /// 而游戏这边看起来和"还在缓冲"一模一样——玩家只能对着一个黑框发呆。
+        /// </summary>
+        public static void Probe()
+        {
+            if (!Available) return;
+            EnsureBridge();
+            Call("probe", BridgeName);
+        }
+
+        /// <summary>Probe 的结果：true = 页面里真的有个视频在播。</summary>
+        public static event System.Action<bool> PlaybackChecked;
         public static void Play() => Call("play");
         public static void Pause() => Call("pause");
         public static void Mute(bool m) => Call("mute", m);
         public static void KeepAlive() => Call("keepAlive");
         public static void Close() => Call("close");
         public static void OpenExternal(string url) => Call("openExternal", url);
+
+        const string BridgeName = "WebScreenBridge";
+        static Bridge _bridge;
+
+        static void EnsureBridge()
+        {
+            if (_bridge != null) return;
+            var go = new GameObject(BridgeName);
+            Object.DontDestroyOnLoad(go);
+            _bridge = go.AddComponent<Bridge>();
+        }
+
+        /// <summary>接 Java 侧 UnitySendMessage 的固定收件人。</summary>
+        class Bridge : MonoBehaviour
+        {
+            public void OnWebPlayback(string v) => PlaybackChecked?.Invoke(v == "1");
+        }
 
         static void Call(string method, params object[] args)
         {

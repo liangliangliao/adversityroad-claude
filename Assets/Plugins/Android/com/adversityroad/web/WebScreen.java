@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -39,33 +40,30 @@ import com.unity3d.player.UnityPlayer;
  * metre TV. If the WebView consumed touches, the player would lose the joystick and
  * be stuck. PassThrough intercepts every touch (so the page never sees it) and then
  * declines it (so Android keeps dispatching to the Unity view underneath). Playback
- * control therefore lives entirely in the in-game panel, which talks to the page
- * through the YouTube IFrame API functions defined in PAGE below.
+ * control therefore lives entirely in the in-game panel, which drives the page's own
+ * <video> element through evaluateJavascript (see VIDEO below).
  */
 public class WebScreen {
 
-    /** Player page: the YouTube IFrame API plus the four controls C# needs. */
-    private static final String PAGE =
-        "<!DOCTYPE html><html><head>" +
-        "<meta name='viewport' content='width=device-width, initial-scale=1'>" +
-        "<style>html,body{margin:0;padding:0;background:#000;overflow:hidden}" +
-        "#p{width:100vw;height:100vh}</style></head><body><div id='p'></div>" +
-        "<script src='https://www.youtube.com/iframe_api'></script><script>" +
-        "var pl=null,want='__ID__',mute=__MUTE__;" +
-        "function onYouTubeIframeAPIReady(){pl=new YT.Player('p',{videoId:want," +
-        "playerVars:{autoplay:1,playsinline:1,rel:0,modestbranding:1,controls:0,fs:0}," +
-        "events:{onReady:function(e){if(mute)e.target.mute();e.target.playVideo();}," +
-        "onStateChange:function(e){if(e.data==YT.PlayerState.ENDED)e.target.playVideo();}}});}" +
-        "function arLoad(id){want=id;if(pl){pl.loadVideoById(id);pl.playVideo();}}" +
-        "function arPlay(){if(pl)pl.playVideo();}" +
-        "function arPause(){if(pl)pl.pauseVideo();}" +
-        "function arMute(m){mute=m;if(pl){if(m)pl.mute();else pl.unMute();}}" +
-        "</script></body></html>";
+    /**
+     * How a video is controlled once it plays.
+     *
+     * We load https://www.youtube.com/embed/<id> DIRECTLY instead of hand building a
+     * page around the IFrame API. A hand built page has to be handed to the WebView
+     * through loadDataWithBaseURL("https://www.youtube.com", ...), which only pretends
+     * to come from youtube.com: the origin cannot be verified, and YouTube answers a
+     * good part of the catalogue with "this video cannot be watched here" - which is
+     * exactly what the player saw. The real embed page has a real origin and plays.
+     *
+     * The price is that the IFrame JS API is gone. It is not needed: the embed page IS
+     * the player page, so its own <video> element sits in the document evaluateJavascript
+     * runs in, and play / pause / mute are plain DOM calls.
+     */
+    private static final String VIDEO = "document.querySelector('video')";
 
     private static WebView sWeb;
     private static PassThrough sHost;
     private static boolean sReady;      // the player page has finished loading
-    private static String sPending;     // video id asked for before the page was ready
 
     /** Container that steals touches from the page and then declines them. */
     private static class PassThrough extends FrameLayout {
@@ -78,17 +76,34 @@ public class WebScreen {
         return UnityPlayer.currentActivity != null;
     }
 
-    /** Show / move the overlay. x,y are display pixels from the top left corner. */
-    public static void place(final int x, final int y, final int w, final int h) {
+    /**
+     * Show / move the overlay. x,y,w,h are in Unity's screen pixels (origin top left),
+     * srcW/srcH is the size of Unity's screen those numbers were measured against.
+     *
+     * The rectangle MUST be rescaled here: Unity's surface and the Android view
+     * hierarchy do not have to be the same number of pixels (resolution scaling, a
+     * display cutout, split screen, picture in picture...). Placing Unity pixels
+     * straight into view coordinates puts the picture next to the television instead
+     * of on it, shrinking or growing with the mismatch.
+     */
+    public static void place(final int x, final int y, final int w, final int h,
+                             final int srcW, final int srcH) {
         final Activity a = UnityPlayer.currentActivity;
         if (a == null) return;
         a.runOnUiThread(new Runnable() {
             public void run() {
                 if (!ensure(a)) return;
-                FrameLayout.LayoutParams lp =
-                    new FrameLayout.LayoutParams(Math.max(4, w), Math.max(4, h));
-                lp.leftMargin = x;
-                lp.topMargin = y;
+                float sx = 1f, sy = 1f;
+                View content = a.findViewById(android.R.id.content);
+                if (content != null && srcW > 0 && srcH > 0
+                        && content.getWidth() > 0 && content.getHeight() > 0) {
+                    sx = (float) content.getWidth() / (float) srcW;
+                    sy = (float) content.getHeight() / (float) srcH;
+                }
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                    Math.max(4, Math.round(w * sx)), Math.max(4, Math.round(h * sy)));
+                lp.leftMargin = Math.round(x * sx);
+                lp.topMargin = Math.round(y * sy);
                 sHost.setLayoutParams(lp);
                 if (sHost.getVisibility() != View.VISIBLE) sHost.setVisibility(View.VISIBLE);
                 sHost.requestLayout();
@@ -118,19 +133,15 @@ public class WebScreen {
         a.runOnUiThread(new Runnable() {
             public void run() {
                 if (!ensure(a)) return;
-                if (sReady) {
-                    js("arLoad('" + videoId + "')");
-                    js("arMute(" + (muted ? "true" : "false") + ")");
-                    return;
-                }
-                sPending = videoId;
-                String page = PAGE.replace("__ID__", videoId)
-                                  .replace("__MUTE__", muted ? "true" : "false");
-                // The youtube.com base URL matters: the IFrame API refuses to run
-                // from an about:blank / file:// origin, which is why a naive
-                // loadData() shows nothing but a black box.
-                sWeb.loadDataWithBaseURL("https://www.youtube.com", page,
-                    "text/html", "utf-8", null);
+                sReady = false;
+                // loop=1 needs playlist=<same id> - that is YouTube's own rule for
+                // looping a single video. controls=0 because touches never reach the
+                // page anyway (see PassThrough); the game panel is the remote.
+                String url = "https://www.youtube.com/embed/" + videoId
+                    + "?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=0"
+                    + "&iv_load_policy=3&loop=1&playlist=" + videoId
+                    + (muted ? "&mute=1" : "");
+                sWeb.loadUrl(url);
             }
         });
     }
@@ -143,17 +154,60 @@ public class WebScreen {
             public void run() {
                 if (!ensure(a)) return;
                 sReady = false;
-                sPending = null;
                 sWeb.loadUrl(url);
             }
         });
     }
 
-    public static void play() { post("arPlay()"); }
+    public static void play() { post("var v=" + VIDEO + ";if(v)v.play();"); }
 
-    public static void pause() { post("arPause()"); }
+    public static void pause() { post("var v=" + VIDEO + ";if(v)v.pause();"); }
 
-    public static void mute(final boolean m) { post("arMute(" + (m ? "true" : "false") + ")"); }
+    public static void mute(final boolean m) {
+        post("var v=" + VIDEO + ";if(v)v.muted=" + (m ? "true" : "false") + ";");
+    }
+
+    /**
+     * Ask the page whether anything is actually playing and report back to Unity via
+     * UnitySendMessage(callbackObject, "OnWebPlayback", "1" or "0").
+     *
+     * Some videos forbid embedding; the page then shows YouTube's own "cannot be
+     * watched here" card and nothing ever plays. Without this the game has no way to
+     * tell that apart from "still buffering", and the player is left staring at a box.
+     */
+    public static void probe(final String callbackObject) {
+        final Activity a = UnityPlayer.currentActivity;
+        if (a == null || callbackObject == null) return;
+        a.runOnUiThread(new Runnable() {
+            public void run() {
+                if (sWeb == null) {
+                    send(callbackObject, "0");
+                    return;
+                }
+                try {
+                    sWeb.evaluateJavascript(
+                        "(function(){var v=" + VIDEO
+                        + ";return (v&&v.readyState>0)?'1':'0';})()",
+                        new ValueCallback<String>() {
+                            public void onReceiveValue(String value) {
+                                send(callbackObject,
+                                    value != null && value.contains("1") ? "1" : "0");
+                            }
+                        });
+                } catch (Throwable t) {
+                    send(callbackObject, "0");
+                }
+            }
+        });
+    }
+
+    private static void send(String obj, String value) {
+        try {
+            UnityPlayer.UnitySendMessage(obj, "OnWebPlayback", value);
+        } catch (Throwable t) {
+            // the bridge object is gone; nothing to report to
+        }
+    }
 
     /**
      * Keep the page running while the app is in the background. Android does not
@@ -190,7 +244,6 @@ public class WebScreen {
                 sWeb = null;
                 sHost = null;
                 sReady = false;
-                sPending = null;
             }
         });
     }
@@ -227,10 +280,6 @@ public class WebScreen {
             sWeb.setWebViewClient(new WebViewClient() {
                 @Override public void onPageFinished(WebView v, String url) {
                     sReady = true;
-                    if (sPending != null) {
-                        js("arLoad('" + sPending + "')");
-                        sPending = null;
-                    }
                 }
             });
             sWeb.setLayoutParams(new FrameLayout.LayoutParams(

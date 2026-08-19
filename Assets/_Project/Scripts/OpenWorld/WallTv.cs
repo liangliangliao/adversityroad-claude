@@ -148,6 +148,9 @@ namespace AdversityRoad.OpenWorld
         bool _overlayShown;
         bool _pausedByLeaving;      // 是"切后台"把它暂停的（回来要恢复），不是玩家按的
         Camera _cam;
+        readonly RaycastHit[] _sightHits = new RaycastHit[8];
+        float _nextSight, _nextProbe;
+        bool _sightOk;
 
         // ================= 频道表 =================
 
@@ -162,9 +165,15 @@ namespace AdversityRoad.OpenWorld
             {
                 if (_chans.Count == 0)
                 {
-                    _chans.Add(new Chan("专注 · Lofi 电台", "jfKfPfyJRdk", ""));
+                    // 内置频道只是默认值。**任何一条视频都可能被作者禁止嵌入播放**，
+                    // 那时页面上会出现 YouTube 自己的"此视频不能观看"卡片——
+                    // 这不是播放器坏了，是那条视频不让在应用里放。所以：
+                    // ① 默认排最前的是最常被用来做嵌入测试的普通视频；
+                    // ② 直播排后面（直播被拒的概率更高）；
+                    // ③ 真正的主力是下面三个"我的频道"——粘自己的链接最靠谱。
                     _chans.Add(new Chan("开源动画 · Big Buck Bunny", "aqz-KE-bpKQ", ""));
-                    _chans.Add(new Chan("动画短片 · Sintel", "eRsGyueVLvQ", ""));
+                    _chans.Add(new Chan("开源动画 · Blender 官方", "YE7VzlLtp-4", ""));
+                    _chans.Add(new Chan("专注 · Lofi 直播", "jfKfPfyJRdk", ""));
                     for (int i = 0; i < CustomSlots; i++)
                     {
                         string saved = PlayerPrefs.GetString(PrefCustom + i, "");
@@ -241,6 +250,10 @@ namespace AdversityRoad.OpenWorld
             if (PlayerPrefs.GetInt(PrefOn, 0) == 1) PowerOn();
             else SetLed(false);
         }
+
+        void OnEnable() => WebScreen.PlaybackChecked += OnPlaybackChecked;
+
+        void OnDisable() => WebScreen.PlaybackChecked -= OnPlaybackChecked;
 
         void OnDestroy()
         {
@@ -321,6 +334,21 @@ namespace AdversityRoad.OpenWorld
             if (!WebScreen.Available) return;      // 屏幕仍会显示程序生成的画面
             if (!string.IsNullOrEmpty(c.id)) WebScreen.PlayYouTube(c.id, Muted);
             else WebScreen.LoadUrl(c.url);
+            // 过几秒回头查一次到底播起来没有（见 OnPlaybackChecked）
+            _nextProbe = Time.unscaledTime + 6f;
+        }
+
+        /// <summary>
+        /// 播放没起来时说清楚是怎么回事。
+        /// 页面上那张"此视频不能观看"是 YouTube 自己画的：**这条视频的作者禁止了
+        /// 站外嵌入播放**，不是播放器坏了。这种情况只有两条路：换一个台，
+        /// 或者用面板里的"在 YouTube 打开"交给 YouTube 应用去放。
+        /// </summary>
+        void OnPlaybackChecked(bool playing)
+        {
+            if (!On || playing) return;
+            GameEvents.RaiseSubtitle("这条视频不允许在应用里嵌入播放——换个台，"
+                + "或在电视面板里用「在 YouTube 打开」。");
         }
 
         // ================= 每帧：画面在哪儿 =================
@@ -343,6 +371,12 @@ namespace AdversityRoad.OpenWorld
             }
 
             if (!WebScreen.Available) return;
+
+            if (_nextProbe > 0f && Time.unscaledTime >= _nextProbe)
+            {
+                _nextProbe = 0f;
+                WebScreen.Probe();
+            }
 
             bool blocked = Suppressed || Time.timeScale < 0.01f;
             if (!blocked && TryScreenRect(out Rect rect) && rect.width > 40f && rect.height > 24f)
@@ -369,10 +403,12 @@ namespace AdversityRoad.OpenWorld
             if (_cam == null) return false;
 
             Vector3 c = transform.position;
-            Vector3 toCam = _cam.transform.position - c;
+            Vector3 camPos = _cam.transform.position;
+            Vector3 toCam = camPos - c;
             float dist = toCam.magnitude;
-            if (dist > widthM * 4.5f + 6f) return false;                  // 太远了
+            if (dist > widthM * 3f + 4f) return false;                    // 太远了
             if (Vector3.Dot(faceNormal, toCam.normalized) < 0.45f) return false;  // 不在正面
+            if (!HasLineOfSight(camPos, c)) return false;                 // 中间隔着墙
 
             Vector3 right = Mathf.Abs(faceNormal.z) >= Mathf.Abs(faceNormal.x)
                 ? Vector3.right : Vector3.forward;
@@ -392,6 +428,40 @@ namespace AdversityRoad.OpenWorld
             if (x1 < 0 || y1 < 0 || x0 > Screen.width || y0 > Screen.height) return false;
             rect = new Rect(x0, y0, x1 - x0, y1 - y0);
             return true;
+        }
+
+        /// <summary>
+        /// 镜头和电视之间有没有实体挡着。
+        ///
+        /// 【玩家反馈"播放器会跟着移动"的根因就在这里】
+        /// 上一版只判断了"在不在正面、远不远"，**没判断看不看得见**。于是站在隔壁房间、
+        /// 隔着一堵墙朝电视方向看时，投影照样算得出一个矩形，网页层就把视频画在了那堵
+        /// 墙上——一块悬空的视频，还跟着镜头一起走。
+        ///
+        /// 玩家自己的碰撞体要跳过：第三人称镜头在角色背后，角色本来就挡在中间。
+        /// 检测每 0.15 秒做一次就够（镜头是连续运动的），省下逐帧的射线开销。
+        /// </summary>
+        bool HasLineOfSight(Vector3 from, Vector3 to)
+        {
+            if (Time.unscaledTime < _nextSight) return _sightOk;
+            _nextSight = Time.unscaledTime + 0.15f;
+
+            Vector3 d = to - from;
+            float dist = d.magnitude;
+            if (dist < 0.05f) { _sightOk = true; return true; }
+
+            _sightOk = true;
+            int n = Physics.RaycastNonAlloc(from, d / dist, _sightHits,
+                dist - 0.25f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = _sightHits[i].collider;
+                if (col == null) continue;
+                if (col.GetComponentInParent<Player.PlayerController>() != null) continue;
+                _sightOk = false;
+                break;
+            }
+            return _sightOk;
         }
 
         // ================= 应用切后台 =================
