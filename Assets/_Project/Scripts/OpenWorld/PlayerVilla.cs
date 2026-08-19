@@ -670,11 +670,11 @@ namespace AdversityRoad.OpenWorld
             // 床头这幅：从床头板顶（1.35）一直吃到天花下沿（3.7），最宽 5.2 米——
             // 一张 4:3 的横幅照片会长成 2.9m × 2.2m，站在房门口就是一整面墙的画。
             UserPicture(ctx, c + new Vector3(0, 2.5f, 3.96f), new Vector3(5.2f, 2.2f, 0.08f),
-                UserImageSlot.BedroomArtA, "艺 术 画", 0.16f);
+                UserImageSlot.BedroomArtA, "艺 术 画", Vector3.back, 0.16f);
             // 侧墙这幅：挪到主卧真正的西墙内表面上（x=-14.86 是外墙内皮），
             // 避开西窗（z∈[-5,3]），高度顶到 2.8 米——竖幅照片在这里能长成 2.1m × 2.8m。
             UserPicture(ctx, c + new Vector3(-14.72f, 1.95f, 6.5f), new Vector3(0.08f, 2.8f, 4.4f),
-                UserImageSlot.BedroomArtB, "", 0.16f);
+                UserImageSlot.BedroomArtB, "", Vector3.right, 0.16f);
             // 两幅画各给一盏射灯：画面亮起来才"显眼"，也才看得清细节
             ZoneBuilder.AddCeilingLight(c + new Vector3(0, 3.35f, 2.6f), new Color(1f, 0.96f, 0.88f), 11f);
             ZoneBuilder.AddCeilingLight(c + new Vector3(-13.4f, 3.35f, 6.5f), new Color(1f, 0.96f, 0.88f), 11f);
@@ -789,8 +789,9 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(0.95f, 0.06f, 0.32f), Dark);
             // 桌上的相框比原来大一圈就够了（0.9m × 0.62m 已经是台面上很大的一个相框），
             // 下沿钉在支架上：换一张竖幅照片时是往上长，而不是整块飘起来。
+            // 办公桌朝北坐（键盘 z=2.1、显示器 z=3.2），所以相框正面朝 -Z 对着人
             UserPicture(ctx, c + new Vector3(2.4f, 1.2f, 3.1f), new Vector3(0.9f, 0.62f, 0.05f),
-                UserImageSlot.DeskPhoto, "", 0.06f, true);
+                UserImageSlot.DeskPhoto, "", Vector3.back, 0.06f, true);
             // 【原来这里还有一块 FrameEdge 板】它比照片大一圈、又摆在照片正前方 1.5 厘米，
             // 等于把整张照片糊死。画框的四条木边现在由 UserPictureFrame 自己建，这块板删掉。
 
@@ -1281,7 +1282,7 @@ namespace AdversityRoad.OpenWorld
         /// 房间代码只需要回答一件事：这面墙上最多能让画占多大。
         /// </summary>
         static void UserPicture(WorldContext ctx, Vector3 at, Vector3 size, UserImageSlot slot,
-            string sign, float border = 0.13f, bool anchorBottom = false)
+            string sign, Vector3 faceDir, float border = 0.13f, bool anchorBottom = false)
         {
             var go = VillaKit.Deco("UserPicture_" + slot, at, size, new Color(0.62f, 0.60f, 0.66f));
             bool alongZ = size.x < size.z;                   // 画挂在侧墙上（法线是 X）
@@ -1293,6 +1294,7 @@ namespace AdversityRoad.OpenWorld
             f.maxH = size.y;
             f.border = border;
             f.anchorBottom = anchorBottom;
+            f.faceDir = faceDir;        // 背板挂在它的反面（背面不该看见照片）
             // 画框自己就说明了它是什么，不再往空中挂一行字
         }
 

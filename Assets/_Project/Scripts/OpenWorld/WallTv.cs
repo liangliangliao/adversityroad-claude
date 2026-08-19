@@ -154,6 +154,9 @@ namespace AdversityRoad.OpenWorld
         float _nextSight, _nextProbe;
         bool _sightOk;
         int _loadMode;              // 0/1：两种把视频弄上屏的方式，见 OnPlaybackChecked
+        int _lastError;             // 上一次探测拿到的 YouTube 错误码（0 = 没有）
+        Rect _prevRect;             // 上一帧算出来的矩形（用来抵消原生布局的延迟）
+        bool _hasPrev;
         Rect _placed;               // 上一次真正摆上去的矩形（死区判定用）
         bool _screenBlanked;        // 网页层盖住时，世界里的屏幕画纯黑当衬底
 
@@ -176,8 +179,8 @@ namespace AdversityRoad.OpenWorld
                     // ① 默认排最前的是最常被用来做嵌入测试的普通视频；
                     // ② 直播排后面（直播被拒的概率更高）；
                     // ③ 真正的主力是下面三个"我的频道"——粘自己的链接最靠谱。
-                    _chans.Add(new Chan("开源动画 · Big Buck Bunny", "aqz-KE-bpKQ", ""));
                     _chans.Add(new Chan("开源动画 · Blender 官方", "YE7VzlLtp-4", ""));
+                    _chans.Add(new Chan("经典 · Never Gonna Give You Up", "dQw4w9WgXcQ", ""));
                     _chans.Add(new Chan("专注 · Lofi 直播", "jfKfPfyJRdk", ""));
                     for (int i = 0; i < CustomSlots; i++)
                     {
@@ -355,23 +358,42 @@ namespace AdversityRoad.OpenWorld
         /// 站外嵌入播放**，不是播放器坏了。这种情况只有两条路：换一个台，
         /// 或者用面板里的"在 YouTube 打开"交给 YouTube 应用去放。
         /// </summary>
-        void OnPlaybackChecked(bool playing)
+        void OnPlaybackChecked(bool playing, int err)
         {
             if (!On || playing) return;
 
             // 【为什么要换一种方式再试一次】两条加载路各有各的拒绝理由：
-            // 自建页面（mode 0）会被"验证不了来源"挡掉；直接加载 embed 页（mode 1）
-            // 少了 Referer 会得到"错误 153 · 视频播放器配置错误"。
-            // 哪条能通只有真机上试了才知道，所以第一条不成就自动换第二条。
+            // 自建页面（mode 0）靠的是一个真实来源；直接加载 embed 页（mode 1）
+            // 靠的是补上 Referer。哪条能通只有真机上试了才知道，
+            // 所以第一条不成就自动换第二条。
             if (_loadMode == 0)
             {
                 _loadMode = 1;
-                GameEvents.RaiseSubtitle("这个台没放起来，换一种方式重新加载……");
+                _lastError = err;
+                GameEvents.RaiseSubtitle("这个台没放起来（" + ErrorText(err)
+                    + "），换一种方式重新加载……");
                 Load(Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)]);
                 return;
             }
-            GameEvents.RaiseSubtitle("这条视频不让在应用里嵌入播放——换个台，"
-                + "或在电视面板里用「在 YouTube 打开」。");
+            GameEvents.RaiseSubtitle("两种方式都放不了这条视频（" + ErrorText(err)
+                + "）——换个台，或在电视面板里用「在 YouTube 打开」。");
+        }
+
+        /// <summary>把 YouTube 播放器的错误码翻成人话（面板与字幕都用它）。</summary>
+        public static string ErrorText(int err)
+        {
+            switch (err)
+            {
+                case 0: return "没有返回错误码，多半是网络没连上";
+                case 2: return "错误 2：链接里的视频 id 不合法";
+                case 5: return "错误 5：播放器内部错误";
+                case 100: return "错误 100：视频不存在或已设为私享";
+                case 101:
+                case 150: return "错误 " + err + "：作者禁止这条视频在站外播放";
+                case 152:
+                case 153: return "错误 " + err + "：来源/配置被 YouTube 拒绝";
+                default: return "错误 " + err;
+            }
         }
 
         // ================= 每帧：画面在哪儿 =================
@@ -409,15 +431,16 @@ namespace AdversityRoad.OpenWorld
             }
 
             bool blocked = Suppressed || Time.timeScale < 0.01f;
-            if (!blocked && TryScreenRect(out Rect rect) && rect.width > 40f && rect.height > 24f)
+            if (!blocked && TryScreenRect(out Rect rect) && rect.width > 40f && rect.height > 24f
+                && TryLead(rect, out Rect target))
             {
                 // 【死区：站着不动时别让它一帧一动】投影每帧都会有亚像素抖动，
-                // 而原生视图的布局要晚一两帧才生效——逐帧下发就成了肉眼可见的左右跳。
-                // 变化不到 2 像素就不重新下发，画面在屏幕里是钉死的。
-                if (!_overlayShown || Moved(rect, _placed, 2f))
+                // 而每下发一次原生布局都要跨线程排队。变化不到 2 像素就不下发，
+                // 站着不动时画面在屏幕里是钉死的。
+                if (!_overlayShown || Moved(target, _placed, 2f))
                 {
-                    WebScreen.Place(rect);
-                    _placed = rect;
+                    WebScreen.Place(target);
+                    _placed = target;
                 }
                 _overlayShown = true;
             }
@@ -426,6 +449,7 @@ namespace AdversityRoad.OpenWorld
                 // 收起画面但不停播：走开了声音还在，这就是玩家要的"后台播放"的一半
                 WebScreen.Hide();
                 _overlayShown = false;
+                _hasPrev = false;
             }
         }
 
@@ -479,6 +503,39 @@ namespace AdversityRoad.OpenWorld
             // 完全在屏幕外就不必摆了
             if (x1 < 0 || y1 < 0 || x0 > Screen.width || y0 > Screen.height) return false;
             rect = new Rect(x0, y0, x1 - x0, y1 - y0);
+            return true;
+        }
+
+        /// <summary>
+        /// 把矩形往前推一点，抵消"原生视图慢一拍"这件事。
+        ///
+        /// 【玩家反馈"跟着移动就左右跳"的根因】网页层是**安卓的原生视图**，
+        /// 它的布局在 UI 线程上排队执行，比算出这个矩形的那一帧要晚一到两帧才生效；
+        /// 而 3D 里的电视是当帧渲染的。两者之间因此永远差着一个固定的延迟——
+        /// 镜头一动，视频就相对电视往后拖，看起来就是"跳"。
+        /// 这件事没法靠对齐算法解决：原生视图和 Unity 的渲染压根不同步。
+        ///
+        /// 能做的是**按这个固定延迟做外推**：用上一帧到这一帧的位移，
+        /// 把矩形往运动方向推 1.5 帧，正好补上那一到两帧的滞后。
+        /// 位移大到一帧就跨过四分之一个屏幕（甩镜头）时外推也救不回来，
+        /// 那时干脆收起网页层，让世界里的屏幕自己显示画面——它是贴在电视上的，
+        /// 永远不会跳。
+        /// </summary>
+        bool TryLead(Rect now, out Rect target)
+        {
+            target = now;
+            if (!_hasPrev) { _prevRect = now; _hasPrev = true; return true; }
+
+            float dx = now.xMin - _prevRect.xMin, dy = now.yMin - _prevRect.yMin;
+            float dw = now.width - _prevRect.width, dh = now.height - _prevRect.height;
+            _prevRect = now;
+
+            if (Mathf.Abs(dx) > now.width * 0.25f || Mathf.Abs(dy) > now.height * 0.25f)
+                return false;                                   // 甩镜头：这一帧不显示
+
+            const float Lead = 1.5f;                            // 原生布局大致滞后的帧数
+            target = new Rect(now.xMin + dx * Lead, now.yMin + dy * Lead,
+                              now.width + dw * Lead, now.height + dh * Lead);
             return true;
         }
 

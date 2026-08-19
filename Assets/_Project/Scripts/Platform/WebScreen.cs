@@ -96,8 +96,13 @@ namespace AdversityRoad.Platform
             Call("probe", BridgeName);
         }
 
-        /// <summary>Probe 的结果：true = 页面里真的有个视频在播。</summary>
-        public static event System.Action<bool> PlaybackChecked;
+        /// <summary>
+        /// Probe 的结果：playing = 页面里真的有个视频在播；
+        /// error = YouTube 播放器给的错误码（0 表示没有错误码，只是没播起来）。
+        /// 常见值：2 视频 id 不合法 · 5 播放器内部错误 · 100 视频不存在/私享 ·
+        /// 101/150 作者禁止站外嵌入 · 152/153 来源/配置被拒。
+        /// </summary>
+        public static event System.Action<bool, int> PlaybackChecked;
         public static void Play() => Call("play");
         public static void Pause() => Call("pause");
         public static void Mute(bool m) => Call("mute", m);
@@ -119,7 +124,18 @@ namespace AdversityRoad.Platform
         /// <summary>接 Java 侧 UnitySendMessage 的固定收件人。</summary>
         class Bridge : MonoBehaviour
         {
-            public void OnWebPlayback(string v) => PlaybackChecked?.Invoke(v == "1");
+            public void OnWebPlayback(string v)
+            {
+                // "1" = 在播；"0" = 没播；"0:150" = 没播，并且播放器给了错误码 150
+                bool playing = v != null && v.StartsWith("1");
+                int err = 0;
+                if (!playing && v != null)
+                {
+                    int i = v.IndexOf(':');
+                    if (i >= 0) int.TryParse(v.Substring(i + 1).Trim('"'), out err);
+                }
+                PlaybackChecked?.Invoke(playing, err);
+            }
         }
 
         static void Call(string method, params object[] args)

@@ -620,6 +620,8 @@ namespace AdversityRoad.OpenWorld
         public float thickness = 0.08f;
         /// <summary>true = 挂在侧墙上（法线是 X 轴）；false = 法线是 Z 轴。</summary>
         public bool alongZ;
+        /// <summary>画面朝向（从画框指向看画的人）。背板挂在它的反面。</summary>
+        public Vector3 faceDir = Vector3.back;
         /// <summary>木边框宽度，0 表示不要边框。</summary>
         public float border = 0.13f;
         /// <summary>true = 画面下沿固定（桌上的相框要坐在支架上，不能随比例上下飘）；
@@ -721,6 +723,17 @@ namespace AdversityRoad.OpenWorld
 
             float b = border, d = 0.05f;                     // 边框比画略厚（框住画的观感）
             float thick = thickness + d;
+
+            // 【背板：从背面看不该看见照片】画板是个方块，贴图会贴满六个面——
+            // 桌上的相框背面因此顶着一张镜像的照片（玩家反馈的"相框背面显示照片"）。
+            // 墙上的画背靠墙看不见，桌上的相框却是三百六十度都能绕过去的。
+            // 所以在画的背后立一块不透明的板：从背面看到的是板，不是照片。
+            // 离画面 2 厘米，既挡得住又不会和画面同深度。
+            Vector3 back = faceDir.sqrMagnitude > 0.01f ? faceDir.normalized : Vector3.back;
+            Vector3 boardSize = alongZ
+                ? new Vector3(0.03f, h + b * 1.4f, w + b * 1.4f)
+                : new Vector3(w + b * 1.4f, h + b * 1.4f, 0.03f);
+            Bar("PictureBack", at - back * (thickness * 0.5f + 0.035f), boardSize);
             Vector3 wide = alongZ ? new Vector3(thick, b, w + b * 2f) : new Vector3(w + b * 2f, b, thick);
             Vector3 tall = alongZ ? new Vector3(thick, h, b) : new Vector3(b, h, thick);
             Vector3 side = alongZ ? new Vector3(0, 0, w / 2f + b / 2f) : new Vector3(w / 2f + b / 2f, 0, 0);

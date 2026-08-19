@@ -10,11 +10,14 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,26 +52,38 @@ import com.unity3d.player.UnityPlayer;
 public class WebScreen {
 
     /**
-     * Two ways to get a YouTube video onto the screen, because neither one works
-     * everywhere. C# starts with mode 0 and automatically retries with mode 1 when
-     * nothing is playing a few seconds later (see probe()).
+     * Two ways to get a YouTube video onto the screen, because YouTube refuses embeds
+     * for several different reasons and only a device can tell which one applies. C#
+     * starts with mode 0 and automatically retries with mode 1 when nothing plays a
+     * few seconds later (see probe()).
      *
-     * MODE 0 - our own page around the IFrame API, handed over with
-     *   loadDataWithBaseURL("https://www.youtube.com", ...). This is what the widely
-     *   used android-youtube-player library does. The `origin` player var matters:
-     *   without it the API cannot verify where it is running and answers with
-     *   "this video cannot be watched here" even for videos that embed fine.
+     * MODE 0 - our own player page served from a REAL https origin.
+     *   The page is not fetched from a server: shouldInterceptRequest() answers the
+     *   request for PAGE_URL with the HTML below, so the WebView believes the document
+     *   really came from https://tv.adversityroad.app - an ordinary third party origin.
+     *   That matters because the previous attempts spoofed the origin with
+     *   loadDataWithBaseURL("https://www.youtube.com", ...): an embed whose Referer is
+     *   youtube.com itself is not a real embed, and YouTube answers it with
+     *   "this video cannot be watched here" (error 150 / 152). With a genuine origin the
+     *   iframe API sees a normal embed, and `origin` in playerVars matches the document.
      *
-     * MODE 1 - load https://www.youtube.com/embed/<id> directly, WITH a Referer
-     *   header. A WebView sends no Referer of its own, and YouTube answers a
-     *   referer-less embed request with "error 153 - video player configuration
-     *   error", which is exactly what the player saw.
+     * MODE 1 - load https://www.youtube.com/embed/<id> directly, WITH a Referer header.
+     *   A WebView sends no Referer of its own, and YouTube answers a referer-less embed
+     *   request with "error 153 - video player configuration error".
      *
-     * Playback control differs per mode: mode 0 drives the IFrame API functions
-     * defined in PAGE; mode 1 talks to the embed page's own <video> element (that
-     * page IS the player, so its video element is in the document we evaluate in).
+     * Both modes also drop the "; wv" marker from the User-Agent: that substring is how
+     * a page tells it is inside a WebView, and YouTube refuses playback for some content
+     * when it sees it.
+     *
+     * Playback control differs per mode: mode 0 drives the IFrame API functions defined
+     * in PAGE; mode 1 talks to the embed page's own <video> element (that page IS the
+     * player, so its video element is in the document we evaluate in).
      */
     private static final String VIDEO = "document.querySelector('video')";
+
+    /** Origin the player page pretends to come from. Never actually fetched. */
+    private static final String ORIGIN = "https://tv.adversityroad.app";
+    private static final String PAGE_URL = ORIGIN + "/player.html";
 
     private static final String PAGE =
         "<!DOCTYPE html><html><head>" +
@@ -79,18 +94,19 @@ public class WebScreen {
         "var pl=null,arErr=0,want='__ID__',mute=__MUTE__;" +
         "function onYouTubeIframeAPIReady(){pl=new YT.Player('p',{videoId:want," +
         "playerVars:{autoplay:1,playsinline:1,rel:0,controls:0,modestbranding:1,fs:0," +
-        "iv_load_policy:3,origin:'https://www.youtube.com'}," +
+        "iv_load_policy:3,origin:'__ORIGIN__'}," +
         "events:{onReady:function(e){if(mute)e.target.mute();e.target.playVideo();}," +
         "onError:function(e){arErr=e.data;}," +
         "onStateChange:function(e){if(e.data==0)e.target.playVideo();}}});}" +
         "function arPlay(){if(pl)pl.playVideo();}" +
         "function arPause(){if(pl)pl.pauseVideo();}" +
         "function arMute(m){if(pl){if(m)pl.mute();else pl.unMute();}}" +
-        "function arState(){try{if(arErr!=0)return '0';" +
+        "function arState(){try{if(arErr!=0)return '0:'+arErr;" +
         "var s=pl?pl.getPlayerState():-9;return (s==1||s==3)?'1':'0';}catch(e){return '0';}}" +
         "</script></body></html>";
 
-    private static int sMode;           // 0 = IFrame API page, 1 = embed page
+    private static int sMode;           // 0 = own page on a real origin, 1 = embed page
+    private static String sPageHtml = "";
 
     private static WebView sWeb;
     private static PassThrough sHost;
@@ -167,10 +183,10 @@ public class WebScreen {
                 sReady = false;
                 sMode = mode == 1 ? 1 : 0;
                 if (sMode == 0) {
-                    sWeb.loadDataWithBaseURL("https://www.youtube.com",
-                        PAGE.replace("__ID__", videoId)
-                            .replace("__MUTE__", muted ? "true" : "false"),
-                        "text/html", "utf-8", null);
+                    sPageHtml = PAGE.replace("__ID__", videoId)
+                                    .replace("__MUTE__", muted ? "true" : "false")
+                                    .replace("__ORIGIN__", ORIGIN);
+                    sWeb.loadUrl(PAGE_URL);
                     return;
                 }
                 // loop=1 needs playlist=<same id> - that is YouTube's own rule for
@@ -323,9 +339,31 @@ public class WebScreen {
             s.setMediaPlaybackRequiresUserGesture(false);
             s.setUseWideViewPort(true);
             s.setLoadWithOverviewMode(true);
+            // "; wv" is how a page can tell it is inside a WebView, and YouTube refuses
+            // playback for part of its catalogue when it sees it. Present as plain Chrome.
+            String ua = s.getUserAgentString();
+            if (ua != null && ua.contains("; wv")) s.setUserAgentString(ua.replace("; wv", ""));
             sWeb.setBackgroundColor(Color.BLACK);
             sWeb.setWebChromeClient(new WebChromeClient());
             sWeb.setWebViewClient(new WebViewClient() {
+                // Serve our own player page for PAGE_URL without any network request.
+                // This is what gives the document a real (and stable) origin - see the
+                // class comment for why a spoofed one gets the embed refused.
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest req) {
+                    try {
+                        if (req != null && req.getUrl() != null
+                                && PAGE_URL.equals(req.getUrl().toString())
+                                && sPageHtml.length() > 0) {
+                            return new WebResourceResponse("text/html", "utf-8",
+                                new ByteArrayInputStream(sPageHtml.getBytes("UTF-8")));
+                        }
+                    } catch (Throwable t) {
+                        // fall through: let the WebView try the network (and fail loudly)
+                    }
+                    return null;
+                }
+
                 @Override public void onPageFinished(WebView v, String url) {
                     sReady = true;
                 }
