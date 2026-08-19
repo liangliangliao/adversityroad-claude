@@ -15,6 +15,7 @@ namespace AdversityRoad.OpenWorld
         Computer,    // 电脑 → AI 个性化与目标图谱
         Phone,       // 手机 → 现实行动打卡 / 消息
         Fridge,      // 冰箱 → 补给与恢复
+        Tv,          // 客厅墙上的超大屏电视 → 频道 / 播放 / 后台 / 悬浮小窗
     }
 
     /// <summary>
@@ -60,6 +61,7 @@ namespace AdversityRoad.OpenWorld
                 case HomeFixtureKind.Mirror: return "镜子";
                 case HomeFixtureKind.Computer: return "电脑";
                 case HomeFixtureKind.Phone: return "手机";
+                case HomeFixtureKind.Tv: return "电视";
                 default: return "冰箱";
             }
         }
@@ -74,6 +76,7 @@ namespace AdversityRoad.OpenWorld
                 case HomeFixtureKind.Mirror: return "角色外观 · 自尊与旧我";
                 case HomeFixtureKind.Computer: return "AI 个性化 · 弱点/优势图谱";
                 case HomeFixtureKind.Phone: return "现实行动打卡与提醒";
+                case HomeFixtureKind.Tv: return "开机换台 · 后台播放 · 切悬浮小窗";
                 default: return "补给与恢复";
             }
         }
