@@ -635,7 +635,14 @@ namespace AdversityRoad.OpenWorld
             for (int s = -1; s <= 1; s += 2)
                 VillaKit.Deco("Pillow", c + new Vector3(s * 1.15f, 1.1f, 2.6f),
                     new Vector3(1.9f, 0.3f, 1.0f), new Color(0.97f, 0.97f, 0.98f));
-            VillaKit.Box("Headboard", c + new Vector3(0, 1.2f, 3.6f), new Vector3(5.4f, 1.8f, 0.28f), WallWarm);
+            // 床头背景墙：上一版床头那幅画其实是**悬在半空**的（这面墙根本不存在，
+            // 房间的真墙在 15 米开外），所以画再大也像贴纸。先把墙立起来，画才有处可挂。
+            VillaKit.Box("Wall_BedHead", c + new Vector3(0, 1.85f, 4.24f),
+                new Vector3(9.6f, 3.7f, 0.18f), WallWarm);
+            // 床头板压到 1.35 米高：上一版 2.1 米高的床头板挡住了画的下半截，
+            // 画的上半截又顶进了 3.7 米的天花——一幅 2.6 米高的画只剩中间 1.4 米看得见，
+            // 这才是玩家觉得"相框小"的真正原因。
+            VillaKit.Box("Headboard", c + new Vector3(0, 0.775f, 3.62f), new Vector3(5.4f, 1.15f, 0.28f), WallWarm);
 
             for (int s = -1; s <= 1; s += 2)
             {
@@ -653,10 +660,17 @@ namespace AdversityRoad.OpenWorld
                     new Vector3(0.06f, 0.5f, 0.06f), Metal);
 
             // 墙上的艺术画（可换成玩家自己的图片）
-            UserPicture(ctx, c + new Vector3(0, 2.5f, 3.85f), new Vector3(4.2f, 2.6f, 0.08f),
-                UserImageSlot.BedroomArtA, "艺 术 画");
-            UserPicture(ctx, c + new Vector3(-8.9f, 2.4f, 5f), new Vector3(0.08f, 2.0f, 3.0f),
-                UserImageSlot.BedroomArtB, "");
+            // 床头这幅：从床头板顶（1.35）一直吃到天花下沿（3.7），最宽 5.2 米——
+            // 一张 4:3 的横幅照片会长成 2.9m × 2.2m，站在房门口就是一整面墙的画。
+            UserPicture(ctx, c + new Vector3(0, 2.5f, 3.96f), new Vector3(5.2f, 2.2f, 0.08f),
+                UserImageSlot.BedroomArtA, "艺 术 画", 0.16f);
+            // 侧墙这幅：挪到主卧真正的西墙内表面上（x=-14.86 是外墙内皮），
+            // 避开西窗（z∈[-5,3]），高度顶到 2.8 米——竖幅照片在这里能长成 2.1m × 2.8m。
+            UserPicture(ctx, c + new Vector3(-14.72f, 1.95f, 6.5f), new Vector3(0.08f, 2.8f, 4.4f),
+                UserImageSlot.BedroomArtB, "", 0.16f);
+            // 两幅画各给一盏射灯：画面亮起来才"显眼"，也才看得清细节
+            ZoneBuilder.AddCeilingLight(c + new Vector3(0, 3.35f, 2.6f), new Color(1f, 0.96f, 0.88f), 11f);
+            ZoneBuilder.AddCeilingLight(c + new Vector3(-13.4f, 3.35f, 6.5f), new Color(1f, 0.96f, 0.88f), 11f);
 
             CeilingFan(ctx, c + new Vector3(0, FloorH - 0.55f, -3f));
             // 主卧：挂在南外墙上，出风朝北
@@ -765,11 +779,13 @@ namespace AdversityRoad.OpenWorld
 
             // 桌上带相框的照片（可换成玩家自己的图片）
             VillaKit.Deco("FrameStand", c + new Vector3(2.4f, 0.86f, 3.0f),
-                new Vector3(0.55f, 0.06f, 0.32f), Dark);
-            UserPicture(ctx, c + new Vector3(2.4f, 1.2f, 3.1f), new Vector3(1.0f, 0.72f, 0.05f),
-                UserImageSlot.DeskPhoto, "");
-            VillaKit.Deco("FrameEdge", c + new Vector3(2.4f, 1.2f, 3.14f),
-                new Vector3(1.12f, 0.84f, 0.03f), new Color(0.55f, 0.42f, 0.24f));
+                new Vector3(0.95f, 0.06f, 0.32f), Dark);
+            // 桌上的相框比原来大一圈就够了（0.9m × 0.62m 已经是台面上很大的一个相框），
+            // 下沿钉在支架上：换一张竖幅照片时是往上长，而不是整块飘起来。
+            UserPicture(ctx, c + new Vector3(2.4f, 1.2f, 3.1f), new Vector3(0.9f, 0.62f, 0.05f),
+                UserImageSlot.DeskPhoto, "", 0.06f, true);
+            // 【原来这里还有一块 FrameEdge 板】它比照片大一圈、又摆在照片正前方 1.5 厘米，
+            // 等于把整张照片糊死。画框的四条木边现在由 UserPictureFrame 自己建，这块板删掉。
 
             VillaKit.Box("FileCabinet", c + new Vector3(-6.5f, 0.9f, 2f),
                 new Vector3(1f, 1.8f, 3.6f), Wood);
@@ -1250,30 +1266,26 @@ namespace AdversityRoad.OpenWorld
             hub.AddComponent<SpinY>().speed = 110f;
         }
 
-        static void UserPicture(WorldContext ctx, Vector3 at, Vector3 size, UserImageSlot slot, string sign)
+        /// <summary>
+        /// 墙上/桌上的一个画框。
+        ///
+        /// 【size 是"上限"，不是最终尺寸】画面的真实宽高由 UserPictureFrame 在拿到
+        /// 照片后按照片自己的长宽比算出来（在这个盒子里取最大内接矩形），木边框跟着重建。
+        /// 房间代码只需要回答一件事：这面墙上最多能让画占多大。
+        /// </summary>
+        static void UserPicture(WorldContext ctx, Vector3 at, Vector3 size, UserImageSlot slot,
+            string sign, float border = 0.13f, bool anchorBottom = false)
         {
             var go = VillaKit.Deco("UserPicture_" + slot, at, size, new Color(0.62f, 0.60f, 0.66f));
-            go.AddComponent<UserPictureFrame>().slot = slot;
-
-            // 【外框必须是四条边，不能是画背后的一整块板】
-            // 上一版在画的正后方摆了一块只差 2 厘米的大板，两个面几乎同深度——
-            // 手机上的深度精度分不出来，于是照片上盖着一块棕色色块（玩家反馈的
-            // "照片上覆盖色块"），而且随镜头角度变来变去。四条边框各自贴在画的
-            // 四周，画的正后方什么也没有，从构造上就不可能再打架。
-            var wood = new Color(0.45f, 0.34f, 0.22f);
-            const float b = 0.13f;      // 边框宽度
-            const float d = 0.05f;      // 边框比画略厚一点（框住画的观感）
-            bool alongZ = size.x < size.z;                       // 画挂在侧墙（法线是 X）
-            float thick = (alongZ ? size.x : size.z) + d;
-            float w = alongZ ? size.z : size.x;                  // 画面的宽
-            float h = size.y;
-            Vector3 wide = alongZ ? new Vector3(thick, b, w + b * 2f) : new Vector3(w + b * 2f, b, thick);
-            Vector3 tall = alongZ ? new Vector3(thick, h, b) : new Vector3(b, h, thick);
-            VillaKit.Deco("PictureFrame_T", at + new Vector3(0, h / 2f + b / 2f, 0), wide, wood);
-            VillaKit.Deco("PictureFrame_B", at - new Vector3(0, h / 2f + b / 2f, 0), wide, wood);
-            Vector3 side = alongZ ? new Vector3(0, 0, w / 2f + b / 2f) : new Vector3(w / 2f + b / 2f, 0, 0);
-            VillaKit.Deco("PictureFrame_L", at - side, tall, wood);
-            VillaKit.Deco("PictureFrame_R", at + side, tall, wood);
+            bool alongZ = size.x < size.z;                   // 画挂在侧墙上（法线是 X）
+            var f = go.AddComponent<UserPictureFrame>();
+            f.slot = slot;
+            f.alongZ = alongZ;
+            f.thickness = alongZ ? size.x : size.z;
+            f.maxW = alongZ ? size.z : size.x;
+            f.maxH = size.y;
+            f.border = border;
+            f.anchorBottom = anchorBottom;
             // 画框自己就说明了它是什么，不再往空中挂一行字
         }
 

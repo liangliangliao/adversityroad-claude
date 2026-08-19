@@ -43,8 +43,15 @@ namespace AdversityRoad.OpenWorld
     {
         public const string FolderName = "UserImages";
         const string PrefKey = "villa_picture_";
-        /// <summary>贴到画框上的最大边长：手机照片动辄四千万像素，直接贴纯属浪费显存。</summary>
-        const int MaxSide = 1024;
+        /// <summary>
+        /// 贴到画框上的最大边长。
+        ///
+        /// 【为什么从 1024 提到 2048】画框做大之后（床头那幅将近 3 米宽），
+        /// 1024 的图铺满 3 米墙面 ≈ 每厘米 3 个像素，凑近看就是一片糊。
+        /// 2048 对手机显存来说仍然只有 16MB 一张，而住所里总共只有三个画框，
+        /// 换来的是"走到画前也看得清"。再往上（原图动辄四千万像素）纯属浪费。
+        /// </summary>
+        const int MaxSide = 2048;
 
         static readonly Dictionary<UserImageSlot, Texture2D> _cache =
             new Dictionary<UserImageSlot, Texture2D>();
@@ -308,7 +315,7 @@ namespace AdversityRoad.OpenWorld
             string dst = Path.Combine(FolderPath, "slot_" + (int)slot + ".png");
             try
             {
-                // 存一份缩到 1024 以内的 PNG：贴图直接用它，省显存也省下次解码
+                // 存一份缩到 MaxSide 以内的 PNG：贴图直接用它，省显存也省下次解码
                 var tex = Decode(bytes, MaxSide);
                 if (tex == null)
                 {
@@ -416,11 +423,13 @@ namespace AdversityRoad.OpenWorld
         public static Texture2D Decode(byte[] bytes, int maxSide)
         {
             if (bytes == null || bytes.Length < 16) return null;
+            // 原图这一步**不要 mipmap**：手机照片动辄一两千万像素，
+            // 给它建 mip 金字塔等于白白多占三分之一显存，而它下一行就被缩掉了。
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!tex.LoadImage(bytes)) { Object.Destroy(tex); return null; }
             // 先缩小再摆正：旋转是逐像素搬运，在小图上做便宜得多
             var small = Downscale(tex, maxSide);
-            return Orient(small, ExifOrientation(bytes));
+            return Sharpen(Orient(small, ExifOrientation(bytes)));
         }
 
         // ================= EXIF 摆正 =================
@@ -508,9 +517,9 @@ namespace AdversityRoad.OpenWorld
                     }
                     dstPx[ny * dw + nx] = srcPx[y * w + x];
                 }
-            var dst = new Texture2D(dw, dh, TextureFormat.RGBA32, false);
+            var dst = new Texture2D(dw, dh, TextureFormat.RGBA32, true);
             dst.SetPixels32(dstPx);
-            dst.Apply(false, false);
+            dst.Apply(true, false);
             Object.Destroy(src);
             return dst;
         }
@@ -554,29 +563,69 @@ namespace AdversityRoad.OpenWorld
             if (src == null) return null;
             int w = src.width, h = src.height;
             float k = Mathf.Min(1f, maxSide / (float)Mathf.Max(w, h));
-            if (k >= 0.999f) return src;
             int nw = Mathf.Max(8, Mathf.RoundToInt(w * k));
             int nh = Mathf.Max(8, Mathf.RoundToInt(h * k));
+            // 【本来就够小的图也要走这一趟】不是为了缩放，是为了拿到一张**带 mipmap**
+            // 的贴图：原图那张是不带 mip 的（见 Decode），直接拿去贴大画框，
+            // 斜着看会一格一格地闪。一次 Blit 很便宜，换的是画面稳定。
             var rt = RenderTexture.GetTemporary(nw, nh, 0, RenderTextureFormat.ARGB32);
             var prev = RenderTexture.active;
             Graphics.Blit(src, rt);
             RenderTexture.active = rt;
-            var dst = new Texture2D(nw, nh, TextureFormat.RGBA32, false);
+            var dst = new Texture2D(nw, nh, TextureFormat.RGBA32, true);
             dst.ReadPixels(new Rect(0, 0, nw, nh), 0, 0);
-            dst.Apply(false, false);
+            dst.Apply(true, false);          // true = 顺手生成 mipmap（见 Sharpen）
             RenderTexture.active = prev;
             RenderTexture.ReleaseTemporary(rt);
             Object.Destroy(src);
             return dst;
         }
+
+        /// <summary>
+        /// 采样设置：画框做大之后，"清不清楚"一半靠像素数、另一半靠采样。
+        ///   · Trilinear + mipmap：斜着看画面时不再一格格闪（没有 mipmap 只会更糊）；
+        ///   · anisoLevel 8：站在画的侧面看时，远端不糊成一条；
+        ///   · Clamp：画面按比例铺满画框，边上不该出现重复的一条边。
+        /// </summary>
+        static Texture2D Sharpen(Texture2D t)
+        {
+            if (t == null) return null;
+            t.wrapMode = TextureWrapMode.Clamp;
+            t.filterMode = FilterMode.Trilinear;
+            t.anisoLevel = 8;
+            return t;
+        }
     }
 
     /// <summary>
     /// 一个画框/相框：把玩家指派的图片贴上去；走近按交互键打开相册面板。
+    ///
+    /// 【画框不是固定尺寸，是一个"上限盒"】
+    /// 玩家的两句要求是一起提的："相框再做大" + "图片需要适应相框大小"。
+    /// 这两件事天生打架：框子一固定，长宽比不一样的照片要么被拉变形，
+    /// 要么被裁掉半张脸（上一版用的就是裁切填满）。
+    ///
+    /// 所以这里改成：房间代码给的尺寸是**画面允许占用的最大宽高**，
+    /// 真正的画面尺寸在拿到照片后按照片自己的长宽比，在这个盒子里取最大内接矩形，
+    /// 木边框随之重建。横幅照片得到一张宽画、竖幅照片得到一张高画，
+    /// 两者都是**完整的、不裁、不变形**，而且总是把这面墙吃满。
     /// </summary>
     public class UserPictureFrame : MonoBehaviour
     {
         public UserImageSlot slot = UserImageSlot.BedroomArtA;
+
+        /// <summary>画面允许占用的最大宽 / 最大高（米）。实际尺寸按照片比例内接。</summary>
+        public float maxW = 4.2f, maxH = 2.6f;
+        /// <summary>画板厚度（沿墙面法线方向）。</summary>
+        public float thickness = 0.08f;
+        /// <summary>true = 挂在侧墙上（法线是 X 轴）；false = 法线是 Z 轴。</summary>
+        public bool alongZ;
+        /// <summary>木边框宽度，0 表示不要边框。</summary>
+        public float border = 0.13f;
+        /// <summary>true = 画面下沿固定（桌上的相框要坐在支架上，不能随比例上下飘）；
+        /// false = 画面中心固定（墙上的画按中心对齐更自然）。</summary>
+        public bool anchorBottom;
+
         /// <summary>交互距离。画挂在 2.5 米高的墙上，站在墙前时【竖直方向】就已经
         /// 占掉 2.5 米，3.2 米的范围意味着几乎要贴着墙站——那也是"按了没反应"的
         /// 一种：根本没进范围。放宽到 4.5 米。</summary>
@@ -585,6 +634,11 @@ namespace AdversityRoad.OpenWorld
         /// <summary>由 GameBootstrap 注入：打开相册面板。</summary>
         public static System.Action<UserImageSlot> OpenPicker;
 
+        static readonly Color FrameWood = new Color(0.45f, 0.34f, 0.22f);
+
+        GameObject _border;
+        bool _anchored;
+        float _bottomY;
         float _lastHint = -99f;
         Player.PlayerController _player;
 
@@ -595,6 +649,7 @@ namespace AdversityRoad.OpenWorld
             var r = GetComponent<MeshRenderer>();
             if (r == null) return;
             var tex = UserImageLibrary.Get(slot);
+            Resize(tex);
 
             var shader = Shader.Find("Universal Render Pipeline/Lit");
             if (shader == null) shader = Shader.Find("Standard");
@@ -606,30 +661,14 @@ namespace AdversityRoad.OpenWorld
             {
                 m.mainTexture = tex;
                 if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
-                // 按比例裁切填满画框：竖幅照片直接拉成横幅会把人拉变形，
-                // 这里改成"填满 + 裁掉溢出的那一侧"（和手机看图一样的做法）
-                Vector3 sz = transform.localScale;
-                bool alongZ = sz.x < sz.z;                       // 画挂在侧墙（法线是 X）
-                float faceW = alongZ ? sz.z : sz.x, faceH = Mathf.Max(0.01f, sz.y);
-                float faceAspect = faceW / faceH;
-                float texAspect = tex.height > 0 ? tex.width / (float)tex.height : 1f;
-                Vector2 scale = Vector2.one, offset = Vector2.zero;
-                if (texAspect > faceAspect)                       // 图更宽：裁左右
-                {
-                    scale.x = faceAspect / texAspect;
-                    offset.x = (1f - scale.x) * 0.5f;
-                }
-                else                                              // 图更高：裁上下
-                {
-                    scale.y = texAspect / faceAspect;
-                    offset.y = (1f - scale.y) * 0.5f;
-                }
-                m.mainTextureScale = scale;
-                m.mainTextureOffset = offset;
+                // 【不再需要裁切】画框已经按照片的长宽比变过形了（见 Resize），
+                // 画面和照片是同一个比例，1:1 铺上去就是"填满且完整"。
+                m.mainTextureScale = Vector2.one;
+                m.mainTextureOffset = Vector2.zero;
                 if (m.HasProperty("_BaseMap"))
                 {
-                    m.SetTextureScale("_BaseMap", scale);
-                    m.SetTextureOffset("_BaseMap", offset);
+                    m.SetTextureScale("_BaseMap", Vector2.one);
+                    m.SetTextureOffset("_BaseMap", Vector2.zero);
                 }
                 // 画面别被光照压暗到看不清：画框自己给一点自发光
                 if (m.HasProperty("_EmissionColor"))
@@ -640,6 +679,61 @@ namespace AdversityRoad.OpenWorld
                 }
             }
             r.sharedMaterial = m;
+        }
+
+        /// <summary>按照片比例在上限盒里取最大内接矩形，并重建木边框。</summary>
+        void Resize(Texture2D tex)
+        {
+            float boxW = Mathf.Max(0.05f, maxW), boxH = Mathf.Max(0.05f, maxH);
+            // 上限盒的下沿：只在第一次量一次，之后换几张照片都以它为准
+            if (!_anchored) { _anchored = true; _bottomY = transform.position.y - boxH * 0.5f; }
+
+            float aspect = (tex != null && tex.height > 0) ? tex.width / (float)tex.height : boxW / boxH;
+            aspect = Mathf.Clamp(aspect, 0.2f, 5f);          // 全景图/长截图也不至于变成一条线
+            float w = boxW, h = boxW / aspect;
+            if (h > boxH) { h = boxH; w = boxH * aspect; }
+            transform.localScale = alongZ ? new Vector3(thickness, h, w)
+                                          : new Vector3(w, h, thickness);
+            if (anchorBottom)
+            {
+                var p = transform.position;
+                p.y = _bottomY + h * 0.5f;
+                transform.position = p;
+            }
+            BuildBorder(w, h);
+        }
+
+        /// <summary>
+        /// 木边框：上下左右四条，**画的正后方什么也没有**。
+        /// 上一版在画背后 2 厘米处摆了一整块背板，两个面几乎同深度——手机的深度
+        /// 精度分不出来，于是照片上盖着一块会随镜头变来变去的色块（玩家反馈的
+        /// "照片上覆盖色块"）。四条边各自贴在画的四周，从构造上就不可能再打架。
+        /// </summary>
+        void BuildBorder(float w, float h)
+        {
+            if (_border != null) Destroy(_border);
+            if (border <= 0.001f) return;
+
+            Vector3 at = transform.position;
+            _border = new GameObject("PictureFrame");
+            _border.transform.position = at;
+            if (transform.parent != null) _border.transform.SetParent(transform.parent, true);
+
+            float b = border, d = 0.05f;                     // 边框比画略厚（框住画的观感）
+            float thick = thickness + d;
+            Vector3 wide = alongZ ? new Vector3(thick, b, w + b * 2f) : new Vector3(w + b * 2f, b, thick);
+            Vector3 tall = alongZ ? new Vector3(thick, h, b) : new Vector3(b, h, thick);
+            Vector3 side = alongZ ? new Vector3(0, 0, w / 2f + b / 2f) : new Vector3(w / 2f + b / 2f, 0, 0);
+            Bar("PictureFrame_T", at + new Vector3(0, h / 2f + b / 2f, 0), wide);
+            Bar("PictureFrame_B", at - new Vector3(0, h / 2f + b / 2f, 0), wide);
+            Bar("PictureFrame_L", at - side, tall);
+            Bar("PictureFrame_R", at + side, tall);
+        }
+
+        void Bar(string name, Vector3 pos, Vector3 size)
+        {
+            var go = VillaKit.Deco(name, pos, size, FrameWood);
+            if (go != null) go.transform.SetParent(_border.transform, true);
         }
 
         void Update()
