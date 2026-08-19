@@ -48,9 +48,11 @@ namespace AdversityRoad.OpenWorld
             VillaKit.Deco("TvBezel_R", center + side, tall, dark);
 
             // 挂架：藏在屏幕后面，只有从侧面能看见一点，电视才不像贴在墙上的一张纸
-            Vector3 armSize = normalZ ? new Vector3(w * 0.22f, h * 0.5f, 0.16f)
-                                      : new Vector3(0.16f, h * 0.5f, w * 0.22f);
-            VillaKit.Deco("TvMount", center - faceDir * 0.16f, armSize, new Color(0.20f, 0.20f, 0.22f));
+            Vector3 armSize = normalZ ? new Vector3(w * 0.22f, h * 0.5f, 0.14f)
+                                      : new Vector3(0.14f, h * 0.5f, w * 0.22f);
+            // 挂架夹在"屏幕背面"和"墙面"之间：两边都留出两三厘米，
+            // 既不穿过屏幕，也不扎进墙里（扎进去会在墙面上闪一块）
+            VillaKit.Deco("TvMount", center - faceDir * 0.14f, armSize, new Color(0.20f, 0.20f, 0.22f));
 
             // 音响条 + 两颗脚垫
             Vector3 barSize = normalZ ? new Vector3(w * 0.62f, 0.20f, 0.26f)
@@ -61,8 +63,10 @@ namespace AdversityRoad.OpenWorld
             for (int s = -1; s <= 1; s += 2)
             {
                 Vector3 off = normalZ ? new Vector3(s * w * 0.26f, 0, 0) : new Vector3(0, 0, s * w * 0.26f);
+                // faceDir 指向观众：网罩要 **+faceDir** 才在音响正面。
+                // 写成减号就贴到背面去了，正面看是一条光板。
                 VillaKit.Deco("TvSpeakerGrill", center + new Vector3(0, -h / 2f - 0.46f, 0)
-                    + off - faceDir * 0.14f, normalZ ? new Vector3(0.22f, 0.14f, 0.04f)
+                    + off + faceDir * 0.14f, normalZ ? new Vector3(0.22f, 0.14f, 0.04f)
                                                      : new Vector3(0.04f, 0.14f, 0.22f),
                     new Color(0.07f, 0.07f, 0.08f));
             }
@@ -202,12 +206,23 @@ namespace AdversityRoad.OpenWorld
             _tex.filterMode = FilterMode.Bilinear;
             _px = new Color32[_tex.width * _tex.height];
 
+            // 【为什么要兜底到 Lit】Shader.Find 在真机上只找得到**进了包**的 shader。
+            // 这个工程靠 M_Base.mat 保证 URP/Lit 进包，Unlit 没人引用，很可能被剥掉。
+            // 找不到就退到 Lit——但那样屏幕会被室内光照压暗，所以下面无论落到哪个
+            // shader 都把贴图接到自发光上：电视屏幕本来就是自己发光的。
             var sh = Shader.Find("Universal Render Pipeline/Unlit");
             if (sh == null) sh = Shader.Find("Unlit/Texture");
             if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
+            if (sh == null) sh = Shader.Find("Standard");
             _mat = new Material(sh) { name = "TvScreen" };
             _mat.mainTexture = _tex;
             if (_mat.HasProperty("_BaseMap")) _mat.SetTexture("_BaseMap", _tex);
+            if (_mat.HasProperty("_EmissionColor"))
+            {
+                _mat.EnableKeyword("_EMISSION");
+                if (_mat.HasProperty("_EmissionMap")) _mat.SetTexture("_EmissionMap", _tex);
+                _mat.SetColor("_EmissionColor", Color.white * 1.15f);
+            }
             var r = GetComponent<MeshRenderer>();
             if (r != null) r.sharedMaterial = _mat;
 

@@ -604,8 +604,9 @@ namespace AdversityRoad.OpenWorld
             // 沙发正对的那面墙：一台超大屏液晶电视（4.8 米宽，16:9）。
             // 那道墙是 z=18 的隔墙（中间 x=0 处是门洞），沙发朝北正对着它，
             // 电视摆在门洞左侧那段墙的中间——玩家截图里圈的就是这面空墙。
-            // 墙内表面在 z=17.86，屏幕心放到 17.72：离墙 8 厘米，绝不与墙面同深度。
-            WallTv.Build(ctx, h + new Vector3(-4.3f, 1.95f, 17.72f), Vector3.back, 4.8f);
+            // 墙内表面在 z=17.86，屏幕心放到 17.62：连挂架带边框整台都在墙前面，
+            // 谁也不和墙面同深度（同深度会闪）。
+            WallTv.Build(ctx, h + new Vector3(-4.3f, 1.95f, 17.62f), Vector3.back, 4.8f);
             VillaKit.Box("LowShelf", c + new Vector3(-8f, 0.6f, 3f), new Vector3(1f, 1.2f, 7f), Wood);
             for (int i = 0; i < 10; i++)
                 VillaKit.Deco("Book", c + new Vector3(-8f, 1.36f, 0f + i * 0.62f),
