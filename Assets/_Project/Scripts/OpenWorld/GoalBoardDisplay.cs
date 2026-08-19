@@ -45,7 +45,12 @@ namespace AdversityRoad.OpenWorld
             // 挂到别墅根节点（scale 恒为 1）上，屏幕才是方正的。
             var go = new GameObject("GoalScreen", typeof(Canvas));
             if (VillaKit.Root != null) go.transform.SetParent(VillaKit.Root, true);
-            go.transform.position = center;
+            // 【必须离开屏幕表面】上一版画布正好落在屏幕板的前表面上，两个面同深度，
+            // 深度缓冲分不出前后 —— 于是一半像素画屏幕、一半画字，随镜头角度来回横跳：
+            // 玩家看到的"文字模糊不清 + 一闪一闪"就是这个（不是分辨率不够）。
+            // 往读者那一侧让开 12 厘米，任何角度都不再打架。
+            const float Standoff = 0.12f;
+            go.transform.position = center + new Vector3(0, 0, faceNorth ? Standoff : -Standoff);
             go.transform.rotation = Quaternion.Euler(0, faceNorth ? 180f : 0f, 0);
 
             var canvas = go.GetComponent<Canvas>();

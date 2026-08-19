@@ -1254,11 +1254,26 @@ namespace AdversityRoad.OpenWorld
         {
             var go = VillaKit.Deco("UserPicture_" + slot, at, size, new Color(0.62f, 0.60f, 0.66f));
             go.AddComponent<UserPictureFrame>().slot = slot;
-            // 画框外圈：没有框的画看着像贴在墙上的一块色卡
-            Vector3 frame = new Vector3(size.x > 0.2f ? size.x + 0.22f : size.x,
-                size.y + 0.22f, size.z > 0.2f ? size.z + 0.22f : size.z);
-            VillaKit.Deco("PictureFrame", at + new Vector3(0, 0, 0.02f), frame,
-                new Color(0.45f, 0.34f, 0.22f));
+
+            // 【外框必须是四条边，不能是画背后的一整块板】
+            // 上一版在画的正后方摆了一块只差 2 厘米的大板，两个面几乎同深度——
+            // 手机上的深度精度分不出来，于是照片上盖着一块棕色色块（玩家反馈的
+            // "照片上覆盖色块"），而且随镜头角度变来变去。四条边框各自贴在画的
+            // 四周，画的正后方什么也没有，从构造上就不可能再打架。
+            var wood = new Color(0.45f, 0.34f, 0.22f);
+            const float b = 0.13f;      // 边框宽度
+            const float d = 0.05f;      // 边框比画略厚一点（框住画的观感）
+            bool alongZ = size.x < size.z;                       // 画挂在侧墙（法线是 X）
+            float thick = (alongZ ? size.x : size.z) + d;
+            float w = alongZ ? size.z : size.x;                  // 画面的宽
+            float h = size.y;
+            Vector3 wide = alongZ ? new Vector3(thick, b, w + b * 2f) : new Vector3(w + b * 2f, b, thick);
+            Vector3 tall = alongZ ? new Vector3(thick, h, b) : new Vector3(b, h, thick);
+            VillaKit.Deco("PictureFrame_T", at + new Vector3(0, h / 2f + b / 2f, 0), wide, wood);
+            VillaKit.Deco("PictureFrame_B", at - new Vector3(0, h / 2f + b / 2f, 0), wide, wood);
+            Vector3 side = alongZ ? new Vector3(0, 0, w / 2f + b / 2f) : new Vector3(w / 2f + b / 2f, 0, 0);
+            VillaKit.Deco("PictureFrame_L", at - side, tall, wood);
+            VillaKit.Deco("PictureFrame_R", at + side, tall, wood);
             // 画框自己就说明了它是什么，不再往空中挂一行字
         }
 

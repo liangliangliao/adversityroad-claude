@@ -606,6 +606,31 @@ namespace AdversityRoad.OpenWorld
             {
                 m.mainTexture = tex;
                 if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                // 按比例裁切填满画框：竖幅照片直接拉成横幅会把人拉变形，
+                // 这里改成"填满 + 裁掉溢出的那一侧"（和手机看图一样的做法）
+                Vector3 sz = transform.localScale;
+                bool alongZ = sz.x < sz.z;                       // 画挂在侧墙（法线是 X）
+                float faceW = alongZ ? sz.z : sz.x, faceH = Mathf.Max(0.01f, sz.y);
+                float faceAspect = faceW / faceH;
+                float texAspect = tex.height > 0 ? tex.width / (float)tex.height : 1f;
+                Vector2 scale = Vector2.one, offset = Vector2.zero;
+                if (texAspect > faceAspect)                       // 图更宽：裁左右
+                {
+                    scale.x = faceAspect / texAspect;
+                    offset.x = (1f - scale.x) * 0.5f;
+                }
+                else                                              // 图更高：裁上下
+                {
+                    scale.y = texAspect / faceAspect;
+                    offset.y = (1f - scale.y) * 0.5f;
+                }
+                m.mainTextureScale = scale;
+                m.mainTextureOffset = offset;
+                if (m.HasProperty("_BaseMap"))
+                {
+                    m.SetTextureScale("_BaseMap", scale);
+                    m.SetTextureOffset("_BaseMap", offset);
+                }
                 // 画面别被光照压暗到看不清：画框自己给一点自发光
                 if (m.HasProperty("_EmissionColor"))
                 {
