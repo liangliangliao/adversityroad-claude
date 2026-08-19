@@ -412,13 +412,133 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
-        /// <summary>解码并缩到 maxSide 以内（含缩放；失败返回 null）。</summary>
+        /// <summary>解码并缩到 maxSide 以内（含 EXIF 摆正与缩放；失败返回 null）。</summary>
         public static Texture2D Decode(byte[] bytes, int maxSide)
         {
             if (bytes == null || bytes.Length < 16) return null;
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!tex.LoadImage(bytes)) { Object.Destroy(tex); return null; }
-            return Downscale(tex, maxSide);
+            // 先缩小再摆正：旋转是逐像素搬运，在小图上做便宜得多
+            var small = Downscale(tex, maxSide);
+            return Orient(small, ExifOrientation(bytes));
+        }
+
+        // ================= EXIF 摆正 =================
+
+        /// <summary>
+        /// 从 JPEG 字节里读出 EXIF 方向标记（1~8；读不到返回 1＝不用转）。
+        ///
+        /// 【为什么必须自己读】手机拍照几乎从不旋转像素，而是把"这张图该怎么转"
+        /// 记在 EXIF 的 Orientation 标记里，看图软件读了标记再转过来显示。
+        /// 而 Texture2D.LoadImage **完全不看 EXIF**——于是同一张照片，
+        /// 在手机相册里是正的，贴到墙上就是倒的（玩家反馈的"照片是倒过来的"）。
+        /// </summary>
+        public static int ExifOrientation(byte[] b)
+        {
+            try
+            {
+                if (b == null || b.Length < 8 || b[0] != 0xFF || b[1] != 0xD8) return 1;   // 不是 JPEG
+                int i = 2;
+                while (i + 4 < b.Length)
+                {
+                    if (b[i] != 0xFF) { i++; continue; }
+                    int marker = b[i + 1];
+                    if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7))
+                    { i += 2; continue; }
+                    if (marker == 0xDA || marker == 0xD9) break;          // 到了图像数据，没有 EXIF
+                    int len = (b[i + 2] << 8) | b[i + 3];
+                    if (len < 2) break;
+                    if (marker == 0xE1 && i + 10 < b.Length &&
+                        b[i + 4] == 'E' && b[i + 5] == 'x' && b[i + 6] == 'i' && b[i + 7] == 'f')
+                        return ReadTiffOrientation(b, i + 10);            // APP1：跳过 "Exif\0\0"
+                    i += 2 + len;
+                }
+            }
+            catch (System.Exception) { }
+            return 1;
+        }
+
+        static int ReadTiffOrientation(byte[] b, int tiff)
+        {
+            if (tiff + 8 >= b.Length) return 1;
+            bool little = b[tiff] == 'I' && b[tiff + 1] == 'I';
+            int ifd = tiff + (int)ReadU32(b, tiff + 4, little);
+            if (ifd + 2 >= b.Length) return 1;
+            int count = (int)ReadU16(b, ifd, little);
+            for (int e = 0; e < count; e++)
+            {
+                int entry = ifd + 2 + e * 12;
+                if (entry + 12 > b.Length) break;
+                if (ReadU16(b, entry, little) != 0x0112) continue;        // Orientation
+                int v = (int)ReadU16(b, entry + 8, little);
+                return v >= 1 && v <= 8 ? v : 1;
+            }
+            return 1;
+        }
+
+        static uint ReadU16(byte[] b, int at, bool little) =>
+            little ? (uint)(b[at] | (b[at + 1] << 8)) : (uint)((b[at] << 8) | b[at + 1]);
+
+        static uint ReadU32(byte[] b, int at, bool little) => little
+            ? (uint)(b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24))
+            : (uint)((b[at] << 24) | (b[at + 1] << 16) | (b[at + 2] << 8) | b[at + 3]);
+
+        /// <summary>按 EXIF 方向标记把像素摆正（1=不动，直接返回原图）。</summary>
+        public static Texture2D Orient(Texture2D src, int orientation)
+        {
+            if (src == null || orientation <= 1 || orientation > 8) return src;
+            int w = src.width, h = src.height;
+            var srcPx = src.GetPixels32();
+            bool swap = orientation >= 5;                                  // 5~8 要转 90 度
+            int dw = swap ? h : w, dh = swap ? w : h;
+            var dstPx = new Color32[srcPx.Length];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int nx, ny;
+                    switch (orientation)
+                    {
+                        case 2: nx = w - 1 - x; ny = y; break;             // 水平镜像
+                        case 3: nx = w - 1 - x; ny = h - 1 - y; break;     // 转 180
+                        case 4: nx = x; ny = h - 1 - y; break;             // 垂直镜像
+                        case 5: nx = y; ny = x; break;                     // 转置
+                        case 6: nx = y; ny = w - 1 - x; break;             // 顺时针 90
+                        case 7: nx = h - 1 - y; ny = w - 1 - x; break;     // 反转置
+                        default: nx = h - 1 - y; ny = x; break;            // 8：逆时针 90
+                    }
+                    dstPx[ny * dw + nx] = srcPx[y * w + x];
+                }
+            var dst = new Texture2D(dw, dh, TextureFormat.RGBA32, false);
+            dst.SetPixels32(dstPx);
+            dst.Apply(false, false);
+            Object.Destroy(src);
+            return dst;
+        }
+
+        /// <summary>把已经挂上的那张图再转 90°（相册里方向本来就不对时手动救急）。</summary>
+        public static bool Rotate(UserImageSlot slot, bool clockwise)
+        {
+            string path = PathFor(slot);
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return false;
+            try
+            {
+                var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!tex.LoadImage(File.ReadAllBytes(path))) { Object.Destroy(tex); return false; }
+                var rot = Orient(tex, clockwise ? 6 : 8);
+                File.WriteAllBytes(path, rot.EncodeToPNG());
+                Object.Destroy(rot);
+                if (_cache.TryGetValue(slot, out var old) && old != null) Object.Destroy(old);
+                _cache.Remove(slot);
+                foreach (var f in Object.FindObjectsByType<UserPictureFrame>(
+                             FindObjectsInactive.Include, FindObjectsSortMode.None))
+                    if (f.slot == slot) f.ApplyTexture();
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[UserImage] 旋转失败：" + e.Message);
+                return false;
+            }
         }
 
         /// <summary>

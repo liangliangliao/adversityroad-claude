@@ -42,6 +42,16 @@ namespace AdversityRoad.OpenWorld
         /// <summary>家具的半尺寸：起身要退到家具外面（床有 6 米长，退 1.5 米还在床上）。</summary>
         public Vector3 SurfaceExtents { get; private set; }
 
+        /// <summary>
+        /// 座面之上还要再抬多少（米）。
+        ///
+        /// 【为什么需要它】包围盒量的是这件家具**本体**的顶面，但床上还铺着被子、
+        /// 沙发上还堆着靠垫——那些是**另外的物体**，量不到。按床垫顶面（0.88）
+        /// 躺下去，人就躺在被子（顶面 1.12）**里面**，看上去整个身体被床盖住了，
+        /// 正是玩家反馈的现象。给床加一个"被子的厚度"，人就躺在被子上面。
+        /// </summary>
+        public float surfaceLift;
+
         PlayerController _player;
         float _lastHint = -99f;
 
@@ -49,10 +59,12 @@ namespace AdversityRoad.OpenWorld
         public Vector3 LieFace => lieFaceDir.sqrMagnitude < 0.01f ? faceDir : lieFaceDir.normalized;
 
         public static Sittable Attach(GameObject go, Vector3 faceDir, string label,
-            bool canLie = false, bool lieOnly = false, Vector3 lieFaceDir = default)
+            bool canLie = false, bool lieOnly = false, Vector3 lieFaceDir = default,
+            float surfaceLift = 0f)
         {
             if (go == null) return null;
             var s = go.AddComponent<Sittable>();
+            s.surfaceLift = surfaceLift;
             s.faceDir = faceDir.sqrMagnitude < 0.01f ? Vector3.forward : faceDir.normalized;
             s.lieFaceDir = lieFaceDir;
             s.canLie = canLie || lieOnly;
@@ -62,8 +74,8 @@ namespace AdversityRoad.OpenWorld
 
             // 量家具本体：顶面 = 座面，中心 = 骨盆落点
             var b = Measure(go);
-            s.SurfaceY = b.max.y;
-            s.SurfaceCenter = new Vector3(b.center.x, b.max.y, b.center.z);
+            s.SurfaceY = b.max.y + surfaceLift;
+            s.SurfaceCenter = new Vector3(b.center.x, s.SurfaceY, b.center.z);
             s.SurfaceExtents = b.extents;
             return s;
         }

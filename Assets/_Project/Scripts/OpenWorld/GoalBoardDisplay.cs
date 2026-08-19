@@ -21,8 +21,16 @@ namespace AdversityRoad.OpenWorld
     /// </summary>
     public class GoalBoardDisplay : MonoBehaviour
     {
-        /// <summary>每米多少像素：越高越锐利，代价是这块 Canvas 的分辨率。</summary>
-        const float PixelsPerMeter = 150f;
+        /// <summary>
+        /// 每米多少像素：越高越锐利，代价是这块 Canvas 的分辨率与字体图集占用。
+        ///
+        /// 150 → 260：150 的密度下正文字号只有 31 像素，站在两三米外够用，
+        /// 但玩家走到板子跟前（室内镜头被家具挡住时会一路回缩到 0.5 米，
+        /// 脸几乎贴在屏幕上）时，31 像素的字被放大到占满半个屏幕——那就是
+        /// 截图里那种糊成一团的样子。260 下正文 54 像素、标题 120 像素，
+        /// 贴脸看也还是清楚的。
+        /// </summary>
+        const float PixelsPerMeter = 260f;
 
         Text _head, _left, _mid, _right;
         float _next;

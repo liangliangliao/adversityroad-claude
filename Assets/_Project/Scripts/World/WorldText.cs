@@ -92,14 +92,24 @@ namespace AdversityRoad.World
         /// <summary>把字体图集贴到所有缓存材质上（首次创建 + 图集重建时）。</summary>
         static void Bind(Font font)
         {
-            if (font == null || font.material == null) return;
-            var tex = font.material.mainTexture;
-            foreach (var kv in _byColor)
+            // 这是 Font.textureRebuilt 的订阅者之一，而 UGUI 的 Text 也订阅了同一个事件
+            // 去重建自己的网格。**这里抛异常会连累后面的订阅者**（UI 的字就会保持
+            // 旧 UV，显示成一堆错位的乱码）。所以整段包起来。
+            try
             {
-                var m = kv.Value;
-                if (m == null) continue;
-                m.mainTexture = tex;
-                if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                if (font == null || font.material == null) return;
+                var tex = font.material.mainTexture;
+                foreach (var kv in _byColor)
+                {
+                    var m = kv.Value;
+                    if (m == null) continue;
+                    m.mainTexture = tex;
+                    if (m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[WorldText] 字体图集重绑失败：" + e.Message);
             }
         }
     }

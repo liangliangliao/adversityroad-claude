@@ -83,6 +83,11 @@ namespace AdversityRoad.UI
             UiUtil.MakeButton(_panel.transform, "重新扫描", new Vector2(0.5f, 1f),
                 new Vector2(330, -232), new Vector2(160, 66),
                 new Color(0.24f, 0.26f, 0.32f, 0.95f), Scan, 22);
+            // 手动摆正：EXIF 已经自动处理，但有些图的方向信息本身就是错的/没有，
+            // 给一个"再转 90°"的口子，按四下就转回来了
+            UiUtil.MakeButton(_panel.transform, "旋转 90°", new Vector2(0.5f, 1f),
+                new Vector2(-330, -232), new Vector2(160, 66),
+                new Color(0.30f, 0.28f, 0.22f, 0.95f), RotateCurrent, 22);
 
             _panel.SetActive(false);
         }
@@ -182,6 +187,18 @@ namespace AdversityRoad.UI
             int pages = Mathf.Max(1, Mathf.CeilToInt(_images.Count / (float)PageSize));
             _page = Mathf.Clamp(_page + d, 0, pages - 1);
             Refresh();
+        }
+
+        void RotateCurrent()
+        {
+            if (UserImageLibrary.Rotate(_slot, true))
+            {
+                if (_status != null) _status.text = "已把「" + SlotName(_slot) + "」的图片转了 90°。";
+            }
+            else if (_status != null)
+            {
+                _status.text = "这一处还没有挂图片。";
+            }
         }
 
         void Clear()

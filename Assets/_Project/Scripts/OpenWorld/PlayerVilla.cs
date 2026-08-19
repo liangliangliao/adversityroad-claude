@@ -624,7 +624,8 @@ namespace AdversityRoad.OpenWorld
             VillaKit.Box("BedFrame", c + new Vector3(0, 0.24f, 0), new Vector3(5.2f, 0.48f, 6.8f), Wood);
             var mattress = VillaKit.Box("Mattress", c + new Vector3(0, 0.66f, 0),
                 new Vector3(4.9f, 0.44f, 6.5f), new Color(0.93f, 0.92f, 0.90f));
-            Sittable.Attach(mattress, Vector3.back, "床", true);
+            Sittable.Attach(mattress, Vector3.back, "床", true, false, default,
+                0.30f);   // 被子顶面比床垫高 0.24 米：不抬起来就躺进被子里了
             VillaKit.Deco("BedSheet", c + new Vector3(0, 0.9f, 0),
                 new Vector3(5.1f, 0.05f, 6.7f), new Color(0.96f, 0.96f, 0.98f));
             VillaKit.Deco("Quilt", c + new Vector3(0, 1.0f, -1.2f),
