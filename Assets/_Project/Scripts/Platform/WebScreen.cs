@@ -85,6 +85,22 @@ namespace AdversityRoad.Platform
         public static void LoadUrl(string url) => Call("loadUrl", url);
 
         /// <summary>
+        /// 画面是不是跑在**硬件加速**的独立窗口上。
+        /// Unity 的活动声明的是 hardwareAccelerated="false"，而 HTML5 的 &lt;video&gt;
+        /// 只能在硬件加速的窗口上合成——软件窗口里只有声音、画面全黑。
+        /// 所以网页层自己开了一块窗口；这里返回它有没有开成。
+        /// </summary>
+        public static bool Accelerated
+        {
+            get
+            {
+                if (!Available || _cls == null) return false;
+                try { return _cls.CallStatic<bool>("accelerated"); }
+                catch (System.Exception) { return false; }
+            }
+        }
+
+        /// <summary>
         /// 查一下"到底有没有在播"，结果通过 <see cref="PlaybackChecked"/> 回来。
         /// 有些视频不许嵌入播放，页面上会出现 YouTube 自己的"此视频不能观看"卡片，
         /// 而游戏这边看起来和"还在缓冲"一模一样——玩家只能对着一个黑框发呆。

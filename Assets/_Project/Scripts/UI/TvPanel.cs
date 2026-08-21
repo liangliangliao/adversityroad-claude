@@ -221,9 +221,14 @@ namespace AdversityRoad.UI
                 return;
             }
 
-            string where = WebScreen.Available
-                ? "站到电视正面就是真正的 YouTube 画面；走开或从侧面看，屏幕显示本机生成的动态画面，声音继续。"
-                : "这台设备没有网页层（编辑器/PC），屏幕显示本机生成的动态画面。";
+            string where;
+            if (!WebScreen.Available)
+                where = "这台设备没有网页层（编辑器/PC），屏幕显示本机生成的动态画面。";
+            else if (!WebScreen.Accelerated)
+                where = "注意：这台设备没能给网页层开出硬件加速窗口，视频可能只有声音没有画面。";
+            else
+                where = "站到电视正面**站定**约半秒，画面就嵌进屏幕里不再动；一走动画面收起、"
+                      + "声音继续（屏幕改显示本机画面）。悬浮小窗里也只有声音。";
             _status.text = (tv.On ? "已开机 · " : "已关机 · ") + tv.ChannelName + "\n" + where;
         }
     }

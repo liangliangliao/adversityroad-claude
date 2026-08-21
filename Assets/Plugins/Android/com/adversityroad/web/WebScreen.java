@@ -4,10 +4,14 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.net.Uri;
+import android.util.DisplayMetrics;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -24,64 +28,67 @@ import java.util.Map;
 import com.unity3d.player.UnityPlayer;
 
 /**
- * A web page drawn on top of the Unity view, used as the picture of the in-game
- * television set. All calls come from C# (AndroidJavaClass.CallStatic).
+ * The picture of the in-game television: a web page drawn on top of the Unity view.
+ * All calls come from C# (AndroidJavaClass.CallStatic).
  *
- * This file is deliberately ASCII-only: javac's default encoding on the build
- * machine is not guaranteed to be UTF-8, and one non-ASCII byte is a hard build
- * failure there. Every player facing string is passed in from C#.
+ * ASCII-only on purpose: javac's default encoding on the build machine is not
+ * guaranteed to be UTF-8, and one non-ASCII byte is a hard build failure there.
  *
  * WHY AN OVERLAY AND NOT A TEXTURE
- * The only way to show YouTube inside an app is a WebView (extracting the media
+ * The only lawful way to show YouTube inside an app is a WebView (extracting the media
  * stream and feeding it to a video texture breaks YouTube's terms and rots within
- * weeks). A WebView renders into the Android view hierarchy, not into a GL texture
- * we could sample from a shader, so the picture has to be a view placed exactly on
- * top of the rectangle the TV screen occupies on the display. C# projects the four
- * corners of the screen quad every frame and calls place(); when the player is not
- * roughly in front of the set, C# calls hide() and the in-world screen shows its own
- * procedural picture instead.
+ * weeks). A WebView renders into the Android view hierarchy, not into a GL texture we
+ * could sample from a shader, so the picture has to be placed on top of the rectangle
+ * the TV screen occupies on the display. C# projects the screen quad every frame and
+ * calls place() only while that rectangle is standing still.
  *
- * WHY TOUCHES PASS THROUGH
- * The overlay can cover most of the display when the player stands close to a five
- * metre TV. If the WebView consumed touches, the player would lose the joystick and
- * be stuck. PassThrough intercepts every touch (so the page never sees it) and then
- * declines it (so Android keeps dispatching to the Unity view underneath). Playback
- * control therefore lives entirely in the in-game panel, which drives the page's own
- * <video> element through evaluateJavascript (see VIDEO below).
+ * WHY ITS OWN WINDOW (this is what fixed "sound plays but the picture is black")
+ * Unity's activity is declared android:hardwareAccelerated="false" - Unity draws
+ * through its own surface and does not need the view hierarchy accelerated. But an
+ * HTML5 <video> element can only be composited on a hardware accelerated window; in a
+ * software window Chromium plays the audio and leaves the video area black, which is
+ * exactly what the player saw. An activity's window flag cannot be changed after the
+ * window exists, so the WebView gets its own panel window instead, created with
+ * FLAG_HARDWARE_ACCELERATED. That window is also NOT_TOUCHABLE, which is a cleaner way
+ * to let every touch reach the game than intercepting them in a container view (the
+ * overlay can cover most of the display; if it ate touches the player would lose the
+ * joystick). Playback control therefore lives in the in-game panel.
+ * If the panel window is refused for any reason, the code falls back to adding the
+ * WebView to the activity's content view - the old behaviour, black video included.
+ *
+ * WHY park() INSTEAD OF setVisibility(GONE)
+ * Chromium suspends media for a WebView that is not visible, so hiding the overlay that
+ * way also killed the sound - including in picture in picture mode. Parking shrinks the
+ * window to one pixel in the corner instead: still "visible" as far as the WebView is
+ * concerned, so playback (and background audio) continues.
  */
 public class WebScreen {
 
     /**
      * Two ways to get a YouTube video onto the screen, because YouTube refuses embeds
      * for several different reasons and only a device can tell which one applies. C#
-     * starts with mode 0 and automatically retries with mode 1 when nothing plays a
-     * few seconds later (see probe()).
+     * starts with mode 0 and automatically retries with mode 1 when nothing plays a few
+     * seconds later (see probe()).
      *
      * MODE 0 - our own player page served from a REAL https origin.
      *   The page is not fetched from a server: shouldInterceptRequest() answers the
      *   request for PAGE_URL with the HTML below, so the WebView believes the document
      *   really came from https://tv.adversityroad.app - an ordinary third party origin.
-     *   That matters because the previous attempts spoofed the origin with
-     *   loadDataWithBaseURL("https://www.youtube.com", ...): an embed whose Referer is
-     *   youtube.com itself is not a real embed, and YouTube answers it with
-     *   "this video cannot be watched here" (error 150 / 152). With a genuine origin the
-     *   iframe API sees a normal embed, and `origin` in playerVars matches the document.
+     *   Spoofing the origin with loadDataWithBaseURL("https://www.youtube.com", ...)
+     *   does not work: an embed whose Referer is youtube.com itself is not a real embed
+     *   and YouTube answers it with "this video cannot be watched here" (150 / 152).
      *
      * MODE 1 - load https://www.youtube.com/embed/<id> directly, WITH a Referer header.
      *   A WebView sends no Referer of its own, and YouTube answers a referer-less embed
      *   request with "error 153 - video player configuration error".
      *
-     * Both modes also drop the "; wv" marker from the User-Agent: that substring is how
-     * a page tells it is inside a WebView, and YouTube refuses playback for some content
+     * Both modes drop the "; wv" marker from the User-Agent: that substring is how a
+     * page can tell it is inside a WebView, and YouTube refuses part of its catalogue
      * when it sees it.
-     *
-     * Playback control differs per mode: mode 0 drives the IFrame API functions defined
-     * in PAGE; mode 1 talks to the embed page's own <video> element (that page IS the
-     * player, so its video element is in the document we evaluate in).
      */
     private static final String VIDEO = "document.querySelector('video')";
 
-    /** Origin the player page pretends to come from. Never actually fetched. */
+    /** Origin the player page claims to come from. Never actually fetched. */
     private static final String ORIGIN = "https://tv.adversityroad.app";
     private static final String PAGE_URL = ORIGIN + "/player.html";
 
@@ -105,14 +112,16 @@ public class WebScreen {
         "var s=pl?pl.getPlayerState():-9;return (s==1||s==3)?'1':'0';}catch(e){return '0';}}" +
         "</script></body></html>";
 
-    private static int sMode;           // 0 = own page on a real origin, 1 = embed page
+    private static WebView sWeb;
+    private static FrameLayout sFallbackHost;     // only used if the panel window fails
+    private static WindowManager sWm;
+    private static WindowManager.LayoutParams sLp;
+    private static boolean sWindowMode;
+    private static boolean sReady;
+    private static int sMode;
     private static String sPageHtml = "";
 
-    private static WebView sWeb;
-    private static PassThrough sHost;
-    private static boolean sReady;      // the player page has finished loading
-
-    /** Container that steals touches from the page and then declines them. */
+    /** Container used only by the fallback path: steals touches, then declines them. */
     private static class PassThrough extends FrameLayout {
         PassThrough(Context c) { super(c); }
         @Override public boolean onInterceptTouchEvent(MotionEvent e) { return true; }
@@ -123,15 +132,19 @@ public class WebScreen {
         return UnityPlayer.currentActivity != null;
     }
 
+    /** True when the picture is on its own hardware accelerated window (video works). */
+    public static boolean accelerated() {
+        return sWindowMode;
+    }
+
     /**
-     * Show / move the overlay. x,y,w,h are in Unity's screen pixels (origin top left),
-     * srcW/srcH is the size of Unity's screen those numbers were measured against.
+     * Show / move the picture. x,y,w,h are in Unity's screen pixels (origin top left),
+     * srcW/srcH is the Unity screen size they were measured against.
      *
-     * The rectangle MUST be rescaled here: Unity's surface and the Android view
-     * hierarchy do not have to be the same number of pixels (resolution scaling, a
-     * display cutout, split screen, picture in picture...). Placing Unity pixels
-     * straight into view coordinates puts the picture next to the television instead
-     * of on it, shrinking or growing with the mismatch.
+     * The rectangle is rescaled here because Unity's surface and the Android display do
+     * not have to be the same number of pixels (resolution scaling, a display cutout,
+     * split screen, picture in picture). Placing Unity pixels straight into window
+     * coordinates puts the picture next to the television instead of on it.
      */
     public static void place(final int x, final int y, final int w, final int h,
                              final int srcW, final int srcH) {
@@ -141,34 +154,45 @@ public class WebScreen {
             public void run() {
                 if (!ensure(a)) return;
                 float sx = 1f, sy = 1f;
-                View content = a.findViewById(android.R.id.content);
-                if (content != null && srcW > 0 && srcH > 0
-                        && content.getWidth() > 0 && content.getHeight() > 0) {
-                    sx = (float) content.getWidth() / (float) srcW;
-                    sy = (float) content.getHeight() / (float) srcH;
+                int refW = 0, refH = 0;
+                if (sWindowMode) {
+                    DisplayMetrics dm = new DisplayMetrics();
+                    try {
+                        a.getWindowManager().getDefaultDisplay().getRealMetrics(dm);
+                        refW = dm.widthPixels;
+                        refH = dm.heightPixels;
+                    } catch (Throwable t) {
+                        refW = refH = 0;
+                    }
+                } else {
+                    View content = a.findViewById(android.R.id.content);
+                    if (content != null) {
+                        refW = content.getWidth();
+                        refH = content.getHeight();
+                    }
                 }
-                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                    Math.max(4, Math.round(w * sx)), Math.max(4, Math.round(h * sy)));
-                lp.leftMargin = Math.round(x * sx);
-                lp.topMargin = Math.round(y * sy);
-                sHost.setLayoutParams(lp);
-                if (sHost.getVisibility() != View.VISIBLE) sHost.setVisibility(View.VISIBLE);
-                sHost.requestLayout();
+                if (srcW > 0 && srcH > 0 && refW > 0 && refH > 0) {
+                    sx = (float) refW / (float) srcW;
+                    sy = (float) refH / (float) srcH;
+                }
+                int px = Math.round(x * sx), py = Math.round(y * sy);
+                int pw = Math.max(4, Math.round(w * sx)), ph = Math.max(4, Math.round(h * sy));
+                apply(a, px, py, pw, ph);
             }
         });
     }
 
     /**
-     * Take the picture off the display. Playback is NOT stopped: this is what makes
-     * "keep playing while I walk away" (and background audio) work. Use pause() to
-     * actually stop the sound.
+     * Take the picture off the screen WITHOUT stopping playback: shrink it to a single
+     * pixel in the corner. See the class comment for why this is not setVisibility(GONE).
      */
     public static void hide() {
         final Activity a = UnityPlayer.currentActivity;
         if (a == null) return;
         a.runOnUiThread(new Runnable() {
             public void run() {
-                if (sHost != null) sHost.setVisibility(View.GONE);
+                if (sWeb == null) return;
+                apply(a, 0, 0, 1, 1);
             }
         });
     }
@@ -189,9 +213,8 @@ public class WebScreen {
                     sWeb.loadUrl(PAGE_URL);
                     return;
                 }
-                // loop=1 needs playlist=<same id> - that is YouTube's own rule for
-                // looping a single video. controls=0 because touches never reach the
-                // page anyway (see PassThrough); the game panel is the remote.
+                // loop=1 needs playlist=<same id> - YouTube's own rule for looping a
+                // single video. controls=0 because touches never reach the page anyway.
                 String url = "https://www.youtube.com/embed/" + videoId
                     + "?autoplay=1&playsinline=1&rel=0&modestbranding=1&controls=0"
                     + "&iv_load_policy=3&loop=1&playlist=" + videoId
@@ -211,6 +234,7 @@ public class WebScreen {
             public void run() {
                 if (!ensure(a)) return;
                 sReady = false;
+                sMode = 1;
                 sWeb.loadUrl(url);
             }
         });
@@ -231,11 +255,11 @@ public class WebScreen {
 
     /**
      * Ask the page whether anything is actually playing and report back to Unity via
-     * UnitySendMessage(callbackObject, "OnWebPlayback", "1" or "0").
+     * UnitySendMessage(callbackObject, "OnWebPlayback", "1" / "0" / "0:<errorCode>").
      *
-     * Some videos forbid embedding; the page then shows YouTube's own "cannot be
-     * watched here" card and nothing ever plays. Without this the game has no way to
-     * tell that apart from "still buffering", and the player is left staring at a box.
+     * Some videos forbid embedding, some refuse the origin; the page then shows
+     * YouTube's own error card and nothing plays. Without this the game cannot tell
+     * that apart from "still buffering" and the player is left staring at a box.
      */
     public static void probe(final String callbackObject) {
         final Activity a = UnityPlayer.currentActivity;
@@ -251,13 +275,11 @@ public class WebScreen {
                         ? "arState()"
                         : "(function(){var v=" + VIDEO
                           + ";return (v&&v.readyState>0&&!v.paused)?'1':'0';})()";
-                    sWeb.evaluateJavascript(q,
-                        new ValueCallback<String>() {
-                            public void onReceiveValue(String value) {
-                                send(callbackObject,
-                                    value != null && value.contains("1") ? "1" : "0");
-                            }
-                        });
+                    sWeb.evaluateJavascript(q, new ValueCallback<String>() {
+                        public void onReceiveValue(String value) {
+                            send(callbackObject, value == null ? "0" : value.replace("\"", ""));
+                        }
+                    });
                 } catch (Throwable t) {
                     send(callbackObject, "0");
                 }
@@ -265,19 +287,7 @@ public class WebScreen {
         });
     }
 
-    private static void send(String obj, String value) {
-        try {
-            UnityPlayer.UnitySendMessage(obj, "OnWebPlayback", value);
-        } catch (Throwable t) {
-            // the bridge object is gone; nothing to report to
-        }
-    }
-
-    /**
-     * Keep the page running while the app is in the background. Android does not
-     * pause a WebView's media on its own - the app has to - so all we must do is
-     * make sure timers keep ticking after Unity's own pause handling.
-     */
+    /** Keep the page running while the app is in the background / in a floating window. */
     public static void keepAlive() {
         final Activity a = UnityPlayer.currentActivity;
         if (a == null) return;
@@ -290,24 +300,35 @@ public class WebScreen {
         });
     }
 
-    /** Tear the overlay down completely (leaving a level, shutting the set off). */
+    /** Tear the picture down completely (leaving home, shutting the set off). */
     public static void close() {
         final Activity a = UnityPlayer.currentActivity;
         if (a == null) return;
         a.runOnUiThread(new Runnable() {
             public void run() {
-                if (sWeb != null) {
-                    sWeb.loadUrl("about:blank");
-                    sWeb.stopLoading();
+                try {
+                    if (sWeb != null) {
+                        sWeb.loadUrl("about:blank");
+                        sWeb.stopLoading();
+                        if (sWindowMode && sWm != null) {
+                            sWm.removeViewImmediate(sWeb);
+                        } else {
+                            ViewGroup parent = sFallbackHost != null
+                                ? (ViewGroup) sFallbackHost.getParent() : null;
+                            if (parent != null) parent.removeView(sFallbackHost);
+                        }
+                        sWeb.destroy();
+                    }
+                } catch (Throwable t) {
+                    // already detached
                 }
-                if (sHost != null) {
-                    ViewGroup parent = (ViewGroup) sHost.getParent();
-                    if (parent != null) parent.removeView(sHost);
-                }
-                if (sWeb != null) sWeb.destroy();
                 sWeb = null;
-                sHost = null;
+                sFallbackHost = null;
+                sWm = null;
+                sLp = null;
+                sWindowMode = false;
                 sReady = false;
+                sPageHtml = "";
             }
         });
     }
@@ -327,28 +348,50 @@ public class WebScreen {
 
     // ================= internals (UI thread only) =================
 
+    private static void apply(Activity a, int x, int y, int w, int h) {
+        try {
+            if (sWindowMode && sWm != null && sLp != null) {
+                sLp.x = x;
+                sLp.y = y;
+                sLp.width = w;
+                sLp.height = h;
+                sWm.updateViewLayout(sWeb, sLp);
+                return;
+            }
+            if (sFallbackHost != null) {
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, h);
+                lp.leftMargin = x;
+                lp.topMargin = y;
+                sFallbackHost.setLayoutParams(lp);
+                sFallbackHost.setVisibility(View.VISIBLE);
+                sFallbackHost.requestLayout();
+            }
+        } catch (Throwable t) {
+            // the window went away under us; the next place() rebuilds it
+        }
+    }
+
     private static boolean ensure(Activity a) {
-        if (sHost != null && sWeb != null) return true;
+        if (sWeb != null) return true;
         try {
             sWeb = new WebView(a);
             WebSettings s = sWeb.getSettings();
             s.setJavaScriptEnabled(true);
             s.setDomStorageEnabled(true);
             // Without this the page needs a tap before it may play - and taps never
-            // reach the page (see PassThrough), so the TV would stay black forever.
+            // reach the page, so the TV would stay black forever.
             s.setMediaPlaybackRequiresUserGesture(false);
             s.setUseWideViewPort(true);
             s.setLoadWithOverviewMode(true);
-            // "; wv" is how a page can tell it is inside a WebView, and YouTube refuses
-            // playback for part of its catalogue when it sees it. Present as plain Chrome.
             String ua = s.getUserAgentString();
             if (ua != null && ua.contains("; wv")) s.setUserAgentString(ua.replace("; wv", ""));
+
             sWeb.setBackgroundColor(Color.BLACK);
+            sWeb.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             sWeb.setWebChromeClient(new WebChromeClient());
             sWeb.setWebViewClient(new WebViewClient() {
                 // Serve our own player page for PAGE_URL without any network request.
-                // This is what gives the document a real (and stable) origin - see the
-                // class comment for why a spoofed one gets the embed refused.
+                // This is what gives the document a real (and stable) origin.
                 @Override
                 public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest req) {
                     try {
@@ -359,7 +402,7 @@ public class WebScreen {
                                 new ByteArrayInputStream(sPageHtml.getBytes("UTF-8")));
                         }
                     } catch (Throwable t) {
-                        // fall through: let the WebView try the network (and fail loudly)
+                        // fall through and let the WebView try the network
                     }
                     return null;
                 }
@@ -368,18 +411,58 @@ public class WebScreen {
                     sReady = true;
                 }
             });
+
+            if (attachWindow(a)) return true;
+            return attachFallback(a);
+        } catch (Throwable t) {
+            sWeb = null;
+            return false;
+        }
+    }
+
+    /** The good path: a hardware accelerated, untouchable panel window. */
+    private static boolean attachWindow(Activity a) {
+        try {
+            View decor = a.getWindow() != null ? a.getWindow().getDecorView() : null;
+            if (decor == null || decor.getWindowToken() == null) return false;
+
+            sWm = a.getWindowManager();
+            sLp = new WindowManager.LayoutParams(
+                1, 1,
+                WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            sLp.gravity = Gravity.TOP | Gravity.LEFT;
+            sLp.x = 0;
+            sLp.y = 0;
+            sLp.token = decor.getWindowToken();
+            sWm.addView(sWeb, sLp);
+            sWindowMode = true;
+            return true;
+        } catch (Throwable t) {
+            sWm = null;
+            sLp = null;
+            sWindowMode = false;
+            return false;
+        }
+    }
+
+    /** The old path: a view inside the activity's content view (video will be black). */
+    private static boolean attachFallback(Activity a) {
+        try {
             sWeb.setLayoutParams(new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-            sHost = new PassThrough(a);
-            sHost.setBackgroundColor(Color.BLACK);
-            sHost.addView(sWeb);
-            sHost.setVisibility(View.GONE);
-            a.addContentView(sHost, new FrameLayout.LayoutParams(4, 4));
+            sFallbackHost = new PassThrough(a);
+            sFallbackHost.setBackgroundColor(Color.BLACK);
+            sFallbackHost.addView(sWeb);
+            a.addContentView(sFallbackHost, new FrameLayout.LayoutParams(1, 1));
             return true;
         } catch (Throwable t) {
             sWeb = null;
-            sHost = null;
+            sFallbackHost = null;
             return false;
         }
     }
@@ -398,6 +481,14 @@ public class WebScreen {
             sWeb.evaluateJavascript(code, null);
         } catch (Throwable t) {
             // page not loaded yet; the next call will land
+        }
+    }
+
+    private static void send(String obj, String value) {
+        try {
+            UnityPlayer.UnitySendMessage(obj, "OnWebPlayback", value);
+        } catch (Throwable t) {
+            // the bridge object is gone; nothing to report to
         }
     }
 }

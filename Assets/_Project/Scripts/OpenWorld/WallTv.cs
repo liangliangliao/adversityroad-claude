@@ -155,8 +155,9 @@ namespace AdversityRoad.OpenWorld
         bool _sightOk;
         int _loadMode;              // 0/1：两种把视频弄上屏的方式，见 OnPlaybackChecked
         int _lastError;             // 上一次探测拿到的 YouTube 错误码（0 = 没有）
-        Rect _prevRect;             // 上一帧算出来的矩形（用来抵消原生布局的延迟）
+        Rect _prevRect;             // 上一帧算出来的矩形（判断"站定了没有"）
         bool _hasPrev;
+        float _steadyFor;           // 矩形已经稳住多久了
         Rect _placed;               // 上一次真正摆上去的矩形（死区判定用）
         bool _screenBlanked;        // 网页层盖住时，世界里的屏幕画纯黑当衬底
 
@@ -259,9 +260,32 @@ namespace AdversityRoad.OpenWorld
             else SetLed(false);
         }
 
-        void OnEnable() => WebScreen.PlaybackChecked += OnPlaybackChecked;
+        void OnEnable()
+        {
+            WebScreen.PlaybackChecked += OnPlaybackChecked;
+            PipMode.Changed += OnPipChanged;
+        }
 
-        void OnDisable() => WebScreen.PlaybackChecked -= OnPlaybackChecked;
+        void OnDisable()
+        {
+            WebScreen.PlaybackChecked -= OnPlaybackChecked;
+            PipMode.Changed -= OnPipChanged;
+        }
+
+        /// <summary>
+        /// 进/出悬浮小窗。
+        /// 【小窗里没声音的原因】以前"收起画面"用的是把网页层设成不可见——
+        /// 而 Chromium 对不可见的 WebView 会挂起媒体，声音跟着一起停。
+        /// 现在收起改成把窗口缩成一像素（见 Java 侧 hide()），媒体不会被挂起；
+        /// 进小窗时再补一次保活与播放，声音就能一直响着。
+        /// </summary>
+        void OnPipChanged(bool inPip)
+        {
+            if (!On) return;
+            if (_overlayShown) { WebScreen.Hide(); _overlayShown = false; }
+            WebScreen.KeepAlive();
+            if (inPip && Background) WebScreen.Play();
+        }
 
         void OnDestroy()
         {
@@ -430,27 +454,26 @@ namespace AdversityRoad.OpenWorld
                 WebScreen.Probe();
             }
 
-            bool blocked = Suppressed || Time.timeScale < 0.01f;
-            if (!blocked && TryScreenRect(out Rect rect) && rect.width > 40f && rect.height > 24f
-                && TryLead(rect, out Rect target))
+            // 悬浮小窗里不摆画面：窗口只有几百像素，电视那块矩形没有意义，
+            // 但**声音继续**（这正是玩家要的"小窗里还能听"）。
+            bool blocked = Suppressed || Time.timeScale < 0.01f || PipMode.InPip;
+            if (!blocked && TryScreenRect(out Rect rect)
+                && rect.width > 40f && rect.height > 24f && Steady(rect))
             {
-                // 【死区：站着不动时别让它一帧一动】投影每帧都会有亚像素抖动，
-                // 而每下发一次原生布局都要跨线程排队。变化不到 2 像素就不下发，
-                // 站着不动时画面在屏幕里是钉死的。
-                if (!_overlayShown || Moved(target, _placed, 2f))
+                if (!_overlayShown || Moved(rect, _placed, 2f))
                 {
-                    WebScreen.Place(target);
-                    _placed = target;
+                    WebScreen.Place(rect);
+                    _placed = rect;
                 }
                 _overlayShown = true;
             }
             else if (_overlayShown)
             {
-                // 收起画面但不停播：走开了声音还在，这就是玩家要的"后台播放"的一半
+                // 收起画面但不停播：走开了声音还在，这就是"后台播放"的一半
                 WebScreen.Hide();
                 _overlayShown = false;
-                _hasPrev = false;
             }
+            if (blocked) { _hasPrev = false; _steadyFor = 0f; }
         }
 
         /// <summary>
@@ -507,36 +530,26 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>
-        /// 把矩形往前推一点，抵消"原生视图慢一拍"这件事。
+        /// 画面只在**镜头站定**时才摆上去。
         ///
-        /// 【玩家反馈"跟着移动就左右跳"的根因】网页层是**安卓的原生视图**，
-        /// 它的布局在 UI 线程上排队执行，比算出这个矩形的那一帧要晚一到两帧才生效；
-        /// 而 3D 里的电视是当帧渲染的。两者之间因此永远差着一个固定的延迟——
-        /// 镜头一动，视频就相对电视往后拖，看起来就是"跳"。
-        /// 这件事没法靠对齐算法解决：原生视图和 Unity 的渲染压根不同步。
+        /// 【为什么不能一边走一边跟】网页层是安卓的原生视图，布局在 UI 线程上排队，
+        /// 比算出这个矩形的那一帧要晚一到两帧才生效；而 3D 里的电视是当帧渲染的。
+        /// 两者之间永远差着一个固定延迟——镜头一动，视频就相对电视往后拖。
+        /// 这件事没法靠对齐算法消除：原生视图和 Unity 的渲染压根不同步
+        /// （上一版试过按延迟做外推，甩镜头时反而会冲出屏幕）。
         ///
-        /// 能做的是**按这个固定延迟做外推**：用上一帧到这一帧的位移，
-        /// 把矩形往运动方向推 1.5 帧，正好补上那一到两帧的滞后。
-        /// 位移大到一帧就跨过四分之一个屏幕（甩镜头）时外推也救不回来，
-        /// 那时干脆收起网页层，让世界里的屏幕自己显示画面——它是贴在电视上的，
-        /// 永远不会跳。
+        /// 所以规则改成非黑即白：矩形连续 0.15 秒几乎不动（说明玩家站住了），
+        /// 才把画面摆进去，此后它一动不动；一旦开始走动就立刻收起画面，
+        /// 由贴在电视上的程序画面顶上——那是电视本身的贴图，永远不会跳。
+        /// 收起画面**不停播**，声音照旧。
         /// </summary>
-        bool TryLead(Rect now, out Rect target)
+        bool Steady(Rect now)
         {
-            target = now;
-            if (!_hasPrev) { _prevRect = now; _hasPrev = true; return true; }
-
-            float dx = now.xMin - _prevRect.xMin, dy = now.yMin - _prevRect.yMin;
-            float dw = now.width - _prevRect.width, dh = now.height - _prevRect.height;
+            if (!_hasPrev) { _prevRect = now; _hasPrev = true; _steadyFor = 0f; return false; }
+            bool still = !Moved(now, _prevRect, 2f);
             _prevRect = now;
-
-            if (Mathf.Abs(dx) > now.width * 0.25f || Mathf.Abs(dy) > now.height * 0.25f)
-                return false;                                   // 甩镜头：这一帧不显示
-
-            const float Lead = 1.5f;                            // 原生布局大致滞后的帧数
-            target = new Rect(now.xMin + dx * Lead, now.yMin + dy * Lead,
-                              now.width + dw * Lead, now.height + dh * Lead);
-            return true;
+            _steadyFor = still ? _steadyFor + Time.unscaledDeltaTime : 0f;
+            return _steadyFor >= 0.15f;
         }
 
         /// <summary>四个数里取"第二小"和"第二大"——凸四边形的内接轴对齐矩形。</summary>
