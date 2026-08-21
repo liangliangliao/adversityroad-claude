@@ -16,9 +16,14 @@ namespace AdversityRoad.Player
         // 收紧触发距离：镜头碰撞回缩下限≈1.35m，之前 2.1m 起淡→靠近建筑镜头一回缩
         // 角色就被淡成半透明("整个人变虚不清晰")。收到 1.1m 才起淡、且保留更高保底
         // 不透明度：贴墙近观角色依然清晰，只有镜头真要钻进身体时才淡开留出视野。
-        [Tooltip("开始淡出的镜头距离")] public float startDist = 1.1f;
-        [Tooltip("最透时的镜头距离")] public float minDist = 0.45f;
-        [Range(0f, 1f)] public float minAlpha = 0.32f;
+        [Tooltip("开始淡出的镜头距离")] public float startDist = 1.35f;
+        [Tooltip("最透时的镜头距离")] public float minDist = 0.75f;
+        /// <summary>最透时的不透明度。
+        /// 【为什么必须是 0】室内镜头被家具挡住时会一路回缩到 0.5 米（那是对的，
+        /// 否则镜头会卡在柜子里）。停在 0.32 的半透明上，画面就是**一张占满屏幕的
+        /// 半透明大脸**——玩家说的"脸模糊不清"。要么看得清，要么彻底让开，
+        /// 半透明的大脸是两头不讨好。</summary>
+        [Range(0f, 1f)] public float minAlpha = 0f;
         public float fadeSpeed = 7f;
 
         class Entry

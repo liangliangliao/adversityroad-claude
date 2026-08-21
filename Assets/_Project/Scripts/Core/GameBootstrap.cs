@@ -984,6 +984,13 @@ namespace AdversityRoad.Core
             var picturePanel = UserImagePanel.Create(canvasGo.transform);
             OpenWorld.UserPictureFrame.OpenPicker = slot => picturePanel.OpenFor(slot);
 
+            // 电视面板：客厅那台超大屏电视的遥控器（换台/播放/后台播放/悬浮小窗）
+            var tvPanel = TvPanel.Create(canvasGo.transform);
+
+            // 悬浮小窗：装好监听，并在进小窗时把整块 UI 收起来（见 PipAdaptor）
+            Platform.PipMode.Ensure();
+            UI.PipAdaptor.Attach(canvas);
+
             var sysMenu = SystemMenuPanel.Create(canvasGo.transform);
             sysMenu.Add("目标", "目标", goalOsPanel.Toggle);
             sysMenu.Add("目标", "旅程图", journeyPanel.Toggle);
@@ -997,6 +1004,8 @@ namespace AdversityRoad.Core
             sysMenu.Add("角色", "画像", profilePanel.Toggle);
             sysMenu.Add("角色", "逆境图谱", advProfilePanel.Toggle);
             sysMenu.Add("系统", "设置", settingsPanel.Toggle);
+            sysMenu.Add("系统", "电视", tvPanel.Toggle);
+            sysMenu.Add("系统", "悬浮小窗", () => Platform.PipMode.Enter());
             sysMenu.Add("系统", "视角", () =>
             {
                 var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
@@ -1035,6 +1044,7 @@ namespace AdversityRoad.Core
                     case HomeFixtureKind.Computer: journeyPanel.Toggle(); break;
                     case HomeFixtureKind.Phone: actionTrackerPanel.Toggle(); break;
                     case HomeFixtureKind.Fridge: quizPanel.OpenPractice(); break;
+                    case HomeFixtureKind.Tv: tvPanel.Show(); break;
                 }
             };
 

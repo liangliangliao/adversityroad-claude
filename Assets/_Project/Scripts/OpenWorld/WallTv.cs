@@ -1,0 +1,701 @@
+using System.Collections.Generic;
+using UnityEngine;
+using AdversityRoad.Core;
+using AdversityRoad.Platform;
+using AdversityRoad.World;
+
+namespace AdversityRoad.OpenWorld
+{
+    /// <summary>
+    /// 客厅那面墙上的超大屏液晶电视。
+    ///
+    /// 建的是一台真电视：黑色窄边框、亮着的屏幕、下面一条音响、墙上的挂架、
+    /// 待机时右下角一颗红色指示灯。屏幕本体挂 TvSet，负责画面与播放。
+    /// </summary>
+    public static class WallTv
+    {
+        /// <summary>
+        /// center = 屏幕中心；faceDir = 屏幕朝向（从墙指向观众）；width = 屏幕对角那条边的**宽**（米）。
+        /// 高按 16:9 算。
+        /// </summary>
+        public static TvSet Build(WorldContext ctx, Vector3 center, Vector3 faceDir, float width)
+        {
+            faceDir = faceDir.normalized;
+            bool normalZ = Mathf.Abs(faceDir.z) >= Mathf.Abs(faceDir.x);   // 法线沿 Z ⇒ 画面横向沿 X
+            float w = Mathf.Max(0.6f, width);
+            float h = w * 9f / 16f;
+            const float panelT = 0.10f;    // 屏幕板厚
+            const float bezel = 0.11f;     // 边框宽
+            const float bezelT = 0.17f;    // 边框比屏幕厚一点：像"框住"屏幕
+
+            var black = new Color(0.06f, 0.06f, 0.07f);
+            var dark = new Color(0.11f, 0.11f, 0.13f);
+
+            Vector3 panelSize = normalZ ? new Vector3(w, h, panelT) : new Vector3(panelT, h, w);
+            var screen = VillaKit.Deco("TvScreen", center, panelSize, black);
+
+            // 边框走四条边（**不能**在屏幕正后方压一整块板：两个面同深度会打架，
+            // 上一轮相框的色块就是这么来的）
+            Vector3 wide = normalZ ? new Vector3(w + bezel * 2f, bezel, bezelT)
+                                   : new Vector3(bezelT, bezel, w + bezel * 2f);
+            Vector3 tall = normalZ ? new Vector3(bezel, h, bezelT)
+                                   : new Vector3(bezelT, h, bezel);
+            Vector3 side = normalZ ? new Vector3(w / 2f + bezel / 2f, 0, 0)
+                                   : new Vector3(0, 0, w / 2f + bezel / 2f);
+            VillaKit.Deco("TvBezel_T", center + new Vector3(0, h / 2f + bezel / 2f, 0), wide, dark);
+            VillaKit.Deco("TvBezel_B", center - new Vector3(0, h / 2f + bezel / 2f, 0), wide, dark);
+            VillaKit.Deco("TvBezel_L", center - side, tall, dark);
+            VillaKit.Deco("TvBezel_R", center + side, tall, dark);
+
+            // 挂架：藏在屏幕后面，只有从侧面能看见一点，电视才不像贴在墙上的一张纸
+            Vector3 armSize = normalZ ? new Vector3(w * 0.22f, h * 0.5f, 0.14f)
+                                      : new Vector3(0.14f, h * 0.5f, w * 0.22f);
+            // 挂架夹在"屏幕背面"和"墙面"之间：两边都留出两三厘米，
+            // 既不穿过屏幕，也不扎进墙里（扎进去会在墙面上闪一块）
+            VillaKit.Deco("TvMount", center - faceDir * 0.14f, armSize, new Color(0.20f, 0.20f, 0.22f));
+
+            // 音响条 + 两颗脚垫
+            Vector3 barSize = normalZ ? new Vector3(w * 0.62f, 0.20f, 0.26f)
+                                      : new Vector3(0.26f, 0.20f, w * 0.62f);
+            var bar = VillaKit.Deco("TvSoundbar", center + new Vector3(0, -h / 2f - 0.46f, 0)
+                - faceDir * 0.02f, barSize, new Color(0.14f, 0.14f, 0.16f));
+            VillaKit.Metal(bar, new Color(0.18f, 0.18f, 0.20f), 0.5f);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Vector3 off = normalZ ? new Vector3(s * w * 0.26f, 0, 0) : new Vector3(0, 0, s * w * 0.26f);
+                // faceDir 指向观众：网罩要 **+faceDir** 才在音响正面。
+                // 写成减号就贴到背面去了，正面看是一条光板。
+                VillaKit.Deco("TvSpeakerGrill", center + new Vector3(0, -h / 2f - 0.46f, 0)
+                    + off + faceDir * 0.14f, normalZ ? new Vector3(0.22f, 0.14f, 0.04f)
+                                                     : new Vector3(0.04f, 0.14f, 0.22f),
+                    new Color(0.07f, 0.07f, 0.08f));
+            }
+
+            // 待机指示灯：屏幕右下角外侧一颗小灯
+            Vector3 ledOff = normalZ ? new Vector3(w * 0.42f, -h / 2f - bezel * 0.5f, 0)
+                                     : new Vector3(0, -h / 2f - bezel * 0.5f, w * 0.42f);
+            var led = VillaKit.Emit(VillaKit.Deco("TvLed", center + ledOff + faceDir * 0.06f,
+                new Vector3(0.07f, 0.05f, 0.07f), new Color(0.8f, 0.1f, 0.1f)),
+                new Color(0.85f, 0.12f, 0.12f), 1.4f);   // 自发光材质：待机灯要真的亮
+
+            var set = screen.AddComponent<TvSet>();
+            set.faceNormal = faceDir;
+            set.widthM = w;
+            set.heightM = h;
+            set.led = led.GetComponent<MeshRenderer>();
+
+            // 走近按交互键 → 打开电视面板（频道 / 播放 / 后台 / 小窗）
+            var fx = HomeFixture.Attach(screen, HomeFixtureKind.Tv);
+            fx.range = Mathf.Max(4.5f, w * 0.9f);
+            return set;
+        }
+    }
+
+    /// <summary>
+    /// 电视机本体：频道、开关、画面。
+    ///
+    /// 【画面分两套，是权衡不是偷懒】
+    /// ① 玩家站在电视正面时：真正的 YouTube 播放。手机上唯一能内嵌 YouTube 的办法
+    ///    是 WebView，而 WebView 出不到贴图里（详见 Platform/WebScreen），
+    ///    所以它是一块盖在"电视屏幕投影出来的矩形"上的原生网页层。
+    /// ② 玩家在侧面、离得远、或这台设备没有网页层时：世界里的屏幕自己显示
+    ///    程序生成的动态画面（每个频道一套配色）。这样从侧面看过去电视是亮着的、
+    ///    在动的，而不是一块黑板。
+    ///
+    /// 【后台播放】收起画面时**不停播**，声音继续；应用被切到后台时保活网页层。
+    /// 最靠得住的形态是悬浮小窗（PipMode）：窗口还在前台，系统不会掐声音。
+    /// </summary>
+    public class TvSet : MonoBehaviour
+    {
+        /// <summary>住所里只有一台，面板直接找它。</summary>
+        public static TvSet Current;
+
+        /// <summary>
+        /// 暂时别把网页层摆上来。
+        ///
+        /// 网页层是原生视图，画在**整个 Unity 画面之上**——包括 UI。要是玩家正站在
+        /// 电视前打开面板，视频会盖住面板，人就没法换台了。所以面板打开期间由它按住，
+        /// 游戏暂停（timeScale 归零）时也按住。
+        /// </summary>
+        public static bool Suppressed;
+
+        public Vector3 faceNormal = Vector3.back;
+        public float widthM = 4.8f, heightM = 2.7f;
+        public MeshRenderer led;
+
+        public bool On { get; private set; }
+        public bool Muted { get; private set; }
+        public bool Background { get; private set; } = true;
+        public int Channel { get; private set; }
+
+        /// <summary>一个频道。id 有值走 YouTube，否则按普通网址加载。</summary>
+        public struct Chan
+        {
+            public string name, id, url;
+            public Chan(string n, string i, string u) { name = n; id = i; url = u; }
+            public bool Empty => string.IsNullOrEmpty(id) && string.IsNullOrEmpty(url);
+        }
+
+        const string PrefOn = "tv_on", PrefChan = "tv_chan", PrefMute = "tv_mute";
+        const string PrefBg = "tv_bg", PrefCustom = "tv_custom_";
+        const int CustomSlots = 3;
+
+        static readonly List<Chan> _chans = new List<Chan>();
+        Texture2D _tex;
+        Material _mat, _ledMat;
+        Color32[] _px;
+        float _nextFrame, _phase;
+        bool _overlayShown;
+        bool _pausedByLeaving;      // 是"切后台"把它暂停的（回来要恢复），不是玩家按的
+        Camera _cam;
+        readonly RaycastHit[] _sightHits = new RaycastHit[8];
+        readonly float[] _sortBuf = new float[4];
+        readonly Vector3[] _corners = new Vector3[4];
+        float _nextSight, _nextProbe;
+        bool _sightOk;
+        int _loadMode;              // 0/1：两种把视频弄上屏的方式，见 OnPlaybackChecked
+        int _lastError;             // 上一次探测拿到的 YouTube 错误码（0 = 没有）
+        Rect _prevRect;             // 上一帧算出来的矩形（判断"站定了没有"）
+        bool _hasPrev;
+        float _steadyFor;           // 矩形已经稳住多久了
+        Rect _placed;               // 上一次真正摆上去的矩形（死区判定用）
+        bool _screenBlanked;        // 网页层盖住时，世界里的屏幕画纯黑当衬底
+
+        // ================= 频道表 =================
+
+        /// <summary>
+        /// 频道表 = 三个内置 + 三个玩家自己粘链接的槽位。
+        /// 内置的只是开箱即用的默认值；任何一条都能在面板里替换成自己的链接
+        /// （长视频、直播、播放列表里的单集都行）。
+        /// </summary>
+        public static List<Chan> Channels
+        {
+            get
+            {
+                if (_chans.Count == 0)
+                {
+                    // 内置频道只是默认值。**任何一条视频都可能被作者禁止嵌入播放**，
+                    // 那时页面上会出现 YouTube 自己的"此视频不能观看"卡片——
+                    // 这不是播放器坏了，是那条视频不让在应用里放。所以：
+                    // ① 默认排最前的是最常被用来做嵌入测试的普通视频；
+                    // ② 直播排后面（直播被拒的概率更高）；
+                    // ③ 真正的主力是下面三个"我的频道"——粘自己的链接最靠谱。
+                    _chans.Add(new Chan("开源动画 · Blender 官方", "YE7VzlLtp-4", ""));
+                    _chans.Add(new Chan("经典 · Never Gonna Give You Up", "dQw4w9WgXcQ", ""));
+                    _chans.Add(new Chan("专注 · Lofi 直播", "jfKfPfyJRdk", ""));
+                    for (int i = 0; i < CustomSlots; i++)
+                    {
+                        string saved = PlayerPrefs.GetString(PrefCustom + i, "");
+                        string id = WebScreen.ParseVideoId(saved);
+                        bool isUrl = string.IsNullOrEmpty(id) && saved.StartsWith("http");
+                        _chans.Add(new Chan("我的频道 " + (i + 1), id, isUrl ? saved : ""));
+                    }
+                }
+                return _chans;
+            }
+        }
+
+        /// <summary>把玩家粘进来的链接写进第 slot 个自定义频道（slot 从 0 起）。</summary>
+        public static bool SetCustom(int slot, string linkOrId)
+        {
+            if (slot < 0 || slot >= CustomSlots) return false;
+            linkOrId = (linkOrId ?? "").Trim();
+            string id = WebScreen.ParseVideoId(linkOrId);
+            bool isUrl = string.IsNullOrEmpty(id) && linkOrId.StartsWith("http");
+            if (string.IsNullOrEmpty(id) && !isUrl) return false;
+
+            PlayerPrefs.SetString(PrefCustom + slot, linkOrId);
+            PlayerPrefs.Save();
+            int idx = 3 + slot;
+            var list = Channels;
+            list[idx] = new Chan(list[idx].name, id, isUrl ? linkOrId : "");
+            return true;
+        }
+
+        // ================= 生命周期 =================
+
+        void Awake()
+        {
+            Current = this;
+            _cam = Camera.main;
+
+            _tex = new Texture2D(64, 36, TextureFormat.RGBA32, false);
+            _tex.wrapMode = TextureWrapMode.Clamp;
+            _tex.filterMode = FilterMode.Bilinear;
+            _px = new Color32[_tex.width * _tex.height];
+
+            // 【为什么要兜底到 Lit】Shader.Find 在真机上只找得到**进了包**的 shader。
+            // 这个工程靠 M_Base.mat 保证 URP/Lit 进包，Unlit 没人引用，很可能被剥掉。
+            // 找不到就退到 Lit——但那样屏幕会被室内光照压暗，所以下面无论落到哪个
+            // shader 都把贴图接到自发光上：电视屏幕本来就是自己发光的。
+            var sh = Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) sh = Shader.Find("Unlit/Texture");
+            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Lit");
+            if (sh == null) sh = Shader.Find("Standard");
+            _mat = new Material(sh) { name = "TvScreen" };
+            _mat.mainTexture = _tex;
+            if (_mat.HasProperty("_BaseMap")) _mat.SetTexture("_BaseMap", _tex);
+            if (_mat.HasProperty("_EmissionColor"))
+            {
+                _mat.EnableKeyword("_EMISSION");
+                if (_mat.HasProperty("_EmissionMap")) _mat.SetTexture("_EmissionMap", _tex);
+                _mat.SetColor("_EmissionColor", Color.white * 1.15f);
+            }
+            var r = GetComponent<MeshRenderer>();
+            if (r != null) r.sharedMaterial = _mat;
+
+            if (led != null)
+            {
+                _ledMat = new Material(led.sharedMaterial) { name = "TvLed" };
+                led.sharedMaterial = _ledMat;
+            }
+
+            Muted = PlayerPrefs.GetInt(PrefMute, 0) == 1;
+            Background = PlayerPrefs.GetInt(PrefBg, 1) == 1;
+            Channel = Mathf.Clamp(PlayerPrefs.GetInt(PrefChan, 0), 0, Channels.Count - 1);
+            // 后台播放要求 Unity 在失去焦点后继续跑，否则连计时都停了
+            Application.runInBackground = true;
+            DrawStandby();
+            if (PlayerPrefs.GetInt(PrefOn, 0) == 1) PowerOn();
+            else SetLed(false);
+        }
+
+        void OnEnable()
+        {
+            WebScreen.PlaybackChecked += OnPlaybackChecked;
+            PipMode.Changed += OnPipChanged;
+        }
+
+        void OnDisable()
+        {
+            WebScreen.PlaybackChecked -= OnPlaybackChecked;
+            PipMode.Changed -= OnPipChanged;
+        }
+
+        /// <summary>
+        /// 进/出悬浮小窗。
+        /// 【小窗里没声音的原因】以前"收起画面"用的是把网页层设成不可见——
+        /// 而 Chromium 对不可见的 WebView 会挂起媒体，声音跟着一起停。
+        /// 现在收起改成把窗口缩成一像素（见 Java 侧 hide()），媒体不会被挂起；
+        /// 进小窗时再补一次保活与播放，声音就能一直响着。
+        /// </summary>
+        void OnPipChanged(bool inPip)
+        {
+            if (!On) return;
+            if (_overlayShown) { WebScreen.Hide(); _overlayShown = false; }
+            WebScreen.KeepAlive();
+            if (inPip && Background) WebScreen.Play();
+        }
+
+        void OnDestroy()
+        {
+            if (Current == this) Current = null;
+            if (_overlayShown) { WebScreen.Hide(); _overlayShown = false; }
+            WebScreen.Close();
+        }
+
+        // ================= 开关与频道 =================
+
+        public string ChannelName => Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)].name;
+
+        public void Toggle() { if (On) PowerOff(); else PowerOn(); }
+
+        public void PowerOn()
+        {
+            On = true;
+            PlayerPrefs.SetInt(PrefOn, 1);
+            SetLed(true);
+            Tune();
+            GameEvents.RaiseSubtitle("电视开机 · " + ChannelName);
+        }
+
+        public void PowerOff()
+        {
+            On = false;
+            PlayerPrefs.SetInt(PrefOn, 0);
+            SetLed(false);
+            WebScreen.Pause();
+            if (_overlayShown) { WebScreen.Hide(); _overlayShown = false; }
+            DrawStandby();
+            GameEvents.RaiseSubtitle("电视已关。");
+        }
+
+        public void SetChannel(int i)
+        {
+            var list = Channels;
+            Channel = ((i % list.Count) + list.Count) % list.Count;
+            PlayerPrefs.SetInt(PrefChan, Channel);
+            if (!On) PowerOn();
+            else { Tune(); GameEvents.RaiseSubtitle("切到 · " + ChannelName); }
+        }
+
+        public void Next() => SetChannel(Channel + 1);
+
+        public void SetMuted(bool m)
+        {
+            Muted = m;
+            PlayerPrefs.SetInt(PrefMute, m ? 1 : 0);
+            WebScreen.Mute(m);
+        }
+
+        public void SetBackground(bool b)
+        {
+            Background = b;
+            PlayerPrefs.SetInt(PrefBg, b ? 1 : 0);
+        }
+
+        public void Play() => WebScreen.Play();
+        public void Pause() => WebScreen.Pause();
+
+        /// <summary>当前频道的分享链接（面板上"在 YouTube 里打开"用）。</summary>
+        public string CurrentLink()
+        {
+            var c = Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)];
+            if (!string.IsNullOrEmpty(c.id)) return "https://www.youtube.com/watch?v=" + c.id;
+            return c.url ?? "";
+        }
+
+        void Tune()
+        {
+            var c = Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)];
+            if (c.Empty)
+            {
+                GameEvents.RaiseSubtitle("这个频道还是空的——在电视面板里粘一条链接进去。");
+                return;
+            }
+            if (!WebScreen.Available) return;      // 屏幕仍会显示程序生成的画面
+            _loadMode = 0;
+            Load(c);
+        }
+
+        void Load(Chan c)
+        {
+            if (!string.IsNullOrEmpty(c.id)) WebScreen.PlayYouTube(c.id, Muted, _loadMode);
+            else WebScreen.LoadUrl(c.url);
+            // 过几秒回头查一次到底播起来没有（见 OnPlaybackChecked）
+            _nextProbe = Time.unscaledTime + 7f;
+        }
+
+        /// <summary>
+        /// 播放没起来时说清楚是怎么回事。
+        /// 页面上那张"此视频不能观看"是 YouTube 自己画的：**这条视频的作者禁止了
+        /// 站外嵌入播放**，不是播放器坏了。这种情况只有两条路：换一个台，
+        /// 或者用面板里的"在 YouTube 打开"交给 YouTube 应用去放。
+        /// </summary>
+        void OnPlaybackChecked(bool playing, int err)
+        {
+            if (!On || playing) return;
+
+            // 【为什么要换一种方式再试一次】两条加载路各有各的拒绝理由：
+            // 自建页面（mode 0）靠的是一个真实来源；直接加载 embed 页（mode 1）
+            // 靠的是补上 Referer。哪条能通只有真机上试了才知道，
+            // 所以第一条不成就自动换第二条。
+            if (_loadMode == 0)
+            {
+                _loadMode = 1;
+                _lastError = err;
+                GameEvents.RaiseSubtitle("这个台没放起来（" + ErrorText(err)
+                    + "），换一种方式重新加载……");
+                Load(Channels[Mathf.Clamp(Channel, 0, Channels.Count - 1)]);
+                return;
+            }
+            GameEvents.RaiseSubtitle("两种方式都放不了这条视频（" + ErrorText(err)
+                + "）——换个台，或在电视面板里用「在 YouTube 打开」。");
+        }
+
+        /// <summary>把 YouTube 播放器的错误码翻成人话（面板与字幕都用它）。</summary>
+        public static string ErrorText(int err)
+        {
+            switch (err)
+            {
+                case 0: return "没有返回错误码，多半是网络没连上";
+                case 2: return "错误 2：链接里的视频 id 不合法";
+                case 5: return "错误 5：播放器内部错误";
+                case 100: return "错误 100：视频不存在或已设为私享";
+                case 101:
+                case 150: return "错误 " + err + "：作者禁止这条视频在站外播放";
+                case 152:
+                case 153: return "错误 " + err + "：来源/配置被 YouTube 拒绝";
+                default: return "错误 " + err;
+            }
+        }
+
+        // ================= 每帧：画面在哪儿 =================
+
+        void Update()
+        {
+            if (_cam == null) _cam = Camera.main;
+            if (!On)
+            {
+                if (_overlayShown) { WebScreen.Hide(); _overlayShown = false; }
+                return;
+            }
+
+            // 世界里的屏幕：一直在动（侧面看过去也是亮的）。
+            // 但网页层盖上来时改画纯黑：网页层比屏幕略小一圈（见 TryScreenRect），
+            // 底下露出的那一圈得是黑边框，不能是一圈乱跳的彩条。
+            if (_overlayShown)
+            {
+                if (!_screenBlanked) { _screenBlanked = true; DrawBlack(); }
+            }
+            else if (Time.unscaledTime >= _nextFrame)
+            {
+                _screenBlanked = false;
+                _nextFrame = Time.unscaledTime + 0.1f;
+                _phase += 0.1f;
+                DrawChannelFrame();
+            }
+
+            if (!WebScreen.Available) return;
+
+            if (_nextProbe > 0f && Time.unscaledTime >= _nextProbe)
+            {
+                _nextProbe = 0f;
+                WebScreen.Probe();
+            }
+
+            // 悬浮小窗里不摆画面：窗口只有几百像素，电视那块矩形没有意义，
+            // 但**声音继续**（这正是玩家要的"小窗里还能听"）。
+            bool blocked = Suppressed || Time.timeScale < 0.01f || PipMode.InPip;
+            if (!blocked && TryScreenRect(out Rect rect)
+                && rect.width > 40f && rect.height > 24f && Steady(rect))
+            {
+                if (!_overlayShown || Moved(rect, _placed, 2f))
+                {
+                    WebScreen.Place(rect);
+                    _placed = rect;
+                }
+                _overlayShown = true;
+            }
+            else if (_overlayShown)
+            {
+                // 收起画面但不停播：走开了声音还在，这就是"后台播放"的一半
+                WebScreen.Hide();
+                _overlayShown = false;
+            }
+            if (blocked) { _hasPrev = false; _steadyFor = 0f; }
+        }
+
+        /// <summary>
+        /// 把屏幕四角投影到屏幕空间，算出网页层该占的矩形。
+        /// 四道门槛缺一不可：在正面（法线点积）、不太远、看得见（视线检测）、
+        /// 四角都在镜头前。都过了之后取**内接**矩形并往里收一圈，
+        /// 保证画面始终嵌在液晶屏里面，而不是溢到边框和墙上。
+        /// </summary>
+        bool TryScreenRect(out Rect rect)
+        {
+            rect = default;
+            if (_cam == null) return false;
+
+            Vector3 c = transform.position;
+            Vector3 camPos = _cam.transform.position;
+            Vector3 toCam = camPos - c;
+            float dist = toCam.magnitude;
+            if (dist > widthM * 3f + 4f) return false;                    // 太远了
+            if (Vector3.Dot(faceNormal, toCam.normalized) < 0.45f) return false;  // 不在正面
+            if (!HasLineOfSight(camPos, c)) return false;                 // 中间隔着墙
+
+            Vector3 right = Mathf.Abs(faceNormal.z) >= Mathf.Abs(faceNormal.x)
+                ? Vector3.right : Vector3.forward;
+            Vector3 up = Vector3.up;
+            float hw = widthM * 0.5f, hh = heightM * 0.5f;
+
+            // 四角投影
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 p = c + right * ((i & 1) == 0 ? -hw : hw) + up * ((i & 2) == 0 ? -hh : hh);
+                Vector3 sp = _cam.WorldToScreenPoint(p);
+                if (sp.z < 0.2f) return false;                            // 有角落在镜头后面
+                _corners[i] = sp;
+            }
+
+            // 【取内接矩形，不是包围盒】斜着看时，屏幕在画面里是个梯形；
+            // 包围盒一定比它大，网页层就会溢出边框、盖到墙上去。
+            // 取"第二小 ~ 第二大"这一对，得到的矩形一定落在梯形里面——
+            // 玩家要的"嵌进液晶屏中"就是这个。
+            Inner(_corners[0].x, _corners[1].x, _corners[2].x, _corners[3].x, out float x0, out float x1);
+            Inner(_corners[0].y, _corners[1].y, _corners[2].y, _corners[3].y, out float y0, out float y1);
+            if (x1 - x0 < 8f || y1 - y0 < 8f) return false;
+
+            // 再往里收一点：原生视图的布局比 Unity 画面晚一两帧，镜头一动就会有几像素
+            // 的错位。留一圈黑边（屏幕本体这时画纯黑）把这点错位吃掉，
+            // 视频就始终在屏幕里面，不会切到边框上。
+            float insetX = (x1 - x0) * 0.035f, insetY = (y1 - y0) * 0.035f;
+            x0 += insetX; x1 -= insetX; y0 += insetY; y1 -= insetY;
+
+            // 完全在屏幕外就不必摆了
+            if (x1 < 0 || y1 < 0 || x0 > Screen.width || y0 > Screen.height) return false;
+            rect = new Rect(x0, y0, x1 - x0, y1 - y0);
+            return true;
+        }
+
+        /// <summary>
+        /// 画面只在**镜头站定**时才摆上去。
+        ///
+        /// 【为什么不能一边走一边跟】网页层是安卓的原生视图，布局在 UI 线程上排队，
+        /// 比算出这个矩形的那一帧要晚一到两帧才生效；而 3D 里的电视是当帧渲染的。
+        /// 两者之间永远差着一个固定延迟——镜头一动，视频就相对电视往后拖。
+        /// 这件事没法靠对齐算法消除：原生视图和 Unity 的渲染压根不同步
+        /// （上一版试过按延迟做外推，甩镜头时反而会冲出屏幕）。
+        ///
+        /// 所以规则改成非黑即白：矩形连续 0.15 秒几乎不动（说明玩家站住了），
+        /// 才把画面摆进去，此后它一动不动；一旦开始走动就立刻收起画面，
+        /// 由贴在电视上的程序画面顶上——那是电视本身的贴图，永远不会跳。
+        /// 收起画面**不停播**，声音照旧。
+        /// </summary>
+        bool Steady(Rect now)
+        {
+            if (!_hasPrev) { _prevRect = now; _hasPrev = true; _steadyFor = 0f; return false; }
+            bool still = !Moved(now, _prevRect, 2f);
+            _prevRect = now;
+            _steadyFor = still ? _steadyFor + Time.unscaledDeltaTime : 0f;
+            return _steadyFor >= 0.15f;
+        }
+
+        /// <summary>四个数里取"第二小"和"第二大"——凸四边形的内接轴对齐矩形。</summary>
+        void Inner(float a, float b, float c, float d, out float lo, out float hi)
+        {
+            _sortBuf[0] = a; _sortBuf[1] = b; _sortBuf[2] = c; _sortBuf[3] = d;
+            System.Array.Sort(_sortBuf);
+            lo = _sortBuf[1];
+            hi = _sortBuf[2];
+        }
+
+        /// <summary>两个矩形差得够不够多（够多才值得重新下发一次原生布局）。</summary>
+        static bool Moved(Rect a, Rect b, float eps) =>
+            Mathf.Abs(a.xMin - b.xMin) > eps || Mathf.Abs(a.yMin - b.yMin) > eps ||
+            Mathf.Abs(a.width - b.width) > eps || Mathf.Abs(a.height - b.height) > eps;
+
+        /// <summary>
+        /// 镜头和电视之间有没有实体挡着。
+        ///
+        /// 【玩家反馈"播放器会跟着移动"的根因就在这里】
+        /// 上一版只判断了"在不在正面、远不远"，**没判断看不看得见**。于是站在隔壁房间、
+        /// 隔着一堵墙朝电视方向看时，投影照样算得出一个矩形，网页层就把视频画在了那堵
+        /// 墙上——一块悬空的视频，还跟着镜头一起走。
+        ///
+        /// 玩家自己的碰撞体要跳过：第三人称镜头在角色背后，角色本来就挡在中间。
+        /// 检测每 0.15 秒做一次就够（镜头是连续运动的），省下逐帧的射线开销。
+        /// </summary>
+        bool HasLineOfSight(Vector3 from, Vector3 to)
+        {
+            if (Time.unscaledTime < _nextSight) return _sightOk;
+            _nextSight = Time.unscaledTime + 0.15f;
+
+            Vector3 d = to - from;
+            float dist = d.magnitude;
+            if (dist < 0.05f) { _sightOk = true; return true; }
+
+            _sightOk = true;
+            int n = Physics.RaycastNonAlloc(from, d / dist, _sightHits,
+                dist - 0.25f, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = _sightHits[i].collider;
+                if (col == null) continue;
+                if (col.GetComponentInParent<Player.PlayerController>() != null) continue;
+                _sightOk = false;
+                break;
+            }
+            return _sightOk;
+        }
+
+        // ================= 应用切后台 =================
+
+        void OnApplicationPause(bool paused)
+        {
+            if (!On) return;
+            if (paused)
+            {
+                if (Background)
+                {
+                    WebScreen.KeepAlive();   // 声音继续（后台播放开着）
+                    // 顺手试一次悬浮小窗：这是安卓上唯一"系统保证不掐声音"的后台形态。
+                    // 系统只在应用还没真正离开前台时批准，所以这里是尽力而为——
+                    // 被拒绝也没关系，上面的保活已经生效（Java 侧全程 try/catch）。
+                    if (PipMode.Supported && !PipMode.InPip) PipMode.Enter();
+                }
+                else
+                {
+                    WebScreen.Pause();
+                    _pausedByLeaving = true;
+                }
+            }
+            else if (_pausedByLeaving)
+            {
+                // 只恢复"我们自己因为切后台而暂停的"那一次；玩家手动按的暂停要留着
+                _pausedByLeaving = false;
+                WebScreen.Play();
+            }
+        }
+
+        // ================= 程序生成的屏幕画面 =================
+
+        void SetLed(bool on)
+        {
+            if (_ledMat == null) return;
+            var c = on ? new Color(0.15f, 0.85f, 0.35f) : new Color(0.85f, 0.12f, 0.12f);
+            _ledMat.color = c;
+            if (_ledMat.HasProperty("_BaseColor")) _ledMat.SetColor("_BaseColor", c);
+            if (_ledMat.HasProperty("_EmissionColor")) _ledMat.SetColor("_EmissionColor", c * 1.4f);
+        }
+
+        /// <summary>网页层盖上来时的衬底：纯黑，让露出的一圈看着就是屏幕的黑边。</summary>
+        void DrawBlack()
+        {
+            if (_tex == null) return;
+            for (int i = 0; i < _px.Length; i++) _px[i] = new Color32(4, 4, 5, 255);
+            _tex.SetPixels32(_px);
+            _tex.Apply(false, false);
+        }
+
+        void DrawStandby()
+        {
+            if (_tex == null) return;
+            int w = _tex.width, h = _tex.height;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    // 关机的屏幕不是纯黑：玻璃会反一点房间的光，上亮下暗
+                    float v = 0.035f + 0.045f * (y / (float)h);
+                    _px[y * w + x] = new Color(v, v, v * 1.15f, 1f);
+                }
+            _tex.SetPixels32(_px);
+            _tex.Apply(false, false);
+        }
+
+        /// <summary>
+        /// 每个频道一套配色的动态画面：横向色带在走、带一点扫描线与四角压暗。
+        /// 它不是"假装在播 YouTube"，它是电视从侧面看过去该有的样子——
+        /// 亮着、在动、每个台不一样。
+        /// </summary>
+        void DrawChannelFrame()
+        {
+            if (_tex == null) return;
+            int w = _tex.width, h = _tex.height;
+            int seed = Mathf.Abs(ChannelName.GetHashCode());
+            float hue = (seed % 997) / 997f;
+            float t = _phase;
+
+            for (int y = 0; y < h; y++)
+            {
+                float fy = y / (float)h;
+                for (int x = 0; x < w; x++)
+                {
+                    float fx = x / (float)w;
+                    float band = Mathf.Repeat(fx * 3.1f + fy * 0.6f + t * 0.35f, 1f);
+                    float wave = 0.5f + 0.5f * Mathf.Sin((fx * 6.28f + t * 1.7f) + fy * 3.1f);
+                    var col = Color.HSVToRGB(Mathf.Repeat(hue + band * 0.22f, 1f),
+                        0.55f, 0.30f + 0.55f * wave);
+                    // 扫描线 + 四角压暗，才像一块屏幕而不是一张渐变图
+                    if (y % 3 == 0) col *= 0.86f;
+                    float vig = 1f - 0.55f * Mathf.Max(Mathf.Abs(fx - 0.5f), Mathf.Abs(fy - 0.5f));
+                    col *= vig;
+                    _px[y * w + x] = col;
+                }
+            }
+            _tex.SetPixels32(_px);
+            _tex.Apply(false, false);
+        }
+    }
+}

@@ -556,6 +556,13 @@ namespace AdversityRoad.Player
         {
             PresetIndex = Mathf.Clamp(idx, 0, Presets.Length - 1);
             var p = Presets[PresetIndex];
+            // 【近裁剪面按视角给】深度缓冲的精度几乎全被 near 决定：near=0.04 时
+            // 五米开外相邻两个深度值能差到几厘米，两块只差 2 厘米的板子就会互相
+            // 打架（照片上盖色块、看板文字闪烁都是这么来的）。第一人称要看清眼前的
+            // 手和兵器，只能给 0.04；第三人称镜头最近也在半米外，给 0.1 即可，
+            // 精度直接好一倍多。
+            var camc = GetComponent<Camera>();
+            if (camc != null) camc.nearClipPlane = p.fp ? 0.04f : 0.1f;
             offset = p.offset;
             defaultPitch = p.pitch;
             _pitch = p.pitch;
@@ -568,11 +575,7 @@ namespace AdversityRoad.Player
         void Awake()
         {
             var cam = GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.fieldOfView = fieldOfView;
-                cam.nearClipPlane = 0.04f;   // 第一人称能看清眼前的手/兵器（否则被近裁剪面切掉）
-            }
+            if (cam != null) cam.fieldOfView = fieldOfView;
             ApplyPreset(PlayerPrefs.GetInt("cam_preset", 1), false);
             _boomDist = offset.magnitude;
         }

@@ -21,8 +21,16 @@ namespace AdversityRoad.OpenWorld
     /// </summary>
     public class GoalBoardDisplay : MonoBehaviour
     {
-        /// <summary>每米多少像素：越高越锐利，代价是这块 Canvas 的分辨率。</summary>
-        const float PixelsPerMeter = 150f;
+        /// <summary>
+        /// 每米多少像素：越高越锐利，代价是这块 Canvas 的分辨率与字体图集占用。
+        ///
+        /// 150 → 260：150 的密度下正文字号只有 31 像素，站在两三米外够用，
+        /// 但玩家走到板子跟前（室内镜头被家具挡住时会一路回缩到 0.5 米，
+        /// 脸几乎贴在屏幕上）时，31 像素的字被放大到占满半个屏幕——那就是
+        /// 截图里那种糊成一团的样子。260 下正文 54 像素、标题 120 像素，
+        /// 贴脸看也还是清楚的。
+        /// </summary>
+        const float PixelsPerMeter = 260f;
 
         Text _head, _left, _mid, _right;
         float _next;
@@ -37,7 +45,12 @@ namespace AdversityRoad.OpenWorld
             // 挂到别墅根节点（scale 恒为 1）上，屏幕才是方正的。
             var go = new GameObject("GoalScreen", typeof(Canvas));
             if (VillaKit.Root != null) go.transform.SetParent(VillaKit.Root, true);
-            go.transform.position = center;
+            // 【必须离开屏幕表面】上一版画布正好落在屏幕板的前表面上，两个面同深度，
+            // 深度缓冲分不出前后 —— 于是一半像素画屏幕、一半画字，随镜头角度来回横跳：
+            // 玩家看到的"文字模糊不清 + 一闪一闪"就是这个（不是分辨率不够）。
+            // 往读者那一侧让开 12 厘米，任何角度都不再打架。
+            const float Standoff = 0.12f;
+            go.transform.position = center + new Vector3(0, 0, faceNorth ? Standoff : -Standoff);
             go.transform.rotation = Quaternion.Euler(0, faceNorth ? 180f : 0f, 0);
 
             var canvas = go.GetComponent<Canvas>();

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only reason this library exists: two attributes on the Unity activity.
+
+  Picture in picture (the floating window the player asked for) is refused by
+  Android unless the activity declares android:supportsPictureInPicture. That is a
+  manifest attribute, so no amount of Java or C# can turn it on at runtime.
+
+  Replacing Unity's own AndroidManifest.xml (Assets/Plugins/Android/AndroidManifest.xml)
+  would mean maintaining the launcher activity, its intent filter and its meta-data by
+  hand - get one of those wrong and the app installs but never starts. An Android
+  library project only *contributes* to the manifest instead: the merger folds these
+  attributes into the activity Unity generates, and if anything here is malformed the
+  build fails loudly rather than shipping an app that cannot launch.
+
+  android:resizeableActivity is also required for PiP; the project already sets it
+  through Player Settings (androidResizeableActivity: 1), it is repeated here so the
+  two attributes stay together.
+
+  NOTE the activity name follows Player Settings > Application Entry Point.
+  This project builds with GameActivity (androidApplicationEntry: 2). If that is ever
+  switched back to Activity, add com.unity3d.player.UnityPlayerActivity here too.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools"
+          package="com.adversityroad.shell">
+
+    <application>
+        <activity
+            android:name="com.unity3d.player.UnityPlayerGameActivity"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            tools:node="merge" />
+    </application>
+</manifest>

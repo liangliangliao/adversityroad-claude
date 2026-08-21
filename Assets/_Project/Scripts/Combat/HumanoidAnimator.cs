@@ -477,7 +477,19 @@ namespace AdversityRoad.Combat
                     float swingLen = _poseDur > 0.02f ? _poseDur : _mecanim.ActionLength(_pose);
                     if (swingLen <= 0.01f) swingLen = 0.45f;
                     bool sw = IsActionPose(_pose) && _pose != PoseState.Hit && _t < swingLen;
-                    if (weaponTrail.emitting != sw) weaponTrail.emitting = sw;
+                    if (weaponTrail.emitting != sw)
+                    {
+                        weaponTrail.emitting = sw;
+                        // 【收招就把刀光抹掉】TrailRenderer 按【缩放时间】老化，
+                        // 而言语攻防面板、暂停、顿帧都会把 timeScale 打到 0——
+                        // 那一刻拖尾就**永远不再消失**，白色的剑痕挂在人身上不走
+                        //（玩家截图里那两片白翅膀）。停止发射时直接清点，
+                        // 不依赖它自己慢慢淡出。
+                        if (!sw) weaponTrail.Clear();
+                    }
+                    // 时间停住时也不留残迹（面板打开的那一帧可能正好在挥砍中）
+                    if (!sw && Time.timeScale < 0.01f && weaponTrail.positionCount > 0)
+                        weaponTrail.Clear();
                 }
                 _mecanim.Tick(dt);
                 return;
