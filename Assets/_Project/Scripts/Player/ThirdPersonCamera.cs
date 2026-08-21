@@ -708,6 +708,8 @@ namespace AdversityRoad.Player
 
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
+            else _closeStrength = Mathf.MoveTowards(_closeStrength, 0f, dt / 0.4f);
+
             // 绝招特写：起手快速推入（0.18s），结束从容退出（0.45s）——
             // 进得快才来得及看见，出得慢才不会把画面甩回去
             if (_focusTimer > 0f)
@@ -717,7 +719,6 @@ namespace AdversityRoad.Player
             }
             _focusBlend = Mathf.MoveTowards(_focusBlend, _focusTimer > 0f ? 1f : 0f,
                 dt / (_focusTimer > 0f ? 0.18f : 0.45f));
-            else _closeStrength = Mathf.MoveTowards(_closeStrength, 0f, dt / 0.4f);
 
             // ===== 镜头导演：选景别 + 平滑推轨过渡 =====
             // 敌情与场地扫描节流（0.3s 一次，避免每帧全场遍历）
