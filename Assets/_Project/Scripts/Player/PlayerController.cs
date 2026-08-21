@@ -501,7 +501,34 @@ namespace AdversityRoad.Player
 
             // 交战锁面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
             Transform face = FacingTarget();
+            // 撤退意图：推杆方向持续背对目标 ⇒ 解除软锁，转身全速跑。
+            // 【手动锁定不适用】：那是玩家自己按下去的，要解除请再按一次锁定键。
+            // 这里对它放行的话会变成：本帧解除、下帧 FacingTarget 又把手动目标还回来，
+            // 于是每 0.35 秒抖一下——比不给出口更糟。
+            bool manualLocked = _lockOn != null && _lockOn.CurrentTarget != null;
+            if (manualLocked) _disengageT = 0f;
+            else if (face != null && moveDir.sqrMagnitude > 0.04f)
+            {
+                Vector3 away = transform.position - face.position; away.y = 0;
+                // 推杆方向落在"正背离目标"的 ±50° 锥里 = 在往回撤，而不是侧向走位
+                bool backing = away.sqrMagnitude > 0.01f &&
+                               Vector3.Angle(moveDir, away.normalized) < DisengageCone;
+                _disengageT = backing ? _disengageT + dt : 0f;
+                if (_disengageT >= DisengageHold)
+                {
+                    _disengageT = 0f;
+                    _disengageUntil = Time.time + DisengageGrace;
+                    face = null;
+                    if (Time.time - _disengageSaidAt > 6f)
+                    {
+                        _disengageSaidAt = Time.time;
+                        Core.GameEvents.RaiseSubtitle("脱离交战——转身拉开距离。");
+                    }
+                }
+            }
+            else _disengageT = 0f;
             StrafeActive = face != null;
+            SoftLockTarget = face;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
@@ -652,6 +679,22 @@ namespace AdversityRoad.Player
         /// <summary>横移态（脸锁在目标上、移动方向独立）——镜头与动画都要知道。</summary>
         public bool StrafeActive { get; private set; }
 
+        /// <summary>当前软锁面向的目标（没有则为 null）：镜头取景据此把两人一起框住。</summary>
+        public Transform SoftLockTarget { get; private set; }
+
+        // ---- 脱战：一直往后推杆就解除软锁，转身跑 ----
+        //
+        // 软锁面向本身是对的（近身互殴不该被迫把背露给对方），但它有个必须留的出口：
+        // **想撤退的时候**。锁着脸只能倒退，而倒退是 0.6 倍速——追你的敌人是全速，
+        // 于是"逃跑"变成了一件在数值上不可能的事，玩家会觉得被黏在原地。
+        // 大作的通行做法是给一个明确的解除条件：持续往远离目标的方向推杆
+        //（不是瞬间的斜后走位，所以要压一段时间），就当作"我要走了"，
+        // 解除软锁、转身、全速跑。松开或改推别的方向立刻恢复锁面向。
+        const float DisengageCone = 50f;     // 推杆方向与"正背离目标"的夹角容差
+        const float DisengageHold = 0.35f;   // 要持续这么久才算撤退意图（不误伤走位）
+        const float DisengageGrace = 0.9f;   // 解除后这么久内不重新锁（让人跑出去）
+        float _disengageT, _disengageUntil, _disengageSaidAt = -99f;
+
         /// <summary>
         /// 当前该锁面向谁：
         ///   ① 手动锁定的目标最优先（玩家明确说了"盯它"）；
@@ -662,8 +705,10 @@ namespace AdversityRoad.Player
         Transform FacingTarget()
         {
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
+            // 手动锁定是玩家明确的意思表示，撤退逻辑不插手（要脱锁请按锁定键）
             if (_lockOn != null && _lockOn.CurrentTarget != null) return _lockOn.CurrentTarget;
             if (_combat == null || !_combat.InCombat) return null;
+            if (Time.time < _disengageUntil) return null;   // 刚判定为撤退：让他跑
 
             // 找最近敌人每帧全场扫一遍太贵：0.2 秒刷一次，中间沿用上次结果
             //（0.2 秒内敌人跑不出"贴近"与"没贴近"的区别）

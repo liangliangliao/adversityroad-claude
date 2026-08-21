@@ -1614,16 +1614,18 @@ namespace AdversityRoad.OpenWorld
         {
             Physics.SyncTransforms();
             Vector3 c = inst.playerSpawn;
-            int added = World.SceneLighting.EnsureLit(c, 34f, p =>
+            int added = World.SceneLighting.EnsureLit(c, 45f, p =>
             {
                 Vector3 local = inst.root.transform.InverseTransformPoint(
                     new Vector3(p.x, inst.origin.y, p.z));
                 if (Physics.Raycast(p + Vector3.up * 1.5f, Vector3.up,
                         out RaycastHit roof, 22f, ~0, QueryTriggerInteraction.Ignore))
                 {
+                    // 吊灯离地不超过 3.4m（贴顶装会把顶低的房间照爆，见 SceneLighting）
                     World.SceneLighting.MakePoint("SiteCeilingLight",
-                        new Vector3(p.x, roof.point.y - 0.6f, p.z),
-                        new Color(0.95f, 0.93f, 0.88f), 26f, inst.root.transform);
+                        new Vector3(p.x, World.SceneLighting.CeilingLightY(p.y, roof.point.y), p.z),
+                        new Color(0.95f, 0.93f, 0.88f),
+                        World.SceneLighting.CeilingLightRange, inst.root.transform);
                     return true;
                 }
                 // 露天才立灯柱；这个位置被构件占住就跳过（灯柱插进墙里比暗更难看）
@@ -1631,7 +1633,7 @@ namespace AdversityRoad.OpenWorld
                         QueryTriggerInteraction.Ignore)) return false;
                 Lamp(inst, local);
                 return true;
-            }, cell: 17f, minLux: 0.35f, maxLamps: 10);
+            }, cell: 15f, minLux: World.SceneLighting.MinLux, maxLamps: 12);
             if (added > 0)
                 Core.CloudDialogueService.AddLog("照明审计：补灯 " + added + " 盏（生成场景）");
         }

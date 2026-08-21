@@ -163,12 +163,16 @@ namespace AdversityRoad.Combat
                 case TelegraphKind.Thrust:     // 正面对齐、兵器收到腰际、重心下沉前压
                     Pitch(spine, 14f * k);
                     Pitch(shR, 34f * k); Yaw(shR, -18f * k);
-                    Sink(hips, 0.06f * k);
+                    Sink(hips, 0.04f * k);
                     break;
                 case TelegraphKind.LowSweep:   // 整个人压低——最容易一眼认出的那一族
-                    Pitch(spine, 32f * k);
-                    Sink(hips, 0.22f * k);
-                    Pitch(shL, 24f * k); Pitch(shR, 24f * k);
+                    // 压低主要靠上身前俯，下沉量只给很小的一点：
+                    // 骨盆是整条腿的父节点，把它往下挪多少，脚就往地里陷多少
+                    //（这套骨骼没有 IK 去把脚留在原地）。8cm 大致藏在鞋和地面的
+                    // 接触里，再多就会看见脚脖子插进地板。
+                    Pitch(spine, 38f * k);
+                    Sink(hips, 0.08f * k);
+                    Pitch(shL, 26f * k); Pitch(shR, 26f * k);
                     break;
                 case TelegraphKind.Kick:       // 提膝
                     Pitch(legR, -46f * k);
@@ -227,11 +231,31 @@ namespace AdversityRoad.Combat
             return null;
         }
 
-        /// <summary>当前姿态允不允许做上下半身分离：只有贴地的常规移动姿态可以。
-        /// 出招/翻滚/倒地/死亡/腾空时身体朝向由动作本身负责，再拧骨盆只会变形。</summary>
-        // 本作没有独立的 Walk/Run 姿态：走跑由 _speed01 驱动，姿态仍是 Idle/Guard。
-        bool CanStrafe => _grounded &&
-            (_pose == PoseState.Idle || _pose == PoseState.Guard);
+        /// <summary>
+        /// 当前允不允许做上下半身分离：只有"身体归移动层管"的时候可以。
+        /// 出招/翻滚/倒地/死亡/腾空时朝向由动作本身负责，再拧骨盆只会变形。
+        ///
+        /// 【为什么不能看 _pose】
+        /// _pose 记的是"最后一次设的招"，**招播完了它不会自己变回 Idle**。
+        /// 敌人由 EnemyController 手动 SetPose，出完一次手之后 _pose 就永久停在
+        /// PoseState.Attack 上——用它做判据的话，敌人这辈子只有第一次交手之前
+        /// 会做横移分离，之后绕圈又变回原地倒腾脚（也就是"漂移"复发）。
+        /// 改看动画层**此刻在不在播招式**：招一播完，身体立刻交还给移动层。
+        /// </summary>
+        bool CanStrafe
+        {
+            get
+            {
+                if (!_grounded || _rest) return false;
+                // 这几种姿态即使没有片段在播，身体朝向也不该被拧
+                if (_pose == PoseState.Knockdown || _pose == PoseState.Death ||
+                    _pose == PoseState.Dodge || _pose == PoseState.Stagger ||
+                    _pose == PoseState.Charge) return false;
+                if (Mecanim) return !_mecanim.ActionPlaying;
+                // 程序化骨骼没有播放机：按招式曲线的时间轴判断这一招演完没有
+                return !IsActionPose(_pose) || _t * Mathf.Max(1f, _poseTimeScale) > ProcPoseNominal;
+            }
+        }
 
         /// <summary>本帧是否该用【倒放】表达移动（夹角超过 125° = 明显在后退）。</summary>
         bool StrafeReverse => Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle)) > 125f && _speed01 > 0.05f;

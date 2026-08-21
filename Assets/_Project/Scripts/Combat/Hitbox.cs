@@ -34,7 +34,12 @@ namespace AdversityRoad.Combat
         // 只按受击框去重就等于一刀打三次。这里按角色根去重，并在本帧扫描中
         // **择优**：取最精确、最贴近判定框中心的那一块作为"真正打中的部位"。
         readonly HashSet<Transform> _ownersHit = new HashSet<Transform>();
-        static readonly Collider[] _overlap = new Collider[24];
+        // 缓冲要足够大：拆出部位受击框之后，**每个角色身上有 8 个碰撞体**
+        // （7 块部位 + 1 个全身兜底），再加上判定盒扫到的墙、地板、道具。
+        // 旧的 16/24 格在群战里会被这些东西塞满，OverlapBoxNonAlloc 一旦填满就
+        // 直接截断——多出来的目标**被静默丢掉**，表现为"明明砍到人了却没伤害"。
+        // 这类漏判查起来极难（没有报错、只是偶尔不生效），宁可多占几百字节。
+        static readonly Collider[] _overlap = new Collider[128];
 
         struct Pick { public Hurtbox hurt; public Vector3 contact; public float dist; }
         // 实例级（不是静态）：多个判定框可能在同一物理帧各自扫描，共用一份缓存会互相清空。

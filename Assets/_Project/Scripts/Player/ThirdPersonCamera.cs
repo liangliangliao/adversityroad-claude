@@ -854,6 +854,13 @@ namespace AdversityRoad.Player
                 _shot = ShotProfile.Lerp(_shot, _shotTarget, 1f - Mathf.Exp(-rate * dt));
             }
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
+            // 软锁面向的目标也按"锁定"取景：交战贴身时玩家的身体已经锁在它身上了
+            //（见 PlayerController 的横移），镜头却还按探索规则跟朝向——
+            // 两套规则各说各的，结果就是"打着打着不知道敌人在哪"。
+            // 交给战斗分支：它有低通滤波、3/4 侧位、自适应软区、出画兜底，
+            // 本来就是为"两个人同框且稳"设计的，而探索分支不是。
+            if (lockTarget == null && player != null && player.StrafeActive)
+                lockTarget = player.SoftLockTarget;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
             bool manualLook = Time.unscaledTime - _lastManualLook < autoFollowDelay;
@@ -1312,10 +1319,15 @@ namespace AdversityRoad.Player
                 //   · 要等朝向稳定 0.4 秒（转身途中不动，转完才动，绝不追着抖动跑）；
                 //   · 有回差（进 16°、出 7°），到位就停，不在死区边缘来回蹭；
                 //   · 玩家一碰右摇杆立刻让位（manualRecently）。
-                if (!manualRecently && _headingHoldT > SettleHold &&
+                // 交战中（有软锁/锁定目标）不走归位：那时取景由战斗分支负责。
+                // 绕着敌人转圈时方位角每秒变七十度，归位会变成"镜头一直在追"，
+                // 正是上一轮好不容易压下去的那种晃。
+                bool settleAllowed = !fightingNow;
+                if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
-                else if (err < SettleExit || manualRecently) _settleLatch = false;
+                else if (!settleAllowed || err < SettleExit || manualRecently)
+                    _settleLatch = false;
 
                 bool followWant = !manualRecently && (_combatReorient || gentle || _settleLatch);
                 float driveT = followWant ? 0.18f : 0.06f;

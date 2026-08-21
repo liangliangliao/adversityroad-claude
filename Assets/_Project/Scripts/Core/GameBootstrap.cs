@@ -335,7 +335,14 @@ namespace AdversityRoad.Core
             if (_world != null && _world.dayNight != null && _world.dayNight.sun != null)
                 RenderSettings.sun = _world.dayNight.sun;
 
-            // —— 天空环境反射 ——（金属/光滑表面反射天光）
+            // —— 环境光走 Flat（颜色），不走天空盒 ——
+            // 天空盒模式下 RenderSettings.ambientLight 是被忽略的，昼夜循环里那套
+            // 夜间/室内保底亮度会一字不落地写进一个没人读的字段（详见 DayNightCycle.Awake）。
+            // 这里再设一次是为了不依赖组件的执行顺序：昼夜循环可能还没 Awake，
+            // 而世界已经开始渲染了。
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+
+            // —— 天空环境反射 ——（金属/光滑表面反射天光，与环境光是两回事）
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
             RenderSettings.reflectionIntensity = 0.7f;
             DynamicGI.UpdateEnvironment();

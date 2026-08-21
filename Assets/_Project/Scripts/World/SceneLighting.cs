@@ -21,14 +21,33 @@ namespace AdversityRoad.World
     /// </summary>
     public static class SceneLighting
     {
-        /// <summary>点光源的合理强度：按"要照亮到 range 的一半处仍有可用照度"倒推。
-        /// range=13（路灯）→ 约 3.4；range=40（大厅顶灯）→ 约 8（上限封顶，避免过曝）。</summary>
+        /// <summary>
+        /// 点光源的合理强度。
+        ///
+        /// 【为什么不能"要多亮给多亮"】
+        /// URP 的点光源按 1/d² 衰减。想让 10 米外还亮，强度就得开到几十——
+        /// 而那盏灯下面 1 米处的照度会是它的一百倍，人走过去直接烧成一片白。
+        /// 一盏灯**不可能**同时满足"远处够亮"和"近处不过曝"，这是平方反比定律，
+        /// 不是调参能绕过去的。
+        ///
+        /// 所以口径是：**单灯强度保持温和（≤5），覆盖靠多摆几盏**——
+        /// 这也是没有烘焙 GI 时的通行做法。铺开的活交给 <see cref="EnsureLit"/>。
+        /// </summary>
         public static float PointIntensity(float range)
         {
-            // 照度 ≈ intensity / d²，取 d = range × 0.45 处照度 ≈ 0.9 为设计目标
-            float d = Mathf.Max(1.5f, range * 0.45f);
-            return Mathf.Clamp(0.9f * d * d / 6f, 1.6f, 8f);
+            return Mathf.Clamp(range * 0.22f, 1.8f, 5f);
         }
+
+        /// <summary>照度门槛：低于它就认为"这块地没被照到"。
+        /// 与上面的强度口径配套——强度 ≈4 的灯，约 5 米内能过线。</summary>
+        public const float MinLux = 0.12f;
+
+        /// <summary>补吊灯的安装高度与射程：贴着屋顶装会把顶低的房间照爆
+        /// （人头离灯不到一米，1/d² 直接放大百倍），所以离地不超过 3.4 米。</summary>
+        public static float CeilingLightY(float floorY, float roofY) =>
+            Mathf.Min(roofY - 0.5f, floorY + 3.4f);
+
+        public const float CeilingLightRange = 16f;
 
         /// <summary>夜间环境光下限：低于这个值，角色与地面在手机屏幕上就糊成一片。</summary>
         public static readonly Color NightAmbientFloor = new Color(0.46f, 0.48f, 0.58f);
@@ -56,12 +75,12 @@ namespace AdversityRoad.World
         /// 返回补了几盏（0 = 本来就够亮，一盏都没加）。
         /// </summary>
         public static int EnsureLit(Vector3 center, float radius, System.Func<Vector3, bool> addLamp,
-            float cell = 16f, float minLux = 0.35f, int maxLamps = 12)
+            float cell = 14f, float minLux = MinLux, int maxLamps = 12)
         {
             if (addLamp == null) return 0;
             var lights = CollectPointLights();
             var added = new List<Vector3>();
-            int n = Mathf.Clamp(Mathf.CeilToInt(radius * 2f / cell), 1, 9);
+            int n = Mathf.Clamp(Mathf.CeilToInt(radius * 2f / cell), 1, 12);
             float step = radius * 2f / n;
             Vector3 start = center - new Vector3(radius, 0, radius) + new Vector3(step, 0, step) * 0.5f;
 
@@ -92,8 +111,9 @@ namespace AdversityRoad.World
             foreach (var q in pending)
             {
                 float d = Vector3.Distance(p, q);
-                if (d > 18f) continue;
-                sum += PointIntensity(18f) / Mathf.Max(1f, d * d) * (1f - d / 18f);
+                if (d > CeilingLightRange) continue;
+                sum += PointIntensity(CeilingLightRange) / Mathf.Max(1f, d * d)
+                       * (1f - d / CeilingLightRange);
             }
             return sum;
         }
