@@ -417,7 +417,10 @@ namespace AdversityRoad.Core
             hurtCol.height = 4.0f;                       // 随视觉体型放大（受击判定罩全身）
             hurtCol.center = new Vector3(0, 0.9f, 0);
             hurtCol.radius = 0.55f;
-            hurt.AddComponent<Hurtbox>();
+            hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
+            // 部位受击框：头/胸/腰腹/双臂/双腿各挂在对应骨骼下，跟着动画走。
+            // 兜底框保留——部位框覆盖不到的缝隙照样打得中，同一次挥击由 Hitbox 择优结算。
+            BodyPartHurtboxes.Attach(root.transform, MecanimCharacter.TargetHeight);
 
             var hitbox = CreateAttackHitbox(root.transform, 1.1f);
             combat.weaponHitbox = hitbox;
@@ -710,7 +713,9 @@ namespace AdversityRoad.Core
             hurtCol.height = 4.0f;                       // 随视觉体型放大
             hurtCol.center = new Vector3(0, 0.9f, 0);
             hurtCol.radius = 0.65f;
-            hurt.AddComponent<Hurtbox>();
+            hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
+            // 敌人同样拆部位：打头会心、打腿削韧且减速、打手削弱它的攻势（见 BodyPartTable）
+            BodyPartHurtboxes.Attach(root.transform, MecanimCharacter.TargetHeight * scale);
 
             ec.attackHitbox = CreateAttackHitbox(root.transform, 1f);
             // 敌人侧判定容差收紧（见 Hitbox.pad）：宽容度该给玩家，不该给敌人

@@ -108,6 +108,8 @@ namespace AdversityRoad.AI
         IEnumerator ConceptMazeRing()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "概念迷环", "环身冲击——立刻拉开身位");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "MazeWarnRing";
@@ -330,6 +332,8 @@ namespace AdversityRoad.AI
         IEnumerator MeaningCollapse()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "意义坍缩", "拉开身位，别停在它周围");
             Vector3 spot = _player.position;
             spot.y = transform.position.y - 0.9f;
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);

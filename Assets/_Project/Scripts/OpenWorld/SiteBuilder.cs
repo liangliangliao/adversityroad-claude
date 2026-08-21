@@ -203,6 +203,8 @@ namespace AdversityRoad.OpenWorld
             // 建完点一遍数：构件/灯/落点脚下有没有地。
             // 这处场景在 x=20000 之外，出问题时截图只有一片黑，光看画面判断不了
             // 是"没建出来"还是"建出来了但没光"——所以把可验证的数字打进日志。
+            EnsureSiteLighting(inst);   // 建完先把"看不看得清"验一遍，再去数构件
+
             int parts = inst.root.GetComponentsInChildren<Renderer>(true).Length;
             int lamps = inst.root.GetComponentsInChildren<Light>(true).Length;
             Physics.SyncTransforms();
@@ -1594,13 +1596,44 @@ namespace AdversityRoad.OpenWorld
             Box(inst, "LampPole", local + new Vector3(0, 1.9f, 0), new Vector3(0.16f, 3.8f, 0.16f), inst.cTrim);
             var head = Deco(inst, "LampHead", local + new Vector3(0, 3.9f, 0),
                 new Vector3(0.5f, 0.3f, 0.5f), new Color(1f, 0.95f, 0.8f));
-            var lg = new GameObject("LampLight");
-            lg.transform.SetParent(head.transform, false);
-            var l = lg.AddComponent<Light>();
-            l.type = LightType.Point;
-            l.range = 16f;
-            l.intensity = 1.1f;
-            l.color = new Color(1f, 0.92f, 0.75f);
+            // 强度走统一照明口径（range=20 → ≈3.4）。原来的 1.1/16m 在生成关卡里
+            // 几乎不产生可见照度，日志里"灯 12 盏"和画面上"一片黑"因此并不矛盾。
+            // 这里的灯是**常亮**的：生成场景没有昼夜开关来点它。
+            World.SceneLighting.MakePoint("LampLight",
+                head.transform.position, new Color(1f, 0.92f, 0.75f), 20f, head.transform);
+        }
+
+        /// <summary>
+        /// 生成场景的照明审计：建完之后按网格量一遍照度，暗的地方补灯。
+        ///
+        /// 生成关卡的布局是随机的——哪一版会把玩家丢进一片没灯的空地，事先谁也不知道。
+        /// 所以不靠"每种布局都记得摆灯"，而是建完统一验一遍。露天补路灯、
+        /// 有顶的地方补吊灯（生成场景没有昼夜开关，两种都常亮）。
+        /// </summary>
+        static void EnsureSiteLighting(SiteInstance inst)
+        {
+            Physics.SyncTransforms();
+            Vector3 c = inst.playerSpawn;
+            int added = World.SceneLighting.EnsureLit(c, 34f, p =>
+            {
+                Vector3 local = inst.root.transform.InverseTransformPoint(
+                    new Vector3(p.x, inst.origin.y, p.z));
+                if (Physics.Raycast(p + Vector3.up * 1.5f, Vector3.up,
+                        out RaycastHit roof, 22f, ~0, QueryTriggerInteraction.Ignore))
+                {
+                    World.SceneLighting.MakePoint("SiteCeilingLight",
+                        new Vector3(p.x, roof.point.y - 0.6f, p.z),
+                        new Color(0.95f, 0.93f, 0.88f), 26f, inst.root.transform);
+                    return true;
+                }
+                // 露天才立灯柱；这个位置被构件占住就跳过（灯柱插进墙里比暗更难看）
+                if (Physics.CheckSphere(p + Vector3.up * 1.6f, 0.7f, ~0,
+                        QueryTriggerInteraction.Ignore)) return false;
+                Lamp(inst, local);
+                return true;
+            }, cell: 17f, minLux: 0.35f, maxLamps: 10);
+            if (added > 0)
+                Core.CloudDialogueService.AddLog("照明审计：补灯 " + added + " 盏（生成场景）");
         }
 
         static void Sign(SiteInstance inst, Vector3 local, string text)

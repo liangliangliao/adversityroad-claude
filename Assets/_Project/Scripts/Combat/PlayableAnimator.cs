@@ -148,6 +148,8 @@ namespace AdversityRoad.Combat
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
         float _actualSpeed = -1f;   // 真实移速 m/s（<0 = 未提供，按 speed01 折算）
+        bool _reverse;              // 倒放移动片段（后退）
+        float _reverseW;            // 倒放权重的平滑（正放↔倒放之间不允许瞬切）
         bool _ready;
         float _readyW;   // 普通待机↔格斗架势的平滑过渡权重（瞬切会"弹一下"）
 
@@ -293,15 +295,20 @@ namespace AdversityRoad.Combat
             // 会把双脚持续向下/向内拽（站立"踮脚尖并腿"、跑步"脚朝向畸形"的根因）。
             // 纯 FK 原样播放 Mixamo 数据，所见即所得。
             cp.SetApplyFootIK(false);
+            // 起始时间推到很远的未来：后退时这段片段是【倒着播】的，
+            // 从 0 开始倒放会立刻退到负时间。给足余量后，倒放几个小时也不会越界。
+            if (clip != null && clip.length > 0.01f) cp.SetTime(clip.length * 4096.0);
             _graph.Connect(cp, 0, _loco, idx);
             return cp;
         }
 
-        /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）。</summary>
-        public void SetLocomotion(float speed01, float actualSpeed = -1f)
+        /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）；
+        /// reverse=倒放走/跑片段（后退用：动作库里没有后退片段，倒放就是后退）。</summary>
+        public void SetLocomotion(float speed01, float actualSpeed = -1f, bool reverse = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _actualSpeed = actualSpeed;
+            _reverse = reverse;
         }
         public void SetReady(bool ready) => _ready = ready;
 
@@ -477,10 +484,15 @@ namespace AdversityRoad.Combat
             // 步幅同步：走/跑播放速率 = 真实移速 / 动画自然速度——步频与位移匹配，
             // 脚落地不打滑（"脚的移动过程一目了然"的关键，参考电影/悟空的贴地感）
             float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
+            // 后退＝把走/跑片段【倒着播】。这是没有后退动作资源时的通行做法：
+            // 步态的每一帧都是对的，只是时间轴反过来，看上去就是在往后退。
+            // 正放↔倒放之间做 0.12 秒过渡，避免松杆瞬间脚步"啪"地反向。
+            _reverseW = Mathf.MoveTowards(_reverseW, _reverse ? 1f : 0f, dt / 0.12f);
+            float dir = Mathf.Lerp(1f, -1f, _reverseW);
             if (walkW > 0.001f && _walkCp.IsValid())
-                _walkCp.SetSpeed(Mathf.Clamp(actual / WalkNaturalSpeed, 0.8f, 1.5f));
+                _walkCp.SetSpeed(Mathf.Clamp(actual / WalkNaturalSpeed, 0.8f, 1.5f) * dir);
             if (runW > 0.001f && _runCp.IsValid())
-                _runCp.SetSpeed(Mathf.Clamp(actual / RunNaturalSpeed, 0.8f, 1.35f));
+                _runCp.SetSpeed(Mathf.Clamp(actual / RunNaturalSpeed, 0.8f, 1.35f) * dir);
 
             if (_cur >= 0)
             {

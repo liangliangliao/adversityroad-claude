@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using AdversityRoad.Combat;
@@ -46,6 +47,8 @@ namespace AdversityRoad.AI
         float _measuredSpeed;
         bool _posInit;
         float _lastHurtT = -99f;  // 受击眩晕：刚被打中短时间内没有反击能力
+        float _legHurtUntil;      // 腿部被打中：一段时间内移动变慢（打腿＝打机动力）
+        float _armHurtUntil;      // 手臂被打中：一段时间内出手变慢、伤害下降（打手＝打攻势）
         float _swingUntil;        // 挥击动作进行中（此间不游走、不被小受击打断画面）
         bool _downed;             // 被击倒趴地中（恢复时要播起身过程）
         int _patrolIndex;
@@ -66,8 +69,9 @@ namespace AdversityRoad.AI
         /// <summary>本次前摇是否为不可格挡的危险攻击。</summary>
         public bool PerilousTelegraph => _telegraphing && _perilous;
 
+        // 征兆的颜色语言统一由 TelegraphTable 定义（颜色即应对答案），
+        // 这里只保留一个建材色供红圈材质初始化。
         static readonly Color TeleNormal = new Color(0.9f, 0.15f, 0.1f);
-        static readonly Color TelePerilous = new Color(1f, 0.35f, 0f);
         bool _telegraphing;       // 是否处于前摇（脉冲放大红圈/警示，让读招更醒目）
         Vector3 _dangerRingBaseScale;
         float _telegraphT;
@@ -169,47 +173,91 @@ namespace AdversityRoad.AI
             _dangerRing.SetActive(false);
         }
 
+        /// <summary>
+        /// 亮起/收起前摇征兆。征兆规格全部来自 <see cref="TelegraphTable"/>：
+        /// 形状按招式轨迹、颜色按应对答案、时长按招式族恒定——三层信息各说一件事，
+        /// 玩家因此可以真正"学会"某个敌人的出手规律，而不是只知道"它要打了"。
+        /// </summary>
         void ShowTelegraph(bool on, bool perilous = false)
         {
             _telegraphing = on;
             _telegraphT = 0f;
-            if (!on) _perilous = false;
-            // 危险攻击（红光）：警示改「危」、橙红大字；普通攻击「！」红字
+            if (!on)
+            {
+                _perilous = false;
+                if (_alertMark != null) _alertMark.text = "";
+                if (_dangerRing != null) _dangerRing.SetActive(false);
+                if (poser != null) poser.SetWindup(-1, 0f);   // 形体征兆平滑退回
+                return;
+            }
+
+            _spec = TelegraphTable.Get(_attackPose, perilous);
+
             if (_alertMark != null)
             {
-                _alertMark.text = on ? (perilous ? "危" : "！") : "";
-                _alertMark.color = perilous ? TelePerilous : new Color(1f, 0.2f, 0.15f);
+                _alertMark.text = _spec.mark;
+                _alertMark.color = _spec.color;
             }
             if (_dangerRingMat != null)
             {
-                Color rc = perilous ? TelePerilous : TeleNormal;
-                _dangerRingMat.color = rc;
-                if (_dangerRingMat.HasProperty("_BaseColor")) _dangerRingMat.SetColor("_BaseColor", rc);
+                _dangerRingMat.color = _spec.color;
+                if (_dangerRingMat.HasProperty("_BaseColor"))
+                    _dangerRingMat.SetColor("_BaseColor", _spec.color);
             }
             if (_dangerRing != null)
             {
-                _dangerRing.SetActive(on);
-                if (on) _dangerRing.transform.localScale =
-                    perilous ? _dangerRingBaseScale * 1.25f : _dangerRingBaseScale;
+                _dangerRing.SetActive(true);
+                // 指示器按招式轨迹取形：横斩是横向宽弧、突刺是细长直线、扫腿是贴地宽环。
+                // 「往哪躲」于是有画面依据，而不是全场统一一个圆圈。
+                _dangerRingBaseScale = new Vector3(_spec.ring.x, 0.03f, _spec.ring.y);
+                _dangerRing.transform.localScale = _dangerRingBaseScale;
+                // 指示器中心随纵深前移：突刺的危险区在身前四米，不在脚下
+                _dangerRing.transform.localPosition =
+                    new Vector3(0, -0.95f + _spec.ringHeight, _spec.ring.y * 0.28f);
             }
+            // 教学提示：只在玩家还没见过这一族时说一次（说多了就成了噪声）
+            if (NoteTelegraphSeen(_spec.kind, perilous))
+                GameEvents.RaiseSubtitle("【" + _spec.name + "】" + _spec.answer);
+        }
+
+        TelegraphSpec _spec;
+
+        /// <summary>某一族征兆是否第一次出现（全局记一次，教学提示只讲一遍）。</summary>
+        static readonly HashSet<int> _seenTelegraphs = new HashSet<int>();
+        static bool NoteTelegraphSeen(TelegraphKind k, bool perilous)
+        {
+            int key = (int)k * 2 + (perilous ? 1 : 0);
+            return _seenTelegraphs.Add(key);
         }
 
         /// <summary>前摇脉冲：红圈由小放大到出手、警示「！」跳动，读招窗口一目了然。</summary>
         void TickTelegraph(float dt)
         {
-            if (!_telegraphing) return;
+            if (!_telegraphing)
+            {
+                if (poser != null && _windupTotal > 0f) { poser.SetWindup(-1, 0f); _windupTotal = 0f; }
+                return;
+            }
             _telegraphT += dt;
+            // 前摇进度：指示器不再是无意义的来回脉动，而是**从小涨到满**——
+            // 涨满 = 出手。这条"进度条"是玩家判断出手时机的直接依据（读招的第三层信息）。
+            float p01 = _windupTotal > 0.01f ? Mathf.Clamp01(_telegraphT / _windupTotal) : 0f;
             if (_dangerRing != null)
             {
-                // 从 0.6 倍胀到 1.15 倍循环，越临近出手视觉张力越强；危险攻击整体更大
-                float pulse = (0.6f + Mathf.PingPong(_telegraphT * 2.4f, 0.55f)) * (_perilous ? 1.25f : 1f);
+                float grow = Mathf.Lerp(0.45f, 1.12f, p01);
                 _dangerRing.transform.localScale = new Vector3(
-                    _dangerRingBaseScale.x * pulse, _dangerRingBaseScale.y,
-                    _dangerRingBaseScale.z * pulse);
+                    _dangerRingBaseScale.x * grow, _dangerRingBaseScale.y,
+                    _dangerRingBaseScale.z * grow);
             }
             if (_alertMark != null)
-                _alertMark.characterSize = 0.05f * (1f + 0.25f * Mathf.Sin(_telegraphT * 18f));
+                _alertMark.characterSize = 0.05f * (1f + 0.35f * p01);
+            // 形体征兆：随进度加深的预备姿态（高举/后拉/压低……）——
+            // 这是关了 UI 也读得出来的那一层
+            if (poser != null) poser.SetWindup((int)_spec.kind, p01);
         }
+
+        float _windupTotal;   // 本次前摇的总时长（进度条与形体征兆按它归一化）
+        float _lastCastShot = -99f;   // 上次绝招特写的时刻（节流：特写贵在稀有）
 
         void Update()
         {
@@ -225,6 +273,10 @@ namespace AdversityRoad.AI
                 statusBar.SetPosture(Mathf.Max(0, _posture), profile.posture);
             }
 
+            // 部位伤情：腿伤减速、手伤削弱攻势（每帧同步到寻路速度上）
+            if (_agent != null)
+                _agent.speed = profile.moveSpeed * (Time.time < _legHurtUntil ? 0.62f : 1f);
+
             // 把移动速度喂给人形动画（步行/奔跑步态）。
             // 用【真实每帧位移】而非寻路速度：追击/游走/击退/侧闪，无论位移来自
             // 哪个系统，脚都会迈动——消灭"人在滑、脚不动"的漂移感。
@@ -237,11 +289,38 @@ namespace AdversityRoad.AI
                 float inst = dt > 0.0001f ? planar.magnitude / dt : 0f;
                 _measuredSpeed = Mathf.Lerp(_measuredSpeed, inst, 12f * dt);
                 float refSpeed = Mathf.Max(2.5f, profile.moveSpeed);
+                // 移动方向相对身体正面的夹角：敌人交战时脸始终对着玩家，
+                // 而脚下在绕圈/后撤/横挪——不把这个角度喂给动画层，播的就永远是
+                // "向前走"，于是横着挪动时脚在原地倒腾＝**漂移**。
+                float moveAngle = 0f;
+                if (planar.sqrMagnitude > 1e-6f)
+                    moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
                 poser.SetLocomotion(Mathf.Clamp01(_measuredSpeed / refSpeed) * 0.9f,
-                    false, true, _measuredSpeed);
+                    false, true, _measuredSpeed, moveAngle);
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
                 poser.SetCombatReady(State == EnemyState.Chase || State == EnemyState.Attack
                     || State == EnemyState.MentalAttack);
+            }
+
+            // ===== 出招立足（本轮修的"敌人边跑边打时在漂移"）=====
+            //
+            // 漂移的成因不是动画，是**位移与动作各走各的**：
+            // NavMeshAgent 带着速度与一条未作废的路径继续把人往前送，
+            // 而身上正在播一段原地的挥击动作——脚不动、人在飘，就是漂移。
+            // 之前只在 DoPhysicalAttack 的那一瞬调了一次 StopMoving：
+            // 那一帧之后 Chase 分支照样会 SetDestination 把 isStopped 重新打开，
+            // 于是"跑动中发起的攻击"整段都在滑行。
+            //
+            // 规则改成硬性的一条：**从亮起前摇到收招结束，脚钉在地上**。
+            // 攻击是一次承诺——出手前站定、出手后收势，这既是所有格斗游戏的通例，
+            // 也是玩家能够读招、绕背、抓破绽的前提（会移动的攻击等于没有破绽）。
+            // 需要"移动着打"的招式走 AttackStep 的可控前踏，而不是让寻路顺带把人推过去。
+            bool committed = _telegraphing || Time.time < _swingUntil;
+            if (committed && AgentReady)
+            {
+                if (!_agent.isStopped) _agent.isStopped = true;
+                _agent.velocity = Vector3.zero;
+                if (_agent.hasPath) _agent.ResetPath();
             }
 
             // 安抚状态（旧我整合阶段）：收势站定，不再攻击、不再追击
@@ -323,6 +402,7 @@ namespace AdversityRoad.AI
                 case EnemyState.Chase:
                 {
                     UpdateEmotion("紧逼");
+                    if (committed) break;   // 出招承诺期间不追不挪（见上方"出招立足"）
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
@@ -528,16 +608,32 @@ namespace AdversityRoad.AI
             // 头顶亮「危」、红圈更大更亮，只能闪避不能格挡，教玩家读招而非无脑格挡
             _perilous = useElite && Random.value < (profile.category == EnemyCategory.Boss ? 0.5f : 0.35f);
 
-            // 前摇（等级越高越短，越难反应）：头顶「！/危」跳动 + 脚下红圈脉冲 + 警示音
-            // = 明确读招/闪避窗口，蓄势姿态先行，判定框随后才开。
-            // 前摇下限 MinWindup 是【对玩家的硬承诺】：无论敌人多凶，
-            // 从亮警示到判定框开启至少有这么久，玩家总有反应余地。
-            // 上一版最快只有 0.42s——扣掉人的视觉反应（~0.25s）和翻滚起始帧，
-            // 高攻击性精英的招几乎是不可躲的，读作"没有征兆"。
-            float windup = Mathf.Max(MinWindup, Mathf.Lerp(0.75f, 0.5f, profile.aggression));
-            if (_perilous) windup += 0.15f;   // 危险攻击前摇更长：给足闪避反应窗口
+            // ===== 前摇：可观测、且**同族恒定**（这是"可学习"的前提）=====
+            //
+            // 上一版的前摇时长是 Lerp(0.75, 0.5, 攻击性)——同一个横斩，攻击性 0.3 的
+            // 杂兵给 0.68 秒、攻击性 0.9 的精英给 0.53 秒。玩家永远学不会这种东西：
+            // 规律必须能被记住，而"每个敌人各有各的节拍、还随机换招"是记不住的。
+            // 现在时长由**招式族**决定（TelegraphTable），全场统一：
+            // 见到"高举过顶"就知道还有 0.78 秒、见到"收刀到腰"就知道是 0.62 秒。
+            // 敌人的强弱改由出手频率/连段长度/招式选择体现，而不是偷玩家的反应时间。
+            float windup = Mathf.Max(MinWindup, TelegraphTable.Get(_attackPose, _perilous).windup);
+            _windupTotal = windup;
             ShowTelegraph(true, _perilous);
-            GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.5f, _perilous ? 0.02f : 0.08f);
+            GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.55f, _spec.pitch);
+            // 【绝招特写】不可格挡的大招值得一个镜头：把施展者框进画面、报出招名与应对，
+            // 玩家看得见"它在做什么"，才有可能防住（见 ThirdPersonCamera.FocusOn）。
+            // 不夺走操作权——特写期间玩家照常可以闪避/格挡/走位。
+            //
+            // 两道克制：只有【首领】的不可格挡技才给特写，且同一个敌人 9 秒内最多一次。
+            // 特写贵在稀有——杂兵每记红光都推一次镜头，镜头就成了噪声，
+            // 玩家反而更看不清战场（这是"知道何时不特写"的那一半）。
+            if (_perilous && profile.category == EnemyCategory.Boss &&
+                Time.time - _lastCastShot > 9f)
+            {
+                _lastCastShot = Time.time;
+                CombatFeedback.EnemyCastShot(transform, Mathf.Min(windup, 1.1f),
+                    profile.displayName + " · " + _spec.name, _spec.answer);
+            }
             if (poser != null) poser.SetPose(PoseState.Charge);
             Invoke(nameof(OpenAttackHitbox), windup);
         }
@@ -552,8 +648,43 @@ namespace AdversityRoad.AI
             if (poser != null) poser.SetPose(_attackPose);
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
+            StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
             Invoke(nameof(FireHitbox), contact);
             Invoke(nameof(CloseHitbox), contact + 0.25f);
+        }
+
+        /// <summary>
+        /// 出招前踏（大作里的 attack lunge）：把"够不着就滑过去"换成一次**可控的踏步**。
+        ///
+        /// 差别不在位移量，在**归属**：寻路推过来的位移与动作无关，所以看着像漂移；
+        /// 这一步是攻击自己的一部分——只在挥击的接触帧之前推进、总量封顶、
+        /// 够得着就完全不推。玩家看到的是"它踏前一步一刀劈过来"，
+        /// 而不是"它一边滑行一边挥了一下"。
+        /// </summary>
+        System.Collections.IEnumerator AttackStep(float dur)
+        {
+            if (_player == null) yield break;
+            Vector3 to = _player.position - transform.position; to.y = 0;
+            float gap = to.magnitude - profile.attackRange * 0.75f;
+            if (gap <= 0.05f || dur <= 0.01f) yield break;
+            Vector3 dir = to.normalized;
+            float total = Mathf.Min(gap, 0.9f);   // 封顶 0.9m：踏一步，不是冲刺
+            float moved = 0f, t = 0f;
+            while (t < dur && State != EnemyState.Dead)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                // 前快后慢：起步就把身位吃掉大半，收尾自然停住（不是匀速滑行）
+                float want = total * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / dur));
+                float step = want - moved;
+                moved = want;
+                if (step > 0f)
+                {
+                    if (AgentReady) _agent.Move(dir * step);
+                    else transform.position += dir * step;
+                }
+                yield return null;
+            }
         }
 
         void FireHitbox()
@@ -565,9 +696,11 @@ namespace AdversityRoad.AI
             var spec = Combat.EnemyMoveTable.Get(_attackPose);
             attackHitbox.SetShape(spec.Size, spec.center);
             // 危险攻击：不可格挡（须闪避）+ 伤害/击退加成，兑现红光警示的威胁
+            // 手臂伤情：出手明显变弱（打手臂的收益在这里兑现，玩家看得到）
+            float armWeak = Time.time < _armHurtUntil ? 0.7f : 1f;
             attackHitbox.EnableHitbox(new DamageInfo
             {
-                physicalDamage = profile.physicalDamage * dmgMul * (_perilous ? 1.5f : 1f),
+                physicalDamage = profile.physicalDamage * dmgMul * armWeak * (_perilous ? 1.5f : 1f),
                 mentalDamage = profile.mentalDamage * 0.3f,
                 mentalAxis = profile.targetWeakness,
                 knockback = knock + (_perilous ? 3f : 0f),
@@ -593,8 +726,10 @@ namespace AdversityRoad.AI
                 // 连击段的前摇比起手短（保留连招的压迫感），但绝不为零：
                 // 本作对玩家的承诺是「任何一次会造成伤害的攻击，出手前必定有可见警示」。
                 _perilous = false;   // 连击段不做不可格挡（不可格挡只出现在有完整前摇的起手）
+                _windupTotal = ComboWindup;
                 ShowTelegraph(true, false);
-                GameAudio.Play(GameAudio.Sfx.Alert, 0.4f, 0.12f);
+                GameAudio.Play(GameAudio.Sfx.Alert, 0.45f, _spec.pitch + 0.1f);
+                if (poser != null) poser.SetPose(PoseState.Charge);
                 Invoke(nameof(OpenAttackHitbox), ComboWindup);
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
@@ -847,16 +982,19 @@ namespace AdversityRoad.AI
             }
 
             // ---- 部位精准伤害（大作惯例：打得准有实际收益）----
-            // 用判定框算出的真实接触点分部位：头部会心 ×1.35；腿部伤害 ×0.9 但削韧
-            // ×1.4（扫腿更容易打失衡）；躯干标准。配合已有的部位受击反应动画。
-            float partDmgMult = 1f, partPostureMult = 1f;
-            bool headshot = false;
-            if (dmg.hasContact)
-            {
-                float h = dmg.contactPoint.y - transform.position.y;
-                if (h > 0.5f) { partDmgMult = 1.35f; headshot = true; }
-                else if (h < -0.45f) { partDmgMult = 0.9f; partPostureMult = 1.4f; }
-            }
+            // 部位由**挂在骨骼上的受击框**落款（见 BodyPartHurtboxes），不再靠命中点
+            // 高度去猜——下蹲、倒地、腾空时同一个高度对应的部位完全不同。
+            // 系数集中在 BodyPartTable：头会心、四肢伤害低但削韧高（扫腿打失衡）。
+            var part = dmg.bodyPart;
+            if (part == BodyPart.None && dmg.hasContact)
+                part = BodyPartTable.FromHeight(dmg.contactPoint.y - transform.position.y);
+            var pp = BodyPartTable.Get(part, false);
+            float partDmgMult = pp.damage, partPostureMult = pp.posture;
+            bool headshot = pp.critical;
+            // 打腿＝打机动力，打手＝打攻势：四肢命中除了削韧，还落到**它该影响的能力**上。
+            // 这是"打哪儿有什么用"能被玩家学会的关键——只改数字学不会，行为变化才学得会。
+            if (BodyPartTable.IsLeg(part)) _legHurtUntil = Time.time + 2.2f;
+            else if (BodyPartTable.IsArm(part)) _armHurtUntil = Time.time + 2.2f;
 
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense)
                 * sneakMult * partDmgMult;
@@ -914,11 +1052,14 @@ namespace AdversityRoad.AI
                 CombatFeedback.CloseUp(1.0f, 0.75f);   // 破韧终结＝高光时刻，值得推近
                 GameEvents.RaiseSkillBanner("处决");
             }
-            // 头部会心的伤害数字更大更红（部位标签由 HitReactionOverlay 弹出，不重复）
+            // 伤害数字按部位分色分号：头部会心最大最亮，四肢偏冷色且带削韧提示。
+            // （部位名由 HitReactionOverlay 在接触点弹出，这里不重复文字，只统一颜色语言）
             CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
                 execution ? new Color(1f, 0.6f, 0.15f)
                 : headshot ? new Color(1f, 0.55f, 0.25f)
-                : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f) : new Color(1f, 0.9f, 0.5f),
+                : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f)
+                : part != BodyPart.Chest && part != BodyPart.None ? BodyPartTable.TintOf(part)
+                : new Color(1f, 0.9f, 0.5f),
                 execution ? 1.9f : headshot ? 1.45f : final >= 35f ? 1.6f : 1f);
             if (dmg.knockback > 0.1f && !fbHeavy)
             {

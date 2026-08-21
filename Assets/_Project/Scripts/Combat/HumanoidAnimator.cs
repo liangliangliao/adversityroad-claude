@@ -106,6 +106,158 @@ namespace AdversityRoad.Combat
             _groundLocalY = groundLocalY;
             _modelBaseY = model != null ? model.localPosition.y : 0f;
             _feetOffset = _feetTarget = 0f;
+            _spine = FindBoneLoose(model, "spine1", "spine", "chest");
+            _shoulderL = FindBoneLoose(model, "leftarm", "lupperarm", "leftshoulder");
+            _shoulderR = FindBoneLoose(model, "rightarm", "rupperarm", "rightshoulder");
+            _upLegR = FindBoneLoose(model, "rightupleg", "rightthigh");
+        }
+
+        // ===== 出手前摇的形体征兆（读招的第一手依据）=====
+        //
+        // UI 记号与地面指示器是**辅助**；玩家最终要学会的是看**身体**：
+        // 兵器高举＝要劈、后拉＝要刺、整个人压低＝要扫腿。所有格斗类作品的
+        // 读招教学都建立在这一层上——它不依赖任何界面元素，关了 UI 照样成立。
+        //
+        // 实现是在动画之上叠加一层"预备姿态"：不替换动作（动作还在演蓄力片段），
+        // 而是把脊柱/肩/髋按招式族拧到位，于是每一族的剪影都不一样、且始终一致。
+        int _windupKind = -1;
+        int _windupShape = -1;
+        float _windup01;
+
+        /// <summary>设置前摇形体征兆。kind 见 TelegraphKind（-1=没有前摇）；
+        /// t01=前摇进度（0 起手→1 即将出手），姿态随进度加深。</summary>
+        public void SetWindup(int kind, float t01)
+        {
+            _windupKind = kind;
+            if (kind >= 0) _windupShape = kind;   // 收招时还要用它把姿态平滑退回去
+            _windup01 = Mathf.Clamp01(t01);
+        }
+
+        Transform _shoulderL, _shoulderR, _upLegR;
+
+        /// <summary>把前摇姿态叠加到当前动画之上（在 LateUpdate，动画已求值完）。</summary>
+        void ApplyWindup()
+        {
+            // 没有前摇时姿态平滑归零，避免出手瞬间"弹"一下
+            float w = _windupKind < 0 ? 0f : Mathf.SmoothStep(0.25f, 1f, _windup01);
+            _windupW = Mathf.MoveTowards(_windupW, w, Time.deltaTime / 0.12f);
+            if (_windupW < 0.01f || _windupShape < 0) return;
+
+            Transform spine = _spine != null ? _spine : (rig != null ? rig.torso : null);
+            Transform hips = _hips != null ? _hips : (rig != null ? rig.pelvis : null);
+            Transform shL = _shoulderL != null ? _shoulderL : (rig != null ? rig.shoulderL : null);
+            Transform shR = _shoulderR != null ? _shoulderR : (rig != null ? rig.shoulderR : null);
+            Transform legR = _upLegR != null ? _upLegR : (rig != null ? rig.hipR : null);
+            float k = _windupW;
+
+            switch ((TelegraphKind)_windupShape)
+            {
+                case TelegraphKind.Overhead:   // 高举过顶、上身后仰：最大的剪影变化
+                    Pitch(spine, -26f * k);
+                    Pitch(shL, -105f * k); Pitch(shR, -112f * k);
+                    break;
+                case TelegraphKind.Horizontal: // 拧腰、兵器拉到右体侧
+                    Yaw(spine, 42f * k);
+                    Yaw(shR, 40f * k); Pitch(shR, -20f * k);
+                    break;
+                case TelegraphKind.Thrust:     // 正面对齐、兵器收到腰际、重心下沉前压
+                    Pitch(spine, 14f * k);
+                    Pitch(shR, 34f * k); Yaw(shR, -18f * k);
+                    Sink(hips, 0.06f * k);
+                    break;
+                case TelegraphKind.LowSweep:   // 整个人压低——最容易一眼认出的那一族
+                    Pitch(spine, 32f * k);
+                    Sink(hips, 0.22f * k);
+                    Pitch(shL, 24f * k); Pitch(shR, 24f * k);
+                    break;
+                case TelegraphKind.Kick:       // 提膝
+                    Pitch(legR, -46f * k);
+                    Pitch(spine, -10f * k);
+                    break;
+                case TelegraphKind.Spin:       // 反向拧身蓄力（转之前先往回卷）
+                    Yaw(spine, -52f * k);
+                    Yaw(shL, -34f * k); Yaw(shR, -34f * k);
+                    break;
+            }
+        }
+
+        float _windupW;
+
+        // 绕【角色自身的世界轴】旋转，而不是绕骨骼的局部轴：
+        // 动捕骨架的局部轴朝向各家各样（Mixamo 的骨骼 Y 沿骨长），
+        // 按局部轴拧出来的姿态在不同模型上完全不同，形体征兆就不可能"每次都一样"。
+        void Pitch(Transform t, float deg)
+        {
+            if (t == null || Mathf.Abs(deg) < 0.05f) return;
+            t.rotation = Quaternion.AngleAxis(deg, transform.right) * t.rotation;
+        }
+
+        void Yaw(Transform t, float deg)
+        {
+            if (t == null || Mathf.Abs(deg) < 0.05f) return;
+            t.rotation = Quaternion.AngleAxis(deg, Vector3.up) * t.rotation;
+        }
+
+        static void Sink(Transform t, float meters)
+        {
+            if (t == null || Mathf.Abs(meters) < 0.001f) return;
+            t.position -= Vector3.up * meters;
+        }
+
+        /// <summary>宽松骨骼查找（上下半身分离用）：按关键词优先级，同词取名字最短的。</summary>
+        static Transform FindBoneLoose(Transform root, params string[] keys)
+        {
+            if (root == null) return null;
+            var all = root.GetComponentsInChildren<Transform>(true);
+            foreach (var k in keys)
+            {
+                Transform best = null; int bestLen = int.MaxValue;
+                foreach (var t in all)
+                {
+                    if (t == null) continue;
+                    var sb = new System.Text.StringBuilder(t.name.Length);
+                    foreach (char c in t.name)
+                        if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+                    string n = sb.ToString();
+                    if (!n.Contains(k) || n.Length >= bestLen) continue;
+                    bestLen = n.Length; best = t;
+                }
+                if (best != null) return best;
+            }
+            return null;
+        }
+
+        /// <summary>当前姿态允不允许做上下半身分离：只有贴地的常规移动姿态可以。
+        /// 出招/翻滚/倒地/死亡/腾空时身体朝向由动作本身负责，再拧骨盆只会变形。</summary>
+        // 本作没有独立的 Walk/Run 姿态：走跑由 _speed01 驱动，姿态仍是 Idle/Guard。
+        bool CanStrafe => _grounded &&
+            (_pose == PoseState.Idle || _pose == PoseState.Guard);
+
+        /// <summary>本帧是否该用【倒放】表达移动（夹角超过 125° = 明显在后退）。</summary>
+        bool StrafeReverse => Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle)) > 125f && _speed01 > 0.05f;
+
+        /// <summary>把移动夹角折算成下半身偏航：
+        /// 前半球直接用夹角（限幅），后半球用"180° 的补角"——因为片段已经倒放，
+        /// 倒放的走路本身就是朝后走，腿只需要再偏一点点。</summary>
+        float TargetStrafeYaw()
+        {
+            if (_speed01 <= 0.05f) return 0f;
+            float a = Mathf.DeltaAngle(0f, _moveAngle);
+            // 后半球：片段已经倒放（脚朝身体背面走），腿只需再补上与"正后方"的偏差。
+            if (Mathf.Abs(a) > 125f) a = Mathf.DeltaAngle(180f, _moveAngle);
+            return Mathf.Clamp(a, -MaxLowerBodyYaw, MaxLowerBodyYaw);
+        }
+
+        /// <summary>上下半身分离：骨盆转向实际行进方向，脊柱回拧同样的角度，
+        /// 于是【腿朝着走的方向、脸仍然对着目标】。找不到脊柱就只转下半身
+        /// （仍然比"整个人转过去"接近正确）。</summary>
+        void ApplyStrafeSplit(Transform hips, Transform spine, float dt)
+        {
+            _strafeYaw = Mathf.MoveTowards(_strafeYaw, TargetStrafeYaw(), 360f * dt);
+            if (Mathf.Abs(_strafeYaw) < 0.5f || hips == null) return;
+            hips.rotation = Quaternion.AngleAxis(_strafeYaw, Vector3.up) * hips.rotation;
+            if (spine != null)
+                spine.rotation = Quaternion.AngleAxis(-_strafeYaw, Vector3.up) * spine.rotation;
         }
 
         /// <summary>脚掌放平修正：异源骨骼脚踝 rest 朝向不同，Mixamo 脚踝旋转数据套
@@ -133,7 +285,16 @@ namespace AdversityRoad.Combat
 
         void LateUpdate()
         {
-            if (!Mecanim || !_hipsPin || _hips == null || _mocapModel == null) return;
+            if (!Mecanim)
+            {
+                // 程序化方块骨骼：同一套上下半身分离（骨盆转、躯干回拧）
+                if (rig != null && CanStrafe)
+                    ApplyStrafeSplit(rig.pelvis, rig.torso, Time.deltaTime);
+                else _strafeYaw = Mathf.MoveTowards(_strafeYaw, 0f, 360f * Time.deltaTime);
+                ApplyWindup();
+                return;
+            }
+            if (!_hipsPin || _hips == null || _mocapModel == null) return;
 
             // 髋骨 XZ 锚定是为【走跑片段自带水平位移】准备的（把模型钉回胶囊体）。
             // 但**倒地与死亡本身就是靠髋骨水平移动完成的**——人向前扑倒、侧身躺下，
@@ -148,6 +309,12 @@ namespace AdversityRoad.Combat
                 lp.z = _hipsBindLP.z;
                 _hips.position = _mocapModel.TransformPoint(lp);
             }
+
+            // 横移/后撤的上下半身分离（只在贴地常规移动姿态下做——
+            // 出招/翻滚/倒地时身体的朝向由动作自己负责，再拧一下只会变形）
+            if (CanStrafe) ApplyStrafeSplit(_hips, _spine, Time.deltaTime);
+            else _strafeYaw = Mathf.MoveTowards(_strafeYaw, 0f, 360f * Time.deltaTime);
+            ApplyWindup();   // 前摇形体征兆叠加在动画之上（读招的第一手依据）
 
             // 休息姿态（坐/躺）：把骨盆锚到座面高度，而不是把脚底锚到地面。
             // 坐着的人脚是悬着/前伸的，躺着的人脚离地更远——沿用站立那套校准
@@ -393,14 +560,34 @@ namespace AdversityRoad.Combat
         float _actualSpeed = -1f;
 
         /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地 /
-        /// 真实移速 m/s（供步幅同步，<0=未提供）。</summary>
-        public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f)
+        /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
+        /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
+        public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
+            float moveAngleDeg = 0f)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _crouch = crouch;
             _grounded = grounded;
             _actualSpeed = actualSpeed;
+            _moveAngle = moveAngleDeg;
         }
+
+        // ===== 横移 / 后退（面向目标不转身）=====
+        //
+        // 本作的动作库里**只有向前走/跑**，没有侧步与后退片段。大作的做法有两种：
+        //   ① 备一套八方向的移动动作（成本最高、效果最好）；
+        //   ② 只用前向片段，靠【上下半身分离】+【倒放】合成——
+        //      腿朝着实际走的方向，上半身拧回来对着目标；后退则把走路片段倒着播。
+        // 本作走 ②：这是没有额外动作资源时的通行解法，观感上足够，
+        // 关键是它让"面向敌人的同时左右横跨/后撤"这件事**真的能做到**，
+        // 而不是像之前那样——想往左走就必须先把脸转到左边（转向 ≠ 横移）。
+        float _moveAngle;          // 目标夹角（度）
+        float _strafeYaw;          // 平滑后的下半身偏航（度，正=向右）
+        Transform _spine;          // 上半身回拧用（找不到就只转下半身）
+
+        /// <summary>下半身偏航的上限：超过这个角度就改用【倒放】表达后退，
+        /// 否则骨盆要拧出人体做不到的角度。55° 是常见取值（左右横跨自然，后撤走倒放）。</summary>
+        const float MaxLowerBodyYaw = 55f;
 
         void Update()
         {
@@ -411,7 +598,7 @@ namespace AdversityRoad.Combat
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01, _actualSpeed);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed, StrafeReverse);
                 _mecanim.SetReady(_ready);
                 if (_poseSerial != _lastMecanimSerial)
                 {

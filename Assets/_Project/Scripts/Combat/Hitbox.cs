@@ -29,7 +29,19 @@ namespace AdversityRoad.Combat
         Collider _col;
         BoxCollider _box;
         readonly HashSet<Hurtbox> _hitThisSwing = new HashSet<Hurtbox>();
-        static readonly Collider[] _overlap = new Collider[16];
+        // 同一次挥击对同一个【角色】只结算一次（不是对同一块受击框只结算一次）。
+        // 拆出部位受击框之后，一记横斩会同时罩到胸、手臂、全身兜底三块——
+        // 只按受击框去重就等于一刀打三次。这里按角色根去重，并在本帧扫描中
+        // **择优**：取最精确、最贴近判定框中心的那一块作为"真正打中的部位"。
+        readonly HashSet<Transform> _ownersHit = new HashSet<Transform>();
+        static readonly Collider[] _overlap = new Collider[24];
+
+        struct Pick { public Hurtbox hurt; public Vector3 contact; public float dist; }
+        // 实例级（不是静态）：多个判定框可能在同一物理帧各自扫描，共用一份缓存会互相清空。
+        readonly Dictionary<Transform, Pick> _best = new Dictionary<Transform, Pick>();
+        readonly List<Pick> _picks = new List<Pick>(8);
+        // 重入保护：结算命中会触发反击/技能，那些可能当场再开一个判定框并回调到这里。
+        bool _scanning;
 
         void Awake()
         {
@@ -58,6 +70,7 @@ namespace AdversityRoad.Combat
             pendingDamage = dmg;
             pendingDamage.sourcePosition = transform.root.position;
             _hitThisSwing.Clear();
+            _ownersHit.Clear();
             _col.enabled = true;
             Scan();   // 立即扫一遍：捕获"开启即重叠"的目标（近身出招的常态）
         }
@@ -71,6 +84,14 @@ namespace AdversityRoad.Combat
 
         /// <summary>扫描判定体积内的全部受击框，处理尚未命中的目标。</summary>
         void Scan()
+        {
+            if (_scanning) return;
+            _scanning = true;
+            try { ScanInner(); }
+            finally { _scanning = false; }
+        }
+
+        void ScanInner()
         {
             Vector3 center; Vector3 half; Quaternion rot = transform.rotation;
             if (_box != null)
@@ -88,18 +109,49 @@ namespace AdversityRoad.Combat
 
             int n = Physics.OverlapBoxNonAlloc(center, half, _overlap, rot,
                 ~0, QueryTriggerInteraction.Collide);
+
+            // ① 先按角色分组择优：每个角色只留下"最该算作被打中"的那一块受击框。
+            //    择优规则（顺序即优先级）：
+            //      精确度高的胜出（部位框 > 全身兜底框），
+            //      同精确度取接触点离判定框中心更近的那块（兵器实际扫到的位置）。
+            _best.Clear();
             for (int i = 0; i < n; i++)
             {
-                var hurt = _overlap[i] != null ? _overlap[i].GetComponent<Hurtbox>() : null;
-                if (hurt == null || _hitThisSwing.Contains(hurt)) continue;
-                if (hurt.OwnerRoot == transform.root) continue;   // 不打自己
-                _hitThisSwing.Add(hurt);
+                var col = _overlap[i];
+                if (col == null) continue;
+                var hurt = col.GetComponent<Hurtbox>();
+                if (hurt == null) continue;
+                var owner = hurt.OwnerRoot;
+                if (owner == transform.root) continue;             // 不打自己
+                if (owner == null || _ownersHit.Contains(owner)) continue;  // 本次挥击已结算过
+
+                Vector3 contact = col.ClosestPoint(center);
+                float d = (contact - center).sqrMagnitude;
+                if (_best.TryGetValue(owner, out var cur) &&
+                    (cur.hurt.specificity > hurt.specificity ||
+                     (cur.hurt.specificity == hurt.specificity && cur.dist <= d)))
+                    continue;
+                _best[owner] = new Pick { hurt = hurt, contact = contact, dist = d };
+            }
+
+            // ② 先把结果拍成快照再结算：结算过程会执行游戏逻辑（反击、技能、销毁），
+            //    在字典的迭代过程中做这些事随时可能抛"集合已修改"。
+            _picks.Clear();
+            foreach (var kv in _best)
+            {
+                _ownersHit.Add(kv.Key);
+                _picks.Add(kv.Value);
+            }
+            foreach (var pick in _picks)
+            {
+                if (pick.hurt == null) continue;
+                _hitThisSwing.Add(pick.hurt);
 
                 var dmg = pendingDamage;
-                dmg.contactPoint = _overlap[i].ClosestPoint(center);   // 真正接触身体的点
+                dmg.contactPoint = pick.contact;   // 真正接触身体的点
                 dmg.hasContact = true;
-                hurt.ReceiveHit(dmg);
-                onHit?.Invoke(hurt);
+                pick.hurt.ReceiveHit(dmg);
+                onHit?.Invoke(pick.hurt);
             }
         }
 
@@ -110,6 +162,8 @@ namespace AdversityRoad.Combat
             var hurt = other.GetComponent<Hurtbox>();
             if (hurt == null || _hitThisSwing.Contains(hurt)) return;
             if (hurt.OwnerRoot == transform.root) return;
+            if (hurt.OwnerRoot == null || _ownersHit.Contains(hurt.OwnerRoot)) return;
+            _ownersHit.Add(hurt.OwnerRoot);
             _hitThisSwing.Add(hurt);
             var dmg = pendingDamage;
             dmg.contactPoint = other.ClosestPoint(transform.position);

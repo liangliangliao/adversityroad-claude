@@ -84,6 +84,8 @@ namespace AdversityRoad.AI
         IEnumerator PowerlessPressure()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "无力威压", "退出压制圈——硬扛会大量流失意志");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "PressureWarnRing";
@@ -127,6 +129,8 @@ namespace AdversityRoad.AI
         IEnumerator GuiltRock()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "内疚重石", "看准红圈翻滚——落点外就是安全的");
             Vector3 spot = _player.position;
             spot.y = transform.position.y - 0.9f;
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);

@@ -25,7 +25,8 @@ namespace AdversityRoad.UI
         // 模态弹窗会把 timeScale 归零、整块盖住画面，战斗中被它打断一次就等于送一次死，
         // 玩家明确要求"只在生命低于 30% 时出现，其他都不出现"。
         // 现在只保留这一条：一个阈值、一处判断，行为完全可预测。
-        const float RestPromptRatio = 0.30f;
+        // 休整触发阈值不在这里独立写一份：统一取 QuizSystem.RestPromptHpRatio（生命 30%）。
+        // 两处各写一个数，就是上一轮"某些场景规则不一致"的来源。
         const float Hysteresis = 0.08f;     // 迟滞回差：回升超过阈值+8%才允许再次警告
         const float PromptCooldown = 45f;   // 玩家选择「继续战斗」后弹窗静默时长
 
@@ -40,6 +41,12 @@ namespace AdversityRoad.UI
         readonly Dictionary<string, int> _warnLevel = new Dictionary<string, int>();
         float _nextPromptAllowed;
         bool _promptOpen;
+
+        /// <summary>场上唯一实例（QuizPanel 据此确认"休整入口已经有人负责了"）。</summary>
+        public static VitalAlertController Instance { get; private set; }
+
+        void Awake() { Instance = this; }
+        void OnDestroy() { if (Instance == this) Instance = null; }
 
         public static VitalAlertController Create(Transform canvas, QuizPanel quiz)
         {
@@ -140,7 +147,7 @@ namespace AdversityRoad.UI
             if (MainMenuPanel.AtTitle) return;
             if (VerbalDefenseController.Instance != null &&
                 VerbalDefenseController.Instance.IsActive) return;
-            if (s.hp / s.maxHp >= RestPromptRatio) return;
+            if (!Core.QuizSystem.NeedsRecovery(s)) return;   // 唯一判据：生命 < 30%
             if (Time.unscaledTime < _nextPromptAllowed) return;
             OpenPrompt(s);
         }
@@ -244,8 +251,10 @@ namespace AdversityRoad.UI
             int hpPct = Mathf.RoundToInt(s.hp / s.maxHp * 100f);
             string imbalance = QuizSystem.ImbalanceLabel(s);
             _promptDetail.text =
-                "当前生命仅剩 " + hpPct + "%（低于 30% 才会出现这个提示）——再打下去随时可能倒下。\n\n" +
-                (string.IsNullOrEmpty(imbalance) ? "" : "当前状态：" + imbalance + "\n\n") +
+                "当前生命仅剩 " + hpPct + "%（低于 " + Mathf.RoundToInt(Core.QuizSystem.RestPromptHpRatio * 100f) + "% 才会出现这个提示）——再打下去随时可能倒下。\n\n" +
+                (string.IsNullOrEmpty(imbalance) ? ""
+                    : "当前状态：" + imbalance +
+                      (QuizSystem.HasImbalance(s) ? "（这些失衡的轴会被优先出题）" : "") + "\n\n") +
                 "是否暂停休整、进入答题补充能量？\n" +
                 "（每答对 1 题：所有未满正能量 +20、负能量 −20）";
             _prompt.SetActive(true);

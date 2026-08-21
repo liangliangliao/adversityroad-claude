@@ -174,6 +174,14 @@ namespace AdversityRoad.Player
         /// 0.9→0.6：有了威胁感知兜底，这里不必再压那么久。</summary>
         const float TowardCameraHold = 0.6f;
 
+        // ---- 转向归位（settle）----
+        // 进/出用不同门槛（回差）：进 16° 才起手，退到 7° 就收手——
+        // 同一个数会让镜头在死区边缘反复起停，那比不跟随更难受。
+        const float SettleEnter = 16f;   // 偏差超过它才开始归位
+        const float SettleExit = 7f;     // 偏差小于它就收手（也是归位的目标精度）
+        const float SettleHold = 0.4f;   // 朝向要先稳这么久（转身途中不动镜）
+        bool _settleLatch;
+
         /// <summary>
         /// 【持续推非正前方向时】镜头绕行速率的上限（度/秒）。
         ///
@@ -368,7 +376,10 @@ namespace AdversityRoad.Player
         const float OffScreenStart = 0.65f, OffScreenFull = 0.95f;
         /// <summary>视野开阔时的跟随死区（度）。开阔＝28°内的转向完全不动镜；
         /// 盲区时收回到 exploreReorientAngle（10°），细碎修正也照跟。</summary>
-        const float SightDeadZoneOpen = 28f;
+        // 28°→18°：28° 的死区意味着**将近三分之一个视野的偏差都不算偏差**，
+        // 移动中的中等转向因此长期得不到跟随。收到 18° 后普通转向会被跟上，
+        // 而抗抖仍然够用——真正压住抖动的是低通滤波与稳定确认时长，不是死区大小。
+        const float SightDeadZoneOpen = 18f;
         /// <summary>转向缓冲的最大拉远量（占基准吊杆的比例）。
         /// 0.22 ⇒ 吊杆 4.6m 推到 5.6m，可见前方约多出 1.7m，角色占屏 40%→33%——
         /// 还在主流第三人称的构图区间内，不会读作"人物变小"。</summary>
@@ -499,6 +510,28 @@ namespace AdversityRoad.Player
 
         /// <summary>大招镜头：短暂拉近取景（配合技能自身的轻微慢动作/命中小震），到点回稳。</summary>
         public void UltimateShot(float duration) => CloseUp(duration, 1f);
+
+        // ===== 敌方绝招特写（"看得见才防得住"）=====
+        //
+        // 敌人放大招时，最要紧的信息全在**它身上**：抬手的高度、身体的朝向、
+        // 蓄力的进度。而常规机位是围着玩家转的，Boss 往往只在画面边缘占几十个像素，
+        // 甚至根本在画外——玩家不是没防住，是压根没看见。
+        //
+        // 所以这里做的是**取景**，不是过场：镜头把焦点推向施展者、略微拉近，
+        // 但**不夺走操作权、不锁输入、不停时间**（顶多起手一瞬的极短时缓）。
+        // 这是动作游戏处理敌方大招的通行做法——演出必须服务于"玩家还能做出反应"，
+        // 一旦锁住操作，特写就从"帮你防"变成了"看着自己挨打"。
+        Transform _focusWho;
+        float _focusTimer, _focusDur, _focusBlend;
+
+        /// <summary>框住某个施展者一小段时间（duration 秒）。重复调用取更长的那次。</summary>
+        public void FocusOn(Transform who, float duration)
+        {
+            if (who == null) return;
+            _focusWho = who;
+            _focusDur = Mathf.Max(_focusTimer, duration);
+            _focusTimer = _focusDur;
+        }
 
         // ---- 特写的克制（"知道何时特写"的另一半是"知道何时不特写"）----
         float _lastCloseUp = -99f;
@@ -679,6 +712,16 @@ namespace AdversityRoad.Player
             // ---- 模式判定：大招 > 战斗（有敌可锁）> 探索 ----
             if (_ultimateTimer > 0f) _ultimateTimer -= dt;
             else _closeStrength = Mathf.MoveTowards(_closeStrength, 0f, dt / 0.4f);
+
+            // 绝招特写：起手快速推入（0.18s），结束从容退出（0.45s）——
+            // 进得快才来得及看见，出得慢才不会把画面甩回去
+            if (_focusTimer > 0f)
+            {
+                _focusTimer -= dt;
+                if (_focusWho == null) _focusTimer = 0f;
+            }
+            _focusBlend = Mathf.MoveTowards(_focusBlend, _focusTimer > 0f ? 1f : 0f,
+                dt / (_focusTimer > 0f ? 0.18f : 0.45f));
 
             // ===== 镜头导演：选景别 + 平滑推轨过渡 =====
             // 敌情与场地扫描节流（0.3s 一次，避免每帧全场遍历）
@@ -1033,6 +1076,17 @@ namespace AdversityRoad.Player
             float yawBeforeAuto = _yaw;
 
             if (_recenterT > 0f) { /* 回正接管本帧的偏航，跳过常规自动运镜 */ }
+            else if (_focusBlend > 0.35f && _focusWho != null && !manualLook)
+            {
+                // 绝招特写期间偏航直接对准施展者：这一秒钟画面里最该出现的就是它。
+                // 优先级压过常规战斗运镜——常规运镜的目标是"稳"，这里的目标是"看得见"。
+                Vector3 toCast = _focusWho.position - target.position; toCast.y = 0;
+                if (toCast.sqrMagnitude > 0.25f)
+                {
+                    float want = Quaternion.LookRotation(toCast.normalized).eulerAngles.y;
+                    _yaw = Mathf.SmoothDampAngle(_yaw, want, ref _yawFollowVel, 0.22f, 280f, dt);
+                }
+            }
             else if (combat)
             {
                 // ===== 战斗机位（此前是全片最粗糙的一段，现与探索共用同一套稳定设施）=====
@@ -1243,7 +1297,27 @@ namespace AdversityRoad.Player
                 // 这不会造成"卡一下"——_yaw 停住之后，渲染用的 _curYaw 还要经
                 // rotationSmoothTime(0.11s) 的临界阻尼追上来，那 4~5° 的收尾
                 // 是纯粹的减速曲线，读作"镜头稳稳停住"，不是一次运镜决定。
-                bool followWant = !manualRecently && (_combatReorient || gentle);
+                // ===== 转向归位（settle）：本轮补上的一条————"转过身，镜头就跟到正前方" =====
+                //
+                // 之前跟随只有两条入口：大幅换向的锁存（>45~70°）和 gentle。
+                // 而 gentle 要求 active＝**手指还推着摇杆且人确实在移动**。
+                // 于是最常见的那种转向——站定后转身、或者走到位停下再改朝向——
+                // 一条都不满足：镜头纹丝不动，玩家的脸朝着新方向，画面还停在旧方向，
+                // 前方有什么完全看不到。玩家反复反馈的"转向时镜头没跟上脸朝的方向"
+                // 说的就是这个缺口。
+                //
+                // 补法很朴素：**手不在右摇杆上 + 朝向已经稳住 + 偏差还大** ⇒ 缓缓归位。
+                // 不要求在移动，因为"我转过身"本身就已经表达了"我要看那边"。
+                // 三条克制保证它不会变成"镜头老在自己动"：
+                //   · 要等朝向稳定 0.4 秒（转身途中不动，转完才动，绝不追着抖动跑）；
+                //   · 有回差（进 16°、出 7°），到位就停，不在死区边缘来回蹭；
+                //   · 玩家一碰右摇杆立刻让位（manualRecently）。
+                if (!manualRecently && _headingHoldT > SettleHold &&
+                    err > (_settleLatch ? SettleExit : SettleEnter))
+                    _settleLatch = true;
+                else if (err < SettleExit || manualRecently) _settleLatch = false;
+
+                bool followWant = !manualRecently && (_combatReorient || gentle || _settleLatch);
                 float driveT = followWant ? 0.18f : 0.06f;
                 _followDrive = Mathf.SmoothDamp(_followDrive, followWant ? 1f : 0f,
                     ref _followDriveVel, driveT, Mathf.Infinity, dt);
@@ -1254,9 +1328,13 @@ namespace AdversityRoad.Player
                 bool enemyNet = !manualRecently && enemyLost;
                 if (_followDrive > 0.02f || enemyNet)
                 {
+                    // 归位专用的死区：常规跟随的死区（开阔 18°、交战 30°）是**抗抖**用的，
+                    // 拿它当归位的目标精度就会停在十几度的偏差上——归了个寂寞。
+                    // 归位模式下换成 SettleExit(7°)，真的把正前方摆到画面正中。
+                    float driveDz = (_settleLatch && !gentle && !_combatReorient) ? SettleExit : dz;
                     // 0°→180° 连续映射：平滑时间 0.5s→0.15s、转速上限 70→340°/s。
                     // 小幅修正依旧慢而稳（防抖），大角度掉头迅速跟上（防盲区）。
-                    float t = Mathf.Clamp01((err - dz) / 130f);
+                    float t = Mathf.Clamp01((err - driveDz) / 130f);
                     float smoothT = Mathf.Lerp(exploreTurnSmoothTime, 0.15f, t)
                                     / Mathf.Max(0.3f, calmSpd);
                     // 「偏差越大转越快」这条升速曲线（最高 4×）**是为了压盲区时长而设的**，
@@ -1355,7 +1433,7 @@ namespace AdversityRoad.Player
                     }
 
                     // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
-                    float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, dz);
+                    float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, driveDz);
                     _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
                 }
@@ -1443,6 +1521,15 @@ namespace AdversityRoad.Player
             float targetPivotY = target.position.y + _pivotH;
             // 锁定时取景点偏向玩家↔敌人中点，让两人同时居中（近身仍以玩家为主，不贴边）
             Vector2 focusXZ = new Vector2(target.position.x, target.position.z);
+            // 绝招特写：取景点朝施展者推过去（最多推到两人中点偏敌人一侧），
+            // 玩家仍留在画面里——要防的是"看不清它"，不是"看不见自己"。
+            if (_focusBlend > 0.01f && _focusWho != null)
+            {
+                Vector2 castXZ = new Vector2(_focusWho.position.x, _focusWho.position.z);
+                focusXZ = Vector2.Lerp(focusXZ, Vector2.Lerp(focusXZ, castXZ, 0.62f), _focusBlend);
+                targetPivotY = Mathf.Lerp(targetPivotY,
+                    _focusWho.position.y + _pivotH + 0.35f, _focusBlend * 0.5f);
+            }
             if (lockTarget != null)
             {
                 Vector2 enemyXZ = new Vector2(lockTarget.position.x, lockTarget.position.z);

@@ -142,6 +142,8 @@ namespace AdversityRoad.AI
         IEnumerator JudgmentShockwave()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "审判冲击波", "冲出红圈范围——站在它脚下必中");
             var ring = MakeWarnRing(transform.position, shockRadius, new Color(0.9f, 0.35f, 0.15f));
             if (_ec.dialogue != null) _ec.dialogue.Show("全场肃静——审判！", 1.6f);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.6f);
@@ -181,6 +183,8 @@ namespace AdversityRoad.AI
         IEnumerator DenialSlam()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "自我否定重锤", "看准脚下红圈翻滚离开落点");
             Vector3 spot = _player.position;
             var ring = MakeWarnRing(spot, slamRadius, new Color(0.9f, 0.2f, 0.15f));
             if (_ec.dialogue != null) _ec.dialogue.Show("否定重锤——你什么都做不好！", 1.4f);

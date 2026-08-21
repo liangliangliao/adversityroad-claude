@@ -611,6 +611,46 @@ namespace AdversityRoad.Combat
             if (cam != null) cam.UltimateShot(duration);
         }
 
+        /// <summary>
+        /// Boss 绝招特写（各 Boss 的机制技共用这一个入口）。
+        /// 名字前自动冠上 Boss 的称号，于是横幅永远是"谁 · 什么招 — 怎么应对"。
+        /// </summary>
+        public static void BossUltimate(AI.EnemyController ec, string moveName, string answer,
+            float duration = 1.1f)
+        {
+            if (ec == null || ec.State == AI.EnemyState.Dead) return;
+            string who = ec.profile != null ? ec.profile.displayName : "";
+            EnemyCastShot(ec.transform, duration,
+                string.IsNullOrEmpty(who) ? moveName : who + " · " + moveName, answer);
+        }
+
+        /// <summary>
+        /// 敌方绝招特写：把施展者框进画面 + 报出招名与应对答案。
+        ///
+        /// 这是给玩家的**防守信息**，不是给敌人的排场：所以
+        ///   · 不锁操作、不停时间（只在起手一瞬给一格极短的时缓作为"注意"提示）；
+        ///   · 横幅里带上应对答案（挡 / 侧移 / 跳 / 闪），看见的同时就知道该做什么；
+        ///   · 时长不超过前摇本身——特写结束的那一刻正好是它出手的那一刻。
+        /// </summary>
+        static float _lastCastShot = -99f;
+
+        public static void EnemyCastShot(Transform caster, float duration,
+            string moveName, string answer = null)
+        {
+            // 全局节流：多个 Boss 机制技/精英红光挤在一起时，连续推镜会把战场推没了。
+            // 5 秒一次已经足够"每个大招都被看见"，又不会让镜头一直在演出。
+            if (Time.unscaledTime - _lastCastShot < 5f) return;
+            _lastCastShot = Time.unscaledTime;
+
+            var cam = Object.FindFirstObjectByType<ThirdPersonCamera>();
+            if (cam != null) cam.FocusOn(caster, duration);
+            if (!string.IsNullOrEmpty(moveName))
+                Core.GameEvents.RaiseSkillBanner(moveName +
+                    (string.IsNullOrEmpty(answer) ? "" : "　—　" + answer));
+            SlowMo(0.62f, 0.16f);   // 一格"注意"：短到不影响操作，长到能被看见
+            Core.GameAudio.Play(Core.GameAudio.Sfx.Alert, 0.9f, 0.3f);
+        }
+
         // ---------- 挥击剑气 ----------
 
         /// <summary>剑气（弧月刃气）：程序化新月弧网格，双层（亮芯+柔光晕）叠加加色发光，

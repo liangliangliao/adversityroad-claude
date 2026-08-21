@@ -499,6 +499,10 @@ namespace AdversityRoad.Player
             float inputMag = stickInput.magnitude;            // 摇杆已在本帧开头统一读取
             Vector3 moveDir = stickDir;
 
+            // 交战锁面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
+            Transform face = FacingTarget();
+            StrafeActive = face != null;
+
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
@@ -511,6 +515,14 @@ namespace AdversityRoad.Player
             // 走速正好等于履带速度，不许跑等于那台机器是坏的。
             if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
+            // 横移/后撤要慢下来：没有人能侧着或倒着跑出正面冲刺的速度，
+            // 而且这也是格斗节奏的一部分——"绕圈找角度"应当是有代价的移动，
+            // 不该比正面突进还快。正前 1.0 → 横跨 0.78 → 后撤 0.6。
+            if (face != null && moveDir.sqrMagnitude > 0.01f)
+            {
+                float a = Mathf.Abs(Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
+                speed *= a < 60f ? 1f : Mathf.Lerp(0.78f, 0.6f, Mathf.Clamp01((a - 60f) / 120f));
+            }
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
             // 从全速骤降到 10%、收招again骤升回全速，配合已提速的加减速就是一顿一顿的
@@ -595,8 +607,26 @@ namespace AdversityRoad.Player
             FallGuard();                // 掉出世界的兜底捞回
             _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
 
-            // 快速灵活转身：目标夹角越大转得越快
-            if (moveDir.sqrMagnitude > 0.01f)
+            // ===== 朝向：交战时【脸对着敌人】，移动方向由摇杆决定（横移/后撤/绕行）=====
+            //
+            // 这是本轮补上的一条基础能力。之前只有一条规则——"朝哪走就转向哪"，
+            // 于是想往左移动就必须先把身体转到左边：那是**转向**，不是横移。
+            // 一切近身格斗类游戏都把这两件事分开：锁定/交战时身体始终对着目标，
+            // 摇杆推左就左跨、推后就后撤、斜后就是撤步绕角，脸从头到尾没离开敌人。
+            // 只有脱离交战（探索行进）才回到"朝哪走就朝哪转"。
+            if (face != null)
+            {
+                Vector3 toT = face.position - transform.position; toT.y = 0;
+                if (toT.sqrMagnitude > 0.04f)
+                {
+                    Quaternion look = Quaternion.LookRotation(toT.normalized);
+                    // 对目标的朝向跟随要快而稳：敌人绕到侧面时脸要跟着转，
+                    // 但不允许一帧甩过去（那会把画面也一起甩）。
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, look,
+                        (attacking ? AttackSteerDegPerSec : FaceTargetDegPerSec) * dt);
+                }
+            }
+            else if (moveDir.sqrMagnitude > 0.01f)
             {
                 Quaternion target = Quaternion.LookRotation(moveDir);
                 if (attacking)
@@ -615,6 +645,53 @@ namespace AdversityRoad.Player
                 }
             }
         }
+
+        /// <summary>交战中锁面向的角速度上限（度/秒）：跟得住绕后，又不会甩镜。</summary>
+        const float FaceTargetDegPerSec = 420f;
+
+        /// <summary>横移态（脸锁在目标上、移动方向独立）——镜头与动画都要知道。</summary>
+        public bool StrafeActive { get; private set; }
+
+        /// <summary>
+        /// 当前该锁面向谁：
+        ///   ① 手动锁定的目标最优先（玩家明确说了"盯它"）；
+        ///   ② 没锁定时，交战中且有敌人贴近（≤7m）也锁面向——
+        ///      近身互殴时把背露给对方从来不是玩家的本意，而是"必须转身才能走"逼出来的。
+        /// 脱战即解除，探索时回到"朝哪走朝哪转"。
+        /// </summary>
+        Transform FacingTarget()
+        {
+            if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
+            if (_lockOn != null && _lockOn.CurrentTarget != null) return _lockOn.CurrentTarget;
+            if (_combat == null || !_combat.InCombat) return null;
+
+            // 找最近敌人每帧全场扫一遍太贵：0.2 秒刷一次，中间沿用上次结果
+            //（0.2 秒内敌人跑不出"贴近"与"没贴近"的区别）
+            if (Time.time >= _faceScanAt)
+            {
+                _faceScanAt = Time.time + 0.2f;
+                Transform best = null; float bestD = 7f;
+                foreach (var e in FindObjectsOfType<AI.EnemyController>())
+                {
+                    if (e == null || e.State == AI.EnemyState.Dead) continue;
+                    float d = Vector3.Distance(transform.position, e.transform.position);
+                    if (d < bestD) { bestD = d; best = e.transform; }
+                }
+                _faceCache = best;
+            }
+            // 缓存的目标可能已经死了/远离：用之前再校一次，免得脸锁在一具尸体上
+            if (_faceCache != null)
+            {
+                var ec = _faceCache.GetComponent<AI.EnemyController>();
+                if (ec == null || ec.State == AI.EnemyState.Dead ||
+                    Vector3.Distance(transform.position, _faceCache.position) > 9f)
+                    _faceCache = null;
+            }
+            return _faceCache;
+        }
+
+        Transform _faceCache;
+        float _faceScanAt;
 
         // ---- 出招转向影响（大作 attack steering）速率表（度/秒）----
         const float AttackSteerDegPerSec = 150f;   // 轻击连段：顺杆引导连招方向
@@ -654,7 +731,13 @@ namespace AdversityRoad.Player
             planar.y = 0;
             float actual = planar.magnitude / dt;
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
-            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual);
+            // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
+            // 动画层据此做上下半身分离与倒放（见 HumanoidAnimator 的横移注释）——
+            // 没有这个角度，横移就只会播"向前走"，读作脚下打滑。
+            float moveAngle = 0f;
+            if (planar.sqrMagnitude > 1e-6f)
+                moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
             // 敌人在远处/无敌人时用普通待机（不再一有敌人在场就一直端着架势）
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();

@@ -134,6 +134,8 @@ namespace AdversityRoad.AI
         IEnumerator IdentityFreeze()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "身份冻结", "被冻住就点「五分钟火种」——行动打破冻结");
             if (_ec.dialogue != null) _ec.dialogue.Show("别动了——留在过去，多安全。", 1.8f);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.6f);
 
