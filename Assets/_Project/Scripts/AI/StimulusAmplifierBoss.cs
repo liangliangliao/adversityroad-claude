@@ -65,6 +65,8 @@ namespace AdversityRoad.AI
         IEnumerator NoiseBlast()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "噪声爆发", "退出范围；来不及就格挡减伤");
             if (_ec.dialogue != null)
                 _ec.dialogue.Show(Random.value < 0.5f ? "听——他们都在议论你！" : "这声咳嗽，就是冲你来的！", 2f);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.7f);

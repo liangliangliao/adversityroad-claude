@@ -196,6 +196,8 @@ namespace AdversityRoad.AI
         IEnumerator HeadlightGlare()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "车灯眩光", "背过身/侧移让开光锥");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "GlareWarnRing";

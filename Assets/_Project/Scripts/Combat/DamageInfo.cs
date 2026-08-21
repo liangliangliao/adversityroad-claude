@@ -16,5 +16,6 @@ namespace AdversityRoad.Combat
         public string attackerId;
         public bool isMentalOnly;         // 纯心理攻击（凝视、低语）不触发受击动画
         public bool unblockable;          // 必中：无法被格挡/闪避/对攻化解（蓄力技）
+        public BodyPart bodyPart;         // 打中了哪个部位（由受击框落款，决定伤害/削韧倍率）
     }
 }

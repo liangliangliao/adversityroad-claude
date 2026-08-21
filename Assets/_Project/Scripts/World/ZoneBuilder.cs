@@ -282,35 +282,50 @@ namespace AdversityRoad.World
         }
 
         /// <summary>
-        /// 补灯：24 个区域里只有 6 个手工摆了路灯（街道/求职荒原/广场/挑衅路口/饥饿荒巷等），
-        /// 其余 18 个——包括截图里的小题大做审判庭——**一盏灯都没有**。
-        /// 夜里只剩环境光与一盏斜射主光，地面和墙面就糊成一片黑。
+        /// 补灯：24 个区域里只有 6 个手工摆了路灯，其余 18 个——包括拖延沼泽之后
+        /// 的一整串关卡——照明全靠两三盏 range 很大但强度写死 1.0 的顶灯，
+        /// 夜里等于没有。玩家反馈的"拖延线之后的场景都太黑、看不清人和物"就是这个。
         ///
-        /// 与其在十八个建场函数里逐个手摆，不如统一补一遍：凡是自身半径 60m 内
-        /// 没有任何灯的区域，围着它的出生点补一圈四盏。已经手工布过灯的区域
-        /// （灯就在附近）自动跳过，不会叠加。
+        /// 【判据从"附近有没有灯"换成"这块地到底亮不亮"】
+        /// 旧版只看 60 米内有没有登记在册的路灯，于是：
+        ///   ① 顶灯不登记在 lamps 里 → 有顶灯的关卡照样被补一圈路灯（白补）；
+        ///   ② 有一盏很弱的灯 → 判定"有灯"直接跳过（该补的没补）。
+        /// 两种错法方向相反，共同点是**都没有真的量过亮度**。
+        /// 现在按网格采样实际照度，暗的格子才补灯——这是可验证的，不靠猜。
         /// </summary>
         static void EnsureZoneLighting(WorldContext ctx)
         {
             if (ctx.dayNight == null || ctx.playerSpawns == null) return;
+            Physics.SyncTransforms();   // 刚建好的墙/屋顶要先同步，否则下面的探顶射线打空
+            int total = 0;
             for (int z = 0; z < ctx.playerSpawns.Length; z++)
             {
                 Vector3 c = ctx.playerSpawns[z];
                 c.y = 0f;
-                bool hasLamp = false;
-                foreach (var l in ctx.dayNight.lamps)
+                // 每区以出生点为中心审一片 60×60（覆盖战场与主要动线）
+                total += SceneLighting.EnsureLit(c, 30f, p =>
                 {
-                    if (l == null) continue;
-                    Vector3 lp = l.transform.position; lp.y = 0f;
-                    if ((lp - c).sqrMagnitude < 60f * 60f) { hasLamp = true; break; }
-                }
-                if (hasLamp) continue;
-                // 出生点四周一圈（错开正前方，免得挡住玩家出门的视线）
-                Lamp(ctx, c + new Vector3(-11f, 0, 6f));
-                Lamp(ctx, c + new Vector3(11f, 0, 6f));
-                Lamp(ctx, c + new Vector3(-13f, 0, 26f));
-                Lamp(ctx, c + new Vector3(13f, 0, 26f));
+                    // 出生点跟前 6 米内不补：灯柱正好糊住出门那一眼
+                    if ((p - c).sqrMagnitude < 36f) return false;
+                    // 【室内 / 露天要用不同的灯】
+                    // 头顶有屋顶的地方补的是**常亮吊灯**：那儿一天到晚都晒不到太阳，
+                    // 补一盏"天黑才亮"的路灯等于白天照样黑（审判庭/走廊/图书馆全是这种）。
+                    // 露天才补路灯，交给昼夜循环开关。
+                    if (Physics.Raycast(p + Vector3.up * 1.5f, Vector3.up,
+                            out RaycastHit roof, 22f, ~0, QueryTriggerInteraction.Ignore))
+                    {
+                        AddCeilingLight(new Vector3(p.x, roof.point.y - 0.6f, p.z),
+                            new Color(0.95f, 0.93f, 0.88f), 26f);
+                        return true;
+                    }
+                    // 露天才立灯柱；被墙/家具占住的位置跳过（灯柱插进墙里比暗更难看）
+                    if (Physics.CheckSphere(p + Vector3.up * 1.6f, 0.7f, ~0,
+                            QueryTriggerInteraction.Ignore)) return false;
+                    Lamp(ctx, p);
+                    return true;
+                }, cell: 15f, minLux: 0.35f, maxLamps: 8);
             }
+            if (total > 0) Debug.Log("[ZoneBuilder] 照明审计补灯 " + total + " 盏");
         }
 
         // ================= 第一区：独居小屋（室内） =================
@@ -2239,13 +2254,9 @@ namespace AdversityRoad.World
 
         public static void AddCeilingLight(Vector3 pos, Color color, float range)
         {
-            var go = new GameObject("Court_Light");
-            go.transform.position = pos;
-            var l = go.AddComponent<Light>();
-            l.type = LightType.Point;
-            l.range = range;
-            l.intensity = 1.0f;
-            l.color = color;
+            // 强度不再是写死的 1.0：range=40 的顶灯配 intensity=1，10 米外照度只有 1/100，
+            // 摆了等于没摆——"拖延线之后的关卡一片黑"最直接的成因。统一走照明口径换算。
+            SceneLighting.MakePoint("Court_Light", pos, color, range);
         }
 
         /// <summary>责任天平托盘（作为天平根的子物件，便于回正动画）。</summary>
@@ -2609,13 +2620,10 @@ namespace AdversityRoad.World
             head.transform.localScale = new Vector3(0.5f, 0.3f, 0.5f);
             Paint(ctx, head, new Color(0.45f, 0.45f, 0.4f));
 
-            var lightGo = new GameObject("LampLight");
-            lightGo.transform.position = basePos + new Vector3(0, 3.6f, 0);
-            var l = lightGo.AddComponent<Light>();
-            l.type = LightType.Point;
-            l.range = 13;
-            l.intensity = 1.3f;
-            l.color = new Color(1f, 0.85f, 0.55f);
+            // 路灯：range 13→20、强度按照明口径换算（≈3.4）。原来的 1.3/13m 在夜里
+            // 只能照亮灯柱脚下两三米，走出去就是全黑——那不叫路灯，叫地灯。
+            var l = SceneLighting.MakePoint("LampLight",
+                basePos + new Vector3(0, 3.6f, 0), new Color(1f, 0.88f, 0.6f), 20f);
             l.enabled = false; // 由昼夜循环开关
 
             if (ctx.dayNight != null)

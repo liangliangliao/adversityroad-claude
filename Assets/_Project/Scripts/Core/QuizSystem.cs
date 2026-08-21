@@ -62,8 +62,20 @@ namespace AdversityRoad.Core
     /// </summary>
     public static class QuizSystem
     {
-        public const float PositiveLowRatio = 0.40f;   // 正向能量触发阈值
-        public const float NegativeHighRatio = 0.70f;  // 负向能量触发阈值
+        public const float PositiveLowRatio = 0.40f;   // 正向能量【失衡】阈值（抽题加权用，不是触发条件）
+        public const float NegativeHighRatio = 0.70f;  // 负向能量【失衡】阈值（同上）
+
+        /// <summary>
+        /// 【全项目唯一的休整触发线】生命值低于 30% 才自动提示休整答题。
+        ///
+        /// 之前有两套并行的规则：这里按"任一心理能量失衡"每帧轮询自动开面板，
+        /// 而 VitalAlertController 另有一条 生命&lt;30% 的弹窗。两者互不知情，于是
+        /// 同一件事在不同关卡表现完全不同——有的关刚开打就弹题（某条能量本来就低），
+        /// 有的关打到快死才弹。玩家看到的就是"某些场景的开启规则不一致"。
+        /// 现在收敛成一条：**生命 &lt; 30%**。心理能量失衡不再触发，只参与抽题加权
+        /// （失衡的那条轴优先出题）——它本来就该是"考什么"，不是"什么时候考"。
+        /// </summary>
+        public const float RestPromptHpRatio = 0.30f;
         public const float RestorePerCorrect = 20f;    // 每答对一题的能量结算量
         public const int QuestionsPerSession = 5;      // 每次休养生息的题数
         public const float PostQuizShieldSeconds = 2f; // 答题结束后的心理免伤窗口
@@ -135,13 +147,19 @@ namespace AdversityRoad.Core
         // ===================== 触发判定 =====================
 
         /// <summary>
-        /// 是否达到休养生息触发条件：任一正向心理能量低于 40%，或任一负向能量高于 70%。
-        /// 体力天然随翻滚/攻击频繁跌破 40%，生命另有倒下流程——两者参与结算与抽题加权，
-        /// 但不作为触发源，避免答题面板在正常战斗节奏中反复打断。
+        /// 是否达到休养生息触发条件——**唯一判据：生命值低于 30%**（见 RestPromptHpRatio）。
+        /// 任何场景、任何关卡、战斗内外都是这一条，不再有第二套规则。
         /// </summary>
         public static bool NeedsRecovery(PlayerStats s)
         {
             if (s == null || s.IsDead) return false;
+            return Ratio(s.hp, s.maxHp) < RestPromptHpRatio;
+        }
+
+        /// <summary>心理能量是否失衡（只用于抽题加权与提示文案，不作为触发条件）。</summary>
+        public static bool HasImbalance(PlayerStats s)
+        {
+            if (s == null) return false;
             return Ratio(s.will, s.maxWill) < PositiveLowRatio
                 || Ratio(s.focus, s.maxFocus) < PositiveLowRatio
                 || Ratio(s.selfWorth, s.maxSelfWorth) < PositiveLowRatio

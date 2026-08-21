@@ -67,6 +67,8 @@ namespace AdversityRoad.AI
         IEnumerator ForgetFog()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "遗忘之雾", "跑出雾圈——留在里面会丢目标与行动力");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "FogWarnRing";
@@ -298,6 +300,8 @@ namespace AdversityRoad.AI
         IEnumerator DemandBlast()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "索取冲击", "举盾格挡＝明确拒绝，这一下必须挡");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "DemandWarnRing";

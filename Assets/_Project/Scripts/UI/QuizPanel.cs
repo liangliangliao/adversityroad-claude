@@ -42,7 +42,6 @@ namespace AdversityRoad.UI
         float _savedTimeScale = 1f;
 
         Player.PlayerController _player;
-        CombatStateMachine _combat;
 
         public bool Active => _panel != null && _panel.activeSelf;
 
@@ -136,13 +135,15 @@ namespace AdversityRoad.UI
 
             if (_player == null) _player = FindObjectOfType<Player.PlayerController>();
             if (_player == null) return;
-            if (_combat == null) _combat = _player.GetComponent<CombatStateMachine>();
 
             var stats = _player.Stats;
             if (stats == null || stats.IsDead) return;
-            if (_combat == null || !_combat.InCombat) return; // 「暂停战斗」——只在临战中触发
             var vd = VerbalDefenseController.Instance;
             if (vd != null && vd.IsActive) return;            // 言语攻防进行中不抢屏
+            // 【只有一套规则】休整由 VitalAlertController 的「生命 < 30%」弹窗统一发起
+            //（先问玩家、再开面板，而不是直接抢屏）。这里只在那个弹窗不存在的场合兜底，
+            // 保证任何场景都至少有一条一致的触发路径，而不是两套规则各弹各的。
+            if (VitalAlertController.Instance != null) return;
             if (!QuizSystem.NeedsRecovery(stats)) return;
 
             OpenAuto(stats);

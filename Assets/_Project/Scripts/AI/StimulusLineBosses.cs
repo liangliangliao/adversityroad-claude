@@ -116,6 +116,8 @@ namespace AdversityRoad.AI
         IEnumerator GazeSweep()
         {
             _busy = true;
+            // 绝招特写：把施展者框进画面并报出招名与应对（玩家看得见才防得住）
+            CombatFeedback.BossUltimate(_ec, "万目扫射", "绕到侧后方——正面扫不掉");
             var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             Destroy(ring.GetComponent<Collider>());
             ring.name = "GazeWarnRing";

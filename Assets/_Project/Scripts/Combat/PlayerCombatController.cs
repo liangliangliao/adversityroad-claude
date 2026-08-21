@@ -183,6 +183,8 @@ namespace AdversityRoad.Combat
         int _momentum;
         bool _critNext;
         float _lastPerfect;
+        float _legHurtUntil;   // 腿部被击中：短时间移动变慢（打腿＝打机动力，攻防对称）
+        float _lastHeadHintT = -99f;   // 要害命中提示的节流（同一条教学不重复刷屏）
 
         // 连段伤害衰减（大作防无限连 cheese）：连续命中数越高，后续伤害温和递减；
         // 停手约 1.5s 或断连即复位。正常 4—5 段连招几乎不受影响，只压制长时间锁血连打。
@@ -226,6 +228,12 @@ namespace AdversityRoad.Combat
             float dt = Time.deltaTime;
             if (_parryTimer > 0) _parryTimer -= dt;
             if (_specialCd > 0) _specialCd -= dt;
+            // 腿伤到期：解除减速（只撤自己登记的那一条，见 PlayerController.ClearSlow）
+            if (_legHurtUntil > 0f && Time.time >= _legHurtUntil)
+            {
+                _legHurtUntil = 0f;
+                _player.ClearSlow(this);
+            }
             // 融合链自然过期 → 复位播报等级，下一串重新从头累积
             if (Fusion.Length == 0) _lastFusionVariety = 0;
             if (_cc.isGrounded) _airActs = 0;   // 落地重置空中连段额度
@@ -1584,11 +1592,19 @@ namespace AdversityRoad.Combat
                 if (from.sqrMagnitude > 1e-6f) GameEvents.RaisePlayerHurtFrom(from);
             }
 
+            // ---- 被打中的部位（玩家侧与敌人侧走同一张表，规则对称、可学习）----
+            // 玩家的要害倍率比敌人宽容（头 ×1.5 对 ×2.0）：同一条规则学得会，
+            // 但不会因为被一记看不见的横斩擦到头就掉半管血。见 BodyPartTable。
+            var hitPart = dmg.bodyPart;
+            if (hitPart == BodyPart.None && dmg.hasContact)
+                hitPart = BodyPartTable.FromHeight(dmg.contactPoint.y - transform.position.y);
+            var partProf = BodyPartTable.Get(hitPart, true);
+
             if (dmg.mentalDamage > 0)
             {
                 float mult = GameManager.Instance != null && GameManager.Instance.safety != null
                     ? GameManager.Instance.safety.MentalDamageMultiplier() : 1f;
-                float mental = dmg.mentalDamage * mult;
+                float mental = dmg.mentalDamage * mult * partProf.mental;
                 // 姿态减伤：把姿态切到与来袭弱点轴匹配的一档，可大幅削减这次心理伤害
                 if (_stance != null) mental *= _stance.IncomingMentalMult(dmg.mentalAxis);
 
@@ -1627,7 +1643,7 @@ namespace AdversityRoad.Combat
 
             if (dmg.physicalDamage > 0)
             {
-                float phys = dmg.physicalDamage;
+                float phys = dmg.physicalDamage * partProf.damage;
                 // 敌方偷袭：从背后被打 = 趁其不备，1.4 倍伤害且格挡无效（格挡只护正面）
                 // 背刺判定收窄：原来 Dot>0.35 等于把身后 138° 的整个扇区都算背刺，
                 // 被围住时总有一个敌人落在里面——玩家举着盾却一直"挡不住"，
@@ -1714,8 +1730,31 @@ namespace AdversityRoad.Combat
                     : phys >= knockdownThreshold ? Core.GameAudio.Sfx.HeavyHit
                     : Core.GameAudio.Sfx.Hurt);
                 CombatFeedback.HitFlash(gameObject);
+                // 部位后果（玩家侧同样兑现，规则才是对称的）：
+                //   · 腿被扫中 → 短时间跑不快（打腿＝打机动力）；
+                //   · 头被打中 → 要害提示 + 更强的镜头颠簸（"这一下打在要害上"要看得见）。
+                if (phys > 0.5f && !blocked)
+                {
+                    if (BodyPartTable.IsLeg(hitPart))
+                    {
+                        _player.SetSlow(this, 0.7f);
+                        _legHurtUntil = Time.time + 2f;
+                    }
+                    if (partProf.critical)
+                    {
+                        // 要害命中：额外一格卡肉（本作明确不震屏，分量交给顿帧与文字）
+                        CombatFeedback.HitStop(0.07f);
+                        // 提示要节制：同一条教学讲一遍就够了，8 秒内不重复
+                        if (Time.time - _lastHeadHintT > 8f)
+                        {
+                            _lastHeadHintT = Time.time;
+                            GameEvents.RaiseSubtitle("要害被击中——格挡护正面上段，低身可让开横扫。");
+                        }
+                    }
+                }
                 CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(phys).ToString(),
-                    new Color(1f, 0.35f, 0.3f));
+                    partProf.critical ? new Color(1f, 0.55f, 0.2f) : new Color(1f, 0.35f, 0.3f),
+                    partProf.critical ? 1.35f : 1f);
                 Vector3 toSrc = dmg.sourcePosition - transform.position; toSrc.y = 0;
                 Vector3 dirS = toSrc.sqrMagnitude > 0.01f ? toSrc.normalized : transform.forward;
                 // 优先用判定框算出的真实接触身体点，退回估算

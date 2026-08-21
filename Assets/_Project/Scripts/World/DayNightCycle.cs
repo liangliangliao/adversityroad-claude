@@ -21,11 +21,21 @@ namespace AdversityRoad.World
         // 夜晚保底亮度再上调（实测截图：黄昏/夜间的地面与建筑几乎全黑，只剩天空有色）。
         // 0.30 的环境光在 URP 下配合 0.14 的主光，物体表面照度不足 0.2，手机屏幕上
         // 就是一片糊黑。抬到 0.42 并给一点冷蓝色，暗调仍在，但地面/墙面能分辨出层次。
-        static readonly Color NightAmbient = new Color(0.42f, 0.44f, 0.55f);
+        static readonly Color NightAmbient = new Color(0.46f, 0.48f, 0.58f);
+
+        /// <summary>室内/有顶关卡的照明保底：这些地方晒不到太阳，白天照样黑。
+        /// 每 0.5 秒探一次镜头头顶有没有遮挡，有就把环境光抬到夜间保底之上，
+        /// 让"拖延线之后那一串走廊/大厅/审判庭"在任何时段都看得清人和物。</summary>
+        static readonly Color IndoorAmbient = new Color(0.54f, 0.55f, 0.62f);
+        float _nextRoofProbe;
+        float _indoorBlend;
         static readonly Color DaySun = new Color(1f, 0.96f, 0.9f);
         static readonly Color DuskSun = new Color(1f, 0.55f, 0.3f);
 
         bool _lampsOn;
+        bool _roofed;
+
+        static float Luma(Color c) => c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
 
         void Update()
         {
@@ -42,7 +52,23 @@ namespace AdversityRoad.World
                 sun.color = Color.Lerp(DuskSun, DaySun, Mathf.Clamp01(dayFactor * 2f));
             }
 
-            RenderSettings.ambientLight = Color.Lerp(NightAmbient, DayAmbient, dayFactor);
+            // 有顶判定（0.5 秒一次，开销可忽略）：镜头头顶 25 米内有实体＝在室内/有顶结构下
+            if (Time.time >= _nextRoofProbe)
+            {
+                _nextRoofProbe = Time.time + 0.5f;
+                var cam = Camera.main;
+                bool roofed = cam != null && Physics.Raycast(
+                    cam.transform.position, Vector3.up, 25f, ~0, QueryTriggerInteraction.Ignore);
+                _roofed = roofed;
+            }
+            _indoorBlend = Mathf.MoveTowards(_indoorBlend, _roofed ? 1f : 0f, Time.deltaTime / 0.8f);
+
+            Color ambient = Color.Lerp(NightAmbient, DayAmbient, dayFactor);
+            // 室内保底：只抬不压——室内环境光比当前昼夜值亮时才混过去，
+            // 免得大白天走进屋里反而变暗（那正是现在这串关卡的观感）。
+            if (_indoorBlend > 0.001f && Luma(IndoorAmbient) > Luma(ambient))
+                ambient = Color.Lerp(ambient, IndoorAmbient, _indoorBlend);
+            RenderSettings.ambientLight = ambient;
 
             // 镜头补光随昼夜收放：白天足量补光去除迎镜脸部阴影；夜晚收到很低，
             // 保留夜的暗调氛围（不把整片场景照成平光白昼）。
@@ -50,7 +76,9 @@ namespace AdversityRoad.World
             // 补光是照亮"迎着镜头那一面"的，玩家角色永远迎镜——它塌到 0.12 时，
             // 主光又在身后，角色正面就没有任何光源，看上去像蒙了一层灰。
             if (cameraFill != null)
-                cameraFill.intensity = Mathf.Lerp(0.34f, cameraFillDay, dayFactor);
+                cameraFill.intensity = Mathf.Max(
+                    Mathf.Lerp(0.34f, cameraFillDay, dayFactor),
+                    _indoorBlend * 0.5f);   // 室内：补光不得低于 0.5，迎镜的脸不能是一团黑
 
             // 距离雾：极淡，只作远景层次，不遮挡视野（可看清整片区域与远方建筑）。
             // 雾色改为跟随"当前所在区域"的专属色彩脚本——沼泽偏绿、断桥幽蓝、
