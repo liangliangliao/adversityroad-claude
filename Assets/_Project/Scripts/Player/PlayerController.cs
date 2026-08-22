@@ -889,7 +889,10 @@ namespace AdversityRoad.Player
             float yaw = transform.eulerAngles.y;
             float dYaw = Mathf.DeltaAngle(_yawPrev, yaw);
             _yawPrev = yaw;
-            if (speed01 < 0.06f && Mathf.Abs(dYaw) > 3f)
+            // 锁定目标时不做原地转身：那时身体是被目标持续牵着转的，
+            // 插一段"转身 90°"的片段会和这份持续朝向打架，看上去像抽搐。
+            // 原地转身是自由移动时的动作——大作里也是这么分的。
+            if (!StrafeActive && speed01 < 0.06f && Mathf.Abs(dYaw) > 3f)
             {
                 _turnAccum += dYaw;
                 if (_moveStateCd <= 0f && Mathf.Abs(_turnAccum) > 70f)
