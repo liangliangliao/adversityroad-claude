@@ -205,6 +205,256 @@ C 键蹲伏改了碰撞体与移速，但动捕模式下播的还是站立的走
    构建日志里能直接核对（搜 `[CIDIAG][移动]`）。所以斜向片段是左是右无所谓，
    放进去它自己会找到位置。
 
+## 一·补三之二、移动之外的动作缺口（战斗 / 受击 / 演出 / NPC）
+
+上一节只盘了移动。这一节盘其余全部动画消费方。**最值得注意的一类是
+"逻辑已经写好、动画没跟上"** —— 机制在跑，玩家却看不出来。
+
+### A. 招式片段被反复复用（剑技尤其严重）
+
+剑技只有 5 条（Slash、Slash (1)、High Spin、Jump Attack、Stabbing），
+却要撑起 8 个剑类招式 + 五大连招 + 超必杀。实际复用情况：
+
+| 片段 | 被几个招式共用 |
+| --- | --- |
+| `Great Sword Jump Attack` | **3**（重击 HeavyAttack / 跃劈 AttackLeap / 空中下劈 JumpAttack） |
+| `Great Sword High Spin Attack` | **3**（重击候补 / 上挑候补 / 旋风斩） |
+| `Spin Flip Kick` | 2（后旋踢 / 扫堂腿候补） |
+
+也就是说玩家眼里的"重击""跃劈""空中下劈"**是同一个动作**。
+> 需要：`Great Sword Slash 2/3`（横斩变体，连段第二三段用）、
+> `Great Sword Overhead Strike`（真正的上段重劈，把 HeavyAttack 从跳劈里解放出来）、
+> `Great Sword Impact`（打空/被格挡的收招）、`Sword And Shield Slash` 等
+
+### B. 受击表现只有一条
+
+`Hit Reaction` 一条撑全部——**不分方向、不分轻重、不分部位**。
+而代码里部位系统（头/躯干/四肢）和轻重击判定**都已经做好了**，
+动画却给不出区别，玩家因此感受不到"打中了哪儿"。
+死亡也只有 `Dying` 一条，所有敌人所有死法都一样。
+> 需要：`Hit Reaction`（左/右/后向各一条）、`Head Hit`、`Stomach Hit`、
+> `Big Hit To Head`（重击）、`Death From Front/Back`、`Falling Back Death`
+
+### C. 防御链缺三个关键动作
+
+| 机制 | 代码状态 | 动画状态 |
+| --- | --- | --- |
+| 精准格挡 / 招架（0.2s 窗口、免伤、对方露破绽） | **完整实现** | ❌ 无专用动作，仍是格挡保持姿态 |
+| 格挡被击中的反震 | 有减伤与体力消耗 | ❌ 无 |
+| 破防 / 被破韧 | 有 | ⚠️ 借用 `Stunned` |
+
+玩家把时机做对了却看不到任何区别，这是"格挡没用"这类反馈的一个来源。
+> 需要：`Sword And Shield Block Idle`→`Block Impact`、`Parry`/`Deflect`、`Guard Break`
+
+### D. 处决 / 终结技：全套机制在跑，没有动作
+
+破韧后重击命中 = 2.8 倍伤害 + 横幅「处决」+ 强顿帧 + 慢镜 + 推近特写——
+唯独**播的是普通重击**。这是全局最该有仪式感的一击。
+> 需要：`Sword Finisher`、`Execution`、`Stealth Kill`
+
+### E. 心理硬直——这是本作的主题所在
+
+「短暂失守」（跪一下、掉锁定）走的是 `Stunned`（普通眩晕）。
+而这款游戏整体讲的就是心理对抗，崩溃/抱头/踉跄后退这类动作**是叙事的一部分**，
+用一个通用眩晕顶掉很可惜。
+> 需要：`Kneeling Down`、`Defeated`、`Sad Idle`、`Head Hit`（抱头）、
+> `Stumble Backwards`
+
+### F. 敌人：九种武术类型共用一套动作
+
+`MartialArchetype` 设计了拳/腿/擒拿/刀/棍/重武器/刺客/防反/协同九类，
+但动作只有一套——不同心魔的动作语言完全一样，只靠颜色与台词区分。
+> 需要（按性价比排）：`Boxing` 系（拳）、`Martial Arts Kick` 系（腿）、
+> `Staff/Spear` 系（棍），三套就能把主要类型区分开
+
+### G. NPC 与生活场景
+
+行人与城市 NPC 只有走/跑/待机；住处只用了坐/躺/起身三条。
+> 需要：`Standing Idle` 变体、`Talking`、`Looking Around`、`Waiting`、
+> `Sitting Idle` 变体；住处设施（书桌/瑜伽垫/厨房）的专属动作
+
+### H. 设计里有、实现完全没有
+
+`terrain_climb 地形攀越`（跳跃、攀爬、破障逐阶推进）是 `ChapterModuleLibrary`
+里的**正式机制**，AI 生成的章节会把它排进关卡——但攀爬/翻越既没有动画也没有实现。
+> 需要：`Climbing`、`Climb To Top`、`Hanging Idle`、`Braced Hang`、`Vault Over Obstacle`
+> （这一项动画只是其中一半，另一半是攀爬状态机）
+
+### I. 交互动作：全无
+
+开门、拾取、按按钮、推拉——现在都是走过去即触发，没有任何肢体动作。
+> 需要：`Opening Door`、`Picking Up Object`、`Pressing Button`、`Pushing`
+
+### 优先级建议
+
+| 级别 | 项 | 理由 |
+| --- | --- | --- |
+| **P0** | C 招架 / D 处决 | 机制已完整，只差动画就能被玩家感知——性价比最高 |
+| **P0** | B 受击方向与轻重 | 部位系统已做好，没有动画等于白做 |
+| **P1** | A 剑技变体 | 消除"三招一个样"，连段观感立刻不同 |
+| **P1** | E 心理硬直专用动作 | 主题表达，别的游戏没有、本作必须有 |
+| **P2** | F 敌人武术类型 / G NPC / I 交互 | 丰富度，不影响核心手感 |
+| **P2** | H 攀爬 | 要连状态机一起做，工作量最大 |
+
+**接入成本提示**：A 类里若只是**替换**现有招式的片段，改一下 `PlayableAnimator.ActionMap`
+的候选名即可（小改）；B/C/D/E 都需要**新增 PoseState + 在触发点接线**；
+H 需要完整实现。都不是"丢文件即生效"。
+
+## 一·补三之三、技能 / 绝招的「发力」动作包（让大招真的像大招）
+
+> 这一节只谈**技能与超必杀**。移动、受击、防御的通用缺口见上两节；
+> 这里列的是「同样的技能代码，换上这些片段后观感与打击感会明显上一个台阶」的那些。
+
+### 现状体检（不是猜的，是从 SkillExecutor.cs 数出来的）
+
+五套技能连招一共 **25 个动作段落**，但它们只从 **8 个攻击片段**里取：
+
+| 技能 | 段落数 | 实际用到的 PoseState | 落到的片段 |
+|---|---|---|---|
+| 定心·四象归一 | 6 | Charge → AttackSpin/AttackUp ×3 → AttackSpin → AttackLeap | Great Sword Casting、High Spin Attack、Slash (1)、Jump Attack |
+| 收心·万流归元 | 5 | SpinKick/SideKick ×3 → AttackSpin → AttackSpin | Spin Flip Kick、Side Kick、High Spin Attack |
+| 还域·界返三连 | 5 | AttackUp → Attack → AttackSpin → SwordThrust → AttackLeap | Slash (1)、Slash、High Spin Attack、Stabbing、Jump Attack |
+| 燃火·五段燎原 | 5 | SwordThrust/Attack ×3 → AttackUp → AttackLeap | Stabbing、Slash、Slash (1)、Jump Attack |
+| 镜界·退身反击 | 5 | Guard → SpinKick → Attack/AttackUp ×2 → SwordThrust | Blocking、Spin Flip Kick、Slash、Slash (1)、Stabbing |
+
+问题不在代码，在片段池：
+
+1. **HeavyAttack / AttackLeap / JumpAttack 三个姿态指向同一个 `Great Sword Jump Attack`。**
+   四套技能的**终结段**因此播的是同一段动画——"最后一击"没有独占的记忆点。
+2. **`Charge` 是 hold 姿态（`Great Sword Casting` 停在末帧）。** 定心开场的 0.14s
+   和重击蓄力的 2.05s 用的是同一个"冻住的姿势"，蓄力越久越像卡住。
+3. **`Glide()` 全程没有配套动画。** 燃火每段突进 2.2m / 0.13s、镜界终结突进 2.4m，
+   期间播的是原地的斩击片段——脚不动、人在飘，这是"技能像开挂不像发力"的头号来源。
+4. **受击方只有一条 `Hit Reaction` + 一条 `Knocked Down`。**
+   定心第一环 10 点伤害和燃火终结 42 点伤害，**敌人身上看起来一模一样**。
+   成熟动作游戏里"强"有七成是从挨打的人身上读出来的，这一条是全表最要命的。
+5. **没有收招定势。** 每套连招最后一段判定窗走完直接切回 Idle，
+   大招"打完了"没有句号。
+6. **镜界气刃是 `Projectile.Launch`，但姿态借的是横斩/撩斩**——掷出去的东西
+   和身体动作对不上。
+
+---
+
+### 第一优先：受击方的「被打飞」表（**没有它，加多少特效都不会变强**）
+
+| 用途 | Mixamo 搜索词 | 用在哪 |
+|---|---|---|
+| 轻受击·前 / 后 / 左 / 右 | `Standing React Small From Front` / `Back` / `Left` / `Right` | 技能连招中段（10–25 伤害档） |
+| 重受击·前 / 后 | `Standing React Large From Front` / `Back` | 终结段前一击（26–35 档） |
+| 踉跄后退 | `Stumble Backwards` | 削韧成功、被推离（`Repel`） |
+| 挑飞·离地 | `Hit To Body` / `Flying Back Death`（取前半段） | `AttackUp` 撩斩挑飞（还域段1、燃火上撩） |
+| 滞空受击循环 | `Falling Idle` | 浮空期（做浮空连的话必备） |
+| 砸落·硬着陆 | `Falling To Landing` / `Hard Landing` | 终结段砸地把敌人钉回地面 |
+| 横飞出去 | `Flying Back Death` | 40+ 伤害终结段（燃火 42、定心 38） |
+| 昏眩循环 | `Stunned`（**已有**） | 破韧后的可处决窗 |
+
+**这一组八个片段的性价比高于本节其他所有条目之和。** 现在的表现是
+"敌人抖一下 → 抖一下 → 抖一下 → 倒地"；换上之后是
+"踉跄 → 挑飞 → 滞空 → 横飞出屏"，伤害数字第一次能被眼睛读出来。
+
+代码侧要加的东西不多：`DamageInfo` 里已经有 `knockback` 与 `postureDamage`，
+按这两个值分档选片段即可（伤害 <15 → Small、15–30 → Large、>30 且 knockback>5 → Flying Back），
+受击方向用 `Vector3.SignedAngle(受击者.forward, 攻击方向)` 分四象限。
+
+---
+
+### 第二优先：位移段的「突进 / 刹停」（治 `Glide` 的飘）
+
+| 用途 | Mixamo 搜索词 | 用在哪 |
+|---|---|---|
+| 冲刺突进斩 | `Great Sword Run Slash` / `Sword Run Attack` / `Running Slide` | 燃火三连突进（每段 2.2m） |
+| 冲刺起步 | `Standing Run Forward Start` / `Run To Stop`（反用） | `Glide` 前 3 帧 |
+| 急停刹住 | `Run To Stop` / `Standing Run Stop` | `Glide` 结束的最后 0.08s |
+| 后跳拉开 | `Standing Dodge Backward` / `Back Flip` | 镜界"后空翻拉开身位"（现在借的是后旋踢） |
+| 瞬步 / 闪身欺近 | `Standing Dodge Forward` / `Sprinting Forward Roll`（**已有 Stand To Roll**） | 镜界终结「镜返突刺」的 2.4m 闪进 |
+
+规则很简单，也是大作通例：**位移段与判定段分开播**——
+先 0.1s 的突进片段（脚在动），再切斩击片段（判定开）。
+现在是两件事挤在同一个原地片段里，所以只能看到"平移"。
+
+---
+
+### 第三优先：蓄力 / 起手 / 收招（技能的「呼吸」）
+
+| 用途 | Mixamo 搜索词 | 用在哪 |
+|---|---|---|
+| 蓄力循环（可循环！） | `Power Up` / `Charging` / `Standing Taunt Battlecry` | `PoseState.Charge`，替掉现在的末帧冻结 |
+| 蓄力解放 | `Standing Taunt Battlecry` / `Roaring` | 蓄满那一瞬（现在是无缝直接出招） |
+| 技能起手立威 | `Warming Up` / `Battlecry` | 五套技能开场的 0.1–0.14s（现在开场就是斩） |
+| 收招定势 | `Sword And Shield Idle`（取末帧）/ `Standing Idle To Sheath` | 每套连招 `FinalStrikeWindow` 之后 |
+| 甩刀收势 | `Sheathing Sword`（**已有**）/ `Sword Flourish` | 终结段之后的 0.4s 亮相 |
+| 力竭喘息 | `Breathing Idle` / `Standing Idle Exhausted` | 超必杀之后、心理值低于 30% 时 |
+
+「起手 → 蓄力 → 解放 → 判定 → 收招」这五拍是黑神话/只狼/鬼泣共同的技能骨架。
+现在的实现是"判定"占了全部五拍，所以技能长度虽然有 1.1–1.3s，读起来却像 0.3s 的一下。
+
+---
+
+### 第四优先：投射 / 施法（镜界气刃现在借的是斩击）
+
+| 用途 | Mixamo 搜索词 | 用在哪 |
+|---|---|---|
+| 双手施法·发射 | `Standing 2H Magic Attack 01` | 镜界双气刃（替掉 Attack / AttackUp） |
+| 单手指向·发射 | `Standing 1H Magic Attack 01` | 单发气刃 / 敌人远程 |
+| 引导循环 | `Standing 2H Cast Spell 01` | 长引导技能（若后续要做） |
+| 掷出 | `Standing Throw` / `Overhead Throw` | 掷武器类技能 |
+| 结印护体 | `Magic Heal` / `Standing Buff` | 镜环展开护心（现在是 `Guard` 顶替） |
+
+---
+
+### 第五优先：浮空连（做了第一优先的挑飞之后才有意义）
+
+| 用途 | Mixamo 搜索词 |
+|---|---|
+| 跳起追击 | `Jumping Up` / `Jump` |
+| 空中连斩（第二段，与已有 Jump Attack 区分） | `Great Sword Air Slash` / `Falling Attack` |
+| 空中终结·砸落 | `Great Sword Jump Attack`（**已有**，专用于最后一击） |
+| 落地缓冲 | `Hard Landing` / `Falling To Landing` |
+
+**注意**：`AttackLeap` 与 `JumpAttack` 必须分家（现在同片段）。
+建议 `AttackLeap` 改用 `Great Sword Air Slash`，把 `Great Sword Jump Attack`
+留给终结段独占——终结段有独占动画，"最后一击"才立得住。
+
+---
+
+### 第六优先：终结技 / 处决的攻防两侧（机制已在跑，动作全无）
+
+| 用途 | Mixamo 搜索词 | 侧 |
+|---|---|---|
+| 抓取起手 | `Standing Grab` / `Grab` | 攻方 |
+| 处决斩 | `Great Sword Kill` / `Standing Melee Attack Downward` | 攻方 |
+| 被抓 | `Standing Grabbed` / `Zombie Reaction Hit` | 受方 |
+| 跪倒待处决 | `Kneeling` / `Standing To Kneeling` | 受方 |
+| 处决倒地 | `Falling Back Death`（**Dying 已有，但只有一条**） | 受方 |
+
+---
+
+### 最小可用包（如果只补一批，就补这 14 个）
+
+```
+Standing React Small From Front      Standing React Large From Front
+Standing React Small From Back       Standing React Large From Back
+Stumble Backwards                    Flying Back Death
+Falling Idle                         Falling To Landing
+Great Sword Run Slash                Run To Stop
+Power Up (蓄力循环)                   Standing Taunt Battlecry (解放/起手)
+Standing 2H Magic Attack 01          Great Sword Air Slash
+```
+
+前八个全是**受击方**——这不是笔误。技能的"强"是打在别人身上才看得见的，
+自己挥得再花，对面只会抖一下，观感上限就锁死在那里。
+
+### 补进来之后需要改的代码（我可以直接做）
+
+1. `PlayableAnimator._actionIndex`：新增 `HitLight/HitHeavy/HitLaunch/HitFly` +
+   四方向变体，`AttackLeap` 与 `JumpAttack` 解绑。
+2. `PoseState` 扩：`ChargeLoop`、`ChargeRelease`、`DashAttack`、`SkidStop`、
+   `Launch`、`AirHit`、`FinishStance`。
+3. `EnemyController.TakeDamage` / `PlayerCombatController.TakeHit`：
+   按 `physicalDamage` + `knockback` + 受击方向选受击片段（分档表）。
+4. `SkillExecutor.Glide`：拆成「突进片段 + 刹停片段」两段播，判定段单独开。
+5. 每套连招末尾 `FinalStrikeWindow` 之后加 0.35s 收招定势（可被输入取消）。
+
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 
 这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
