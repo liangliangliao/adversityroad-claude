@@ -1023,11 +1023,23 @@ namespace AdversityRoad.Player
             }
             else
             {
-                _recenterFrameInit = false;
-                // **实时映射，无任何偏置**：摇杆方向恒等于画面方向，一帧都不错开。
+                // 【回正结束的那一帧不能硬切参考系】
+                // 冻结期间参考系停在 _recenterFrameYaw，而镜头已经转过去了 90~180°。
+                // 直接切回实时镜头偏航，摇杆方向会在**一帧之内**跳同样的角度——
+                // 玩家还按着同一个方向，角色却猛地拐向别处（"换方向时人先瞬移到别处"）。
+                // 改为把这段偏置在 0.18 秒内衰减掉：比任何一次回正都短，
+                // 玩家察觉不到"摇杆与画面错开"，却把那一下硬拐磨成了一小段过渡。
+                if (_recenterFrameInit)
+                {
+                    _recenterFrameInit = false;
+                    _frameBias = Mathf.DeltaAngle(cameraTransform.eulerAngles.y, _recenterFrameYaw);
+                }
+                _frameBias = Mathf.MoveTowards(_frameBias, 0f,
+                    FrameBiasReleaseDegPerSec * Time.deltaTime);
+                // 偏置归零之后就是**实时映射，无任何偏置**：摇杆方向恒等于画面方向。
                 // 代价由镜头侧承担——它只能以很慢的速率绕行（见 SustainedOrbitCap），
                 // 慢到玩家的补杆是无意识的，于是角色路径几乎看不出弯。
-                frameYaw = cameraTransform.eulerAngles.y;
+                frameYaw = cameraTransform.eulerAngles.y + _frameBias;
             }
 
             Quaternion frame = Quaternion.Euler(0, frameYaw, 0);
@@ -1039,6 +1051,10 @@ namespace AdversityRoad.Player
         ThirdPersonCamera _cam;
         float _recenterFrameYaw;
         bool _recenterFrameInit;
+        float _frameBias;   // 回正结束后残留的参考系偏置（度），衰减到 0
+
+        /// <summary>参考系偏置的衰减速率：180° 的最坏情况在 0.18s 内化完。</summary>
+        const float FrameBiasReleaseDegPerSec = 1000f;
 
         void ApplyGravityOnly(float dt)
         {
