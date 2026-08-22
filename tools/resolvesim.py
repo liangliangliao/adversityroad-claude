@@ -13,11 +13,16 @@ src  = open(CS, encoding="utf-8").read()
 
 # ---------- byName：Unity 能给出的片段名 ----------
 def meta_clip_name(fbx):
-    m = fbx + ".meta"
-    if not os.path.exists(m): return None
-    t = open(m, encoding="utf-8", errors="ignore").read()
-    g = re.search(r"clipAnimations:\s*\n\s*-\s*serializedVersion:.*?\n\s*name:\s*(.+)", t)
-    return g.group(1).strip() if g else None
+    """片段在 Unity 里的名字。
+
+    以 MixamoImportPostprocessor.OnPreprocessAnimation 为准——它对
+    Resources/Characters/ 下的每个 FBX **一律按文件名重命名片段**
+    （有 @ 取 @ 后缀，没有 @ 取整个文件名），与 .meta 里原本写了什么无关。
+    早先这个脚本读 .meta 推名字，会把"还没有命名 meta"的文件当成
+    运行时寻址不到——那是错的，实际导入时它们同样会被命名。"""
+    base = os.path.splitext(os.path.basename(fbx))[0]
+    at = base.find("@")
+    return base[at + 1:].strip() if 0 <= at < len(base) - 1 else base.strip()
 
 files = {}          # 文件相对名 -> 绝对路径
 for d in ("Anims", "Anims2"):
@@ -125,10 +130,8 @@ if dropped:
     for rel, label, other in dropped: print("  · %-38s（%s 已由 %s 占据）" % (rel, label, other))
 print()
 # 只靠内部名/文件名都进不了 byName 的文件 = 运行时根本找不到
-lost = [rel for rel, p in files.items()
-        if (meta_clip_name(p) or "mixamo.com").lower() == "mixamo.com"
-        and os.path.splitext(os.path.basename(rel))[0].lower() not in [f.lower() for f in libfiles]]
-print("=== 运行时寻址不到的文件（没有命名 meta，且不在 LibraryFiles 里）===")
-for rel in sorted(lost): print("  ✗ " + rel)
-if not lost: print("  （无）")
-sys.exit(1 if lost or missing_lib else 0)
+print("=== 说明 ===")
+print("  片段名由 MixamoImportPostprocessor 在导入时按文件名统一指定，")
+print("  PlayableAnimator.LibraryFiles 的按路径加载是第二重保险（后处理器")
+print("  版本回退/未触发时仍能寻址），两者都命中同一个片段，不冲突。")
+sys.exit(1 if missing_lib else 0)
