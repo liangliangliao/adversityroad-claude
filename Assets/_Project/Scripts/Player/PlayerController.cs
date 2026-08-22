@@ -588,7 +588,7 @@ namespace AdversityRoad.Player
                 // 这是锁定战的标准做法：面向敌人向左推杆按闪避，人往左侧闪，眼睛始终盯着他。
                 // 非锁定时仍是前滚翻（朝哪滚就朝哪转身，那时转身是对的）。
                 var dodgePose = PoseState.Dodge;
-                if (StrafeActive && moveDir.sqrMagnitude > 0.01f)
+                if (_anim != null && StrafeActive && moveDir.sqrMagnitude > 0.01f)
                 {
                     float dodgeAng = Vector3.SignedAngle(transform.forward, moveDir, Vector3.up);
                     float absAng = Mathf.Abs(dodgeAng);
@@ -597,7 +597,7 @@ namespace AdversityRoad.Player
                     if (!_anim.HasPose(dodgePose)) dodgePose = PoseState.Dodge;
                 }
                 if (dodgePose == PoseState.Dodge) transform.rotation = Quaternion.LookRotation(_dodgeDir);
-                _anim.DodgePose = dodgePose;
+                if (_anim != null) _anim.DodgePose = dodgePose;
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
                 // 有专用翻滚片段时：闪避时长匹配片段（完整呈现整个滚翻动作），
                 // 总位移保持恒定（速度反比时长），无片段沿用默认参数
@@ -803,7 +803,7 @@ namespace AdversityRoad.Player
 
         void UpdateMoveStatePose(float speed01, float dt)
         {
-            if (_anim == null || _anim.Resting) return;
+            if (_anim == null || _cc == null || _anim.Resting) return;
 
             bool busy = _dodgeTimer > 0f ||
                         (_combat != null && _combat.Current != CombatState.Locomotion &&
