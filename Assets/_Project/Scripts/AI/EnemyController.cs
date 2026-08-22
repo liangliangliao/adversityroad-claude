@@ -295,8 +295,9 @@ namespace AdversityRoad.AI
                 float moveAngle = 0f;
                 if (planar.sqrMagnitude > 1e-6f)
                     moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+                // 敌人交战中脸始终对着玩家、脚下在绕圈/后撤，夹角恒为有意为之
                 poser.SetLocomotion(Mathf.Clamp01(_measuredSpeed / refSpeed) * 0.9f,
-                    false, true, _measuredSpeed, moveAngle);
+                    false, true, _measuredSpeed, moveAngle, true);
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
                 // 十类武术里只有刀术/棍术/重武器是持械的，其余七类是拳脚。
                 // 持剑动作集（临战架势、蹲伏、踢击、受击、倒下）双手都是握着东西的，

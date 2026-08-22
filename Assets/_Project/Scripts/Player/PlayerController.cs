@@ -764,7 +764,7 @@ namespace AdversityRoad.Player
             float moveAngle = 0f;
             if (planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
-            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle);
+            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle, StrafeActive);
             UpdateMoveStatePose(speed01, dt);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
             // 敌人在远处/无敌人时用普通待机（不再一有敌人在场就一直端着架势）

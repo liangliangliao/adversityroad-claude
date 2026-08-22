@@ -640,14 +640,16 @@ namespace AdversityRoad.Combat
         /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
-            float moveAngleDeg = 0f)
+            float moveAngleDeg = 0f, bool strafing = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _crouch = crouch;
             _grounded = grounded;
             _actualSpeed = actualSpeed;
             _moveAngle = moveAngleDeg;
+            _strafing = strafing;
         }
+        bool _strafing;
 
         // ===== 横移 / 后退（面向目标不转身）=====
         //
@@ -675,7 +677,7 @@ namespace AdversityRoad.Combat
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch, _strafing);
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)

@@ -837,14 +837,17 @@ namespace AdversityRoad.Combat
         /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）；
         /// moveAngleDeg=行进方向相对角色正面（0=正前、±90=横移、180=后退）。</summary>
         public void SetLocomotion(float speed01, float actualSpeed = -1f, float moveAngleDeg = 0f,
-            bool crouch = false)
+            bool crouch = false, bool strafing = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _actualSpeed = actualSpeed;
             _moveAngle = moveAngleDeg;
             _crouch = crouch;
+            _strafing = strafing;
         }
         bool _crouch;
+        /// <summary>此刻是不是"脸锁着目标、脚独立走位"——夹角为有意为之而非转身残差。</summary>
+        bool _strafing;
         public void SetReady(bool ready) => _ready = ready;
 
         /// <summary>兵器此刻在不在手上（收刀后改用空手架势与空手替身片段）。</summary>
@@ -1054,9 +1057,14 @@ namespace AdversityRoad.Combat
             //   · **瞬时**的转身残差只存在 0.2s 左右 ⇒ 按 240°/s 只推进到 ≈48°，
             //     腿上只带一点点侧步的意思就回正了，读作"转身时垫了一步"，不是闪。
             // 回正给 720°/s：残差一消失就立刻回到正前方，不留尾巴。
+            // 【锁定态例外】慢速 commit 是为了滤掉"转身残差"，而锁定时身体压根不会
+            // 转向行进方向——夹角是玩家主动要的，而且会一直保持。此时还慢慢攒，
+            // 意味着往后拉杆之后要等 0.75 秒腿才切成倒步，前面那大半秒人在后退、
+            // 腿却在向前走。锁定时按"释放"那档的速率直接切满。
             float wantAbs = Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle));
             float haveAbs = Mathf.Abs(_blendAngle);
-            float slew = wantAbs > haveAbs ? BlendCommitDegPerSec : BlendReleaseDegPerSec;
+            float slew = (!_strafing && wantAbs > haveAbs)
+                ? BlendCommitDegPerSec : BlendReleaseDegPerSec;
             _blendAngle = Mathf.DeltaAngle(0f,
                 Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, slew * dt));
 
