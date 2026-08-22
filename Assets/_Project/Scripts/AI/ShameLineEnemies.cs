@@ -176,6 +176,10 @@ namespace AdversityRoad.AI
         /// <summary>头部左右缓慢摆动的幅度（度）。注视是活的，但永远可读。</summary>
         public float sweep = 28f;
 
+        // 锥体编号自己发：Unity 6000.5 起 GetInstanceID() 被标记为 obsolete-as-error
+        // （CS0619），而这里要的只是一个场内唯一的名字，不需要引擎的实例 id。
+        static int _coneSeq;
+
         EnemyController _ec;
         GazeCone _cone;
         float _phase;
@@ -196,7 +200,7 @@ namespace AdversityRoad.AI
             _cone.headSource = transform;
             _cone.data = new GazeConeData
             {
-                coneId = "cone_" + GetInstanceID(),
+                coneId = "cone_" + (++_coneSeq),
                 ownerNpcId = _ec.profile != null ? _ec.profile.enemyId : "",
                 angle = coneAngle,
                 range = coneRange,
@@ -370,6 +374,8 @@ namespace AdversityRoad.AI
             return bestSamples >= 3 ? best : "";
         }
 
+        bool _dodgePrev;
+
         void Update()
         {
             if (_ec == null || _player == null || _ec.State == EnemyState.Dead) return;
@@ -379,14 +385,36 @@ namespace AdversityRoad.AI
                 _transparentUntil = -1f;
                 _ec.pacified = false;
             }
-            if (Time.time < _transparentUntil) return;
+            if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 
-            // 抢占回避路线：站到玩家背后的那条退路上
-            if (Time.time < _nextMove) return;
-            _nextMove = Time.time + 2.4f;
-            Vector3 behind = _player.position - _player.forward * 4.5f;
+            var pc = _player.GetComponent<PlayerController>();
+            if (pc == null) return;
+
+            // 【怎么才算"抢先执行"】
+            // 不去每帧改它的导航目标——EnemyController 自己每帧都在驱动同一个 Agent，
+            // 两边抢方向盘的结果是谁也走不成，看上去只是在原地抽搐。
+            // 改成在玩家**开始回避的那一瞬间**一步落到落点上：它到得比你早，
+            // 这一次翻滚就没能把你带出去。这才读得出"它在预判你"。
+            bool dodging = pc.IsDodging;
+            bool dodgeStart = dodging && !_dodgePrev;
+            _dodgePrev = dodging;
+            if (!dodgeStart || Time.time < _nextMove) return;
+            _nextMove = Time.time + 9f;
+
+            Vector3 dir = pc.StickWorldDir.sqrMagnitude > 0.01f
+                ? pc.StickWorldDir.normalized : -_player.forward;
+            Vector3 landing = _player.position + dir * 3.4f;
             var agent = GetComponent<UnityEngine.AI.NavMeshAgent>();
-            if (agent != null && agent.isOnNavMesh) agent.SetDestination(behind);
+            if (agent == null || !agent.isOnNavMesh) return;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(landing, out var hit, 4f,
+                    UnityEngine.AI.NavMesh.AllAreas)) return;
+
+            agent.Warp(hit.position);
+            transform.rotation = Quaternion.LookRotation(-dir, Vector3.up);
+            CombatFeedback.ShockRing(hit.position, new Color(0.35f, 0.3f, 0.45f), 2.2f);
+            if (_ec.dialogue != null)
+                _ec.dialogue.Show(string.IsNullOrEmpty(_readTag)
+                    ? "我早就在这儿了。" : "「" + _readTag + "」——你每次都是这样。", 2.4f);
         }
     }
 

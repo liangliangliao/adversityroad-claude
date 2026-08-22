@@ -137,8 +137,15 @@ namespace AdversityRoad.Shame
             Changed?.Invoke();
         }
 
-        /// <summary>只发变更通知、不落盘：每帧变化的量（Exposure）用这个，避免每帧写 PlayerPrefs。</summary>
-        public static void Touch() => Changed?.Invoke();
+        /// <summary>
+        /// 标记"值变了，但不落盘、也不发通知"。
+        ///
+        /// Exposure 每帧都在动：既不能每帧写 PlayerPrefs，也不能每帧广播 Changed——
+        /// 订阅方（心虚投影等）会因此每帧被叫醒一次，而它们真正关心的
+        /// （认领次数、指控表）只在 Persist 那一刻才变。
+        /// 需要读连续变化的一律轮询（HUD 就是这么做的）。
+        /// </summary>
+        public static void Touch() { }
 
         public static void DeleteAll()
         {

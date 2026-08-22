@@ -278,6 +278,7 @@ namespace AdversityRoad.Shame
             if (!_objectivesDone.Add(id)) return;
             NoteProgress();
             ShameBreakdown.ResolveByAction("完成了「" + id + "」");
+            ShameComboTracker.Push(ShameComboTracker.TagObjective);
             Adversity.AdversityProfile.ObserveStrength("锥内完成率", ShameLine.LevelEchoClassroom);
             Adversity.CourageSystem.NoteGoalAction("在注视里完成「" + id + "」");
             GameEvents.RaiseSubtitle("目标动作「" + id + "」完成（" + _objectivesDone.Count +

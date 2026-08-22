@@ -116,6 +116,7 @@ namespace AdversityRoad.Shame
             var exposure = ExposureSystem.Instance;
             if (exposure != null) exposure.Clear("陈述完成——暴露度归零。你没有被清白，你只是不再需要躲。");
 
+            ShameComboTracker.Push(ShameComboTracker.TagStatement);
             Adversity.AdversityProfile.ObserveStrength("陈述提前量", ShameLine.CurrentLevelId);
             Adversity.CourageSystem.NoteGoalAction("主动完成一次自行陈述");
 

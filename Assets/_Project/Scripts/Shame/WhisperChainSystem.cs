@@ -147,7 +147,24 @@ namespace AdversityRoad.Shame
                     (b.transform.position - player.transform.position).sqrMagnitude
                     .CompareTo((a.transform.position - player.transform.position).sqrMagnitude));
 
-            for (int i = 0; i < 3 && i < alive.Count; i++) _chain.Add(alive[i]);
+            // 链条是有形状的：后排低语（rank 0）→ 侧目（rank 1）→ 放大镜围观（rank 2）。
+            // 每一节各取一个，才读得出"话是怎么从后排传到全场的"。
+            // 某一节的单位全没了（比如侧目者都被打倒）就用剩下的补位——
+            // 链条照常成形，因为"让所有人闭嘴"本来就不该是可行解。
+            for (int rank = 0; rank < 3; rank++)
+                foreach (var n in alive)
+                {
+                    if (n.rank != rank || _chain.Contains(n)) continue;
+                    _chain.Add(n);
+                    break;
+                }
+            foreach (var n in alive)
+            {
+                if (_chain.Count >= 3) break;
+                if (!_chain.Contains(n)) _chain.Add(n);
+            }
+            if (_chain.Count < 3) { _chain.Clear(); return; }
+
             BuildLinks();
             GameEvents.RaiseSubtitle("低语又连起来了——从另一处。让所有人闭嘴不是这一关的通关条件。");
         }

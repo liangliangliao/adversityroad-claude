@@ -112,6 +112,7 @@ namespace AdversityRoad.Shame
         void EnterSteady()
         {
             GameEvents.RaiseSubtitle("【锥内稳态】你在注视里站住了 8 秒没有回避——暴露增速减半，自尊开始回补。");
+            ShameComboTracker.Push(ShameComboTracker.TagSteady);
             Adversity.AdversityProfile.ObserveStrength("锥内完成率", ShameLine.CurrentLevelId);
             var resolve = Adversity.ResolveSystem.Instance;
             if (resolve != null) resolve.NoteQualityAction("在视线锥内持续行动未回避");

@@ -239,6 +239,7 @@ namespace AdversityRoad.Shame
             GameEvents.RaiseSubtitle("「这件事我做了。但你不能据此宣判我是什么人。」" +
                 "——这条指控本章内不再可用。");
 
+            ShameComboTracker.Push(ShameComboTracker.TagOwn);
             Adversity.AdversityProfile.ObserveStrength("认领不终审", ShameLine.CurrentLevelId);
             Adversity.PlayerBehaviorAnalyzer.NoteVerbalCounter();
             var resolve = Adversity.ResolveSystem.Instance;
@@ -269,6 +270,7 @@ namespace AdversityRoad.Shame
                 if (_src != null) _src.ForceBreak(1.4f);
                 var ex = ExposureSystem.Instance;
                 if (ex != null) ex.Add(-10f, "指控被击穿");
+                ShameComboTracker.Push(ShameComboTracker.TagFactBlade);
                 Adversity.AdversityProfile.ObserveStrength("事实判断", ShameLine.CurrentLevelId);
                 if (p != null)
                     CombatFeedback.MoveName(p.transform.position + Vector3.up * 2.2f, "事实之刃", false);

@@ -143,6 +143,7 @@ namespace AdversityRoad.Shame
 
             CombatFeedback.ShockRing(player.transform.position, new Color(0.95f, 0.9f, 0.6f), 6f);
             GameAudio.Play(GameAudio.Sfx.Cast, 0.7f);
+            ShameComboTracker.Push(ShameComboTracker.TagSpotlight);
             GameEvents.RaiseSubtitle(counted == 0
                 ? "场上没有人在看你——这一条也是事实。"
                 : "【聚光灯校准】" + counted + " 人在场，其中 " + overestimated +
@@ -186,6 +187,7 @@ namespace AdversityRoad.Shame
             GameEvents.RaiseSubtitle("【不上庭】" + what + "被当场拒绝——他愣住了，这是你的窗口。");
             if (src != null) src.ForceBreak(2.2f);
             GameAudio.Play(GameAudio.Sfx.Parry, 0.9f);
+            ShameComboTracker.Push(ShameComboTracker.TagRefuse);
             Adversity.AdversityProfile.ObserveStrength("拒绝低价值评审", ShameLine.CurrentLevelId);
             return true;
         }

@@ -8,8 +8,13 @@ namespace AdversityRoad.Shame
     /// 第八章的前台（方案 8.3 HUD / 12.2 前台精简）。
     ///
     /// 【Exposure 不进常驻 HUD】
-    /// 它只在**被有效注视时**出现，位于自尊条上方，以视线图标 + 环形填充表现；
+    /// 它只在**被有效注视时**出现，以视线图标 + 环形填充表现；
     /// 没人在看的时候整块消失（验收第 43 条）。底层数值照常运行并写进复盘页。
+    ///
+    /// 方案原文写的是"位于 SelfWorth 条上方"。实现落在左栏心法行**下方**：
+    /// 心理小条是情境出现的，位置随亮起顺序浮动（见 HUDController 的情境条堆叠），
+    /// 贴着它排会随时被顶开；固定在左栏下方反而始终在同一个地方，
+    /// 而"只在被注视时出现"这条前台精简原则一字未改。
     ///
     /// 【身份钉与悬案计时器必须可读】
     /// 8.2 设计要点：本章禁止把心理机制做成纯数值暗箱——
@@ -43,63 +48,78 @@ namespace AdversityRoad.Shame
 
         void Build(Transform canvas)
         {
+            // 【坐标全部按画布左上角算】
+            // _root 铺满画布（anchorMin/Max 拉到对角、四边 offset 归零），
+            // 于是下面每个子件的 anchoredPosition 就是"距画布左上角多少"——
+            // 和 HUD 其他元素同一套口径，位置能逐个和现有面板核对。
             _root = new GameObject("ShameHud", typeof(RectTransform));
             _root.transform.SetParent(canvas, false);
             var rt = _root.GetComponent<RectTransform>();
-            rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-            rt.anchoredPosition = new Vector2(0f, 0f);
-            rt.sizeDelta = new Vector2(420f, 260f);
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
 
-            // ---- 暴露度：视线图标 + 环形（这里用一条短横向填充条近似环形填充）----
+            // 【为什么整块挂在左栏、且压到 -388 以下】
+            // 左上角自上而下已经被占满：状态背板到 -226、意势点 -244、
+            // 姿态按钮 -290、心法文字 -338（见 GameBootstrap.HudLayout）。
+            // -380 往下才是空的，所以这一组从 -388 起排，不与任何既有元素重叠。
+            const float Top = -388f;
+
+            // ---- 暴露度：视线图标 + 环形填充（情境出现，不常驻）----
             _exposureGroup = new GameObject("Exposure", typeof(RectTransform));
             _exposureGroup.transform.SetParent(_root.transform, false);
             var ert = _exposureGroup.GetComponent<RectTransform>();
             ert.anchorMin = ert.anchorMax = new Vector2(0f, 1f);
-            ert.anchoredPosition = new Vector2(16f, -252f);
-            ert.sizeDelta = new Vector2(360f, 26f);
+            ert.pivot = new Vector2(0f, 0.5f);          // 用左边缘定位，坐标才好算
+            ert.anchoredPosition = new Vector2(16f, Top);
+            ert.sizeDelta = new Vector2(380f, 26f);
 
             var icon = UiUtil.MakeText(_exposureGroup.transform, "Icon", "◉", 22,
                 TextAnchor.MiddleLeft, new Color(0.95f, 0.86f, 0.55f));
-            UiUtil.SetRect(icon, new Vector2(0f, 0.5f), new Vector2(10f, 0f), new Vector2(26f, 26f));
+            UiUtil.SetRect(icon, new Vector2(0f, 0.5f), new Vector2(14f, 0f), new Vector2(26f, 26f));
 
             var bg = new GameObject("ExposureBg", typeof(Image));
             bg.transform.SetParent(_exposureGroup.transform, false);
             bg.GetComponent<Image>().color = new Color(0.16f, 0.14f, 0.12f, 0.85f);
+            // 条身 x∈[32,200]：图标右缘 27，留 5 的间隙
             UiUtil.SetRect(bg.GetComponent<Image>(), new Vector2(0f, 0.5f),
-                new Vector2(32f + 84f, 0f), new Vector2(168f, 14f));
+                new Vector2(116f, 0f), new Vector2(168f, 14f));
 
             var fill = new GameObject("ExposureFill", typeof(Image));
             fill.transform.SetParent(_exposureGroup.transform, false);
             fill.GetComponent<Image>().color = new Color(0.95f, 0.82f, 0.42f);
             _exposureFill = UiUtil.SetRect(fill.GetComponent<Image>(), new Vector2(0f, 0.5f),
                 new Vector2(32f, 0f), new Vector2(0f, 14f));
-            _exposureFill.pivot = new Vector2(0f, 0.5f);
+            _exposureFill.pivot = new Vector2(0f, 0.5f);   // 从左往右长
 
+            // 读数 x∈[215,365]：条身右缘 200 之后，不压在条上
             _exposureText = UiUtil.MakeText(_exposureGroup.transform, "ExposureText", "", 16,
                 TextAnchor.MiddleLeft, new Color(0.92f, 0.88f, 0.78f));
-            UiUtil.SetRect(_exposureText, new Vector2(0f, 0.5f), new Vector2(206f, 0f),
-                new Vector2(160f, 22f));
+            UiUtil.SetRect(_exposureText, new Vector2(0f, 0.5f),
+                new Vector2(290f, 0f), new Vector2(150f, 22f));
 
-            // ---- 身份钉 ----
+            // ---- 身份钉：钉了几枚、锁住了什么（8.2 要求可读，不做暗箱）----
             _nailText = UiUtil.MakeText(_root.transform, "Nails", "", 17,
                 TextAnchor.MiddleLeft, new Color(0.85f, 0.8f, 0.76f));
-            UiUtil.SetRect(_nailText, new Vector2(0f, 1f), new Vector2(190f, -278f),
-                new Vector2(360f, 22f));
+            UiUtil.SetRect(_nailText, new Vector2(0f, 1f), new Vector2(226f, Top - 30f),
+                new Vector2(420f, 22f));
 
-            // ---- 悬案计时器 ----
+            // ---- 悬案计时器：替代 Boss 血条的那根读数 ----
             _timerText = UiUtil.MakeText(_root.transform, "CaseTimer", "", 17,
                 TextAnchor.MiddleLeft, new Color(0.88f, 0.85f, 0.95f));
-            UiUtil.SetRect(_timerText, new Vector2(0f, 1f), new Vector2(210f, -302f),
-                new Vector2(400f, 22f));
+            UiUtil.SetRect(_timerText, new Vector2(0f, 1f), new Vector2(226f, Top - 56f),
+                new Vector2(420f, 22f));
 
-            // ---- 两枚章节技能 ----
+            // ---- 两枚章节技能：触屏没有对应核心键，给它们屏上按钮 ----
+            // 按钮 1 x∈[12,208]，按钮 2 x∈[236,396]：中间留 28 的间隙
             _spotlightBtn = UiUtil.MakeButton(_root.transform, "聚光灯校准 G", new Vector2(0f, 1f),
-                new Vector2(112f, -334f), new Vector2(196f, 46f),
+                new Vector2(110f, Top - 96f), new Vector2(196f, 46f),
                 new Color(0.26f, 0.28f, 0.36f, 0.92f), OnSpotlight, 18);
             _spotlightLabel = _spotlightBtn.GetComponentInChildren<Text>();
 
             _refuseBtn = UiUtil.MakeButton(_root.transform, "不上庭 H", new Vector2(0f, 1f),
-                new Vector2(316f, -334f), new Vector2(160f, 46f),
+                new Vector2(316f, Top - 96f), new Vector2(160f, 46f),
                 new Color(0.3f, 0.26f, 0.3f, 0.92f), OnRefuse, 18);
             _refuseLabel = _refuseBtn.GetComponentInChildren<Text>();
 
@@ -113,6 +133,7 @@ namespace AdversityRoad.Shame
 
         void Update()
         {
+            if (_root == null) return;
             if (Time.unscaledTime < _nextTick) return;
             _nextTick = Time.unscaledTime + 0.1f;
 

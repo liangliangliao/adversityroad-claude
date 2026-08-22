@@ -1622,6 +1622,8 @@ namespace AdversityRoad.Combat
                     Adversity.PlayerBehaviorAnalyzer.NoteParrySuccess();
                     if (Adversity.ResolveSystem.Instance != null)
                         Adversity.ResolveSystem.Instance.NoteQualityAction("一次精准格挡");
+                    // 第八章「破钉式」的第一步（章外调用直接被忽略）
+                    Shame.ShameComboTracker.Push(Shame.ShameComboTracker.TagParry);
                 }
                 else if (mindShield != null && mindShield.TryConsume())
                 {
@@ -1688,11 +1690,17 @@ namespace AdversityRoad.Combat
                     phys = 0f;
                     PunishAttacker(dmg, "精准格挡");
                     AddMomentum(1);
+                    Shame.ShameComboTracker.Push(Shame.ShameComboTracker.TagParry);
                     CombatFeedback.WeaponClash(transform.position + transform.forward * 0.8f
                         + Vector3.up * 1.2f);
                     CombatFeedback.SlowMo(0.35f, 0.22f);
                 }
-                else if (blocked) phys *= 0.2f;
+                else if (blocked)
+                {
+                    phys *= 0.2f;
+                    // 第八章「不上庭反制」的第二步：举盾接住那一下（章外调用直接被忽略）
+                    Shame.ShameComboTracker.Push(Shame.ShameComboTracker.TagBoundaryGuard);
+                }
                 else if (guardValid)
                 {
                     phys *= 0.55f;   // 力竭格挡：挡下一部分，但被压制

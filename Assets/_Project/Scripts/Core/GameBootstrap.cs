@@ -358,6 +358,7 @@ namespace AdversityRoad.Core
             Shame.AppeasementSystem.Ensure();
             Shame.ClaimRegistry.SpentCount();   // 触发指控注册表读档
             Shame.ShameSkills.Ensure();
+            Shame.ShameComboTracker.Ensure();
             StressStateMachine.Ensure();
             ResolveSystem.Ensure();
             var director = AdversityDirector.Ensure();
