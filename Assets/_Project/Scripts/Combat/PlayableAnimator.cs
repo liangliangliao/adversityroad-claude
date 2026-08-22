@@ -1041,11 +1041,24 @@ namespace AdversityRoad.Combat
             // 否则贴身绕圈时会看到左右步法来回"啪啪"硬切。
             // 用 MoveTowardsAngle：普通 MoveTowards 不懂 ±180 的回绕，
             // 从 170° 转到 -170°（只差 20°）会被它当成 340° 一路扫过去。
-            // 方向平滑速率：900°/s 相当于 0.2 秒转完一整圈——几乎等于没平滑，
-            // 掉头时腿会"啪"地切到后退片段。540°/s（1/3 秒一圈）既跟得上正常搓杆，
-            // 又让快速掉头变成一段可看的过渡，而不是一次硬切。
+            // 方向平滑用**非对称**速率：偏离正前方要慢，回到正前方要快。
+            //
+            // 为什么必须非对称：非锁定时身体本来就会转向行进方向，转身那零点几秒里
+            // 行进夹角会从 0 冲到 ±90°（甚至 180°）再退回 0。用对称速率的话，
+            // 腿会先甩出一个侧步/倒步再弹回来——那就是"掉头时闪一下侧步片段"，
+            // 也是当初把夹角硬写成 0 的原因（而那个做法让 13 条方向片段永远用不上）。
+            //
+            // 非对称之后两边都对：
+            //   · **持续**的横移/后撤（锁定绕圈、贴身走位）夹角一直大 ⇒ 攒够时间，
+            //     完整切到侧步/倒步片段；
+            //   · **瞬时**的转身残差只存在 0.2s 左右 ⇒ 按 240°/s 只推进到 ≈48°，
+            //     腿上只带一点点侧步的意思就回正了，读作"转身时垫了一步"，不是闪。
+            // 回正给 720°/s：残差一消失就立刻回到正前方，不留尾巴。
+            float wantAbs = Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle));
+            float haveAbs = Mathf.Abs(_blendAngle);
+            float slew = wantAbs > haveAbs ? BlendCommitDegPerSec : BlendReleaseDegPerSec;
             _blendAngle = Mathf.DeltaAngle(0f,
-                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, BlendAngleDegPerSec * dt));
+                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, slew * dt));
 
             // 蹲伏：整套权重交给蹲伏圈。它只有后/左/右三条，正前方由它覆盖不了——
             // 那一份会在下面的"未覆盖转交"里落回走档（配合蹲伏压低叠加，
@@ -1141,7 +1154,10 @@ namespace AdversityRoad.Combat
         }
 
         float _blendAngle;
-        const float BlendAngleDegPerSec = 540f;
+        /// <summary>朝"偏离正前方"的方向切换的速率：慢，只有持续的横移才攒得满。</summary>
+        const float BlendCommitDegPerSec = 240f;
+        /// <summary>朝"回到正前方"的方向切换的速率：快，转身残差一消失就回正。</summary>
+        const float BlendReleaseDegPerSec = 720f;
 
         /// <summary>找出夹住该方向的前后两条片段（按角度排好序，环形回绕）。</summary>
         bool Bracket(List<int> ring, float angle, out int a, out int b, out float t, out float span)
