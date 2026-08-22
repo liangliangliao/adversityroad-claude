@@ -551,13 +551,14 @@ namespace AdversityRoad.Player
             //      将来补上跑动版的横移片段（Left/Right Strafe），把封顶放开即可。
             if (face != null && moveDir.sqrMagnitude > 0.01f)
             {
-                float a = Mathf.Abs(Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
-                if (a > 60f)
+                float sideAng = Mathf.Abs(
+                    Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
+                if (sideAng > 60f)
                 {
-                    float k = Mathf.Clamp01((a - 60f) / 120f);   // 0=正侧 1=正后
-                    float cap = Mathf.Lerp(walkSpeed * 1.3f, walkSpeed * 1.05f, k)
+                    float back01 = Mathf.Clamp01((sideAng - 60f) / 120f);   // 0=正侧 1=正后
+                    float cap = Mathf.Lerp(walkSpeed * 1.3f, walkSpeed * 1.05f, back01)
                                 * MoveSpeedMultiplier;
-                    speed = Mathf.Min(speed * Mathf.Lerp(0.78f, 0.6f, k), cap);
+                    speed = Mathf.Min(speed * Mathf.Lerp(0.78f, 0.6f, back01), cap);
                 }
             }
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
