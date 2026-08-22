@@ -205,6 +205,101 @@ C 键蹲伏改了碰撞体与移速，但动捕模式下播的还是站立的走
    构建日志里能直接核对（搜 `[CIDIAG][移动]`）。所以斜向片段是左是右无所谓，
    放进去它自己会找到位置。
 
+## 一·补三之二、移动之外的动作缺口（战斗 / 受击 / 演出 / NPC）
+
+上一节只盘了移动。这一节盘其余全部动画消费方。**最值得注意的一类是
+"逻辑已经写好、动画没跟上"** —— 机制在跑，玩家却看不出来。
+
+### A. 招式片段被反复复用（剑技尤其严重）
+
+剑技只有 5 条（Slash、Slash (1)、High Spin、Jump Attack、Stabbing），
+却要撑起 8 个剑类招式 + 五大连招 + 超必杀。实际复用情况：
+
+| 片段 | 被几个招式共用 |
+| --- | --- |
+| `Great Sword Jump Attack` | **3**（重击 HeavyAttack / 跃劈 AttackLeap / 空中下劈 JumpAttack） |
+| `Great Sword High Spin Attack` | **3**（重击候补 / 上挑候补 / 旋风斩） |
+| `Spin Flip Kick` | 2（后旋踢 / 扫堂腿候补） |
+
+也就是说玩家眼里的"重击""跃劈""空中下劈"**是同一个动作**。
+> 需要：`Great Sword Slash 2/3`（横斩变体，连段第二三段用）、
+> `Great Sword Overhead Strike`（真正的上段重劈，把 HeavyAttack 从跳劈里解放出来）、
+> `Great Sword Impact`（打空/被格挡的收招）、`Sword And Shield Slash` 等
+
+### B. 受击表现只有一条
+
+`Hit Reaction` 一条撑全部——**不分方向、不分轻重、不分部位**。
+而代码里部位系统（头/躯干/四肢）和轻重击判定**都已经做好了**，
+动画却给不出区别，玩家因此感受不到"打中了哪儿"。
+死亡也只有 `Dying` 一条，所有敌人所有死法都一样。
+> 需要：`Hit Reaction`（左/右/后向各一条）、`Head Hit`、`Stomach Hit`、
+> `Big Hit To Head`（重击）、`Death From Front/Back`、`Falling Back Death`
+
+### C. 防御链缺三个关键动作
+
+| 机制 | 代码状态 | 动画状态 |
+| --- | --- | --- |
+| 精准格挡 / 招架（0.2s 窗口、免伤、对方露破绽） | **完整实现** | ❌ 无专用动作，仍是格挡保持姿态 |
+| 格挡被击中的反震 | 有减伤与体力消耗 | ❌ 无 |
+| 破防 / 被破韧 | 有 | ⚠️ 借用 `Stunned` |
+
+玩家把时机做对了却看不到任何区别，这是"格挡没用"这类反馈的一个来源。
+> 需要：`Sword And Shield Block Idle`→`Block Impact`、`Parry`/`Deflect`、`Guard Break`
+
+### D. 处决 / 终结技：全套机制在跑，没有动作
+
+破韧后重击命中 = 2.8 倍伤害 + 横幅「处决」+ 强顿帧 + 慢镜 + 推近特写——
+唯独**播的是普通重击**。这是全局最该有仪式感的一击。
+> 需要：`Sword Finisher`、`Execution`、`Stealth Kill`
+
+### E. 心理硬直——这是本作的主题所在
+
+「短暂失守」（跪一下、掉锁定）走的是 `Stunned`（普通眩晕）。
+而这款游戏整体讲的就是心理对抗，崩溃/抱头/踉跄后退这类动作**是叙事的一部分**，
+用一个通用眩晕顶掉很可惜。
+> 需要：`Kneeling Down`、`Defeated`、`Sad Idle`、`Head Hit`（抱头）、
+> `Stumble Backwards`
+
+### F. 敌人：九种武术类型共用一套动作
+
+`MartialArchetype` 设计了拳/腿/擒拿/刀/棍/重武器/刺客/防反/协同九类，
+但动作只有一套——不同心魔的动作语言完全一样，只靠颜色与台词区分。
+> 需要（按性价比排）：`Boxing` 系（拳）、`Martial Arts Kick` 系（腿）、
+> `Staff/Spear` 系（棍），三套就能把主要类型区分开
+
+### G. NPC 与生活场景
+
+行人与城市 NPC 只有走/跑/待机；住处只用了坐/躺/起身三条。
+> 需要：`Standing Idle` 变体、`Talking`、`Looking Around`、`Waiting`、
+> `Sitting Idle` 变体；住处设施（书桌/瑜伽垫/厨房）的专属动作
+
+### H. 设计里有、实现完全没有
+
+`terrain_climb 地形攀越`（跳跃、攀爬、破障逐阶推进）是 `ChapterModuleLibrary`
+里的**正式机制**，AI 生成的章节会把它排进关卡——但攀爬/翻越既没有动画也没有实现。
+> 需要：`Climbing`、`Climb To Top`、`Hanging Idle`、`Braced Hang`、`Vault Over Obstacle`
+> （这一项动画只是其中一半，另一半是攀爬状态机）
+
+### I. 交互动作：全无
+
+开门、拾取、按按钮、推拉——现在都是走过去即触发，没有任何肢体动作。
+> 需要：`Opening Door`、`Picking Up Object`、`Pressing Button`、`Pushing`
+
+### 优先级建议
+
+| 级别 | 项 | 理由 |
+| --- | --- | --- |
+| **P0** | C 招架 / D 处决 | 机制已完整，只差动画就能被玩家感知——性价比最高 |
+| **P0** | B 受击方向与轻重 | 部位系统已做好，没有动画等于白做 |
+| **P1** | A 剑技变体 | 消除"三招一个样"，连段观感立刻不同 |
+| **P1** | E 心理硬直专用动作 | 主题表达，别的游戏没有、本作必须有 |
+| **P2** | F 敌人武术类型 / G NPC / I 交互 | 丰富度，不影响核心手感 |
+| **P2** | H 攀爬 | 要连状态机一起做，工作量最大 |
+
+**接入成本提示**：A 类里若只是**替换**现有招式的片段，改一下 `PlayableAnimator.ActionMap`
+的候选名即可（小改）；B/C/D/E 都需要**新增 PoseState + 在触发点接线**；
+H 需要完整实现。都不是"丢文件即生效"。
+
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 
 这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
