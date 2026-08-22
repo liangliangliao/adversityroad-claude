@@ -459,6 +459,7 @@ namespace AdversityRoad.Player
             stickInput += MobileInput.Move;
             stickInput = Vector2.ClampMagnitude(stickInput, 1f);
             Vector3 stickDir = CameraRelative(stickInput);
+            _stickMag = stickInput.magnitude;   // 移动过渡层用（起步该不该给"起步"那一段）
             StickWorldDir = stickDir;   // 供技能连招判断"玩家是否正在主动引导方向"
             // 未经平滑的"手指/按键此刻在不在"——镜头用它作为跟随起停的零延迟判据。
             // StickWorldDir 来自平滑后的摇杆量，松手后还要几十毫秒才落到阈值以下，
@@ -583,8 +584,20 @@ namespace AdversityRoad.Player
                     pcc.Fusion.Push(Combat.MoveToken.Dodge);
                 }
                 _dodgeDir = moveDir.sqrMagnitude > 0.01f ? moveDir : transform.forward;
-                // 翻滚方向即刻转身
-                transform.rotation = Quaternion.LookRotation(_dodgeDir);
+                // 【方向闪避】锁定目标时不转身滚出去，而是按摇杆方向做左闪 / 右闪 / 后撤步——
+                // 这是锁定战的标准做法：面向敌人向左推杆按闪避，人往左侧闪，眼睛始终盯着他。
+                // 非锁定时仍是前滚翻（朝哪滚就朝哪转身，那时转身是对的）。
+                var dodgePose = PoseState.Dodge;
+                if (_anim != null && StrafeActive && moveDir.sqrMagnitude > 0.01f)
+                {
+                    float dodgeAng = Vector3.SignedAngle(transform.forward, moveDir, Vector3.up);
+                    float absAng = Mathf.Abs(dodgeAng);
+                    if (absAng > 135f) dodgePose = PoseState.StepBack;
+                    else if (absAng > 45f) dodgePose = dodgeAng > 0f ? PoseState.DodgeRight : PoseState.DodgeLeft;
+                    if (!_anim.HasPose(dodgePose)) dodgePose = PoseState.Dodge;
+                }
+                if (dodgePose == PoseState.Dodge) transform.rotation = Quaternion.LookRotation(_dodgeDir);
+                if (_anim != null) _anim.DodgePose = dodgePose;
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Dodge, 0.7f);
                 // 有专用翻滚片段时：闪避时长匹配片段（完整呈现整个滚翻动作），
                 // 总位移保持恒定（速度反比时长），无片段沿用默认参数
@@ -598,7 +611,7 @@ namespace AdversityRoad.Player
                 _dodgeSpd = dodgeSpeed;
                 if (_anim != null)
                 {
-                    float clipLen = _anim.ActionClipLength(PoseState.Dodge);
+                    float clipLen = _anim.ActionClipLength(dodgePose);
                     if (clipLen > 0.1f)
                     {
                         dur = Mathf.Clamp(clipLen * 0.55f, 0.30f, 0.42f);
@@ -745,6 +758,7 @@ namespace AdversityRoad.Player
             if (StrafeActive && planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle);
+            UpdateMoveStatePose(speed01, dt);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
             // 敌人在远处/无敌人时用普通待机（不再一有敌人在场就一直端着架势）
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
@@ -752,8 +766,169 @@ namespace AdversityRoad.Player
                 Vector3.Distance(transform.position, _lockOn.CurrentTarget.position) < 6f;
             bool ready = enemyClose || (_combat != null && _combat.InCombat);
             _anim.SetCombatReady(ready);
+            // 收刀之后换空手那一套（临战架势 / 蹲伏 / 踢击 / 倒下）：
+            // 手里没剑却还端着持剑架势，人会显得凭空握着什么。
+            if (_appearance == null) _appearance = GetComponent<PlayerAppearance>();
+            _anim.SetArmed(_appearance == null || _appearance.IsWeaponDrawn);
             // 拔刀/收刀改为手动按钮触发（见 PlayerAppearance.ToggleWeaponDrawn），此处不再自动驱动
             _lastPos = transform.position;
+        }
+
+        // ===================== 移动过渡姿态层 =====================
+        //
+        // 起步 / 急停 / 原地转身 / 起跳 / 下落 / 落地 / 蹲伏待机。
+        //
+        // 大作里"角色是活的"有很大一部分来自这一层：推杆有起步的重心前压、
+        // 松杆有刹住的踏步、站着扭方向有原地转身、落地有缓冲——
+        // 而不是站姿直接平移、跑姿突然静止、整个人瞬间转过去、从空中直接贴地。
+        //
+        // 三条硬规矩，缺一条都会变成"手感变差"：
+        //   ① **绝不锁移动**。这一层只往动作层丢一段片段，位移照旧由控制器算，
+        //      玩家推杆的那一刻角色就已经在走了——过渡是画面上的，不是逻辑上的。
+        //   ② **战斗动作优先**。攻击/受击/翻滚/技能占着身体时整层让开。
+        //   ③ **有冷却**。同一类过渡短时间内不重复触发，否则贴身绕圈会
+        //      每隔几帧插一次转身，读作抖动。
+        bool _wasGrounded = true;
+        bool _crouchPosed;
+        bool _jumpPosePlayed;
+        float _airT, _fallTopY;
+        float _moveStateCd;
+        float _prevSpeed01;
+        float _yawPrev;
+        float _turnAccum;
+        float _stickMag;
+
+        const float FallPoseAfter = 0.22f;   // 腾空多久之后才算"在下落"（小台阶不播）
+        const float HardLandDrop = 3.2f;     // 掉落超过这个高度算重着陆（米）
+
+        void UpdateMoveStatePose(float speed01, float dt)
+        {
+            if (_anim == null || _cc == null || _anim.Resting) return;
+
+            bool busy = _dodgeTimer > 0f ||
+                        (_combat != null && _combat.Current != CombatState.Locomotion &&
+                                            _combat.Current != CombatState.Idle);
+            if (busy)
+            {
+                // 战斗动作期间不插手，但地面/速度的"上一帧"要照常记，
+                // 否则动作一结束就会因为"上一帧还在天上"而误播一次落地
+                _wasGrounded = _cc.isGrounded;
+                _prevSpeed01 = speed01;
+                _yawPrev = transform.eulerAngles.y;
+                return;
+            }
+
+            _moveStateCd -= dt;
+            bool grounded = _cc.isGrounded;
+
+            // ---------- 腾空：起跳 → 下落循环 ----------
+            if (!grounded)
+            {
+                if (_wasGrounded) { _airT = 0f; _fallTopY = transform.position.y; _jumpPosePlayed = false; }
+                _airT += dt;
+                _fallTopY = Mathf.Max(_fallTopY, transform.position.y);   // 最高点起算下落高度
+                if (!_jumpPosePlayed && _vy > 0.5f && _anim.HasPose(PoseState.JumpUp))
+                {
+                    _jumpPosePlayed = true;
+                    _anim.SetPose(PoseState.JumpUp);
+                }
+                else if (_airT > FallPoseAfter && _vy < -1f &&
+                         _anim.CurrentPose != PoseState.FallLoop && _anim.HasPose(PoseState.FallLoop))
+                {
+                    _anim.SetPose(PoseState.FallLoop);
+                }
+                _wasGrounded = false;
+                _prevSpeed01 = speed01;
+                _yawPrev = transform.eulerAngles.y;
+                return;
+            }
+
+            // ---------- 落地 ----------
+            if (!_wasGrounded)
+            {
+                _wasGrounded = true;
+                float drop = _fallTopY - transform.position.y;
+                var land = drop > HardLandDrop ? PoseState.LandHard : PoseState.Land;
+                if (!_anim.HasPose(land)) land = PoseState.Land;
+                // 只在真的腾空过一会儿之后才播落地：走下路缘石也播一段缓冲会很碎
+                if (_airT > FallPoseAfter && _anim.HasPose(land))
+                {
+                    _anim.SetPose(land);
+                    _moveStateCd = 0.3f;
+                }
+                else if (_anim.CurrentPose == PoseState.FallLoop || _anim.CurrentPose == PoseState.JumpUp)
+                {
+                    _anim.SetPose(PoseState.Idle);   // 保持型的下落姿态必须显式收掉
+                }
+                _prevSpeed01 = speed01;
+                _yawPrev = transform.eulerAngles.y;
+                return;
+            }
+
+            // ---------- 蹲伏待机 ----------
+            bool crouchStill = IsCrouched && speed01 < 0.03f;
+            if (crouchStill != _crouchPosed)
+            {
+                _crouchPosed = crouchStill;
+                if (crouchStill && _anim.HasPose(PoseState.CrouchIdle)) _anim.SetPose(PoseState.CrouchIdle);
+                else if (_anim.CurrentPose == PoseState.CrouchIdle) _anim.SetPose(PoseState.Idle);
+                _prevSpeed01 = speed01;
+                _yawPrev = transform.eulerAngles.y;
+                return;
+            }
+            if (crouchStill)
+            {
+                _prevSpeed01 = speed01;
+                _yawPrev = transform.eulerAngles.y;
+                return;
+            }
+
+            // ---------- 原地转身 ----------
+            // 判据是"人几乎没在动，朝向却在快速变" —— 摇杆 180° 回打的头几帧、
+            // 锁定绕后时都会命中。攒够角度再播，避免每一次细微修正都插一段转身。
+            float yaw = transform.eulerAngles.y;
+            float dYaw = Mathf.DeltaAngle(_yawPrev, yaw);
+            _yawPrev = yaw;
+            // 锁定目标时不做原地转身：那时身体是被目标持续牵着转的，
+            // 插一段"转身 90°"的片段会和这份持续朝向打架，看上去像抽搐。
+            // 原地转身是自由移动时的动作——大作里也是这么分的。
+            if (!StrafeActive && speed01 < 0.06f && Mathf.Abs(dYaw) > 3f)
+            {
+                _turnAccum += dYaw;
+                if (_moveStateCd <= 0f && Mathf.Abs(_turnAccum) > 70f)
+                {
+                    var tp = Mathf.Abs(_turnAccum) > 150f
+                        ? PoseState.Turn180
+                        : (_turnAccum > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
+                    if (_anim.HasPose(tp))
+                    {
+                        _anim.SetPose(tp);
+                        _moveStateCd = 0.65f;
+                    }
+                    _turnAccum = 0f;
+                }
+            }
+            else _turnAccum = Mathf.MoveTowards(_turnAccum, 0f, 240f * dt);
+
+            // ---------- 起步 / 急停 ----------
+            if (_moveStateCd <= 0f)
+            {
+                // 起步只在【慢速起步】时给：猛推满杆本来就该直接进跑，
+                // 那时再插一段起步反而拖一拍（这正是"角色不跟手"的常见来源）。
+                if (_prevSpeed01 < 0.02f && speed01 > 0.12f && _stickMag < 0.65f &&
+                    _anim.HasPose(PoseState.StartMove))
+                {
+                    _anim.SetPose(PoseState.StartMove);
+                    _moveStateCd = 0.4f;
+                }
+                // 急停只在【跑起来之后】给：走两步停下不需要刹车动作
+                else if (_prevSpeed01 > 0.55f && speed01 < 0.10f && _anim.HasPose(PoseState.StopMove))
+                {
+                    _anim.SetPose(PoseState.StopMove);
+                    _moveStateCd = 0.45f;
+                }
+            }
+            _prevSpeed01 = speed01;
         }
 
         void ToggleCrouch()

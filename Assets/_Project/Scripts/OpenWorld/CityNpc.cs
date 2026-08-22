@@ -68,6 +68,7 @@ namespace AdversityRoad.OpenWorld
             {
                 float v = _agent.velocity.magnitude;
                 _anim.SetLocomotion(Mathf.Clamp01(v / 3.2f), false, true, v);
+                _anim.SetArmed(false);   // 路人是平民，用空手那一套
             }
 
             if (Time.time < _nextCheck) return;

@@ -56,6 +56,8 @@ namespace AdversityRoad.EditorTools
                 sb.Append("[CIDIAG][移动] 动作库有效=").Append(pa.Valid ? "是" : "否").Append('\n');
                 foreach (var line in pa.DescribeDirectionalSet().Split('\n'))
                     if (line.Length > 0) sb.Append("[CIDIAG][移动] ").Append(line).Append('\n');
+                foreach (var line in pa.DescribeActionSet().Split('\n'))
+                    if (line.Length > 0) sb.Append("[CIDIAG][招式] ").Append(line).Append('\n');
                 pa.Destroy();
             }
             catch (System.Exception e)

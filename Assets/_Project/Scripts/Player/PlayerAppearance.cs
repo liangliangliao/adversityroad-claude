@@ -38,6 +38,10 @@ namespace AdversityRoad.Player
         /// <summary>当前是否装备了带剑鞘的成套武器（UI 决定是否显示「拔刀/收刀」按钮）。</summary>
         public bool HasSheathWeapon => _sheath != null;
 
+        /// <summary>兵器此刻在不在手上（无鞘武器视为一直在手）。动画层据此
+        /// 在持剑动作集与空手动作集之间切换。</summary>
+        public bool IsWeaponDrawn => _weaponHidden ? false : (_sheath == null || _sheath.IsDrawn);
+
         /// <summary>
         /// 拔剑 / 收剑的候选片段（前面的优先）。
         ///

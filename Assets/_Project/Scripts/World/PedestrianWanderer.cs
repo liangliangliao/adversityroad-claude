@@ -31,6 +31,7 @@ namespace AdversityRoad.World
             {
                 float v = _agent.velocity.magnitude;
                 anim.SetLocomotion(Mathf.Clamp01(v / 3.2f), false, true, v);
+                anim.SetArmed(false);   // 路人是平民，用空手那一套
             }
 
             if (Time.time < _nextPick) return;

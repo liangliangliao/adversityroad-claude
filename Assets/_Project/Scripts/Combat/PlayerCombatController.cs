@@ -1800,6 +1800,11 @@ namespace AdversityRoad.Combat
                     }
                     else if (!chargeGuard && !skillArmor)
                     {
+                        // 受击片段按这一击的分量挑（轻抖 / 被打退），
+                        // 必须在切状态【之前】写入——HumanoidAnimator 是在
+                        // FSM 状态变化的那一帧读 HitPose 的。
+                        var poser = GetComponent<HumanoidAnimator>();
+                        if (poser != null) poser.HitPose = poser.ResolveHitPose(phys, dmg.knockback);
                         _fsm.RequestState(CombatState.HitReaction, 0.4f);
                     }
                 }

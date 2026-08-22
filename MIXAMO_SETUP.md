@@ -455,6 +455,202 @@ Standing 2H Magic Attack 01          Great Sword Air Slash
 4. `SkillExecutor.Glide`：拆成「突进片段 + 刹停片段」两段播，判定段单独开。
 5. 每套连招末尾 `FinalStrikeWindow` 之后加 0.35s 收招定势（可被输入取消）。
 
+## 一·补四、动作库接入总表（当前实际生效的映射）
+
+> 84 个 FBX，逐条接进了具体用途。这张表是用一个**复刻运行时解析顺序**的脚本
+> 跑出来的（候选链先后、变体池抢占、方向环按「档位+角度」去重，全部照 C# 那一套走），
+> 不是照代码手抄的——所以它反映的是"实际会落到哪个槽位"，而不是"打算落到哪"。
+
+### 这一轮做了什么
+
+1. **解包 Great Sword Pack**：zip 里 51 个片段，挑出 15 条填补真实空缺的
+   （受击 ×5、突进斩、蓄力循环、持剑待机/蹲伏/踢击、持剑死亡、格挡受击、斩击变体 ×2），
+   其余是与现有片段等价的重复项，未解包。两个原始 zip（共 35MB）已删除——
+   它们躺在 `Resources/` 里既不会被 Unity 导入，又占仓库体积。
+2. **速度档从 2 档扩到 4 档**：走 / 慢跑 / 跑 / 冲刺，外加一圈蹲伏。
+   两档时八方向片段有一半永远用不上，而且主导片段的自然速度与真实移速差得远，
+   步幅同步只能靠 0.5~2.0 的倍速去凑——那正是脚打滑的来源。
+3. **新增移动过渡层**：起步 / 急停 / 原地转身 90°·180° / 起跳 / 下落 / 落地 / 重着陆。
+   **它只往动作层丢片段，不锁移动**——推杆那一刻角色就已经在走，过渡是画面上的、
+   不是逻辑上的。（上一轮"失去手感"的教训：任何插在输入与位移之间的东西都要先问
+   "它会不会让玩家等"。）
+4. **持剑 / 空手两套动作集**：收刀之后临战架势、蹲伏、踢击、受击、倒下全部换空手版本。
+   十类武术里只有刀术/棍术/重武器持械，其余七类与路人一律走空手那一套。
+5. **受击分档 + 变体池**：伤害 ≥26 或击退 ≥4.5 走重受击，否则轻受击；
+   两档各自还是变体池，轮换播放。连招打五下不再是同一条片段重播五次。
+
+### 完整映射
+
+**移动 · 方向环**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Crouch Walk Back.fbx` | 方向环 蹲伏 180° |
+| `Anims/Crouched Sneaking Left.fbx` | 方向环 蹲伏 -90° |
+| `Anims/Crouched Sneaking Right.fbx` | 方向环 蹲伏 90° |
+| `Anims/Fast Run.fbx` | 方向环 冲刺 0° |
+| `Anims/Jog Backward Diagonal.fbx` | 方向环 慢跑 135° |
+| `Anims/Jog Backward.fbx` | 方向环 慢跑 180° |
+| `Anims/Jog Forward Diagonal.fbx` | 方向环 慢跑 45° |
+| `Anims/Jog Forward.fbx` | 方向环 慢跑 0° |
+| `Anims/Jog Strafe Left.fbx` | 方向环 慢跑 -90° |
+| `Anims/Jog Strafe Right.fbx` | 方向环 慢跑 90° |
+| `Anims/Left Strafe Walking.fbx` | 方向环 走 -90° |
+| `Anims/Left Strafe.fbx` | 方向环 跑 -90° |
+| `Anims/…@Running.fbx` | 跑 run / 方向环 跑 0° |
+| `Anims/…@Walking.fbx` | 走 walk / 方向环 走 0° |
+| `Anims/Right Strafe Walking.fbx` | 方向环 走 90° |
+| `Anims/Right Strafe.fbx` | 方向环 跑 90° |
+| `Anims/Running Backward.fbx` | 方向环 跑 180° |
+| `Anims/Walking Backwards.fbx` | 方向环 走 180° |
+
+**移动 · 待机与架势**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Great Sword Idle.fbx` | 临战架势(持剑) |
+| `Anims/…@Fighting Idle.fbx` | 临战架势(空手) |
+| `Anims/…@Idle.fbx` | 待机 idle |
+
+**移动过渡**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Left Turn 90.fbx` | 招式 TurnLeft |
+| `Anims/Quick 180 Turn (1).fbx` | 招式池 Turn180 |
+| `Anims/Quick 180 Turn.fbx` | 招式池 Turn180 |
+| `Anims/Right Turn 90.fbx` | 招式 TurnRight |
+| `Anims/Run To Stop.fbx` | 招式 StopMove |
+| `Anims/Start Walking.fbx` | 招式 StartMove |
+| `Anims/Step Backward.fbx` | 招式 StepBack |
+
+**腾空**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Falling Idle.fbx` | 招式 FallLoop |
+| `Anims/Falling To Landing.fbx` | 招式 Land |
+| `Anims/Hard Landing.fbx` | 招式 LandHard |
+| `Anims/Jumping Up.fbx` | 招式 JumpUp |
+
+**战斗 · 攻击**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Great Sword Attack.fbx` | 招式 HeavyAttack |
+| `Anims/Great Sword Block Hit.fbx` | 招式 GuardHit |
+| `Anims/Great Sword Blocking.fbx` | 招式 Guard |
+| `Anims/Great Sword Casting.fbx` | 招式 CastProjectile |
+| `Anims/Great Sword Kick.fbx` | 招式 AttackKick |
+| `Anims/Great Sword Power Up.fbx` | 招式 ChargeLoop |
+| `Anims/Great Sword Slash 3.fbx` | 招式 AttackLeap |
+| `Anims/Great Sword Slash 5.fbx` | 招式池 Attack |
+| `Anims/Great Sword Slide Attack.fbx` | 招式 DashAttack |
+| `Anims/Leg Sweep.fbx` | 招式 Sweep |
+| `Anims/…@Cross Punch.fbx` | 招式 PunchCross |
+| `Anims/…@Flying Kick.fbx` | 招式 JumpKick |
+| `Anims/…@Great Sword Slash (1).fbx` | 招式 AttackUp |
+| `Anims/…@Great Sword Slash.fbx` | 招式池 Attack |
+| `Anims/…@Kicking.fbx` | 空手替身 AttackKick |
+| `Anims/…@Lead Jab.fbx` | 招式 PunchJab |
+| `Anims/…@Side Kick.fbx` | 招式 SideKick |
+| `Anims/…@Spell Casting.fbx` | 招式 Cast |
+| `Anims/…@Spin Flip Kick.fbx` | 招式 SpinKick |
+| `Anims/…@Stabbing.fbx` | 招式 SwordThrust |
+
+**战斗 · 受击与倒下**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Crouching Idle.fbx` | 空手替身 CrouchIdle |
+| `Anims/Dodging Right.fbx` | 招式 DodgeRight |
+| `Anims/Great Sword Crouching.fbx` | 招式 CrouchIdle |
+| `Anims/Great Sword Impact 2.fbx` | 招式池 Hit |
+| `Anims/Great Sword Impact 3.fbx` | 招式池 Hit |
+| `Anims/Great Sword Impact 4.fbx` | 招式池 HitHeavy |
+| `Anims/Great Sword Impact 5.fbx` | 招式池 HitHeavy |
+| `Anims/Great Sword Impact.fbx` | 招式池 Hit |
+| `Anims/…@Dying.fbx` | 空手替身 Death |
+| `Anims/…@Hit Reaction.fbx` | 空手替身 Hit |
+| `Anims/…@Knocked Down.fbx` | 招式 Knockdown |
+| `Anims/Stand To Roll.fbx` | 招式 Dodge |
+| `Anims/Standing Dodge Left.fbx` | 招式 DodgeLeft |
+| `Anims/Stunned.fbx` | 招式 Stagger |
+| `Anims/Two Handed Sword Death.fbx` | 招式 Death |
+
+**按名字播（休息 / 拔刀 / 起身）**
+
+| 文件 | 用在哪 |
+|---|---|
+| `Anims/Draw A Great Sword 2.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Draw Sword 2.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Getting Up.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Lying Down.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Putting Down.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Run Forward.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Sheath A Great Sword 1.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Sheathing Sword.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Sitting.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Sleeping Idle.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Slow Jog Backwards.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Stand Up.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims/Standing Up.fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims2/Sheathing Sword (1).fbx` | （仅按名字可播：休息/拔刀/预览） |
+| `Anims2/Withdrawing Sword.fbx` | （仅按名字可播：休息/拔刀/预览） |
+
+### 两个重复文件（可删，删了也不影响）
+
+| 文件 | 与谁重复 |
+|---|---|
+| `Anims/Run Forward.fbx` | `…@Running.fbx`（跑档正前方已由它占据；Running 同时是动作库有效性的判据，不能删） |
+| `Anims/Slow Jog Backwards.fbx` | `Jog Backward.fbx`（慢跑档后退已由它占据） |
+
+方向环会自动丢弃"同一档、同一方向"的等价片段——两条都塞进同一圈会让相邻对的
+角度跨度变成 0，插值出 NaN 权重。所以它们留在目录里也不会出问题，只是不会被播到。
+
+### CI 实测结果（构建 #387，已核对）
+
+四档的**实测**自然速度，同一方向上必须递增——这是"脚不打滑"的前提，
+因为播放速率 = 真实移速 ÷ 主导片段的自然速度，档位越贴近实际速度，这个比值越接近 1.0。
+
+| 方向 | 走 | 慢跑 | 跑 | 冲刺 |
+|---|---|---|---|---|
+| 前 0° | 1.75 `Walking` | 2.52 `Jog Forward` | 4.65 `Running` | 5.53 `Fast Run` |
+| 后 180° | 1.12 `Walking Backwards` | 2.32 `Jog Backward` | 3.10 `Running Backward` | —（交给跑档） |
+| 左 −90° | 1.70 `Left Strafe Walking` | 2.95 `Jog Strafe Left` | 4.43 `Left Strafe` | —— |
+| 右 +90° | 1.70 `Right Strafe Walking` | 2.38 `Jog Strafe Right` | 4.44 `Right Strafe` | —— |
+| 斜前 +45° | — | 2.83 `Jog Forward Diagonal` | — | — |
+| 斜后 −136° | — | 2.51 `Jog Backward Diagonal` | — | — |
+
+**四个方向全部单调递增，档位划分成立。** 斜向两条仍是实测角度（+45° 右前 / −136° 左后，
+不在同一侧），由相邻正方向补齐，环上最大跨度 90°，八方向全覆盖。
+
+### 一个实测才发现的问题：蹲伏只有一侧横移
+
+蹲伏环实得 **2 条**（`Crouch Walk Back` −180°、`Crouched Sneaking Left` **+90°**），
+`Crouched Sneaking Right` 被"同档同方向"判为重复丢弃了——也就是说这两个文件
+**实测的行进方向在同一侧**。
+
+最可能的原因：Mixamo 上这两个动作是同一段的镜像选项，下载时没有勾 **Mirror**，
+于是下到了两份一样的。要补的话重新下右侧那条并勾上 Mirror 即可。
+
+当前行为不会出错：蹲伏向左时该环覆盖不到（跨度 270° > 100°），
+权重自动转交走档，配合蹲伏压低叠加仍读得出"猫着腰往左挪"，只是没有专用的潜行步法。
+
+这类"名字说左右、实测在同一侧"的情况**不会报任何错**，只会在画面上表现成
+某个方向的步法不对。所以现在被丢弃的候选也会打进 CI 诊断（`⚠ 未接入：…`），
+下次一眼可见。
+
+### 怎么在真机上核对
+
+CI 每次构建都会打两张表（`.github` 的 diagnoseAssets 任务日志里搜关键字）：
+
+* `[CIDIAG][移动]` —— 每条方向片段的**实测**角度、自然速度、时长，以及它落在哪一档。
+  重点看：同一方向上四个档的自然速度应当**递增**（走 < 慢跑 < 跑 < 冲刺）。
+  不递增说明某两个文件的实际速度与名字不符，把档位对调即可。
+* `[CIDIAG][招式] `—— 每个姿态实际拿到的片段名，变体池会列出全部成员，
+  空手替身单独标注。少一条、串到别的片段上，日志里当场看得见。
+
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 
 这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
