@@ -134,6 +134,77 @@ Assets/_Project/Resources/Characters/
    自然速度（横移 1.70m/s、后退 1.12m/s）与播放速率上限 2.0 倒推的，不是拍的。
    补上跑动版横移后，把 `PlayerController` 里那两个系数放开即可。
 
+## 一·补三、移动动作集的完整度审计（对照成熟动作游戏，缺什么一览）
+
+### 现在有什么（实测数据来自构建日志 `[CIDIAG][移动]`）
+
+| 档 | 方向 | 片段 | 自然速度 |
+| --- | --- | --- | --- |
+| 走 | 前 / 后 / 左 / 右 | Walking / Walking Backwards / Left·Right Strafe Walking | 1.75 / 1.12 / 1.70 |
+| 跑 | 前 / 后 / 右前 / 左后 | Running / Slow Jog Backwards / Jog Forward Diagonal / Jog Backward Diagonal | 4.65 / 1.68 / 2.83 / 2.51 |
+
+也就是：**走档是完整的四方向，跑档是残缺且不对称的四条**（有右前 +45° 与左后 −136°，
+却没有左前、右后，也没有跑动的正左/正右）。
+
+### 缺什么 —— 按"现在就在露馅"的顺序
+
+**P0-1　慢跑档（最大的洞）**
+走 1.75、跑 4.65，中间 2.6–4.6 m/s 这一整段**没有对应片段**，只能靠走与跑交叉淡入——
+两条步态叠在一起，读起来"既不是走也不是跑"。而摇杆推到六七成正好落在这一段，
+是最常用的速度。
+> 需要：`Jog Forward`、`Jog Backward`、`Jog Strafe Left`、`Jog Strafe Right`
+> （与你已下载的 Jog Forward/Backward Diagonal 同属一个 Mixamo 移动包，一起下齐）
+
+**P0-2　跑动横移（补齐跑档的八方向）**
+现在跑着横移是拿"走的横移"提速播，因此移速被**按片段能力封了顶**
+（正侧 2.60 m/s）。补齐后这个封顶才能放开。
+> 需要：`Left Strafe`、`Right Strafe`（跑速横移）+ 左前/右后两条斜向补对称
+
+**P0-3　原地转身**
+完全没有。站着不动改朝向时脚是钉住的、身体硬转——这是"像在推一个模型"而不是
+"在操纵一个人"的重要来源。
+> 需要：`Left Turn 90`、`Right Turn 90`、`Left Turn 180`、`Right Turn 180`
+
+**P0-4　起步 / 急停**
+没有加减速片段。现在起步是走循环直接淡入、停下是直接淡出，缺少"蹬地起步"
+与"刹住重心"的那两拍，这是分量感的主要来源。
+> 需要：`Walk Start`、`Jog To Stop`、`Run To Stop`（急停带侧身刹车最好）
+
+**P1-5　跳跃 / 下落 / 落地（功能已有、动画完全没有）**
+游戏里跳跃键是通的（含土狼时间与输入缓冲），但**动捕模式下没有任何跳跃动画**——
+人在空中还在播走跑循环。
+> 需要：`Jumping Up`、`Falling Idle`、`Falling To Landing`、`Hard Landing`
+> （另有 `Jump Forward` 更好，跑动中起跳用）
+
+**P1-6　蹲伏移动（同上：功能已有、动画完全没有）**
+C 键蹲伏改了碰撞体与移速，但动捕模式下播的还是站立的走——蹲伏姿态只存在于
+程序化方块骨骼那条兜底路径里。
+> 需要：`Crouch Idle`、`Crouched Walking`、`Crouched Walking Backwards`、
+> `Crouched Sneaking Left`/`Right`
+
+**P1-7　方向闪避**
+只有一条前滚翻（Stand To Roll），四个方向的闪避全都播它，靠转身体凑。
+锁定交战时后撤步/侧滚是基本盘。
+> 需要：`Back Step`（后撤步）、`Dodging Left`、`Dodging Right`、
+> 以及跑动中的 `Sprinting Forward Roll`
+
+**P2-8　冲刺档与战斗移动**
+> `Fast Run` / `Sprint` + `Sprint To Stop`；举械前进后退的 `Combat Walk Forward/Backward`
+> （现在临战前进用的还是普通走）
+
+**P2-9　待机与受伤变体**
+> `Breathing Idle` 变体、`Injured Walking`（低血量时切换，情绪表达用）
+
+### 落地时要注意的两件事
+
+1. **命名就是契约。** 移动片段走的是"按文件路径取"（见上一节），
+   代码里的候选名单在 `PlayableAnimator.CollectDirectional`。上面 P0-1/P0-2 的名字
+   已经预留在名单里（`jog forward`、`left strafe`… 等），**下载放进去即自动生效**；
+   其余各项（转身/起步急停/跳跃/蹲伏/方向闪避）**需要配套写代码**，不是丢文件就行。
+2. **方向与自然速度不用手填。** 接入时会实测每条片段的行进方向与位移速度，
+   构建日志里能直接核对（搜 `[CIDIAG][移动]`）。所以斜向片段是左是右无所谓，
+   放进去它自己会找到位置。
+
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 
 这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
