@@ -801,10 +801,11 @@ namespace AdversityRoad.Player
         float _airT, _fallTopY;
         float _moveStateCd;
         float _prevSpeed01;
-        float _yawPrev;
-        float _turnAccum;
         float _stickMag;
         float _stillT;   // 已经站定多久（秒）——原地转身的前提
+
+        /// <summary>算"站定"的速度阈值（相对冲刺速度的比例）。</summary>
+        const float StandStillSpeed = 0.06f;
 
         /// <summary>要"站定"多久才允许播原地转身。跑动中急转弯时速度会瞬间掠过零，
         /// 这个时间窗把那种情况挡在外面（0.2s ≈ 12 帧，急转穿越零速远短于此）。</summary>
@@ -826,7 +827,6 @@ namespace AdversityRoad.Player
                 // 否则动作一结束就会因为"上一帧还在天上"而误播一次落地
                 _wasGrounded = _cc.isGrounded;
                 _prevSpeed01 = speed01;
-                _yawPrev = transform.eulerAngles.y;
                 _stillT = 0f;   // 战斗动作结束的那一刻不算"站了很久"
                 return;
             }
@@ -852,7 +852,7 @@ namespace AdversityRoad.Player
                 }
                 _wasGrounded = false;
                 _prevSpeed01 = speed01;
-                _yawPrev = transform.eulerAngles.y;
+                _stillT = 0f;        // 腾空不算站定
                 return;
             }
 
@@ -874,7 +874,7 @@ namespace AdversityRoad.Player
                     _anim.SetPose(PoseState.Idle);   // 保持型的下落姿态必须显式收掉
                 }
                 _prevSpeed01 = speed01;
-                _yawPrev = transform.eulerAngles.y;
+                _stillT = 0f;        // 刚落地不算站定
                 return;
             }
 
@@ -886,54 +886,48 @@ namespace AdversityRoad.Player
                 if (crouchStill && _anim.HasPose(PoseState.CrouchIdle)) _anim.SetPose(PoseState.CrouchIdle);
                 else if (_anim.CurrentPose == PoseState.CrouchIdle) _anim.SetPose(PoseState.Idle);
                 _prevSpeed01 = speed01;
-                _yawPrev = transform.eulerAngles.y;
                 return;
             }
             if (crouchStill)
             {
                 _prevSpeed01 = speed01;
-                _yawPrev = transform.eulerAngles.y;
                 return;
             }
 
             // ---------- 原地转身 ----------
             //
-            // 【上一版的判据是错的，而且是这三个症状里最响的一个】
-            // 原判据："人几乎没在动(speed01<0.06)，朝向却在快速变" ⇒ 播转身。
-            // 但**跑动中把摇杆打向反方向时，速度会经过零**——那一瞬人不是站着，
-            // 是正在高速换向。于是每一次急转弯都会插一段全身转身片段，
+            // 【判据必须是"站定 + 把杆打向身后"，不能是"速度低 + 朝向在变"】
+            // 速度低那一版是错的：跑动中把摇杆打向反方向时，速度会**经过零**——
+            // 那一瞬人不是站着，是正在高速换向。于是每次急转弯都插一段全身转身片段，
             // 而动作层一旦接管就盖住整个移动混合：人还在平移，腿却在演原地转身。
-            // 摇杆转一整圈 = 连续不断的急转 = 转身片段一段接一段，
-            // 这正是"移动完全失真、不是一步一个脚印"。
+            // 摇杆转一整圈＝连续急转＝转身片段一段接一段，这正是"移动完全失真"。
             //
-            // 正确的判据是**"本来就站着"**：站定持续一小段时间（_stillT），
-            // 而且手不在摇杆上大幅推（_stickMag 小）。这才是大作里原地转身的场景：
-            // 站着 → 把杆打到身后 → 人先转过去再迈步。
-            _stillT = speed01 < 0.06f ? _stillT + dt : 0f;
-            float yaw = transform.eulerAngles.y;
-            float dYaw = Mathf.DeltaAngle(_yawPrev, yaw);
-            _yawPrev = yaw;
-            // 锁定目标时不做原地转身：那时身体是被目标持续牵着转的，
-            // 插一段"转身 90°"的片段会和这份持续朝向打架，看上去像抽搐。
-            bool standingTurn = !StrafeActive && _stillT > StandStillBeforeTurn &&
-                                _stickMag < 0.55f && Mathf.Abs(dYaw) > 3f;
-            if (standingTurn)
+            // 现在直接判本意：**已经站定一小会儿**（_stillT）+ 摇杆推向的方向与
+            // 身体正面差得够多。急转弯时 _stillT 恒为 0，天然进不来；
+            // 而站着把杆打到身后是明确的"我要掉头"，一次判定即可出招，
+            // 不必靠累积转过的角度（那会把噪声也累进去）。
+            _stillT = speed01 < StandStillSpeed ? _stillT + dt : 0f;
+            if (!StrafeActive && _moveStateCd <= 0f && _stillT > StandStillBeforeTurn &&
+                _stickMag > 0.5f && StickWorldDir.sqrMagnitude > 0.04f)
             {
-                _turnAccum += dYaw;
-                if (_moveStateCd <= 0f && Mathf.Abs(_turnAccum) > 70f)
+                float need = Vector3.SignedAngle(transform.forward,
+                    StickWorldDir.normalized, Vector3.up);
+                float absNeed = Mathf.Abs(need);
+                if (absNeed > 60f)
                 {
-                    var tp = Mathf.Abs(_turnAccum) > 150f
+                    var tp = absNeed > 150f
                         ? PoseState.Turn180
-                        : (_turnAccum > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
+                        : (need > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
                     if (_anim.HasPose(tp))
                     {
-                        _anim.SetPose(tp);
+                        // 给时长，别让转身片段拖在身体后面：quickTurnMultiplier 下
+                        // 身体掉头只要 ≈0.2s，而转身片段原速要演 0.8s——不压时长的话
+                        // 人已经朝新方向跑起来了，腿还在演原地转身。
+                        _anim.SetPose(tp, absNeed > 150f ? 0.45f : 0.35f);
                         _moveStateCd = 0.65f;
                     }
-                    _turnAccum = 0f;
                 }
             }
-            else _turnAccum = Mathf.MoveTowards(_turnAccum, 0f, 240f * dt);
 
             // ---------- 起步 / 急停 ----------
             if (_moveStateCd <= 0f)
