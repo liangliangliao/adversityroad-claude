@@ -30,6 +30,21 @@
 | 禁止把视线锥做成不可见或不可预测 | `GazeCone.Update` 里可见度被 `Mathf.Clamp(visibility, 0.35f, 1f)` 兜住下限，锥体是真的画出来的地面扇形 |
 | 禁止在失败结算中使用围观特写、嘲笑音效或慢镜头羞辱 | 见上表第 45 条 |
 
+## 逆境预算（§8.7）对照
+
+`Adversity/AdversityBudget.cs` 在五维分配处为本章单独设一组权重：
+
+| 维度 | 方案建议 | 代码 |
+| --- | --- | --- |
+| Physical | 15% | `wPhysical = 0.15f`（全局默认是 0.34） |
+| Mental | 40% | `wMental = 0.40f` |
+| Environmental | 25% | `wEnv = 0.25f` |
+| Resource | 10% | `wResource = 0.10f` |
+| Time | 10% | `wTime = 0.10f`，且沿用既有规则——目标不带截止日期时这一维归零，不滥用 |
+
+Physical 被主动压低是**主题决定的，不是难度取巧**：本章的压力来自注视、指认与低语。
+单次遭遇的指认次数上限 5 次落在 `AI/ShameLineEnemies.NailAccuser.maxAccusations`。
+
 ## 优势发挥窗口（§8.7.2）对照
 
 | 窗口 | 触发条件 | 落在哪里 |

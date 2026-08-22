@@ -82,6 +82,16 @@ namespace AdversityRoad.Adversity
             // ---- 五维分配：不同弱点/优势下重心不同，但总和恒等于 B ----
             float wPhysical = 0.34f, wMental = 0.22f, wResource = 0.16f, wEnv = 0.16f, wTime = 0.12f;
 
+            // 第八章「羞耻与污名线」的重心与别处显著不同（方案 8.7）：
+            // Physical 被**主动压低**到 15%，Mental 与 Environmental 承担主要压力。
+            // 这是主题决定的，不是难度取巧——这一章的压力来自注视、指认与低语，
+            // 而不是敌人更多、血更厚；本章明令禁止靠堆 Boss 血量制造难度。
+            if (Shame.ShameLine.InChapter)
+            {
+                wPhysical = 0.15f; wMental = 0.40f;
+                wEnv = 0.25f; wResource = 0.10f; wTime = 0.10f;
+            }
+
             // 高压设置下把重心从"堆数值"移向"组合与环境"，符合"提升策略复杂度而非堆血"
             if (safety != null && safety.intensity == MentalIntensity.HighPressure)
             {
