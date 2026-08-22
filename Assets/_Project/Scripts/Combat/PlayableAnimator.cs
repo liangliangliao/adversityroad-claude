@@ -154,6 +154,31 @@ namespace AdversityRoad.Combat
         /// 有的话，上层就不必再用"拧骨盆 + 倒放"那套合成手段了。</summary>
         public bool HasDirectionalSet { get; private set; }
 
+        /// <summary>
+        /// 把方向移动表打成一行行可读的文字（CI 诊断用）。
+        ///
+        /// 存在的理由很实在：方向片段"接没接上、方向测得对不对"是**光看代码看不出来的**，
+        /// 而在真机上发现不对再回头查，一轮就是一天。让 CI 每次构建都把这张表打出来，
+        /// 少一条、角度反了、自然速度离谱，都能在日志里当场看见。
+        /// </summary>
+        public string DescribeDirectionalSet()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("方向移动片段 ").Append(_dirs.Count).Append(" 条，成套=")
+              .Append(HasDirectionalSet ? "是" : "否").Append('\n');
+            foreach (var d in _dirs)
+            {
+                string name = d.cp.IsValid() && d.cp.GetAnimationClip() != null
+                    ? d.cp.GetAnimationClip().name : "?";
+                sb.Append("    ").Append(d.tier == 0 ? "走" : "跑")
+                  .Append(" 角度=").Append(d.angle.ToString("F0")).Append("°")
+                  .Append(" 自然速度=").Append(d.natSpeed.ToString("F2")).Append("m/s")
+                  .Append(" 时长=").Append(d.len.ToString("F2")).Append("s")
+                  .Append("  [").Append(name).Append("]\n");
+            }
+            return sb.ToString();
+        }
+
         /// <summary>驱动中的 Animator（供脚踝校准等后处理访问骨骼）。</summary>
         public Animator Animator => _animator;
 

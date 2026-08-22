@@ -22,6 +22,7 @@ namespace AdversityRoad.EditorTools
             {
                 DiagWeapon(sb, "scene");
                 DiagBackpacks(sb);
+                DiagLocomotion(sb);
             }
             catch (System.Exception e)
             {
@@ -31,6 +32,41 @@ namespace AdversityRoad.EditorTools
             sb.Append("===== [CIDIAG] 诊断结束 =====\n");
             Debug.Log(sb.ToString());
             EditorApplication.Exit(exit);
+        }
+
+        // ---------- 方向移动片段（后退/横移/斜向是否真的接上了） ----------
+        //
+        // 这一项查的是"看不见的失败"：片段没被找到、方向测反了、自然速度离谱——
+        // 三种都不会报错，只会在真机上表现成"横移时脚在原地倒腾"。
+        // 与其等截图往返，不如让 CI 每次构建都把这张表打出来。
+        static void DiagLocomotion(StringBuilder sb)
+        {
+            var prefab = Resources.Load<GameObject>("Characters/PlayerModel");
+            if (prefab == null)
+            {
+                sb.Append("[CIDIAG][移动] 没有 Characters/PlayerModel，跳过\n");
+                return;
+            }
+            var model = Object.Instantiate(prefab);
+            try
+            {
+                var animator = model.GetComponentInChildren<Animator>();
+                if (animator == null) animator = model.AddComponent<Animator>();
+                var pa = new AdversityRoad.Combat.PlayableAnimator(animator);
+                sb.Append("[CIDIAG][移动] 动作库有效=").Append(pa.Valid ? "是" : "否").Append('\n');
+                foreach (var line in pa.DescribeDirectionalSet().Split('\n'))
+                    if (line.Length > 0) sb.Append("[CIDIAG][移动] ").Append(line).Append('\n');
+                pa.Destroy();
+            }
+            catch (System.Exception e)
+            {
+                // 诊断本身出问题不该让构建失败——它是来报信的，不是把关的
+                sb.Append("[CIDIAG][移动] 诊断异常（不影响构建）：").Append(e.Message).Append('\n');
+            }
+            finally
+            {
+                Object.DestroyImmediate(model);
+            }
         }
 
         // ---------- 武器（带鞘套件） ----------
