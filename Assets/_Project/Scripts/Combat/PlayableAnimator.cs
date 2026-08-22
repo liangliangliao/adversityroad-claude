@@ -307,9 +307,25 @@ namespace AdversityRoad.Combat
                 else sb.Append(ClipNameAt(kv.Value));
                 if (_unarmedIndex.TryGetValue(kv.Key, out int ua))
                     sb.Append("   （空手：").Append(ClipNameAt(ua)).Append('）');
+                // 保持型姿态（蓄力/蹲伏/格挡/倒地/死亡）必须报出【片段自己循不循环】。
+                // 这一栏是被一个真实的坑逼出来的：代码里 hold=true 的语义只是
+                // "权重保持、等外部切换"，片段播到末尾之后循不循环由**导入设置**
+                // （loopTime）决定。两者对不上时，蓄力就是一张静止的照片，
+                // 而这件事不报任何错——只能靠把它打出来看。
+                if (_actionHold[kv.Value])
+                    sb.Append("   [保持 循环=")
+                      .Append(ClipLoops(kv.Value) ? "是" : "否").Append(']');
                 sb.Append(NL);
             }
             return sb.ToString();
+        }
+
+        bool ClipLoops(int idx)
+        {
+            if (idx < 0 || idx >= _actionCount) return false;
+            var cp = (AnimationClipPlayable)_actions.GetInput(idx);
+            var c = cp.IsValid() ? cp.GetAnimationClip() : null;
+            return c != null && c.isLooping;
         }
 
         string ClipNameAt(int idx)
