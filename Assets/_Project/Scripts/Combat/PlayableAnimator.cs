@@ -281,12 +281,13 @@ namespace AdversityRoad.Combat
         /// 空手替身还有第二套。让 CI 每次构建都把这张表打出来，
         /// 少一条、串到别的片段上，都能在日志里当场看见。
         /// </summary>
+        const char NL = '\n';
+
         public string DescribeActionSet()
         {
             var sb = new System.Text.StringBuilder();
             sb.Append("招式片段 ").Append(_actionIndex.Count).Append(" 个姿态有片段，动作层共 ")
-              .Append(_actionCount).Append(" 条
-");
+              .Append(_actionCount).Append(" 条").Append(NL);
             foreach (var kv in _actionIndex)
             {
                 sb.Append("    ").Append(kv.Key.ToString().PadRight(16));
@@ -302,8 +303,7 @@ namespace AdversityRoad.Combat
                 else sb.Append(ClipNameAt(kv.Value));
                 if (_unarmedIndex.TryGetValue(kv.Key, out int ua))
                     sb.Append("   （空手：").Append(ClipNameAt(ua)).Append('）');
-                sb.Append('
-');
+                sb.Append(NL);
             }
             return sb.ToString();
         }
