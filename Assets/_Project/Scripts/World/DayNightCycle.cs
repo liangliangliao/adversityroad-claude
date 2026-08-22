@@ -35,6 +35,26 @@ namespace AdversityRoad.World
         bool _lampsOn;
         bool _roofed;
 
+        void Awake()
+        {
+            // ===== 环境光模式必须是 Flat，否则下面写的 ambientLight 根本不生效 =====
+            //
+            // 【这是"场景一直很黑"最深的那一层】
+            // 场景文件里 m_AmbientMode = 0（Skybox）。在这个模式下，Unity 的环境光
+            // 来自**天空盒烘出来的球谐探针**，`RenderSettings.ambientLight` 这个字段
+            // 是**被完全忽略**的——它只在 Flat(Color) 模式下才起作用。
+            //
+            // 也就是说：这个文件里所有关于夜间/室内保底亮度的设定，一直都写进了
+            // 一个没人读的字段。而天空盒到了夜里本身就是黑的，于是环境光跟着归零，
+            // 地面和墙面只剩一盏斜射主光——这正是玩家看到的那种"糊成一片黑"，
+            // 也是为什么上一轮把灯调亮之后，**没有灯的地方依然全黑**。
+            //
+            // 切到 Flat 之后，NightAmbient / IndoorAmbient 这些值才真正成为
+            // 全场的亮度下限。反射仍然走天空盒（defaultReflectionMode 不动），
+            // 所以金属/水面的观感不受影响。
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+        }
+
         static float Luma(Color c) => c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
 
         void Update()

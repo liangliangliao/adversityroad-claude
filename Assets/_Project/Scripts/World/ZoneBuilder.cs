@@ -302,8 +302,11 @@ namespace AdversityRoad.World
             {
                 Vector3 c = ctx.playerSpawns[z];
                 c.y = 0f;
-                // 每区以出生点为中心审一片 60×60（覆盖战场与主要动线）
-                total += SceneLighting.EnsureLit(c, 30f, p =>
+                // 每区以出生点为中心审一片 90×90。
+                // 30m 半径只覆盖出生点周围一小块——而这些关卡的战场、传送门、
+                // Boss 台大多在三四十米开外，正好落在审计范围之外，于是"补过灯了"
+                // 和"走过去还是黑的"同时成立。半径按区域实际尺度放大。
+                total += SceneLighting.EnsureLit(c, 45f, p =>
                 {
                     // 出生点跟前 6 米内不补：灯柱正好糊住出门那一眼
                     if ((p - c).sqrMagnitude < 36f) return false;
@@ -314,8 +317,10 @@ namespace AdversityRoad.World
                     if (Physics.Raycast(p + Vector3.up * 1.5f, Vector3.up,
                             out RaycastHit roof, 22f, ~0, QueryTriggerInteraction.Ignore))
                     {
-                        AddCeilingLight(new Vector3(p.x, roof.point.y - 0.6f, p.z),
-                            new Color(0.95f, 0.93f, 0.88f), 26f);
+                        // 吊灯离地不超过 3.4m：贴着屋顶装会把顶低的走廊照爆
+                        AddCeilingLight(
+                            new Vector3(p.x, SceneLighting.CeilingLightY(p.y, roof.point.y), p.z),
+                            new Color(0.95f, 0.93f, 0.88f), SceneLighting.CeilingLightRange);
                         return true;
                     }
                     // 露天才立灯柱；被墙/家具占住的位置跳过（灯柱插进墙里比暗更难看）
@@ -323,7 +328,7 @@ namespace AdversityRoad.World
                             QueryTriggerInteraction.Ignore)) return false;
                     Lamp(ctx, p);
                     return true;
-                }, cell: 15f, minLux: 0.35f, maxLamps: 8);
+                }, cell: 14f, minLux: SceneLighting.MinLux, maxLamps: 14);
             }
             if (total > 0) Debug.Log("[ZoneBuilder] 照明审计补灯 " + total + " 盏");
         }

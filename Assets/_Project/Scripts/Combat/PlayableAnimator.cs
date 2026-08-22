@@ -175,6 +175,11 @@ namespace AdversityRoad.Combat
             Build();
         }
 
+        /// <summary>此刻是否正在播一段招式（而不是移动层）。
+        /// 招式播完会把 _cur 置回 -1，所以这是"身体归谁管"的**实时**答案——
+        /// 比看姿态字段可靠：姿态是"最后一次设的招"，招播完了它也不会自己变回去。</summary>
+        public bool ActionPlaying => _cur >= 0;
+
         /// <summary>该招式是否有对应的动捕片段（如翻滚：有专用片段就播片段，
         /// 没有则由上层程序化翻滚兜底）。</summary>
         public bool HasAction(PoseState p) => Valid && _actionIndex.ContainsKey(p);
