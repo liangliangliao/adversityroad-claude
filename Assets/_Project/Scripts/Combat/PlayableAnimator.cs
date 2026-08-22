@@ -229,6 +229,8 @@ namespace AdversityRoad.Combat
         readonly List<int>[] _rings = new List<int>[TierCount + 1];
         readonly float[] _tierW = new float[TierCount];
         float[] _dirW;               // 每帧算出来的方向权重
+        // 因"同档同方向已有片段"而未接入的候选（CI 诊断打出来，见 Add）
+        readonly List<string> _dropped = new List<string>();
         float _phase01;              // 共享步态相位 [0,1)
         float _moveAngle;            // 行进方向相对角色正面（度）
 
@@ -256,8 +258,10 @@ namespace AdversityRoad.Combat
                   .Append(" 角度=").Append(d.angle.ToString("F0")).Append("°")
                   .Append(" 自然速度=").Append(d.natSpeed.ToString("F2")).Append("m/s")
                   .Append(" 时长=").Append(d.len.ToString("F2")).Append("s")
-                  .Append("  [").Append(name).Append("]\n");
+                  .Append("  [").Append(name).Append("]").Append(NL);
             }
+            foreach (var d in _dropped)
+                sb.Append("    ⚠ 未接入：").Append(d).Append(NL);
             return sb.ToString();
         }
 
@@ -651,7 +655,15 @@ namespace AdversityRoad.Combat
                 // 两条都塞进同一圈会让 Bracket 拿到跨度为 0 的相邻对，插值出 NaN 权重。
                 // 先来的优先——候选表的顺序就是取舍顺序。
                 foreach (var d in list)
-                    if (d.tier == tier && Mathf.Abs(Mathf.DeltaAngle(d.angle, angle)) < 20f) return;
+                    if (d.tier == tier && Mathf.Abs(Mathf.DeltaAngle(d.angle, angle)) < 20f)
+                    {
+                        // 丢弃要留痕。这里静默丢掉的可能是"两个文件名说左右、实测却
+                        // 在同一侧"——那不是重复片段，是**少了一个方向**，而它在
+                        // 画面上只表现为"某个方向的步法不对"，不会报任何错。
+                        _dropped.Add(string.Format("{0}（{1} {2:F0}° 已由 {3} 占据）",
+                            clip.name, TierName(tier), angle, d.clip.name));
+                        return;
+                    }
                 list.Add(new DirDef { clip = clip, angle = angle, tier = tier, natSpeed = nat });
             }
 

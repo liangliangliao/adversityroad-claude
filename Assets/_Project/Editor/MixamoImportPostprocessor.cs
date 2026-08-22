@@ -28,7 +28,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 12;
+        public override uint GetVersion() => 13;
 
         // 材质描述后处理放到最后执行（高于 URP 内置的 FBX 材质后处理），
         // 保证内嵌贴图的接线以本脚本为准，不被后续后处理清掉。
@@ -108,7 +108,15 @@ namespace AdversityRoad.EditorTools
             {
                 clips[i].name = clips.Length > 1 ? clipName + " " + (i + 1) : clipName;
                 string n = clipName.ToLowerInvariant();
-                clips[i].loopTime = n.Contains("idle") || n.Contains("walk") || n.Contains("run");
+                // 需要循环的：移动循环 + 【保持型的持续状态】。
+                // 后半截是新加的，它对应一个真实的观感缺陷：蓄力/蹲伏/格挡这些
+                // 姿态在代码里是 hold=true（播完停在最后一帧等外部切换），
+                // 而"停在最后一帧"就是一张静止的照片——蓄力越久越像卡住。
+                // 勾上 loopTime 之后它们真的会循环，人一直在蓄、在猫腰、在端架势。
+                // 倒地/死亡【不能】进这张表：它们本来就该定格。
+                clips[i].loopTime =
+                    n.Contains("idle") || n.Contains("walk") || n.Contains("run") ||
+                    n.Contains("power up") || n.Contains("crouching") || n.Contains("blocking");
             }
             mi.clipAnimations = clips;
         }
