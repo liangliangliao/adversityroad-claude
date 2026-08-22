@@ -56,6 +56,9 @@ namespace AdversityRoad.Combat
             A(PoseState.CrouchIdle,  1.0f, 0f,    1f,    true,  "crouching idle"),
             A(PoseState.AttackKick,  1.8f, 0.18f, 0.70f, false, "kicking"),
             A(PoseState.Death,       1.0f, 0f,    1f,    true,  "dying"),
+            // 空手受击：持剑受击（Great Sword Impact 系列）双手是握着东西的，
+            // 拳法/腿法型敌人用它会像凭空攥着一把剑挨打
+            A(PoseState.Hit,         1.45f, 0.10f, 0.78f, false, "hit reaction"),
         };
 
         /// <summary>
@@ -105,7 +108,7 @@ namespace AdversityRoad.Combat
             A(PoseState.JumpKick,    1.7f,  0.12f, 0.80f, false, "flying kick"),
             A(PoseState.Sweep,       1.6f,  0.12f, 0.80f, false, "leg sweep", "spin flip kick"),
             AP(PoseState.Hit,        1.45f, 0.10f, 0.78f,        "great sword impact", "great sword impact 2",
-                                                                   "great sword impact 3", "hit reaction"),
+                                                                   "great sword impact 3"),
             // 重受击：大伤害/大击退时换一条更夸张的受击（见 HitPoseFor）——
             // "10 点伤害和 42 点伤害看起来一模一样"是打击感最大的漏洞，
             // 分档换片段是大作里最省事也最有效的一招。
@@ -635,7 +638,11 @@ namespace AdversityRoad.Combat
                 if (clip == null) return;
                 foreach (var d in list) if (d.clip == clip) return;   // 同一片段不重复接入
                 float angle = nameAngle;
-                float nat = tier == 0 ? WalkNaturalSpeed : RunNaturalSpeed;
+                // 实测失败时的兜底自然速度：蹲行远慢于走，套用跑档会把播放速率
+                // 压到下限（人在挪、脚在爬），比不做步幅同步还糟
+                float nat = tier == 0 ? WalkNaturalSpeed
+                          : tier == CrouchTier ? WalkNaturalSpeed * 0.6f
+                          : RunNaturalSpeed;
                 bool measured = MeasureClipMotion(clip, root, hips, out float mA, out float mS);
                 if (measured) { angle = mA; nat = mS; }
                 else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）

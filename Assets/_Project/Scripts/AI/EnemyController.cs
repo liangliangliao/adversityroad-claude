@@ -298,6 +298,12 @@ namespace AdversityRoad.AI
                 poser.SetLocomotion(Mathf.Clamp01(_measuredSpeed / refSpeed) * 0.9f,
                     false, true, _measuredSpeed, moveAngle);
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
+                // 十类武术里只有刀术/棍术/重武器是持械的，其余七类是拳脚。
+                // 持剑动作集（临战架势、蹲伏、踢击、受击、倒下）双手都是握着东西的，
+                // 空手型敌人套上去会像凭空攥着一把剑。
+                poser.SetArmed(archetype == MartialArchetype.Blade ||
+                               archetype == MartialArchetype.Staff ||
+                               archetype == MartialArchetype.Heavy);
                 poser.SetCombatReady(State == EnemyState.Chase || State == EnemyState.Attack
                     || State == EnemyState.MentalAttack);
             }

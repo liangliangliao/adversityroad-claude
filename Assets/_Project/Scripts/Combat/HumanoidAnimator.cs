@@ -444,6 +444,9 @@ namespace AdversityRoad.Combat
         /// <summary>只挑姿态、不立刻切——供"先设好再请求 HitReaction 状态"的调用方用。</summary>
         public PoseState ResolveHitPose(float damage, float knockback)
         {
+            // 空手只有一条受击片段——重受击那两条是持剑版本，套在拳脚型身上
+            // 会变成"空着手却像握着剑被打退"。宁可不分档，也不串错动作集。
+            if (!_armed) return PoseState.Hit;
             var p = HitPoseFor(damage, knockback);
             if (p == PoseState.HitHeavy && !HasPose(PoseState.HitHeavy)) p = PoseState.Hit;
             return p;
