@@ -542,13 +542,23 @@ namespace AdversityRoad.Player
             // 走速正好等于履带速度，不许跑等于那台机器是坏的。
             if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
-            // 横移/后撤要慢下来：没有人能侧着或倒着跑出正面冲刺的速度，
-            // 而且这也是格斗节奏的一部分——"绕圈找角度"应当是有代价的移动，
-            // 不该比正面突进还快。正前 1.0 → 横跨 0.78 → 后撤 0.6。
+            // 横移/后撤要慢下来，两个理由都成立：
+            //   ① 没有人能侧着或倒着跑出正面冲刺的速度，而且"绕圈找角度"本来就该是
+            //      有代价的移动，不该比正面突进还快；
+            //   ② 动作库里侧移与后退**只有走的片段**（Left/Right Strafe Walking、
+            //      Walking Backwards）。移速给到冲刺档，步频再怎么提速也追不上位移，
+            //      脚就会打滑——所以这里不只是乘个系数，还要**按片段撑得住的速度封顶**。
+            //      将来补上跑动版的横移片段（Left/Right Strafe），把封顶放开即可。
             if (face != null && moveDir.sqrMagnitude > 0.01f)
             {
                 float a = Mathf.Abs(Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
-                speed *= a < 60f ? 1f : Mathf.Lerp(0.78f, 0.6f, Mathf.Clamp01((a - 60f) / 120f));
+                if (a > 60f)
+                {
+                    float k = Mathf.Clamp01((a - 60f) / 120f);   // 0=正侧 1=正后
+                    float cap = Mathf.Lerp(walkSpeed * 1.3f, walkSpeed * 1.05f, k)
+                                * MoveSpeedMultiplier;
+                    speed = Mathf.Min(speed * Mathf.Lerp(0.78f, 0.6f, k), cap);
+                }
             }
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
@@ -777,10 +787,14 @@ namespace AdversityRoad.Player
             float actual = planar.magnitude / dt;
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
-            // 动画层据此做上下半身分离与倒放（见 HumanoidAnimator 的横移注释）——
-            // 没有这个角度，横移就只会播"向前走"，读作脚下打滑。
+            // 动画层据此在方向片段之间混合（前/后/左/右/斜向）。
+            //
+            // 【只在横移态下才给真实夹角】非交战时身体本来就会转向行进方向，
+            // 此刻的夹角只是"转身还没转完"的瞬时残差——把它喂给方向混合，
+            // 会在每次掉头的头零点几秒里闪一下后退/侧步的片段。
+            // 那种情况下正确答案恒定是"向前走"，转身交给身体旋转去表达。
             float moveAngle = 0f;
-            if (planar.sqrMagnitude > 1e-6f)
+            if (StrafeActive && planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；

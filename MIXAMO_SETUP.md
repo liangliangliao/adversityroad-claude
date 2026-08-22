@@ -90,6 +90,32 @@ Assets/_Project/Resources/Characters/
 | **Great Sword Casting**（或 Warming Up / Taunt） | 重键蓄力姿态 | 施法聚气 |
 | **Leg Sweep** | 扫堂腿（蹲+腿） | 空翻踢低位 |
 
+## 一·补一之二、方向移动片段（后退 / 横移 / 斜向，已就位）
+
+交战时角色**脸锁在敌人身上、脚往哪走由摇杆决定**，所以移动层需要一圈按方向摆开的
+片段，而不是只有"向前走/跑"。这几段已经在 `Anims/` 里：
+
+| 文件名 | 方向 | 档位 |
+| --- | --- | --- |
+| `Walking` | 前 | 走 |
+| `Walking Backwards` | 后 | 走 |
+| `Left Strafe Walking` / `Right Strafe Walking` | 左 / 右 | 走 |
+| `Running` | 前 | 跑 |
+| `Slow Jog Backwards` | 后 | 跑 |
+| `Jog Forward Diagonal` / `Jog Backward Diagonal` | 斜向（**方向由运行时实测决定**） | 跑 |
+
+**接入方式与招式片段不同，有三点值得知道：**
+
+1. **按文件路径取片段，不按片段名。** Mixamo 导出的 FBX 里 take 一律叫 `mixamo.com`，
+   没有 `.meta` 改名的话按名字一个都找不到。所以这几段走 `Resources.Load` 按路径取，
+   **文件名就是契约**——重命名文件会让它失效，改片段内部的名字则无所谓。
+2. **斜向片段的左右由运行时实测。** 各家素材的"Forward Diagonal"是左前还是右前并不统一，
+   猜错比不用更糟。代码会采样片段首尾两帧、量髋骨走了哪个方向，**测到才用**；
+   测不到就交给相邻的正方向片段混合出来。所以你再丢别的斜向片段进来也能自动就位。
+3. **还缺跑动版的横移**（Mixamo 的 `Left Strafe` / `Right Strafe`）。
+   现在跑着横移用的是走的横移片段提速播，并且移速被**按片段撑得住的速度封了顶**
+   （见 `PlayerController` 里的横移降速）。补上这两段后，把那个封顶放开即可。
+
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 
 这几段不是招式，走的是 `HumanoidAnimator.PlayRestClip` 这条通路（完整播完、停在末帧、
