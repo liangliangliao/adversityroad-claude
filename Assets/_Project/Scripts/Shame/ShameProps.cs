@@ -74,11 +74,19 @@ namespace AdversityRoad.Shame
         }
     }
 
-    /// <summary>第八章交互物的共用基类：站得够近 + 按【用】。</summary>
+    /// <summary>
+    /// 第八章交互物的共用基类：站得够近 + 按【用】（触屏）/ R（桌面）。
+    ///
+    /// 【桌面为什么不用 E】
+    /// E 在战斗控制器里是踢击（`Input.GetKeyDown(KeyCode.E)`）。家里那些物件用 E 没问题，
+    /// 因为安全屋里没有敌人；而本章两关**遍地是敌人**，每按一次交互就先踢一脚，
+    /// 长按目标动作更是一按就出腿。所以桌面端换到没人用的 R。
+    /// 触屏那边「用」和「踢」本来就是两个不同的按钮，不受影响。
+    /// </summary>
     public abstract class ShameInteractable : MonoBehaviour
     {
         public float interactRange = 3.2f;
-        public string prompt = "按【用】";
+        public string prompt = "按【用】/ R";
 
         float _lastHint = -99f;
         protected PlayerController player;
@@ -96,7 +104,7 @@ namespace AdversityRoad.Shame
                 string p = Prompt();
                 if (!string.IsNullOrEmpty(p)) GameEvents.RaiseSubtitle(p);
             }
-            if (Input.GetKeyDown(KeyCode.E) || MobileInput.GetDown("Interact")) Interact();
+            if (Input.GetKeyDown(KeyCode.R) || MobileInput.GetDown("Interact")) Interact();
             OnInRange(dist);
         }
 
@@ -126,7 +134,7 @@ namespace AdversityRoad.Shame
 
         protected override string Prompt() =>
             Repaid >= 1f ? "欠条台：已经还完了。剩下的不是钱的事。"
-            : "欠条台：按【用】选本期金额（已还 " + Mathf.RoundToInt(Repaid * 100f) + "%）";
+            : "欠条台：按【用】/ R 选本期金额（已还 " + Mathf.RoundToInt(Repaid * 100f) + "%）";
 
         protected override void Interact()
         {
@@ -174,7 +182,7 @@ namespace AdversityRoad.Shame
     {
         public string coverStory = "先借一笔，回头再说";
 
-        protected override string Prompt() => "抽屉：" + coverStory + "（按【用】）";
+        protected override string Prompt() => "抽屉：" + coverStory + "（按【用】/ R）";
 
         protected override void Interact()
         {
@@ -352,7 +360,7 @@ namespace AdversityRoad.Shame
 
         public static void ResetAll() => Collected = 0;
 
-        protected override string Prompt() => "一片欠条的残角（按【用】捡起）";
+        protected override string Prompt() => "一片欠条的残角（按【用】/ R 捡起）";
 
         protected override void Interact()
         {
@@ -459,11 +467,11 @@ namespace AdversityRoad.Shame
             if (Time.time - _lastHint > 3f)
             {
                 _lastHint = Time.time;
-                GameEvents.RaiseSubtitle("「" + objectiveId + "」：按住【用】" +
+                GameEvents.RaiseSubtitle("「" + objectiveId + "」：按住【用】/ R " +
                     holdSeconds.ToString("0.0") + " 秒。它就在视线里，绕不开。");
             }
 
-            bool holding = Input.GetKey(KeyCode.E) || MobileInput.GetHeld("Interact");
+            bool holding = Input.GetKey(KeyCode.R) || MobileInput.GetHeld("Interact");
             if (!holding)
             {
                 if (_held > 0.2f)
@@ -529,7 +537,7 @@ namespace AdversityRoad.Shame
         bool _resolved;
 
         protected override string Prompt() =>
-            _resolved ? "" : "别人的包就放在这里。按【用】决定";
+            _resolved ? "" : "别人的包就放在这里。按【用】/ R 决定";
 
         protected override void Interact()
         {

@@ -226,6 +226,16 @@ namespace AdversityRoad.Shame
             }
         }
 
+        /// <summary>
+        /// 统一设置全场锥体的可见度（压力阶段映射用，见 ShameStressMapping）。
+        /// 真正的下限由 GazeCone 自己兜住：注视可以更清楚，但不可能变成隐形。
+        /// </summary>
+        public void SetVisibility(float v)
+        {
+            foreach (var c in _cones)
+                if (c != null) c.data.visibility = Mathf.Clamp(v, 0.35f, 1f);
+        }
+
         /// <summary>清空登记（重建世界时调用，避免旧锥体留在表里）。</summary>
         public void Clear() => _cones.Clear();
 

@@ -90,6 +90,8 @@ namespace AdversityRoad.Shame
             OwnNotFinalSystem.Ensure();
             StatementSystem.Ensure();
             ShameSkills.Ensure();
+            ShameComboTracker.Ensure();
+            ShameStressMapping.Ensure();
             ShameHudOverlay.Ensure();
 
             // 强度上限：本章默认「标准」。「高压」要在章节入口二次确认（8.12.1）
@@ -247,7 +249,7 @@ namespace AdversityRoad.Shame
                 GrantProofWeapon();
                 GameEvents.RaiseSubtitle("【最佳结算 · 自选时机】没有人逼你，你自己走进去说的。" +
                     "获得武器「自述之证」；讨好回声永久移除。");
-                Adversity.AdversityProfile.ObserveStrength("主动陈述提前量", ShameLine.LevelDebtCorridor);
+                Adversity.AdversityProfile.ObserveStrength("陈述提前量", ShameLine.LevelDebtCorridor);
             }
             else
             {
@@ -280,6 +282,10 @@ namespace AdversityRoad.Shame
             ShameBreakdown.ResolveByAction("完成了「" + id + "」");
             ShameComboTracker.Push(ShameComboTracker.TagObjective);
             Adversity.AdversityProfile.ObserveStrength("锥内完成率", ShameLine.LevelEchoClassroom);
+            // 8.10.4 本章 Resolve Window 触发条件之一：
+            // 在视线锥内完成一次完整的目标交互而未回避
+            var resolve = Adversity.ResolveSystem.Instance;
+            if (resolve != null) resolve.NoteQualityAction("在注视里完成「" + id + "」");
             Adversity.CourageSystem.NoteGoalAction("在注视里完成「" + id + "」");
             GameEvents.RaiseSubtitle("目标动作「" + id + "」完成（" + _objectivesDone.Count +
                 "/3）——低语没有停，你也没有停。");
@@ -310,6 +316,12 @@ namespace AdversityRoad.Shame
 
             if (walked)
             {
+                // 8.10.4 触发条件之三：在低语链完整活跃时正常步行通过全场
+                var whisper = WhisperChainSystem.Instance;
+                var resolve = Adversity.ResolveSystem.Instance;
+                if (resolve != null && whisper != null && whisper.ChainComplete)
+                    resolve.NoteQualityAction("在低语链活着的时候正常走完全场");
+
                 CompleteObjective(ObjWalkOut);
                 d.outcomeRank = "best";
                 GameEvents.RaiseSubtitle("他停止发声了。没有击杀动画，没有道歉，也没有和解——" +

@@ -38,6 +38,24 @@
 | 锥内稳态 | 在视线锥内连续行动 8 秒未回避 | `ExposureSystem.EnterSteady / TickSteadyReward`：增速减半 + 每秒回补自尊 |
 | 提前陈述奖励 | 计时器高位主动进入陈述 | `ShameLineController.OnStatementCompleted`：剩余 ≥40% 记最佳结算，授予「自述之证」并降低后续关卡初始 Exposure（`ExposureGainMult`） |
 
+## Stress State Machine 映射（§8.10.3）与 Resolve Window（§8.10.4）对照
+
+`Shame/ShameStressMapping.cs` 订阅全局压力机器的阶段变化，只做**本章的表现落位**，
+不改任何数值曲线：
+
+| 阶段 | 本章表现 | 实现 |
+| --- | --- | --- |
+| Strained | 环境音出现方向性低语，视线锥边缘微亮 | 锥体可见度 → 0.5 + 一句字幕 |
+| Destabilized | 视线锥可见度提升，Exposure 首次显示 | 可见度 → 0.75，推一点点暴露度让 HUD 那一组真的出现 |
+| Overloaded | 多条视线锥交叉，低语链完整成形 | 可见度 → 1.0，8-2 里强制启用低语链 |
+| Near Collapse | 画面边缘收缩、脚步声放大，Resolve Window 可触发 | 全局机器已 `OpenWindow()`，这里补一句写明本章的三条触发条件 |
+| Breakdown | 短暂低头 / 解除锁定，不超过 12 秒，禁止围观特写 | 播低头片段 + 解除锁定；全局机器把 Breakdown 压在 3 秒内，**不加任何围观镜头** |
+
+Resolve Window 的三条本章触发条件（`NoteQualityAction` 只在窗口开着时才算数）：
+锥内完成一次完整目标交互而未回避（`ExposureSystem.EnterSteady` / `CompleteObjective`）、
+满身份钉状态下完成一次认领不终审（`OwnNotFinalSystem.ResolveOwn`）、
+低语链完整活跃时正常步行通过全场（`ShameLineController.NoteWalkOut`）。
+
 ## 逆袭判定（§8.11）对照
 
 `ShameLineController.EvaluateComeback()` 逐条检查，过三项即成立。**不看伤害，也不看胜负**：

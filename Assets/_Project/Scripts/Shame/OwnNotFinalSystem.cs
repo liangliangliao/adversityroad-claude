@@ -297,8 +297,15 @@ namespace AdversityRoad.Shame
             _resolved = true;
             _ownStreak = 0;
             if (_claim.truthTag)
+            {
                 Adversity.AdversityProfile.Observe("被指认", "否认优先于认领", false,
                     ShameLine.CurrentLevelId, "认领不终审");
+                // 8.9.1 的第三条弱点边：辩解不出来的时候，动作节奏先垮。
+                // 它的用途是**触发优势窗口**，不是拿来追加压力（8.9.1 明写）。
+                Adversity.AdversityProfile.Observe("无法辩解",
+                    Adversity.PlayerBehaviorAnalyzer.BehaviorRhythmBreak, true,
+                    ShameLine.CurrentLevelId, "认领不终审", "锥内稳态");
+            }
             GameEvents.RaiseSubtitle("这一句落在了身上——钉子进去了，但拔它的动作随时可以再打一次。");
             ApplyAccusationDamage(true);
         }
