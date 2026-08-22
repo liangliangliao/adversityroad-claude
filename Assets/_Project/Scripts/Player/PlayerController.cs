@@ -989,6 +989,11 @@ namespace AdversityRoad.Player
         /// </summary>
         Vector3 CameraRelative(Vector2 input)
         {
+            // 偏置的衰减放在**所有分支之前**：松杆时这个方法会提前 return，
+            // 若把衰减写在下面的 else 里，松杆那一刻残留的偏置就冻在原地不动了，
+            // 下次推杆时会拿一个过期的偏置去算方向（最坏 180°，持续 0.18s）。
+            _frameBias = Mathf.MoveTowards(_frameBias, 0f,
+                FrameBiasReleaseDegPerSec * Time.deltaTime);
             if (input.sqrMagnitude < 0.0001f) { _recenterFrameInit = false; return Vector3.zero; }
             if (cameraTransform == null) return new Vector3(input.x, 0, input.y).normalized;
 
@@ -1034,8 +1039,6 @@ namespace AdversityRoad.Player
                     _recenterFrameInit = false;
                     _frameBias = Mathf.DeltaAngle(cameraTransform.eulerAngles.y, _recenterFrameYaw);
                 }
-                _frameBias = Mathf.MoveTowards(_frameBias, 0f,
-                    FrameBiasReleaseDegPerSec * Time.deltaTime);
                 // 偏置归零之后就是**实时映射，无任何偏置**：摇杆方向恒等于画面方向。
                 // 代价由镜头侧承担——它只能以很慢的速率绕行（见 SustainedOrbitCap），
                 // 慢到玩家的补杆是无意识的，于是角色路径几乎看不出弯。
