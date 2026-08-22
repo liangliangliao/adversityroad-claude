@@ -750,12 +750,19 @@ namespace AdversityRoad.Player
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
             // 动画层据此在方向片段之间混合（前/后/左/右/斜向）。
             //
-            // 【只在横移态下才给真实夹角】非交战时身体本来就会转向行进方向，
-            // 此刻的夹角只是"转身还没转完"的瞬时残差——把它喂给方向混合，
-            // 会在每次掉头的头零点几秒里闪一下后退/侧步的片段。
-            // 那种情况下正确答案恒定是"向前走"，转身交给身体旋转去表达。
+            // 【为什么改成永远给真实夹角】
+            // 上一版只在锁定横移态下才给，非锁定时硬写 0。理由写的是"非交战时身体
+            // 本来就会转向行进方向，此刻的夹角只是转身还没转完的瞬时残差"。
+            // 那个理由站不住，代价却极大：锁定是玩家手动按的，绝大多数时间没按，
+            // 于是 **17 条方向片段里有 13 条永远轮不到播**——后退、左右横移、斜向
+            // 全部形同虚设，画面上永远只有"向前走"。这正是"动作都接了却看不到效果"。
+            //
+            // 真实夹角本来就该一直给：身体转向行进方向要花零点几秒，那零点几秒里
+            // 人的腿【本来就在做侧步/倒步】——真人掉头就是这么走的。让腿演出这一段
+            // 是对的，不是瑕疵。当初担心的"闪一下"，根子在方向平滑太快（900°/s
+            // 几乎等于不平滑），那是 PlayableAnimator 那边的事，已一并调稳。
             float moveAngle = 0f;
-            if (StrafeActive && planar.sqrMagnitude > 1e-6f)
+            if (planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle);
             UpdateMoveStatePose(speed01, dt);
@@ -797,6 +804,11 @@ namespace AdversityRoad.Player
         float _yawPrev;
         float _turnAccum;
         float _stickMag;
+        float _stillT;   // 已经站定多久（秒）——原地转身的前提
+
+        /// <summary>要"站定"多久才允许播原地转身。跑动中急转弯时速度会瞬间掠过零，
+        /// 这个时间窗把那种情况挡在外面（0.2s ≈ 12 帧，急转穿越零速远短于此）。</summary>
+        const float StandStillBeforeTurn = 0.2f;
 
         const float FallPoseAfter = 0.22f;   // 腾空多久之后才算"在下落"（小台阶不播）
         const float HardLandDrop = 3.2f;     // 掉落超过这个高度算重着陆（米）
@@ -815,6 +827,7 @@ namespace AdversityRoad.Player
                 _wasGrounded = _cc.isGrounded;
                 _prevSpeed01 = speed01;
                 _yawPrev = transform.eulerAngles.y;
+                _stillT = 0f;   // 战斗动作结束的那一刻不算"站了很久"
                 return;
             }
 
@@ -884,15 +897,27 @@ namespace AdversityRoad.Player
             }
 
             // ---------- 原地转身 ----------
-            // 判据是"人几乎没在动，朝向却在快速变" —— 摇杆 180° 回打的头几帧、
-            // 锁定绕后时都会命中。攒够角度再播，避免每一次细微修正都插一段转身。
+            //
+            // 【上一版的判据是错的，而且是这三个症状里最响的一个】
+            // 原判据："人几乎没在动(speed01<0.06)，朝向却在快速变" ⇒ 播转身。
+            // 但**跑动中把摇杆打向反方向时，速度会经过零**——那一瞬人不是站着，
+            // 是正在高速换向。于是每一次急转弯都会插一段全身转身片段，
+            // 而动作层一旦接管就盖住整个移动混合：人还在平移，腿却在演原地转身。
+            // 摇杆转一整圈 = 连续不断的急转 = 转身片段一段接一段，
+            // 这正是"移动完全失真、不是一步一个脚印"。
+            //
+            // 正确的判据是**"本来就站着"**：站定持续一小段时间（_stillT），
+            // 而且手不在摇杆上大幅推（_stickMag 小）。这才是大作里原地转身的场景：
+            // 站着 → 把杆打到身后 → 人先转过去再迈步。
+            _stillT = speed01 < 0.06f ? _stillT + dt : 0f;
             float yaw = transform.eulerAngles.y;
             float dYaw = Mathf.DeltaAngle(_yawPrev, yaw);
             _yawPrev = yaw;
             // 锁定目标时不做原地转身：那时身体是被目标持续牵着转的，
             // 插一段"转身 90°"的片段会和这份持续朝向打架，看上去像抽搐。
-            // 原地转身是自由移动时的动作——大作里也是这么分的。
-            if (!StrafeActive && speed01 < 0.06f && Mathf.Abs(dYaw) > 3f)
+            bool standingTurn = !StrafeActive && _stillT > StandStillBeforeTurn &&
+                                _stickMag < 0.55f && Mathf.Abs(dYaw) > 3f;
+            if (standingTurn)
             {
                 _turnAccum += dYaw;
                 if (_moveStateCd <= 0f && Mathf.Abs(_turnAccum) > 70f)
@@ -921,8 +946,12 @@ namespace AdversityRoad.Player
                     _anim.SetPose(PoseState.StartMove);
                     _moveStateCd = 0.4f;
                 }
-                // 急停只在【跑起来之后】给：走两步停下不需要刹车动作
-                else if (_prevSpeed01 > 0.55f && speed01 < 0.10f && _anim.HasPose(PoseState.StopMove))
+                // 急停只在【跑起来之后松杆】给。
+                // 必须看摇杆而不只看速度：跑动中打反方向时速度同样会掉下来，
+                // 那是换向不是停步——那时插一段刹车动作，人一边刹车一边全速侧移，
+                // 与原地转身是同一类错误。
+                else if (_prevSpeed01 > 0.55f && speed01 < 0.10f && _stickMag < 0.2f &&
+                         _anim.HasPose(PoseState.StopMove))
                 {
                     _anim.SetPose(PoseState.StopMove);
                     _moveStateCd = 0.45f;

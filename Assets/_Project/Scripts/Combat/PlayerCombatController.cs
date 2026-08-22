@@ -1303,7 +1303,8 @@ namespace AdversityRoad.Combat
             {
                 float dt = Time.deltaTime;
                 t += dt;
-                _cc.Move(offset * Mathf.Min(dt / duration, 1f));
+                // 分步位移，避免单帧位移超过胶囊半径时扫掠跨过薄墙（见 SkillExecutor.StepMove）
+                SkillExecutor.StepMove(_cc, offset * Mathf.Min(dt / duration, 1f));
                 yield return null;
             }
         }
@@ -1557,7 +1558,7 @@ namespace AdversityRoad.Combat
             {
                 t += Time.deltaTime;
                 float k = 1f - t / dur;
-                _cc.Move(dir * (5f * k * k) * Time.deltaTime);
+                SkillExecutor.StepMove(_cc, dir * (5f * k * k) * Time.deltaTime);
                 yield return null;
             }
         }

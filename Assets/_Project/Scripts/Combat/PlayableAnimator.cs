@@ -1041,8 +1041,11 @@ namespace AdversityRoad.Combat
             // 否则贴身绕圈时会看到左右步法来回"啪啪"硬切。
             // 用 MoveTowardsAngle：普通 MoveTowards 不懂 ±180 的回绕，
             // 从 170° 转到 -170°（只差 20°）会被它当成 340° 一路扫过去。
+            // 方向平滑速率：900°/s 相当于 0.2 秒转完一整圈——几乎等于没平滑，
+            // 掉头时腿会"啪"地切到后退片段。540°/s（1/3 秒一圈）既跟得上正常搓杆，
+            // 又让快速掉头变成一段可看的过渡，而不是一次硬切。
             _blendAngle = Mathf.DeltaAngle(0f,
-                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, 900f * dt));
+                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, BlendAngleDegPerSec * dt));
 
             // 蹲伏：整套权重交给蹲伏圈。它只有后/左/右三条，正前方由它覆盖不了——
             // 那一份会在下面的"未覆盖转交"里落回走档（配合蹲伏压低叠加，
@@ -1087,29 +1090,41 @@ namespace AdversityRoad.Combat
             return 0;
         }
 
-        /// <summary>主导片段：权重最大的那个，步幅同步与相位推进都按它算。</summary>
+        /// <summary>
+        /// 步态相位推进。
+        ///
+        /// 【为什么不能用"权重最大的那一条"来算】
+        /// 相位速率 = rate / len，而 rate = 真实移速 / 该片段的自然速度。
+        /// 两条不同档的片段（走 nat=1.75 len=1.03、慢跑 nat=2.52 len=0.83）
+        /// 在档位交界处权重各约 50%，此时"谁是最大"由浮点噪声决定——
+        /// 而两者算出的相位速率差着 17%。于是每帧在两个速率之间来回跳，
+        /// 腿一会儿快一会儿慢，读作**抖动/卡顿**。档位从 2 档细分到 4 档之后
+        /// 交界点变成 4 个，这个抖动就从偶发变成常态。
+        ///
+        /// 正确做法是**按权重加权平均**：混合里每条片段各自算自己的相位速率，
+        /// 再按它在混合中的份额加权。权重连续变化 ⇒ 相位速率连续变化，
+        /// 没有"谁当选"这回事，也就没有跳变。
+        /// </summary>
         void LeadAndPhase(float actual, float dt)
         {
-            int lead = -1; float leadW = 0f;
+            float wSum = 0f, rateSum = 0f;
             for (int i = 0; i < _dirW.Length; i++)
-                if (_dirW[i] > leadW) { leadW = _dirW[i]; lead = i; }
-
-            if (lead >= 0)
             {
-                var L = _dirs[lead];
-                float nat = Mathf.Max(0.3f, L.natSpeed);
-                // 上限放到 2.0：侧移/后退目前只有"走"的片段，真实移速比它的自然速度快，
-                // 步频得跟着提。再高就成了小碎步快放，不如让它稍微滑一点。
-                float rate = Mathf.Clamp(actual / nat, 0.5f, 2.0f);
-                // 主导片段的方向与实际行进方向差了 120° 以上 = 这一圈里根本没有能表达
-                // 该方向的片段（比如某个角色的动作库只有向前走）。此时把片段**倒着播**：
-                // 步态每一帧都是对的，只是时间轴反过来，看上去就是在往后退。
-                // 有真后退片段时这条永远不会命中——它只是动作库不全时的兜底。
-                float sign = Mathf.Abs(Mathf.DeltaAngle(L.angle, _blendAngle)) > 120f ? -1f : 1f;
-                // 相位按【主导片段的时长】推进：混合中的片段因此在同一时刻走完
-                // 各自的一个完整步态周期，脚步不会互相错开。
-                _phase01 = Mathf.Repeat(_phase01 + dt * rate * sign / L.len, 1f);
+                float w = _dirW[i];
+                if (w <= 0.001f) continue;
+                var d = _dirs[i];
+                float nat = Mathf.Max(0.3f, d.natSpeed);
+                // 上限 2.0：侧移/后退的自然速度低于前进，真实移速比它快时步频得跟着提。
+                // 再高就成了小碎步快放，不如让它稍微滑一点。
+                float r = Mathf.Clamp(actual / nat, 0.5f, 2.0f);
+                // 该片段的方向与实际行进方向差 120° 以上 = 这一圈里没有能表达该方向的
+                // 片段（动作库不全时的兜底）：把它倒着播，步态每帧都对，只是时间轴反过来。
+                float sgn = Mathf.Abs(Mathf.DeltaAngle(d.angle, _blendAngle)) > 120f ? -1f : 1f;
+                rateSum += w * r * sgn / Mathf.Max(0.05f, d.len);
+                wSum += w;
             }
+            if (wSum > 0.001f)
+                _phase01 = Mathf.Repeat(_phase01 + dt * (rateSum / wSum), 1f);
         }
 
         /// <summary>把算好的方向权重与共享相位写进混合器。</summary>
@@ -1126,6 +1141,7 @@ namespace AdversityRoad.Combat
         }
 
         float _blendAngle;
+        const float BlendAngleDegPerSec = 540f;
 
         /// <summary>找出夹住该方向的前后两条片段（按角度排好序，环形回绕）。</summary>
         bool Bracket(List<int> ring, float angle, out int a, out int b, out float t, out float span)

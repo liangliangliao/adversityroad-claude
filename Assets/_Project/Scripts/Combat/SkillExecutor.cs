@@ -313,9 +313,28 @@ namespace AdversityRoad.Combat
             {
                 float dt = Time.deltaTime;
                 t += dt;
-                if (_cc != null) _cc.Move(offset * Mathf.Min(dt / duration, 1f));
+                if (_cc != null) StepMove(_cc, offset * Mathf.Min(dt / duration, 1f));
                 yield return null;
             }
+        }
+
+        /// <summary>
+        /// 分步位移：把一次大的 Move 拆成若干小步。
+        ///
+        /// CharacterController.Move 是**扫掠**检测，但一次调用只扫一条直线段；
+        /// 位移超过胶囊半径时，薄墙可能整个落在两次采样之间 —— 也就是穿墙。
+        /// 突进类技能的单帧位移最大约 2.4m×(dt/0.13)，掉帧时（dt=0.05）能到 0.9m，
+        /// 远超半径。按半径的一半切分，任何一步都不可能跨过一堵墙。
+        /// </summary>
+        public static void StepMove(CharacterController cc, Vector3 delta)
+        {
+            if (cc == null) return;
+            float max = Mathf.Max(0.05f, cc.radius * 0.5f);
+            float len = delta.magnitude;
+            if (len <= max) { cc.Move(delta); return; }
+            int steps = Mathf.Min(8, Mathf.CeilToInt(len / max));
+            Vector3 part = delta / steps;
+            for (int i = 0; i < steps; i++) cc.Move(part);
         }
 
         /// <summary>一段判定：按招式姿态定形开判定框（形状表与普攻共用）。</summary>
