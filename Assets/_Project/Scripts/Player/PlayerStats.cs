@@ -151,6 +151,15 @@ namespace AdversityRoad.Player
             dmg *= Core.GrowthSystem.MentalTakenMult(axis);
             // 公平刺痛失控区（>70）判断下降：一切心理伤害吃得更重（方案三档规则）
             dmg *= FairnessMentalTakenMult;
+            // 第八章 Exposure 联动（方案 8.3）：暴露度 ≥60 时打自尊的伤害 ×1.5，≥85 时 ×2.0。
+            // 【放在这里而不是各个发招处】被看见会放大的是**一切**心理攻击，
+            // 不只是指认招式；逐个调用点各乘一次，迟早会漏掉一处、或者乘两次。
+            // 章外恒为 1，所以对前七章零影响。
+            if (axis == Personalization.WeaknessAxis.Shame ||
+                axis == Personalization.WeaknessAxis.LowConfidence ||
+                axis == Personalization.WeaknessAxis.SelfDoubt ||
+                axis == Personalization.WeaknessAxis.FailureFear)
+                dmg *= Shame.ExposureSystem.SelfWorthDamageMultiplier();
             // 每次被心理攻击命中都会积累反刍——除非被言语攻防正确化解（那条路径不走这里）。
             // 激愤区（31-70）反刍风险更大：反刍累积额外 +50%
             AddRumination(dmg * (FairnessAgitated ? 0.6f : 0.4f));

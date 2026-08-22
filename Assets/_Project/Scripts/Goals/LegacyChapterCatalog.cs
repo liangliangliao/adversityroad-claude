@@ -110,6 +110,21 @@ namespace AdversityRoad.Goals
             new LegacyArc { zoneIndex = 8,  name = "旧事回声馆", axis = WeaknessAxis.FailureFear,
                 obstacleHint = "旧我模式反复接管当下", boss = EnemyType.OldSelf,
                 districtId = "residential", riftHint = "住宅深处的旧物触发" },
+
+            // ---- 第八章 羞耻与污名线（V2.1）----
+            // 【它只在羞耻确实挡住玩家目标时被激活】（8.0.1）
+            // 目标涉及公开发布、面试、汇报、作品展示、求职、社交曝光、旧事清算时，
+            // Goal Chapter Generator 优先插入本章模块——不是每条路都要走一趟羞耻线。
+            new LegacyArc { zoneIndex = 25, name = "欠条长廊 / 未播出的广播室",
+                axis = WeaknessAxis.Shame,
+                obstacleHint = "把柄在对方手里、指控成立；为掩盖一次而不断掩盖；案子一直挂着不结",
+                boss = EnemyType.PendingJudge,
+                districtId = "residential", riftHint = "住宅区小商店与工作/学习区走廊之间，旧账被再次提起时打开" },
+            new LegacyArc { zoneIndex = 26, name = "二十元回声教室",
+                axis = WeaknessAxis.Shame,
+                obstacleHint = "行为被转译为存在；被注视与低语围住时无法继续行动",
+                boss = EnemyType.BackRowWhisperer,
+                districtId = "office", riftHint = "夜间自习/加班空间，被指认之后的第一次回到现场" },
         };
 
         /// <summary>按目标里的障碍轴挑出最相关的 Legacy 章节（按目标相关性动态插入，方案 5.1）。</summary>

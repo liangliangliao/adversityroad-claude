@@ -145,6 +145,18 @@ namespace AdversityRoad.UI
                 "你差点把失败当成身份，把过去当成全部的自己。",
                 "过去发生过，但不是我的全部；旧我不必杀死，只需更新。",
                 "现实里：把一个旧标签改写成一个新的行动句。" },
+            // ---- 第八章：四栏改用本章专属问题（方案 8.12.4）----
+            // 「边界/策略」栏在这一章问的是：这次是谁在做裁判？下一次由谁来定标准？
+            new[] {   // 羞耻线 其一 · 欠条长廊 / 未播出的广播室
+                "有一笔账没还清。为了不被问到，你又瞒了一次，长廊就长了一段。",
+                "被追问时你先应下来了——那一刻确实轻松，代价是他更确认这个把柄有效。",
+                "这次是他在做裁判：时间、场合、措辞都由他定。下一次由我来定。",
+                "现实里：挑一件一直在拖的说明，自己定时间、对象和第一句话，然后说出去。" },
+            new[] {   // 羞耻线 终局 · 二十元回声教室
+                "指控是成立的。低语没有停，你在它活着的时候把三件事做完了。",
+                "被看着的时候手最容易先松——但你没有跑，是走出去的。",
+                "裁判权不在低语那边：我可以被看见、被指认，然后继续把事做完。",
+                "现实里：做一件你会被别人看见的小事，不解释、不预先道歉，做完正常离开。" },
         };
 
         static readonly string[] FreeMode =
@@ -185,9 +197,16 @@ namespace AdversityRoad.UI
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.6f, 0.85f));
             UiUtil.SetRect(_ruminationText, new Vector2(0.5f, 1f), new Vector2(0, -830), new Vector2(1000, 30));
 
+            // 三枚按钮在 1200 宽的面板里横排，逐个核对过左右边界不重叠：
+            // 归档 [-560,-100] / 绑定 [-90,150] / 关闭 [200,460]
             UiUtil.MakeButton(_panel.transform, "归档此战（清反刍·入档案·+1复盘点）", new Vector2(0.5f, 0f),
-                new Vector2(-180, 52), new Vector2(640, 72),
-                new Color(0.25f, 0.5f, 0.35f, 0.95f), OnArchive, 24);
+                new Vector2(-330, 52), new Vector2(460, 72),
+                new Color(0.25f, 0.5f, 0.35f, 0.95f), OnArchive, 22);
+            // 绑定目标节点：第八章要求「行动」栏落在旅程图的某个节点上（8.12.4）
+            _bindLabel = UiUtil.MakeButton(_panel.transform, "绑定目标节点", new Vector2(0.5f, 0f),
+                new Vector2(30, 52), new Vector2(240, 72),
+                new Color(0.3f, 0.34f, 0.44f, 0.95f), CycleBoundNode, 21)
+                .GetComponentInChildren<Text>();
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
                 new Vector2(330, 52), new Vector2(260, 72),
                 new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 26);
@@ -243,8 +262,76 @@ namespace AdversityRoad.UI
             return pc != null ? pc.Stats : null;
         }
 
+        /// <summary>
+        /// 第八章的复盘硬性收束（方案 8.12.4 / 验收第 47 条）：
+        /// 本章任何一次复盘都必须以「行动」栏收尾，且该行动必须绑定 Goal Graph 节点，
+        /// 否则不允许提交。
+        ///
+        /// 【为什么单这一章要加这道门】
+        /// 本章处理的情绪具有反刍倾向。复盘若停在「感受」栏，系统会在无意中强化
+        /// Rumination——与设计目标正好相反。所以这里强制把它导向 ActionPower。
+        ///
+        /// 没有进行中的目标时不硬卡主线：那时只要求行动栏非空，
+        /// 并如实说明这条行动会记成现实承诺而不是图上的节点。
+        /// </summary>
+        bool ShameActionGateBlocked(out string why)
+        {
+            why = "";
+            var story = StoryManager.Instance;
+            bool inShameChapter =
+                (story != null && !story.AllCleared && story.Current != null &&
+                 story.Current.actIndex == 8) || Shame.ShameLine.InChapter;
+            if (!inShameChapter) return false;
+
+            if (string.IsNullOrEmpty(_actInput.text) || _actInput.text.Trim().Length < 4)
+            {
+                why = "这一章的复盘必须以「行动」栏收尾——写下一件难度不为零、" +
+                      "而且由你自己定标准的事，才能归档。";
+                return true;
+            }
+
+            var goal = Goals.GoalOS.Active;
+            if (goal == null || goal.completed) return false;   // 没有在途目标：不卡主线
+
+            if (_boundNodeId.Length > 0) return false;
+            why = "还差一步：把这条行动绑到旅程图上的一个节点（按「绑定目标节点」切换）。" +
+                  "本章的复盘不能停在感受上，也不能停在一句没有落点的决心上。";
+            return true;
+        }
+
+        string _boundNodeId = "";
+        Text _bindLabel;
+
+        /// <summary>在当前目标的旅程图里循环挑一个未完成节点，作为这条行动的落点。</summary>
+        void CycleBoundNode()
+        {
+            var goal = Goals.GoalOS.Active;
+            if (goal == null || goal.nodes == null || goal.nodes.Count == 0)
+            {
+                GameEvents.RaiseSubtitle("现在没有进行中的目标旅程——这条行动会记成现实承诺。");
+                return;
+            }
+            int start = 0;
+            for (int i = 0; i < goal.nodes.Count; i++)
+                if (goal.nodes[i].nodeId == _boundNodeId) { start = i + 1; break; }
+            for (int k = 0; k < goal.nodes.Count; k++)
+            {
+                var n = goal.nodes[(start + k) % goal.nodes.Count];
+                if (n == null || n.state == Goals.GoalNodeState.Done) continue;
+                _boundNodeId = n.nodeId;
+                if (_bindLabel != null) _bindLabel.text = "绑定：" + n.title;
+                return;
+            }
+            GameEvents.RaiseSubtitle("旅程图上的节点都已完成——去「目标」面板加一个新的下一步。");
+        }
+
         void OnArchive()
         {
+            if (ShameActionGateBlocked(out string blockWhy))
+            {
+                GameEvents.RaiseSubtitle(blockWhy);
+                return;
+            }
             var stats = Stats();
             // 复盘点只在真的有反刍要处理时发放（防止反复点归档刷点）
             bool earned = stats != null && stats.rumination >= 10f;
@@ -270,7 +357,10 @@ namespace AdversityRoad.UI
             if (earned) GrowthSystem.AddPoints(1);
 
             // 「行动」栏 → 现实行动承诺：下次回安全屋「行动」面板确认是否做到
-            ActionSystem.AddCommitment(_actInput.text, chapterTitle);
+            string actionText = _actInput.text;
+            if (_boundNodeId.Length > 0 && _bindLabel != null)
+                actionText += "（" + _bindLabel.text + "）";
+            ActionSystem.AddCommitment(actionText, chapterTitle);
 
             GameAudio.Play(GameAudio.Sfx.Parry, 0.7f);
             GameEvents.RaiseSubtitle(earned

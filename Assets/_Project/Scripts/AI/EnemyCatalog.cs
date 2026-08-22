@@ -66,7 +66,24 @@ namespace AdversityRoad.AI
         DoubtScholar,           // 怀疑学者（混合·"你确定吗？"远程质询）
         ConceptMazeMaster,      // 概念迷宫师（图书馆 Boss：引文弹幕/概念迷环/灯台破防）
         QuestionBeast,          // 无限问题兽（大厅 Boss：问题弹幕狂涨反刍/召唤引文幽灵）
-        InfiniteAsker           // 无限追问者（断桥 Boss：追问弹幕/崩桥/行动答台破防）
+        InfiniteAsker,          // 无限追问者（断桥 Boss：追问弹幕/崩桥/行动答台破防）
+
+        // ---- 第八章 羞耻与污名线（V2.1 增补）----
+        // 这一线的敌人有一个共同点：它们大多**不靠打赢玩家取胜**。
+        // 指认、注视、低语、追问都不是伤害手段，是让玩家停下来的手段。
+        DebtMessenger,          // 欠条使者（外部·递条与追加条目的近战）
+        NewHandle,              // 新的把柄（混合·每次隐瞒后生成，专攻上一条隐瞒）
+        WeeklyInquirer,         // 每周追问者（外部·限制移动范围的提问链）
+        AppeaseEcho,            // 讨好回声（内心·玩家自身讨好行为的具象化，不可直接击杀）
+        BystanderWhisper,       // 旁观耳语者（外部·背景压力单位，不攻击，只抬暴露增速）
+        SideGlancer,            // 侧目者（外部·静止单位，头部朝向生成视线锥）
+        MagnifierOnlooker,      // 放大镜围观者（外部·把一次失误放大成全场事件）
+        BackRowWhisperPair,     // 后排低语组（外部·双人交替发声，倒一个另一个接管）
+        NailAccuser,            // 身份钉兵（混合·专职施放指认招式，truthTag = true）
+        GuiltProjection,        // 心虚投影（内心·预判并抢占玩家最常用的回避路线，不可击杀）
+        DisguisedClassmate,     // 伪装同学（外部·接近后转为敌对，必须先给出识别信号）
+        PendingJudge,           // 悬案法官（8-1 Boss：改期/追加/要求当众/身份钉·轻，不可击杀）
+        BackRowWhisperer        // 后排低语者（8-2 Boss / T5 宿敌候选：看、说、指）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -154,6 +171,19 @@ namespace AdversityRoad.AI
                 case EnemyType.ConceptMazeMaster: return "概念迷宫师";
                 case EnemyType.QuestionBeast: return "无限问题兽";
                 case EnemyType.InfiniteAsker: return "无限追问者";
+                case EnemyType.DebtMessenger: return "欠条使者";
+                case EnemyType.NewHandle: return "新的把柄";
+                case EnemyType.WeeklyInquirer: return "每周追问者";
+                case EnemyType.AppeaseEcho: return "讨好回声";
+                case EnemyType.BystanderWhisper: return "旁观耳语者";
+                case EnemyType.SideGlancer: return "侧目者";
+                case EnemyType.MagnifierOnlooker: return "放大镜围观者";
+                case EnemyType.BackRowWhisperPair: return "后排低语组";
+                case EnemyType.NailAccuser: return "身份钉兵";
+                case EnemyType.GuiltProjection: return "心虚投影";
+                case EnemyType.DisguisedClassmate: return "伪装同学";
+                case EnemyType.PendingJudge: return "悬案法官";
+                case EnemyType.BackRowWhisperer: return "后排低语者";
                 default: return "拖延影魔";
             }
         }
@@ -203,6 +233,19 @@ namespace AdversityRoad.AI
                 case EnemyType.ConceptMazeMaster: return new Color(0.4f, 0.35f, 0.6f);
                 case EnemyType.QuestionBeast: return new Color(0.6f, 0.35f, 0.55f);
                 case EnemyType.InfiniteAsker: return new Color(0.35f, 0.4f, 0.65f);
+                case EnemyType.DebtMessenger: return new Color(0.62f, 0.55f, 0.38f);
+                case EnemyType.NewHandle: return new Color(0.5f, 0.42f, 0.34f);
+                case EnemyType.WeeklyInquirer: return new Color(0.48f, 0.5f, 0.58f);
+                case EnemyType.AppeaseEcho: return new Color(0.72f, 0.66f, 0.55f);
+                case EnemyType.BystanderWhisper: return new Color(0.58f, 0.56f, 0.62f);
+                case EnemyType.SideGlancer: return new Color(0.68f, 0.66f, 0.5f);
+                case EnemyType.MagnifierOnlooker: return new Color(0.8f, 0.72f, 0.45f);
+                case EnemyType.BackRowWhisperPair: return new Color(0.55f, 0.5f, 0.68f);
+                case EnemyType.NailAccuser: return new Color(0.6f, 0.58f, 0.56f);
+                case EnemyType.GuiltProjection: return new Color(0.24f, 0.22f, 0.3f);
+                case EnemyType.DisguisedClassmate: return new Color(0.6f, 0.64f, 0.62f);
+                case EnemyType.PendingJudge: return new Color(0.4f, 0.36f, 0.32f);
+                case EnemyType.BackRowWhisperer: return new Color(0.46f, 0.42f, 0.58f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -253,6 +296,20 @@ namespace AdversityRoad.AI
                 case EnemyType.ConceptMazeMaster: return Combat.WeaponKind.Staff;  // 概念之杖
                 case EnemyType.QuestionBeast: return Combat.WeaponKind.Claw;       // 问题之爪
                 case EnemyType.InfiniteAsker: return Combat.WeaponKind.None;       // 纯追问
+                // 羞耻线：这一线基本不持械——它们的武器是话、是眼睛、是一句判词
+                case EnemyType.DebtMessenger: return Combat.WeaponKind.Staff;      // 递条的长杆
+                case EnemyType.NewHandle: return Combat.WeaponKind.Claw;           // 抓住不放的手
+                case EnemyType.WeeklyInquirer: return Combat.WeaponKind.None;
+                case EnemyType.AppeaseEcho: return Combat.WeaponKind.None;
+                case EnemyType.BystanderWhisper: return Combat.WeaponKind.None;
+                case EnemyType.SideGlancer: return Combat.WeaponKind.None;
+                case EnemyType.MagnifierOnlooker: return Combat.WeaponKind.None;
+                case EnemyType.BackRowWhisperPair: return Combat.WeaponKind.None;
+                case EnemyType.NailAccuser: return Combat.WeaponKind.Claw;         // 钉子
+                case EnemyType.GuiltProjection: return Combat.WeaponKind.None;
+                case EnemyType.DisguisedClassmate: return Combat.WeaponKind.None;
+                case EnemyType.PendingJudge: return Combat.WeaponKind.Staff;       // 合上的账本
+                case EnemyType.BackRowWhisperer: return Combat.WeaponKind.None;
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -271,7 +328,11 @@ namespace AdversityRoad.AI
             t == EnemyType.ColdWindBlade || t == EnemyType.MedDebtShadow ||
             t == EnemyType.QuoteGhost || t == EnemyType.DoubtScholar ||
             t == EnemyType.ConceptMazeMaster || t == EnemyType.QuestionBeast ||
-            t == EnemyType.InfiniteAsker;
+            t == EnemyType.InfiniteAsker ||
+            // 羞耻线的"远程"不是弹幕，是隔着半个房间也能落到身上的一句话
+            t == EnemyType.NewHandle || t == EnemyType.AppeaseEcho ||
+            t == EnemyType.MagnifierOnlooker || t == EnemyType.BackRowWhisperPair ||
+            t == EnemyType.NailAccuser || t == EnemyType.BackRowWhisperer;
 
         public static string BaseId(EnemyType t)
         {
@@ -318,6 +379,19 @@ namespace AdversityRoad.AI
                 case EnemyType.ConceptMazeMaster: return "boss_concept_maze_master";
                 case EnemyType.QuestionBeast: return "boss_question_beast";
                 case EnemyType.InfiniteAsker: return "boss_infinite_asker";
+                case EnemyType.DebtMessenger: return "enemy_debt_messenger";
+                case EnemyType.NewHandle: return "enemy_new_handle";
+                case EnemyType.WeeklyInquirer: return "enemy_weekly_inquirer";
+                case EnemyType.AppeaseEcho: return "enemy_appease_echo";
+                case EnemyType.BystanderWhisper: return "enemy_bystander_whisper";
+                case EnemyType.SideGlancer: return "enemy_side_glancer";
+                case EnemyType.MagnifierOnlooker: return "enemy_magnifier_onlooker";
+                case EnemyType.BackRowWhisperPair: return "enemy_back_row_pair";
+                case EnemyType.NailAccuser: return "enemy_nail_accuser";
+                case EnemyType.GuiltProjection: return "enemy_guilt_projection";
+                case EnemyType.DisguisedClassmate: return "enemy_disguised_classmate";
+                case EnemyType.PendingJudge: return "boss_pending_judge";
+                case EnemyType.BackRowWhisperer: return "boss_back_row_whisperer";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -654,6 +728,114 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
                         maxHealth = 145, posture = 52, physicalDamage = 13, mentalDamage = 17,
                         aggression = 0.55f, defense = 10, moveSpeed = 3.2f, attackRange = 2.2f, detectRange = 18
+                    };
+                    break;
+                // ================= 第八章 羞耻与污名线 =================
+                // 【Physical 维度被主动压低】（8.7 预算表：物理只占 15%）
+                // 这一线的物理伤害普遍很低，压力全部压在 Mental 与 Environmental 上。
+                // 这是主题决定的，不是难度取巧——本章禁止靠堆 Boss 血量制造难度。
+                case EnemyType.DebtMessenger:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 80, posture = 26, physicalDamage = 8, mentalDamage = 7,
+                        aggression = 0.5f, defense = 5, moveSpeed = 3.2f, attackRange = 2f, detectRange = 13
+                    };
+                    break;
+                case EnemyType.NewHandle:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Hybrid,
+                        maxHealth = 95, posture = 32, physicalDamage = 6, mentalDamage = 14,
+                        aggression = 0.5f, defense = 6, moveSpeed = 3.3f, attackRange = 1.9f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.WeeklyInquirer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 100, posture = 34, physicalDamage = 5, mentalDamage = 13,
+                        aggression = 0.45f, defense = 7, moveSpeed = 3f, attackRange = 2f, detectRange = 16
+                    };
+                    break;
+                case EnemyType.AppeaseEcho:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Internal,
+                        maxHealth = 110, posture = 38, physicalDamage = 5, mentalDamage = 15,
+                        aggression = 0.5f, defense = 8, moveSpeed = 3.1f, attackRange = 1.9f, detectRange = 15
+                    };
+                    break;
+                case EnemyType.BystanderWhisper:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 60, posture = 18, physicalDamage = 0, mentalDamage = 0,
+                        aggression = 0.05f, defense = 4, moveSpeed = 2.4f, attackRange = 1.6f, detectRange = 18
+                    };
+                    break;
+                case EnemyType.SideGlancer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 70, posture = 22, physicalDamage = 0, mentalDamage = 0,
+                        aggression = 0.05f, defense = 5, moveSpeed = 0.6f, attackRange = 1.6f, detectRange = 20
+                    };
+                    break;
+                case EnemyType.MagnifierOnlooker:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 90, posture = 30, physicalDamage = 4, mentalDamage = 12,
+                        aggression = 0.4f, defense = 6, moveSpeed = 2.8f, attackRange = 1.9f, detectRange = 18
+                    };
+                    break;
+                case EnemyType.BackRowWhisperPair:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 85, posture = 28, physicalDamage = 4, mentalDamage = 11,
+                        aggression = 0.45f, defense = 6, moveSpeed = 3f, attackRange = 1.9f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.NailAccuser:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Hybrid,
+                        maxHealth = 115, posture = 40, physicalDamage = 7, mentalDamage = 16,
+                        aggression = 0.4f, defense = 9, moveSpeed = 3.1f, attackRange = 2f, detectRange = 17
+                    };
+                    break;
+                case EnemyType.GuiltProjection:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Internal,
+                        maxHealth = 130, posture = 46, physicalDamage = 6, mentalDamage = 14,
+                        aggression = 0.55f, defense = 10, moveSpeed = 4.2f, attackRange = 1.9f, detectRange = 20
+                    };
+                    break;
+                case EnemyType.DisguisedClassmate:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.External,
+                        maxHealth = 95, posture = 32, physicalDamage = 9, mentalDamage = 8,
+                        aggression = 0.55f, defense = 7, moveSpeed = 3.5f, attackRange = 1.9f, detectRange = 14
+                    };
+                    break;
+                case EnemyType.PendingJudge:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
+                        maxHealth = 130, posture = 48, physicalDamage = 8, mentalDamage = 16,
+                        aggression = 0.4f, defense = 12, moveSpeed = 2.9f, attackRange = 2.1f, detectRange = 18
+                    };
+                    break;
+                case EnemyType.BackRowWhisperer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
+                        maxHealth = 120, posture = 44, physicalDamage = 6, mentalDamage = 18,
+                        aggression = 0.35f, defense = 10, moveSpeed = 2.8f, attackRange = 2f, detectRange = 22
                     };
                     break;
                 default:

@@ -25,7 +25,9 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "EquipmentPanel", new Vector2(1100, 1000),
+            // 高度按套装条数给：V2.1 加了第六套「自述套」，
+            // 1000 高时最后一条会顶出面板底边（-1028 超过 -1000）
+            _panel = UiUtil.MakePanel(canvas, "EquipmentPanel", new Vector2(1100, 1180),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "装 备 套 装", 40,

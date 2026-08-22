@@ -327,12 +327,55 @@ namespace AdversityRoad.UI
         Text _body, _title;
         int _page;
 
+        /// <summary>
+        /// 第八章的防御语法单独一页（方案 8.4 / 8.8）。
+        ///
+        /// 它必须写清楚一件事：**认领的是事实，不是身份**。
+        /// 8.4.1 是硬性文案要求——招式说明里禁止把它写成"承认一切指控""接受批评"
+        /// 或任何形式的认罪教学；对不实的指控，正解始终是事实之刃。
+        /// </summary>
+        static string BuildShameGrammarText()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("◤ 第八章 · 羞耻与污名线：为什么需要另一套语法 ◢\n");
+            sb.Append("  前七章的防御都建立在「我是对的」之上：事实之刃击穿模糊叙事、\n");
+            sb.Append("  边界盾挡下索取、不读心盾拒绝揣测。它们都以【指控不成立】为前提。\n");
+            sb.Append("  本章的处境是【指控成立】——事实站在对方那一边。于是：\n\n");
+            sb.Append("  否认 / 辩解     无效，且每次暴露度 +8，为 Boss 续命\n");
+            sb.Append("  格挡 / 精准格挡 部分有效：能挡伤害，但拔不掉身份钉\n");
+            sb.Append("  闪避 / 离开视线 短期有效，但反刍继续累积\n");
+            sb.Append("  攻击压制        对低语链无效：8 秒后从另一处重建\n");
+            sb.Append("  认领不终审      唯一能清钉、并永久废除该条指控复用权的动作\n\n");
+            sb.Append("◤ 认领不终审 Own-Not-Final ◢\n");
+            sb.Append("  输入：敌人「指认」招式的判定窗内按【挡】（8 帧；\n");
+            sb.Append("        降压 / 轻度强度下放宽到 14 帧；连续认领 2 次后第 3 次给 16 帧）。\n");
+            sb.Append("  ★ 认领的是【事实】，不是【身份】。\n");
+            sb.Append("    它不是「承认一切指控」，也不是「接受批评」——\n");
+            sb.Append("    对不实的指控它无效并产生硬直，那时的正解是【事实之刃】（判定窗内按拳）。\n");
+            sb.Append("    真假由你自己判断，系统不代判。\n");
+            sb.Append("  成功：清除全部身份钉、暴露度 -25、该条指控本章内不可被任何敌人复用。\n\n");
+            sb.Append("◤ 章节技能 ◢\n");
+            sb.Append("  G  聚光灯校准   显示场内敌人的真实注意力值与你感知值的差额\n");
+            sb.Append("  H  不上庭       拒绝一次判词类交互；对悬案法官的延期招式免疫一次并开反击窗\n");
+            sb.Append("  R  交互 / 长按  欠条台 / 抽屉 / 残片 / 搜查回响；按住完成 8-2 的目标动作\n");
+            sb.Append("     （桌面端特意避开 E——E 是踢击，这两关遍地是敌人）\n\n");
+            sb.Append("◤ 四组连招（按步骤匹配，每步之间 14 秒窗口） ◢\n");
+            foreach (var line in Shame.ShameComboTracker.Describe())
+                sb.Append("  · ").Append(line).Append('\n');
+            sb.Append("\n◤ 这一关到底在考什么 ◢\n");
+            sb.Append("  不是洗清指控，也不是打败注视，而是【收回裁判权】：\n");
+            sb.Append("  事实可以成立，判词不能终审——由我决定何时说、对谁说、用什么措辞说。\n");
+            sb.Append("  8-1 的门从第一秒起就是开着的；8-2 没有「让所有人闭嘴」这个解法。");
+            return sb.ToString();
+        }
+
         static readonly string[] PageTitles =
         {
             "招 式 表 · 基本键", "招 式 表 · 绝招与必杀", "招 式 表 · 派生与连段",
             "招 式 表 · 读招与闪避", "招 式 表 · 自由融合", "招 式 表 · 输入仲裁",
             "招 式 表 · 玩家数据", "招 式 表 · 敌人数据",
             "招 式 表 · 动作语法", "招 式 表 · 敌方武术类型",
+            "招 式 表 · 第八章羞耻线语法",
         };
 
         static string PageText(int page)
@@ -348,7 +391,8 @@ namespace AdversityRoad.UI
                 case 6: return BuildPlayerSpecText();
                 case 7: return BuildEnemySpecText();
                 case 8: return BuildGrammarText();
-                default: return BuildArchetypeText();
+                case 9: return BuildArchetypeText();
+                default: return BuildShameGrammarText();
             }
         }
 
