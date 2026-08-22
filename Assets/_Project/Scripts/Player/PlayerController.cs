@@ -499,36 +499,9 @@ namespace AdversityRoad.Player
             float inputMag = stickInput.magnitude;            // 摇杆已在本帧开头统一读取
             Vector3 moveDir = stickDir;
 
-            // 交战锁面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
+            // 锁定面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
             Transform face = FacingTarget();
-            // 撤退意图：推杆方向持续背对目标 ⇒ 解除软锁，转身全速跑。
-            // 【手动锁定不适用】：那是玩家自己按下去的，要解除请再按一次锁定键。
-            // 这里对它放行的话会变成：本帧解除、下帧 FacingTarget 又把手动目标还回来，
-            // 于是每 0.35 秒抖一下——比不给出口更糟。
-            bool manualLocked = _lockOn != null && _lockOn.CurrentTarget != null;
-            if (manualLocked) _disengageT = 0f;
-            else if (face != null && moveDir.sqrMagnitude > 0.04f)
-            {
-                Vector3 away = transform.position - face.position; away.y = 0;
-                // 推杆方向落在"正背离目标"的 ±50° 锥里 = 在往回撤，而不是侧向走位
-                bool backing = away.sqrMagnitude > 0.01f &&
-                               Vector3.Angle(moveDir, away.normalized) < DisengageCone;
-                _disengageT = backing ? _disengageT + dt : 0f;
-                if (_disengageT >= DisengageHold)
-                {
-                    _disengageT = 0f;
-                    _disengageUntil = Time.time + DisengageGrace;
-                    face = null;
-                    if (Time.time - _disengageSaidAt > 6f)
-                    {
-                        _disengageSaidAt = Time.time;
-                        Core.GameEvents.RaiseSubtitle("脱离交战——转身拉开距离。");
-                    }
-                }
-            }
-            else _disengageT = 0f;
             StrafeActive = face != null;
-            SoftLockTarget = face;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
@@ -542,29 +515,33 @@ namespace AdversityRoad.Player
             // 走速正好等于履带速度，不许跑等于那台机器是坏的。
             if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
-            // 横移/后撤要慢下来，两个理由都成立：
-            //   ① 没有人能侧着或倒着跑出正面冲刺的速度，而且"绕圈找角度"本来就该是
-            //      有代价的移动，不该比正面突进还快；
-            //   ② 动作库里侧移与后退**只有走的片段**（Left/Right Strafe Walking、
-            //      Walking Backwards）。移速给到冲刺档，步频再怎么提速也追不上位移，
-            //      脚就会打滑——所以这里不只是乘个系数，还要**按片段撑得住的速度封顶**。
-            //      将来补上跑动版的横移片段（Left/Right Strafe），把封顶放开即可。
+            // ===== 锁定期间是【步法】，不是冲刺 =====
+            //
+            // 锁定时角色横穿画面而不是走向画面深处，同样的米每秒在观感上要快出一截；
+            // 而 runSpeed=5.2m/s 本来就是冲刺档（≈18.7km/h）。两者叠加，
+            // 就是"移动非常快、不像在操纵一个人"。所以锁定期间整体降到步法档。
+            //
+            // 封顶值不是拍的，是照着 CI 实测的片段自然速度倒推的
+            //（搜构建日志里的 [CIDIAG][移动]），保证任何方向的播放速率都在 2.0 以内，
+            // 也就是**任何方向都不打滑**：
+            //     正前 45° 内 → 3.77m/s：斜前慢跑片段 2.83 ⇒ 速率 1.33
+            //     正侧  90°   → 2.60m/s：横移走片段  1.70 ⇒ 速率 1.53
+            //     正后 180°   → 2.08m/s：后退走片段  1.12 ⇒ 速率 1.86
+            // 想全速跑就按锁定键解除锁定——那是玩家自己的决定，不该由系统替他做。
+            // 将来补上跑动版横移（Left/Right Strafe）后，侧向这一档可以同步放开。
             if (face != null && moveDir.sqrMagnitude > 0.01f)
             {
                 float sideAng = Mathf.Abs(
                     Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
-                if (sideAng > 60f)
-                {
-                    float back01 = Mathf.Clamp01((sideAng - 60f) / 120f);   // 0=正侧 1=正后
-                    // 封顶值按【CI 实测出来的片段自然速度】定，不是拍脑袋：
-                    //   横移片段 1.70m/s → 封顶 2.60（walkSpeed×1.0）⇒ 播放速率 1.53，宽裕；
-                    //   后退片段 1.12m/s → 封顶 2.08（walkSpeed×0.8）⇒ 播放速率 1.86，
-                    //     刚好压在 2.0 的速率上限里。再快就只能靠拉速率，脚必然打滑。
-                    // 补上跑动版横移（Left/Right Strafe）后，这两个系数可以同步放开。
-                    float cap = Mathf.Lerp(walkSpeed * 1.0f, walkSpeed * 0.8f, back01)
-                                * MoveSpeedMultiplier;
-                    speed = Mathf.Min(speed * Mathf.Lerp(0.78f, 0.6f, back01), cap);
-                }
+                float cap;
+                if (sideAng <= 45f) cap = walkSpeed * 1.45f;                  // 正面推进
+                else if (sideAng <= 90f)
+                    cap = Mathf.Lerp(walkSpeed * 1.45f, walkSpeed * 1.0f,
+                                     (sideAng - 45f) / 45f);                  // 斜向→正侧
+                else
+                    cap = Mathf.Lerp(walkSpeed * 1.0f, walkSpeed * 0.8f,
+                                     (sideAng - 90f) / 90f);                  // 正侧→后撤
+                speed = Mathf.Min(speed, cap * MoveSpeedMultiplier);
             }
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
@@ -695,64 +672,29 @@ namespace AdversityRoad.Player
         /// <summary>横移态（脸锁在目标上、移动方向独立）——镜头与动画都要知道。</summary>
         public bool StrafeActive { get; private set; }
 
-        /// <summary>当前软锁面向的目标（没有则为 null）：镜头取景据此把两人一起框住。</summary>
-        public Transform SoftLockTarget { get; private set; }
-
-        // ---- 脱战：一直往后推杆就解除软锁，转身跑 ----
-        //
-        // 软锁面向本身是对的（近身互殴不该被迫把背露给对方），但它有个必须留的出口：
-        // **想撤退的时候**。锁着脸只能倒退，而倒退是 0.6 倍速——追你的敌人是全速，
-        // 于是"逃跑"变成了一件在数值上不可能的事，玩家会觉得被黏在原地。
-        // 大作的通行做法是给一个明确的解除条件：持续往远离目标的方向推杆
-        //（不是瞬间的斜后走位，所以要压一段时间），就当作"我要走了"，
-        // 解除软锁、转身、全速跑。松开或改推别的方向立刻恢复锁面向。
-        const float DisengageCone = 50f;     // 推杆方向与"正背离目标"的夹角容差
-        const float DisengageHold = 0.35f;   // 要持续这么久才算撤退意图（不误伤走位）
-        const float DisengageGrace = 0.9f;   // 解除后这么久内不重新锁（让人跑出去）
-        float _disengageT, _disengageUntil, _disengageSaidAt = -99f;
-
         /// <summary>
-        /// 当前该锁面向谁：
-        ///   ① 手动锁定的目标最优先（玩家明确说了"盯它"）；
-        ///   ② 没锁定时，交战中且有敌人贴近（≤7m）也锁面向——
-        ///      近身互殴时把背露给对方从来不是玩家的本意，而是"必须转身才能走"逼出来的。
-        /// 脱战即解除，探索时回到"朝哪走朝哪转"。
+        /// 当前该锁面向谁——**只认玩家自己按下的锁定**（Q 键 / 触屏「锁」按钮）。
+        ///
+        /// 【为什么不再自动锁】
+        /// 上一版做成了"交战中且有敌人在 7 米内就自动锁面向"。而 InCombat 是
+        /// 「出过一次手后 4 秒内为真」——打起来之后它几乎恒为真，于是软锁全程开着，
+        /// 玩家**从没要求过**却整场都在横移。
+        ///
+        /// 后果不是"多了个功能"，是**手感没了**：
+        /// 推杆最直接的反馈就是"角色转过去朝我指的方向"，那是玩家确认"是我在操纵它"
+        /// 的唯一凭据。锁面向把这个反馈拿掉之后，摇杆只剩下平移向量，
+        /// 角色读起来像被拖着走；再叠上锁定机位（人横穿画面而不是往画面深处走），
+        /// 同样的速度看着快得多——也就是"不受精细控制、移动非常快"。
+        ///
+        /// 横移/后撤这项能力本身是要的，但它必须是玩家**主动进入**的模式：
+        /// 按锁定键才锁，再按一次解除。这也是这类游戏的通行做法。
+        /// 想要自动锁的人，设置面板里本来就有「自动锁定」开关（LockOnSystem.AutoAcquire）。
         /// </summary>
         Transform FacingTarget()
         {
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
-            // 手动锁定是玩家明确的意思表示，撤退逻辑不插手（要脱锁请按锁定键）
-            if (_lockOn != null && _lockOn.CurrentTarget != null) return _lockOn.CurrentTarget;
-            if (_combat == null || !_combat.InCombat) return null;
-            if (Time.time < _disengageUntil) return null;   // 刚判定为撤退：让他跑
-
-            // 找最近敌人每帧全场扫一遍太贵：0.2 秒刷一次，中间沿用上次结果
-            //（0.2 秒内敌人跑不出"贴近"与"没贴近"的区别）
-            if (Time.time >= _faceScanAt)
-            {
-                _faceScanAt = Time.time + 0.2f;
-                Transform best = null; float bestD = 7f;
-                foreach (var e in FindObjectsOfType<AI.EnemyController>())
-                {
-                    if (e == null || e.State == AI.EnemyState.Dead) continue;
-                    float d = Vector3.Distance(transform.position, e.transform.position);
-                    if (d < bestD) { bestD = d; best = e.transform; }
-                }
-                _faceCache = best;
-            }
-            // 缓存的目标可能已经死了/远离：用之前再校一次，免得脸锁在一具尸体上
-            if (_faceCache != null)
-            {
-                var ec = _faceCache.GetComponent<AI.EnemyController>();
-                if (ec == null || ec.State == AI.EnemyState.Dead ||
-                    Vector3.Distance(transform.position, _faceCache.position) > 9f)
-                    _faceCache = null;
-            }
-            return _faceCache;
+            return _lockOn != null ? _lockOn.CurrentTarget : null;
         }
-
-        Transform _faceCache;
-        float _faceScanAt;
 
         // ---- 出招转向影响（大作 attack steering）速率表（度/秒）----
         const float AttackSteerDegPerSec = 150f;   // 轻击连段：顺杆引导连招方向
