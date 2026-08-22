@@ -169,6 +169,63 @@ namespace AdversityRoad.Core
             // 意志塔：广场石柱间的旧话复读者与反刍虫群（塔台留给登塔）
             SpawnEnemy(EnemyType.OldVoiceRepeater, EnemyTier.Standard, o[23] + new Vector3(-9, 1.1f, -14), true);
             SpawnEnemy(EnemyType.RuminationSwarm, EnemyTier.Novice, o[23] + new Vector3(9, 1.1f, -8), true);
+
+            SpawnShameLineMinions(o);
+        }
+
+        /// <summary>
+        /// 第八章两关的常驻单位（V2.1）。
+        ///
+        /// 【这一线的杂兵大半不是用来打的】
+        /// 侧目者只是站着看，旁观耳语者连攻击都没有，讨好回声打不死——
+        /// 它们的职责是把"被看见"这件事变成一个可读的空间，而不是多几个血包。
+        /// 所以这里摆的是**位置与朝向**，不是战力。
+        /// </summary>
+        void SpawnShameLineMinions(Vector3[] o)
+        {
+            // ---- 8-1 欠条长廊 ----
+            SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Novice, o[25] + new Vector3(-3, 1.1f, -30), true);
+            SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Standard, o[25] + new Vector3(3, 1.1f, -14), true);
+            SpawnEnemy(EnemyType.WeeklyInquirer, EnemyTier.Standard, o[25] + new Vector3(0, 1.1f, -2), true);
+            SpawnEnemy(EnemyType.AppeaseEcho, EnemyTier.Standard, o[25] + new Vector3(-2.5f, 1.1f, 12), true);
+            SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(3.4f, 1.1f, -22), true);
+            SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(-3.4f, 1.1f, 4), true);
+
+            // ---- 8-2 回声教室 ----
+            // 三名侧目者的朝向经过对位：主锥罩住讲台前的「归还」，
+            // 另外两只在座位区交叉，「完成本职」正好落在交叉处——绕开无从谈起
+            FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
+                o[26] + new Vector3(-9, 1.1f, 6), o[26] + new Vector3(0, 1.1f, 15));
+            FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
+                o[26] + new Vector3(9, 1.1f, 8), o[26] + new Vector3(-5, 1.1f, 1));
+            FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
+                o[26] + new Vector3(-11, 1.1f, -6), o[26] + new Vector3(0, 1.1f, -18));
+
+            SpawnEnemy(EnemyType.MagnifierOnlooker, EnemyTier.Standard, o[26] + new Vector3(6, 1.1f, -2), true);
+            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Standard, o[26] + new Vector3(-6, 1.1f, 9), true);
+            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Standard, o[26] + new Vector3(2, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Novice, o[26] + new Vector3(-2, 1.1f, -12), true);
+
+            // 后排低语组：双人单位，互相登记为搭档
+            var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+                o[26] + new Vector3(-4, 1.1f, 12), true);
+            var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+                o[26] + new Vector3(4, 1.1f, 12), true);
+            var pa = a != null ? a.GetComponent<BackRowPair>() : null;
+            var pb = b != null ? b.GetComponent<BackRowPair>() : null;
+            if (pa != null && pb != null) { pa.partner = pb; pb.partner = pa; }
+        }
+
+        /// <summary>生成一个朝着指定点站定的单位（侧目者的视线锥要罩住特定目标物）。</summary>
+        GameObject FaceSpawn(EnemyType type, EnemyTier tier, Vector3 at, Vector3 lookAt)
+        {
+            var go = SpawnEnemy(type, tier, at, true);
+            if (go == null) return null;
+            Vector3 dir = lookAt - at;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.01f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            return go;
         }
 
         /// <summary>回访提醒：把复盘里许下的现实行动带回玩家眼前（安全屋「行动」面板确认）。</summary>
@@ -285,6 +342,22 @@ namespace AdversityRoad.Core
             // 逆境层
             PlayerBehaviorAnalyzer.Ensure();
             AdversityHistoryHook.Ensure();
+
+            // V2.1 第八章：羞耻与污名线的十个系统。
+            // 它们全部**只在第八章两关内生效**（各自内部查 ShameLine.InChapter），
+            // 常驻场上只是为了在玩家走进那两关的第一帧就已经准备好。
+            Shame.ShameLineController.Ensure();
+            Shame.ExposureSystem.Ensure();
+            Shame.GazeConeSystem.Ensure();
+            Shame.WhisperChainSystem.Ensure();
+            Shame.IdentityNailSystem.Ensure();
+            Shame.OwnNotFinalSystem.Ensure();
+            Shame.StatementSystem.Ensure();
+            Shame.PendingCaseTimer.Ensure();
+            Shame.CorridorGrowthSystem.Ensure();
+            Shame.AppeasementSystem.Ensure();
+            Shame.ClaimRegistry.SpentCount();   // 触发指控注册表读档
+            Shame.ShameSkills.Ensure();
             StressStateMachine.Ensure();
             ResolveSystem.Ensure();
             var director = AdversityDirector.Ensure();
@@ -778,6 +851,44 @@ namespace AdversityRoad.Core
                     break;
                 case EnemyType.InfiniteAsker:             // 追问弹幕/意义崩桥/行动答台破防
                     root.AddComponent<InfiniteAskerBoss>();
+                    break;
+
+                // ---- 第八章 羞耻与污名线（V2.1）----
+                case EnemyType.PendingJudge:              // 改期/追加/要求当众/身份钉·轻（不可击杀）
+                    root.AddComponent<PendingJudgeBoss>();
+                    break;
+                case EnemyType.BackRowWhisperer:          // 凝视/指认/扩散（血由否认次数维持）
+                    root.AddComponent<BackRowWhispererBoss>();
+                    break;
+                case EnemyType.NailAccuser:               // 专职指认，truthTag = true
+                    root.AddComponent<NailAccuser>();
+                    break;
+                case EnemyType.NewHandle:                 // 每次隐瞒后生成，专攻上一条隐瞒
+                    root.AddComponent<NewHandle>();
+                    break;
+                case EnemyType.AppeaseEcho:               // 讨好度越高它越强，只能靠降讨好度削弱
+                    root.AddComponent<AppeaseEcho>();
+                    break;
+                case EnemyType.BystanderWhisper:          // 不攻击，只抬暴露增速
+                    root.AddComponent<BystanderWhisper>();
+                    break;
+                case EnemyType.SideGlancer:               // 静止，头部朝向生成视线锥
+                    root.AddComponent<SideGlancer>();
+                    break;
+                case EnemyType.MagnifierOnlooker:         // 读条把一次失误放大成全场事件
+                    root.AddComponent<MagnifierOnlooker>();
+                    break;
+                case EnemyType.BackRowWhisperPair:        // 双人交替发声，倒一个另一个接管
+                    root.AddComponent<BackRowPair>();
+                    break;
+                case EnemyType.GuiltProjection:           // 预判并抢占回避路线，不可击杀
+                    root.AddComponent<GuiltProjection>();
+                    break;
+                case EnemyType.DisguisedClassmate:        // 接近后转敌对（必须先给识别信号）
+                    root.AddComponent<DisguisedClassmate>();
+                    break;
+                case EnemyType.WeeklyInquirer:            // 限制移动范围的提问链，不动手
+                    root.AddComponent<WeeklyInquirer>();
                     break;
             }
 

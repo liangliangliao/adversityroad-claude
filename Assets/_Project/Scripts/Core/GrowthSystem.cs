@@ -13,6 +13,8 @@ namespace AdversityRoad.Core
         public string route;   // 路线名（边界/专注/行动/公平/自尊）
         public string name;
         public string desc;
+        /// <summary>只能由剧情授予、不能用复盘点购买（第八章的「自述之证」）。</summary>
+        public bool grantOnly;
     }
 
     /// <summary>装备套装：一次只能穿一套，提供一组被动（对应方案五大套装）。</summary>
@@ -76,6 +78,25 @@ namespace AdversityRoad.Core
                 desc = "自尊上限 +25：被看见不等于被否定。" },
             new GrowthNode { id = "self2", route = "自尊", name = "旧事止响",
                 desc = "反刍积累 -25%：刺痛照旧发生，回放明显变短。" },
+
+            // ---- V2.1 第八章：自尊线在中段插入两个节点，并列新增两个（方案 8.8.2）----
+            // 【强制文案要求（8.4.1）】认领的是事实，不是身份。
+            // 这条说明不许被改写成"承认一切指控""接受批评"——对不实的指控，
+            // 正解始终是事实之刃，认领在那里无效并产生硬直。
+            new GrowthNode { id = "self_own", route = "自尊", name = "认领不终审",
+                desc = "指认招式的判定窗内输入：清除全部身份钉，暴露度 -25，" +
+                       "并废除该条指控在本章内的复用权。\n" +
+                       "认领的是事实，不是身份——对不实的指控它无效，那时该用事实之刃。" },
+            new GrowthNode { id = "self_statement", route = "自尊", name = "自行陈述",
+                desc = "主动技：自选时机 / 对象 / 措辞三项参数。清空暴露度，终结悬案状态。" },
+            new GrowthNode { id = "self_spotlight", route = "自尊", name = "聚光灯校准",
+                desc = "短暂显示场内敌人的真实注意力值与你感知值的差额，暴露高估的那一部分。" },
+            new GrowthNode { id = "self_nocourt", route = "自尊", name = "不上庭",
+                desc = "拒绝进入「判词」类交互一次；对悬案法官的延期招式免疫一次并产生反击窗口。" },
+            new GrowthNode { id = "shame_proof", route = "自尊", name = "自述之证（武器）", grantOnly = true,
+                desc = "第八章最佳结算的凭证。象征能力：主动公开权——" +
+                       "由自己决定何时、对谁、用什么措辞说出来。\n" +
+                       "被动：暴露度增速 -15%；自尊恢复效率提升。" },
         };
 
         public static readonly EquipmentSet[] Sets =
@@ -95,6 +116,11 @@ namespace AdversityRoad.Core
             new EquipmentSet { id = "set_oldself", name = "旧我整合套",
                 mantra = "你曾经保护过我，但现在我要继续向前。",
                 desc = "旧事回声类心理伤害 -30%；反刍积累 -30%。" },
+            // V2.1 第八章新增（方案 8.8.3）
+            new EquipmentSet { id = "set_statement", name = "自述套",
+                mantra = "事实成立，但判词不终审。",
+                desc = "羞耻类心理伤害 -30%；暴露度增速 -20%；反刍积累 -20%；" +
+                       "首次被挂身份钉时自动触发一次认领不终审。" },
         };
 
         static HashSet<string> _unlocked;
@@ -127,6 +153,30 @@ namespace AdversityRoad.Core
 
         public static bool IsUnlocked(string nodeId) => Unlocked().Contains(nodeId);
 
+        /// <summary>
+        /// 剧情直接授予的节点（不花复盘点）：第八章最佳结算的「自述之证」走这条路。
+        /// 用复盘点买的是玩家自己练出来的东西；这一件是关卡结算给的，两者不该混。
+        /// </summary>
+        public static void GrantNode(string nodeId)
+        {
+            if (string.IsNullOrEmpty(nodeId) || IsUnlocked(nodeId)) return;
+            Unlocked().Add(nodeId);
+            PlayerPrefs.SetString(NodesKey, string.Join(",", Unlocked()));
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>
+        /// 第八章的暴露度增速倍率（自述套 -20%，自述之证再 -15%）。
+        /// 放在这里而不是 ExposureSystem 里：所有被动加成都从同一处查，口径才对得上。
+        /// </summary>
+        public static float ExposureGainMult()
+        {
+            float m = 1f;
+            if (EquippedSet == "set_statement") m *= 0.8f;
+            if (IsUnlocked("shame_proof")) m *= 0.85f;
+            return m;
+        }
+
         public static bool TryUnlock(string nodeId)
         {
             if (IsUnlocked(nodeId) || Points < 1) return false;
@@ -156,6 +206,9 @@ namespace AdversityRoad.Core
             bool boundAxis = axis == WeaknessAxis.BoundaryConflict;
             bool procAxis = axis == WeaknessAxis.Procrastination;
             bool oldAxis = axis == WeaknessAxis.FailureFear;
+            bool shameAxis = axis == WeaknessAxis.Shame ||
+                             axis == WeaknessAxis.LowConfidence ||
+                             axis == WeaknessAxis.SelfDoubt;
             if (noiseAxis && IsUnlocked("focus2")) m *= 0.75f;
             if (fairAxis && IsUnlocked("fact2")) m *= 0.75f;
             if (procAxis && IsUnlocked("action1")) m *= 0.7f;
@@ -166,6 +219,7 @@ namespace AdversityRoad.Core
                 case "set_fact": if (fairAxis) m *= 0.7f; break;
                 case "set_action": if (procAxis) m *= 0.6f; break;
                 case "set_oldself": if (oldAxis) m *= 0.7f; break;
+                case "set_statement": if (shameAxis) m *= 0.7f; break;
             }
             return m;
         }
@@ -176,6 +230,7 @@ namespace AdversityRoad.Core
             if (IsUnlocked("self2")) m *= 0.75f;
             if (EquippedSet == "set_oldself") m *= 0.7f;
             else if (EquippedSet == "set_focus") m *= 0.85f;
+            else if (EquippedSet == "set_statement") m *= 0.8f;
             return m;
         }
 

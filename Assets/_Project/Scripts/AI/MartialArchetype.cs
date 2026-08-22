@@ -205,7 +205,25 @@ namespace AdversityRoad.AI
                 case EnemyType.MedDebtShadow:
                 case EnemyType.StimulusAmplifier:
                 case EnemyType.GoalForgetter:
+                // 羞耻线：整条线都是心理混合型——招式与台词绑死，
+                // 因为它们真正的攻击手段就是那句话本身
+                case EnemyType.NewHandle:
+                case EnemyType.WeeklyInquirer:
+                case EnemyType.AppeaseEcho:
+                case EnemyType.BystanderWhisper:
+                case EnemyType.SideGlancer:
+                case EnemyType.MagnifierOnlooker:
+                case EnemyType.BackRowWhisperPair:
+                case EnemyType.NailAccuser:
+                case EnemyType.GuiltProjection:
+                case EnemyType.PendingJudge:
+                case EnemyType.BackRowWhisperer:
                     return MartialArchetype.MindMixed;
+
+                // 伪装同学接近后才转敌对：拳脚型，识别信号由行为组件负责给
+                case EnemyType.DisguisedClassmate:
+                case EnemyType.DebtMessenger:
+                    return MartialArchetype.Fist;
 
                 default:
                     return MartialArchetype.Fist;

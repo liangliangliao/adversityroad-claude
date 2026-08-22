@@ -34,7 +34,9 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(980, 1050),
+            // 高度随类型格子数走：V2.1 加了羞耻线 11 种，网格从 7 行涨到 9 行，
+            // 1050 高时最后两行会压到下面的「难度」一栏
+            _panel = UiUtil.MakePanel(canvas, "EnemySpawnerPanel", new Vector2(980, 1240),
                 new Color(0.08f, 0.08f, 0.12f, 0.96f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "添 加 心 魔 挑 战", 40,
@@ -69,7 +71,17 @@ namespace AdversityRoad.UI
                 EnemyType.MedDebtShadow, EnemyType.ValleyColossus,
                 EnemyType.QuoteGhost, EnemyType.DoubtScholar,
                 EnemyType.ConceptMazeMaster, EnemyType.QuestionBeast,
-                EnemyType.InfiniteAsker
+                EnemyType.InfiniteAsker,
+                // 第八章 羞耻与污名线（V2.1）。
+                // 两位 Boss（悬案法官／后排低语者）不列在这里：他们不可击杀，
+                // 终结条件绑在关卡的陈述与目标动作上——摘出来放进自由修炼，
+                // 玩家只会得到一个打不死也走不完的对手。
+                EnemyType.DebtMessenger, EnemyType.NewHandle,
+                EnemyType.WeeklyInquirer, EnemyType.AppeaseEcho,
+                EnemyType.BystanderWhisper, EnemyType.SideGlancer,
+                EnemyType.MagnifierOnlooker, EnemyType.BackRowWhisperPair,
+                EnemyType.NailAccuser, EnemyType.GuiltProjection,
+                EnemyType.DisguisedClassmate
             };
             for (int i = 0; i < types.Length; i++)
             {
@@ -82,14 +94,14 @@ namespace AdversityRoad.UI
 
             var tierLabel = UiUtil.MakeText(_panel.transform, "TierLabel", "难度", 28,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-400, -710), new Vector2(120, 40));
+            UiUtil.SetRect(tierLabel, new Vector2(0.5f, 1f), new Vector2(-400, -880), new Vector2(120, 40));
 
             EnemyTier[] tiers = { EnemyTier.Novice, EnemyTier.Standard, EnemyTier.Elite, EnemyTier.Chief };
             for (int i = 0; i < tiers.Length; i++)
             {
                 var t = tiers[i];
                 var btn = UiUtil.MakeButton(_panel.transform, EnemyCatalog.TierLabel(t),
-                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -780),
+                    new Vector2(0.5f, 1f), new Vector2(-290 + i * 195, -950),
                     new Vector2(175, 70), Off, () => SelectTier(t), 26);
                 _tierButtons.Add((btn, t));
             }

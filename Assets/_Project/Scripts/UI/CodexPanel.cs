@@ -12,7 +12,7 @@ namespace AdversityRoad.UI
     public class CodexPanel : MonoBehaviour
     {
         GameObject _panel;
-        Text _listLeft, _listRight;
+        Text _listLeft, _listMid, _listRight;
 
         /// <summary>每种敌人的一句"克制要点"（识别模式 → 知道怎么回应）。</summary>
         static string CounterTip(EnemyType t)
@@ -61,6 +61,20 @@ namespace AdversityRoad.UI
                 case EnemyType.ConceptMazeMaster: return "点亮三座行动灯台破引文护体";
                 case EnemyType.QuestionBeast: return "穿发亮的行动之门，别碰问题之门";
                 case EnemyType.InfiniteAsker: return "用『行动答台』回答=它当场语塞";
+                // ---- 第八章 羞耻与污名线：这一线的克制要点大多不是"怎么打赢" ----
+                case EnemyType.DebtMessenger: return "基础格挡/轻攻击；条上写的是事实";
+                case EnemyType.NewHandle: return "认领不终审（它指的那条是真的）";
+                case EnemyType.WeeklyInquirer: return "事实之刃对模糊条款，边界盾对追加条件";
+                case EnemyType.AppeaseEcho: return "打不死它——降讨好度才削得动";
+                case EnemyType.BystanderWhisper: return "离开范围，或用聚光灯校准看清";
+                case EnemyType.SideGlancer: return "别绕开：锥内待满 8 秒进稳态";
+                case EnemyType.MagnifierOnlooker: return "在它读条完成前把目标动作做完";
+                case EnemyType.BackRowWhisperPair: return "破链只能拖延；不必让它闭嘴";
+                case EnemyType.NailAccuser: return "认领不终审是唯一解，格挡挡不掉钉";
+                case EnemyType.GuiltProjection: return "不可击杀；认领成功后它透明 12 秒";
+                case EnemyType.DisguisedClassmate: return "转身+台词是识别信号，之后才敌对";
+                case EnemyType.PendingJudge: return "打他没用——走进广播室完成自行陈述";
+                case EnemyType.BackRowWhisperer: return "否认给他续命；在低语活着时做完三件事";
                 default: return "";
             }
         }
@@ -91,22 +105,29 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "CodexPanel", new Vector2(1500, 960),
+            // 三列 + 更高的版面：图鉴条目从 42 种涨到 55 种（V2.1 补了羞耻线 13 种），
+            // 两列各 21 条 ×3 行早就顶出了 760 的文本框，只是以前没人数过。
+            _panel = UiUtil.MakePanel(canvas, "CodexPanel", new Vector2(1560, 1240),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "敌 人 图 鉴 · 识 别 心 魔 模 式", 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -46), new Vector2(1000, 54));
 
-            _listLeft = UiUtil.MakeText(_panel.transform, "ListL", "", 22,
+            _listLeft = UiUtil.MakeText(_panel.transform, "ListL", "", 19,
                 TextAnchor.UpperLeft, new Color(0.92f, 0.92f, 0.95f));
-            UiUtil.SetRect(_listLeft, new Vector2(0.5f, 1f), new Vector2(-370, -480), new Vector2(690, 760));
-            _listLeft.lineSpacing = 1.15f;
+            UiUtil.SetRect(_listLeft, new Vector2(0.5f, 1f), new Vector2(-505, -600), new Vector2(480, 1000));
+            _listLeft.lineSpacing = 1.1f;
 
-            _listRight = UiUtil.MakeText(_panel.transform, "ListR", "", 22,
+            _listMid = UiUtil.MakeText(_panel.transform, "ListM", "", 19,
                 TextAnchor.UpperLeft, new Color(0.92f, 0.92f, 0.95f));
-            UiUtil.SetRect(_listRight, new Vector2(0.5f, 1f), new Vector2(370, -480), new Vector2(690, 760));
-            _listRight.lineSpacing = 1.15f;
+            UiUtil.SetRect(_listMid, new Vector2(0.5f, 1f), new Vector2(0, -600), new Vector2(480, 1000));
+            _listMid.lineSpacing = 1.1f;
+
+            _listRight = UiUtil.MakeText(_panel.transform, "ListR", "", 19,
+                TextAnchor.UpperLeft, new Color(0.92f, 0.92f, 0.95f));
+            UiUtil.SetRect(_listRight, new Vector2(0.5f, 1f), new Vector2(505, -600), new Vector2(480, 1000));
+            _listRight.lineSpacing = 1.1f;
 
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
                 new Vector2(0, 50), new Vector2(280, 72),
@@ -119,18 +140,21 @@ namespace AdversityRoad.UI
         {
             var types = (EnemyType[])System.Enum.GetValues(typeof(EnemyType));
             var left = new System.Text.StringBuilder();
+            var mid = new System.Text.StringBuilder();
             var right = new System.Text.StringBuilder();
+            int perCol = (types.Length + 2) / 3;
             for (int i = 0; i < types.Length; i++)
             {
                 var t = types[i];
                 int kills = GrowthSystem.KillCount(EnemyCatalog.BaseId(t));
-                var sb = i < (types.Length + 1) / 2 ? left : right;
+                var sb = i < perCol ? left : i < perCol * 2 ? mid : right;
                 sb.Append(kills > 0 ? "■ " : "□ ")
                   .Append(EnemyCatalog.TypeLabel(t))
                   .Append("〔").Append(AxisName(t)).Append("轴〕  击败 ").Append(kills).Append('\n')
                   .Append("    克制：").Append(CounterTip(t)).Append("\n\n");
             }
             _listLeft.text = left.ToString();
+            _listMid.text = mid.ToString();
             _listRight.text = right.ToString();
         }
 

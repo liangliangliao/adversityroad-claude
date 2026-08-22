@@ -26,7 +26,9 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "GrowthPanel", new Vector2(1240, 980),
+            // 版面高度按【实际行数】给，不再假设"每条路线正好两个节点"：
+            // V2.1 给自尊线一口气加了五个节点，写死两列一行会让它们叠在一起。
+            _panel = UiUtil.MakePanel(canvas, "GrowthPanel", new Vector2(1240, 1460),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "技 能 树 · 五 条 成 长 路 线", 38,
@@ -37,27 +39,32 @@ namespace AdversityRoad.UI
                 TextAnchor.MiddleCenter, new Color(0.8f, 0.95f, 0.8f));
             UiUtil.SetRect(_pointsText, new Vector2(0.5f, 1f), new Vector2(0, -100), new Vector2(900, 40));
 
-            // 五条路线 × 两级：路线名一列 + 两枚节点按钮（含名称与效果说明）
+            // 每条路线两列排布，节点多于两个就在同一路线内换行——
+            // 行数由节点数算出来，路线名只写在该路线的第一行
+            const float RowStep = 148f;
             string lastRoute = null;
-            int row = -1;
+            int row = -1, colInRoute = 0;
             for (int i = 0; i < GrowthSystem.Nodes.Length; i++)
             {
                 var node = GrowthSystem.Nodes[i];
-                if (node.route != lastRoute) { lastRoute = node.route; row++; }
-                int col = i % 2;
+                bool newRoute = node.route != lastRoute;
+                if (newRoute) { lastRoute = node.route; row++; colInRoute = 0; }
+                else if (colInRoute >= 2) { row++; colInRoute = 0; }
+                int col = colInRoute++;
 
                 if (col == 0)
                 {
-                    var routeText = UiUtil.MakeText(_panel.transform, "Route", node.route + "路线", 26,
+                    var routeText = UiUtil.MakeText(_panel.transform, "Route",
+                        newRoute ? node.route + "路线" : "", 26,
                         TextAnchor.MiddleLeft, new Color(0.95f, 0.8f, 0.55f));
                     UiUtil.SetRect(routeText, new Vector2(0.5f, 1f),
-                        new Vector2(-540, -170 - row * 150), new Vector2(130, 40));
+                        new Vector2(-540, -170 - row * RowStep), new Vector2(130, 40));
                     routeText.fontStyle = FontStyle.Bold;
                 }
 
                 var btn = UiUtil.MakeButton(_panel.transform, "",
-                    new Vector2(0.5f, 1f), new Vector2(-190 + col * 500, -170 - row * 150),
-                    new Vector2(480, 130), new Color(0.2f, 0.22f, 0.3f, 0.96f), null, 22);
+                    new Vector2(0.5f, 1f), new Vector2(-190 + col * 500, -170 - row * RowStep),
+                    new Vector2(480, 128), new Color(0.2f, 0.22f, 0.3f, 0.96f), null, 22);
                 var label = btn.GetComponentInChildren<Text>();
                 label.alignment = TextAnchor.MiddleLeft;
                 var lrt = label.GetComponent<RectTransform>();
@@ -79,6 +86,14 @@ namespace AdversityRoad.UI
         void TryUnlock(string nodeId)
         {
             if (GrowthSystem.IsUnlocked(nodeId)) return;
+            // 剧情授予的条目不卖：点它不该悄悄花掉一枚复盘点
+            foreach (var n in GrowthSystem.Nodes)
+                if (n.id == nodeId && n.grantOnly)
+                {
+                    GameEvents.RaiseSubtitle("「" + n.name + "」不能用复盘点购买——" +
+                        "它是第八章最佳结算的凭证，只能在关卡里拿到。");
+                    return;
+                }
             if (!GrowthSystem.TryUnlock(nodeId))
             {
                 GameEvents.RaiseSubtitle("复盘点不足——战斗后打开「复盘」面板归档，即可获得复盘点。");
