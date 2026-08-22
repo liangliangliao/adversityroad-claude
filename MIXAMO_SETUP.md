@@ -102,7 +102,12 @@ Assets/_Project/Resources/Characters/
 | `Left Strafe Walking` / `Right Strafe Walking` | 左 / 右 | 走 |
 | `Running` | 前 | 跑 |
 | `Slow Jog Backwards` | 后 | 跑 |
-| `Jog Forward Diagonal` / `Jog Backward Diagonal` | 斜向（**方向由运行时实测决定**） | 跑 |
+| `Jog Forward Diagonal` | 右前 **+45°**（实测值） | 跑 |
+| `Jog Backward Diagonal` | 左后 **−136°**（实测值） | 跑 |
+
+> 上面两条的角度是 CI 实测打出来的——注意这两段**不在同一侧**（一个右前、一个左后）。
+> 按名字猜"前斜=+45、后斜=+135"会把后斜的那条摆到反方向去。每次构建的日志里
+> 都有这张实测表（搜 `[CIDIAG][移动]`），换素材后照着核对即可。
 
 **接入方式与招式片段不同，有三点值得知道：**
 
@@ -113,8 +118,10 @@ Assets/_Project/Resources/Characters/
    猜错比不用更糟。代码会采样片段首尾两帧、量髋骨走了哪个方向，**测到才用**；
    测不到就交给相邻的正方向片段混合出来。所以你再丢别的斜向片段进来也能自动就位。
 3. **还缺跑动版的横移**（Mixamo 的 `Left Strafe` / `Right Strafe`）。
-   现在跑着横移用的是走的横移片段提速播，并且移速被**按片段撑得住的速度封了顶**
-   （见 `PlayerController` 里的横移降速）。补上这两段后，把那个封顶放开即可。
+   现在跑着横移用的是走的横移片段提速播，移速被**按片段撑得住的速度封了顶**：
+   横移封到 `walkSpeed×1.0`、后退封到 `walkSpeed×0.8`——这两个数是照着实测的
+   自然速度（横移 1.70m/s、后退 1.12m/s）与播放速率上限 2.0 倒推的，不是拍的。
+   补上跑动版横移后，把 `PlayerController` 里那两个系数放开即可。
 
 ## 一·补二、居家休息动作（已就位，住处的坐/躺全靠它们）
 

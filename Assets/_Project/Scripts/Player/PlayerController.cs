@@ -556,7 +556,12 @@ namespace AdversityRoad.Player
                 if (sideAng > 60f)
                 {
                     float back01 = Mathf.Clamp01((sideAng - 60f) / 120f);   // 0=正侧 1=正后
-                    float cap = Mathf.Lerp(walkSpeed * 1.3f, walkSpeed * 1.05f, back01)
+                    // 封顶值按【CI 实测出来的片段自然速度】定，不是拍脑袋：
+                    //   横移片段 1.70m/s → 封顶 2.60（walkSpeed×1.0）⇒ 播放速率 1.53，宽裕；
+                    //   后退片段 1.12m/s → 封顶 2.08（walkSpeed×0.8）⇒ 播放速率 1.86，
+                    //     刚好压在 2.0 的速率上限里。再快就只能靠拉速率，脚必然打滑。
+                    // 补上跑动版横移（Left/Right Strafe）后，这两个系数可以同步放开。
+                    float cap = Mathf.Lerp(walkSpeed * 1.0f, walkSpeed * 0.8f, back01)
                                 * MoveSpeedMultiplier;
                     speed = Mathf.Min(speed * Mathf.Lerp(0.78f, 0.6f, back01), cap);
                 }
