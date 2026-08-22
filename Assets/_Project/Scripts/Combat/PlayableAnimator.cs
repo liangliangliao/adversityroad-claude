@@ -117,9 +117,67 @@ namespace AdversityRoad.Combat
         readonly Animator _animator;
         PlayableGraph _graph;
         AnimationMixerPlayable _top;      // 0=loco 1=action
-        AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2=walk 3=run
-        AnimationClipPlayable _walkCp, _runCp;   // 步幅同步：播放速率随真实移速缩放
+        AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2.. = 方向移动片段
         AnimationMixerPlayable _actions;
+
+        // ===== 方向移动混合（前/后/左/右/斜向）=====
+        //
+        // 这是动作游戏移动层的标准结构：一圈**按方向摆开的移动片段**，
+        // 按摇杆方向在相邻两个之间混合，按速度在走档与跑档之间混合。
+        // 之所以要这么做，而不是"播个向前走再把骨盆拧过去"：
+        //   · 侧步和后退的**上身姿态本来就不一样**（侧步是横向蹬地、后退是脚跟先落），
+        //     拧骨盆只能骗过下半身，上半身还在做向前走的摆臂；
+        //   · 真片段自带正确的步幅与重心，脚不打滑。
+        //
+        // 两条关键工程细节，缺一个都会露馅：
+        //   ① **共享归一化相位**：混合中的每个片段都停在同一个步态相位上
+        //      （都在左脚触地的那一刻），否则两条腿会互相打架，糊成"滑步"；
+        //   ② **按片段实测的自然速度做步幅同步**：侧步的步幅比前进小得多，
+        //      拿前进的自然速度去算侧步的播放速率，脚必然打滑。
+        struct LocoDir
+        {
+            public AnimationClipPlayable cp;
+            public float angle;      // 该片段的行进方向（度，0=正前，+90=右）
+            public int tier;         // 0=走档 1=跑档
+            public float natSpeed;   // 该片段自身的位移速度（m/s，世界尺度）
+            public float len;        // 片段时长
+        }
+
+        readonly List<LocoDir> _dirs = new List<LocoDir>();
+        readonly List<int> _walkRing = new List<int>();   // 按角度排好序的下标
+        readonly List<int> _runRing = new List<int>();
+        float[] _dirW;               // 每帧算出来的方向权重
+        float _phase01;              // 共享步态相位 [0,1)
+        float _moveAngle;            // 行进方向相对角色正面（度）
+
+        /// <summary>动作库里有没有成套的方向移动片段（≥3 个不同方向）。
+        /// 有的话，上层就不必再用"拧骨盆 + 倒放"那套合成手段了。</summary>
+        public bool HasDirectionalSet { get; private set; }
+
+        /// <summary>
+        /// 把方向移动表打成一行行可读的文字（CI 诊断用）。
+        ///
+        /// 存在的理由很实在：方向片段"接没接上、方向测得对不对"是**光看代码看不出来的**，
+        /// 而在真机上发现不对再回头查，一轮就是一天。让 CI 每次构建都把这张表打出来，
+        /// 少一条、角度反了、自然速度离谱，都能在日志里当场看见。
+        /// </summary>
+        public string DescribeDirectionalSet()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("方向移动片段 ").Append(_dirs.Count).Append(" 条，成套=")
+              .Append(HasDirectionalSet ? "是" : "否").Append('\n');
+            foreach (var d in _dirs)
+            {
+                string name = d.cp.IsValid() && d.cp.GetAnimationClip() != null
+                    ? d.cp.GetAnimationClip().name : "?";
+                sb.Append("    ").Append(d.tier == 0 ? "走" : "跑")
+                  .Append(" 角度=").Append(d.angle.ToString("F0")).Append("°")
+                  .Append(" 自然速度=").Append(d.natSpeed.ToString("F2")).Append("m/s")
+                  .Append(" 时长=").Append(d.len.ToString("F2")).Append("s")
+                  .Append("  [").Append(name).Append("]\n");
+            }
+            return sb.ToString();
+        }
 
         /// <summary>驱动中的 Animator（供脚踝校准等后处理访问骨骼）。</summary>
         public Animator Animator => _animator;
@@ -148,8 +206,6 @@ namespace AdversityRoad.Combat
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
         float _actualSpeed = -1f;   // 真实移速 m/s（<0 = 未提供，按 speed01 折算）
-        bool _reverse;              // 倒放移动片段（后退）
-        float _reverseW;            // 倒放权重的平滑（正放↔倒放之间不允许瞬切）
         bool _ready;
         float _readyW;   // 普通待机↔格斗架势的平滑过渡权重（瞬切会"弹一下"）
 
@@ -244,6 +300,12 @@ namespace AdversityRoad.Combat
                 if (!connected.Contains(kv.Value))
                     actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
 
+            // ---- 方向移动片段：收集 + 实测每一条的行进方向与自然速度 ----
+            // 必须在**建图之前**做：实测走的是 clip.SampleAnimation，它直接往骨骼上写姿态，
+            // 而图一旦接上 Animator 输出就开始争夺同一批骨骼的写入权。先量完再建图，
+            // 两者不重叠。
+            var dirDefs = CollectDirectional(byName, walk, run);
+
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
             var output = AnimationPlayableOutput.Create(_graph, "out", _animator);
@@ -278,9 +340,24 @@ namespace AdversityRoad.Combat
                 _actionRawLen[i] = clip.length;
             }
 
-            _loco = AnimationMixerPlayable.Create(_graph, 4);
+            _loco = AnimationMixerPlayable.Create(_graph, 2 + dirDefs.Count);
             ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1);
-            _walkCp = ConnectLoco(walk, 2); _runCp = ConnectLoco(run, 3);
+            for (int i = 0; i < dirDefs.Count; i++)
+            {
+                var d = dirDefs[i];
+                var cp = ConnectLoco(d.clip, 2 + i);
+                cp.SetSpeed(0f);   // 时间由 Tick 手动推（共享相位 + 步幅同步）
+                _dirs.Add(new LocoDir
+                {
+                    cp = cp, angle = d.angle, tier = d.tier,
+                    natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length)
+                });
+                (d.tier == 0 ? _walkRing : _runRing).Add(i);
+            }
+            _dirW = new float[_dirs.Count];
+            _walkRing.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
+            _runRing.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
+            HasDirectionalSet = CountDistinctDirections() >= 3;
             _loco.SetInputWeight(0, 1f);
 
             _top = AnimationMixerPlayable.Create(_graph, 2);
@@ -293,6 +370,160 @@ namespace AdversityRoad.Combat
             Valid = true;
         }
 
+        struct DirDef { public AnimationClip clip; public float angle; public int tier; public float natSpeed; }
+
+        /// <summary>
+        /// 方向移动片段的候选表。
+        ///
+        /// 【角度怎么定】四个正方向（前/后/左/右）的片段名是**无歧义的**，直接按名字给角度；
+        /// 斜向片段（Jog Forward/Backward Diagonal）的朝向各家素材不一样——是左前还是右前，
+        /// 光看名字**猜不出来**，猜错的后果是"推右前方却播了个左前方的片段"，比不用还糟。
+        /// 所以斜向片段一律**实测**：真去采样片段里髋骨走了哪个方向，测到才用，测不到就不用
+        /// （那两个方向由相邻的正方向片段混出来，本来也够用）。
+        ///
+        /// 正方向片段也会被实测**校正**：万一某个文件名与内容对不上，以实测为准。
+        /// </summary>
+        List<DirDef> CollectDirectional(Dictionary<string, AnimationClip> byName,
+            AnimationClip walk, AnimationClip run)
+        {
+            var list = new List<DirDef>();
+            Transform root = _animator != null ? _animator.transform : null;
+            Transform hips = FindHips(root);
+
+            void Add(AnimationClip clip, float nameAngle, int tier, bool requireMeasured)
+            {
+                if (clip == null) return;
+                foreach (var d in list) if (d.clip == clip) return;   // 同一片段不重复接入
+                float angle = nameAngle;
+                float nat = tier == 0 ? WalkNaturalSpeed : RunNaturalSpeed;
+                bool measured = MeasureClipMotion(clip, root, hips, out float mA, out float mS);
+                if (measured) { angle = mA; nat = mS; }
+                else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）
+                list.Add(new DirDef { clip = clip, angle = angle, tier = tier, natSpeed = nat });
+            }
+
+            // 走档：前 / 后 / 左 / 右
+            Add(walk, 0f, 0, false);
+            Add(PickFile(byName, "walking backwards", "Walking Backwards"), 180f, 0, false);
+            Add(PickFile(byName, "left strafe walking", "Left Strafe Walking"), -90f, 0, false);
+            Add(PickFile(byName, "right strafe walking", "Right Strafe Walking"), 90f, 0, false);
+
+            // 跑档：前 / 后 / 左右（有专门的跑动横移就用，没有则由走档顶上）/ 斜向
+            Add(run, 0f, 1, false);
+            Add(PickFile(byName, "slow jog backwards", "Slow Jog Backwards"), 180f, 1, false);
+            Add(PickFile(byName, "left strafe", "Left Strafe"), -90f, 1, false);
+            Add(PickFile(byName, "right strafe", "Right Strafe"), 90f, 1, false);
+            Add(PickFile(byName, "jog forward diagonal", "Jog Forward Diagonal"), 45f, 1, true);
+            Add(PickFile(byName, "jog backward diagonal", "Jog Backward Diagonal"), 135f, 1, true);
+            return list;
+        }
+
+        /// <summary>
+        /// 按名字取片段；名字取不到就**按文件路径**取。
+        ///
+        /// 后一条是必须的：Mixamo 导出的 FBX 里，take 一律叫 "mixamo.com"，
+        /// 只有在 .meta 里显式改名才会变成 "Walking Backwards"。新丢进目录的
+        /// FBX 如果还没有 .meta，按名字一个都找不到（上面 Build 里那句
+        /// `k != "mixamo.com"` 就是被这件事逼出来的）。而按路径取的是
+        /// **文件里的第一个 AnimationClip**，与它内部叫什么无关，所以一定拿得到。
+        /// </summary>
+        AnimationClip PickFile(Dictionary<string, AnimationClip> byName, string key, string file)
+        {
+            if (byName.TryGetValue(Norm(key), out var c) && c != null) return c;
+            var byPath = Resources.Load<AnimationClip>(_folder + "/" + file);
+            if (byPath != null) return byPath;
+            return Resources.Load<AnimationClip>(ExtraFolder + "/" + file);
+        }
+
+        /// <summary>
+        /// 实测一个移动片段的行进方向与自然速度：采样片段的首尾两帧，量髋骨在
+        /// 模型局部空间里走了多远、朝哪走。这样接入的方向表是**片段自己说了算**的，
+        /// 不依赖文件名的措辞，也不依赖素材商的左右习惯。
+        /// 原地片段（位移几乎为零）返回 false。
+        /// </summary>
+        // 实测结果按【片段】缓存：方向与"每秒走多少个模型单位"是片段自己的属性，
+        // 与是哪个角色在用无关。不缓存的话，每生成一个敌人就要把整套移动片段
+        // 重新采样一遍（每次两帧 × 十来个片段），群战刷怪时会看到明显的卡顿。
+        // 只有世界尺度要按角色的缩放另算，所以缓存里存的是**局部空间**的位移。
+        struct ClipMotion { public bool ok; public float angle; public float localDist; public float dur; }
+        static readonly Dictionary<AnimationClip, ClipMotion> _motionCache =
+            new Dictionary<AnimationClip, ClipMotion>();
+
+        static bool MeasureClipMotion(AnimationClip clip, Transform root, Transform hips,
+            out float angleDeg, out float natSpeed)
+        {
+            angleDeg = 0f; natSpeed = 0f;
+            if (clip == null || root == null || hips == null || clip.length < 0.1f) return false;
+
+            if (!_motionCache.TryGetValue(clip, out var m))
+            {
+                m = new ClipMotion();
+                try
+                {
+                    float t1 = clip.length * 0.98f;
+                    clip.SampleAnimation(root.gameObject, 0f);
+                    Vector3 a = root.InverseTransformPoint(hips.position);
+                    clip.SampleAnimation(root.gameObject, t1);
+                    Vector3 b = root.InverseTransformPoint(hips.position);
+                    Vector3 d = b - a; d.y = 0f;
+                    m.localDist = d.magnitude;
+                    m.dur = t1;
+                    m.angle = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+                    // 局部位移 0.2 以下当作"原地片段"：Mixamo 的 in-place 版本位移就是零，
+                    // 拿噪声去定方向只会把片段摆到一个随机角度上。
+                    m.ok = m.localDist > 0.2f;
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning("[PlayableAnimator] 片段方向实测失败（跳过）：" +
+                                     clip.name + " — " + e.Message);
+                    m.ok = false;
+                }
+                _motionCache[clip] = m;
+            }
+
+            if (!m.ok) return false;
+            float scale = Mathf.Abs(root.lossyScale.x);
+            if (scale < 1e-4f) scale = 1f;
+            angleDeg = m.angle;
+            natSpeed = m.localDist * scale / Mathf.Max(0.01f, m.dur);
+            // 合理性校验：位移量是在**模型局部空间**里量的，而各家 FBX 的单位口径
+            // 不一定是米（有的一单位等于一厘米）。量出个每秒几十米的"走路"，
+            // 说明单位对不上——这时只信方向，速度退回按身高推算的常数。
+            // 不做这道校验的话，步幅同步会把播放速率压到下限，
+            // 人快速移动而脚在慢慢挪，滑得比不做同步还厉害。
+            if (natSpeed < 0.3f || natSpeed > 12f) { natSpeed = 0f; return false; }
+            return true;
+        }
+
+        static Transform FindHips(Transform root)
+        {
+            if (root == null) return null;
+            Transform best = null; int bestLen = int.MaxValue;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                string n = Norm(t.name);
+                if ((!n.Contains("hips") && !n.Contains("pelvis")) || n.Length >= bestLen) continue;
+                bestLen = n.Length; best = t;
+            }
+            return best;
+        }
+
+        int CountDistinctDirections()
+        {
+            int n = 0;
+            var seen = new List<float>();
+            foreach (var d in _dirs)
+            {
+                bool dup = false;
+                foreach (float a in seen) if (Mathf.Abs(Mathf.DeltaAngle(a, d.angle)) < 25f) dup = true;
+                if (dup) continue;
+                seen.Add(d.angle); n++;
+            }
+            return n;
+        }
+
         AnimationClipPlayable ConnectLoco(AnimationClip clip, int idx)
         {
             var cp = AnimationClipPlayable.Create(_graph, clip);
@@ -300,20 +531,17 @@ namespace AdversityRoad.Combat
             // 会把双脚持续向下/向内拽（站立"踮脚尖并腿"、跑步"脚朝向畸形"的根因）。
             // 纯 FK 原样播放 Mixamo 数据，所见即所得。
             cp.SetApplyFootIK(false);
-            // 起始时间推到很远的未来：后退时这段片段是【倒着播】的，
-            // 从 0 开始倒放会立刻退到负时间。给足余量后，倒放几个小时也不会越界。
-            if (clip != null && clip.length > 0.01f) cp.SetTime(clip.length * 4096.0);
             _graph.Connect(cp, 0, _loco, idx);
             return cp;
         }
 
         /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）；
-        /// reverse=倒放走/跑片段（后退用：动作库里没有后退片段，倒放就是后退）。</summary>
-        public void SetLocomotion(float speed01, float actualSpeed = -1f, bool reverse = false)
+        /// moveAngleDeg=行进方向相对角色正面（0=正前、±90=横移、180=后退）。</summary>
+        public void SetLocomotion(float speed01, float actualSpeed = -1f, float moveAngleDeg = 0f)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _actualSpeed = actualSpeed;
-            _reverse = reverse;
+            _moveAngle = moveAngleDeg;
         }
         public void SetReady(bool ready) => _ready = ready;
 
@@ -472,32 +700,132 @@ namespace AdversityRoad.Combat
             _cur = -1;
         }
 
+        /// <summary>
+        /// 方向混合：按摇杆方向在相邻两个片段之间取权重，按速度在走档/跑档之间取权重，
+        /// 全部片段共享同一个步态相位，播放速率按**主导片段自己的**自然速度算。
+        /// </summary>
+        void BlendDirectional(float walkTier, float runTier, float actual, float dt)
+        {
+            if (_dirs.Count == 0) return;
+            for (int i = 0; i < _dirW.Length; i++) _dirW[i] = 0f;
+
+            // 方向平滑：摇杆方向可以瞬变，但脚不能——90° 的方向切换给 ≈0.12 秒过渡，
+            // 否则贴身绕圈时会看到左右步法来回"啪啪"硬切。
+            // 用 MoveTowardsAngle：普通 MoveTowards 不懂 ±180 的回绕，
+            // 从 170° 转到 -170°（只差 20°）会被它当成 340° 一路扫过去。
+            _blendAngle = Mathf.DeltaAngle(0f,
+                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, 900f * dt));
+
+            // 跑档在某些方向上没有片段（比如只有走档的横移）：那一档的权重就交给走档，
+            // 由步幅同步把走的片段提速播——总比硬套一个方向不对的跑片段好。
+            float rw = runTier, ww = walkTier;
+            bool runOk = RingCovers(_runRing, _blendAngle);
+            bool walkOk = RingCovers(_walkRing, _blendAngle);
+            if (runOk && !walkOk) { rw += ww; ww = 0f; }
+            else if (walkOk && !runOk) { ww += rw; rw = 0f; }
+            // 两圈都没覆盖到（动作库不全）：全交给走档——它是必定存在的那一圈
+            // （前进片段是 Build 的硬性前提），至少不会落到一个空环上。
+            else if (!walkOk && !runOk) { ww += rw; rw = 0f; }
+
+            AddRing(_walkRing, _blendAngle, ww);
+            AddRing(_runRing, _blendAngle, rw);
+
+            // 主导片段：权重最大的那个，步幅同步与相位推进都按它算
+            int lead = -1; float leadW = 0f;
+            for (int i = 0; i < _dirW.Length; i++)
+                if (_dirW[i] > leadW) { leadW = _dirW[i]; lead = i; }
+
+            if (lead >= 0)
+            {
+                var L = _dirs[lead];
+                float nat = Mathf.Max(0.3f, L.natSpeed);
+                // 上限放到 2.0：侧移/后退目前只有"走"的片段，真实移速比它的自然速度快，
+                // 步频得跟着提。再高就成了小碎步快放，不如让它稍微滑一点。
+                float rate = Mathf.Clamp(actual / nat, 0.5f, 2.0f);
+                // 主导片段的方向与实际行进方向差了 120° 以上 = 这一圈里根本没有能表达
+                // 该方向的片段（比如某个角色的动作库只有向前走）。此时把片段**倒着播**：
+                // 步态每一帧都是对的，只是时间轴反过来，看上去就是在往后退。
+                // 有真后退片段时这条永远不会命中——它只是动作库不全时的兜底。
+                float sign = Mathf.Abs(Mathf.DeltaAngle(L.angle, _blendAngle)) > 120f ? -1f : 1f;
+                // 相位按【主导片段的时长】推进：混合中的片段因此在同一时刻走完
+                // 各自的一个完整步态周期，脚步不会互相错开。
+                _phase01 = Mathf.Repeat(_phase01 + dt * rate * sign / L.len, 1f);
+            }
+
+            for (int i = 0; i < _dirs.Count; i++)
+            {
+                var d = _dirs[i];
+                if (!d.cp.IsValid()) continue;
+                _loco.SetInputWeight(2 + i, _dirW[i]);
+                // 共享归一化相位：每个片段都停在自己周期里的同一个百分比上
+                if (_dirW[i] > 0.001f) d.cp.SetTime(_phase01 * d.len);
+            }
+        }
+
+        float _blendAngle;
+
+        /// <summary>找出夹住该方向的前后两条片段（按角度排好序，环形回绕）。</summary>
+        bool Bracket(List<int> ring, float angle, out int a, out int b, out float t, out float span)
+        {
+            a = b = -1; t = 0f; span = 360f;
+            if (ring.Count == 0) return false;
+            if (ring.Count == 1) { a = b = ring[0]; span = 0f; return true; }
+
+            int nextIdx = -1;
+            for (int k = 0; k < ring.Count; k++)
+                if (_dirs[ring[k]].angle > angle) { nextIdx = k; break; }
+            if (nextIdx < 0) nextIdx = 0;                       // 绕回第一条
+            int prevIdx = (nextIdx - 1 + ring.Count) % ring.Count;
+
+            a = ring[prevIdx]; b = ring[nextIdx];
+            span = Mathf.DeltaAngle(_dirs[a].angle, _dirs[b].angle);
+            if (span <= 0f) span += 360f;                       // 环形回绕的那一段
+            float off = Mathf.DeltaAngle(_dirs[a].angle, angle);
+            if (off < 0f) off += 360f;
+            t = span > 0.01f ? Mathf.Clamp01(off / span) : 0f;
+            return true;
+        }
+
+        /// <summary>
+        /// 这一圈在该方向上覆盖得够不够好。
+        ///
+        /// 判据是**夹住它的那两条片段离得远不远**，而不是"最近的一条有多近"。
+        /// 举例：跑档只有 前(0°)/斜前(45°)/后(180°) 三条，此时正右方(90°)最近的一条
+        /// 只差 45°，看着挺近——但真去插值是在 45° 与 180° 之间取中间，
+        /// 混出来是个"斜着往后跑"的四不像。跨度太大就该把这一档让给覆盖更全的那一圈。
+        /// </summary>
+        bool RingCovers(List<int> ring, float angle)
+        {
+            if (!Bracket(ring, angle, out int a, out _, out _, out float span)) return false;
+            if (ring.Count == 1)
+                return Mathf.Abs(Mathf.DeltaAngle(_dirs[a].angle, angle)) <= 70f;
+            return span <= 100f;
+        }
+
+        /// <summary>把一圈的权重按方向分给相邻的两个片段（环形线性插值）。</summary>
+        void AddRing(List<int> ring, float angle, float weight)
+        {
+            if (weight <= 0.0001f) return;
+            if (!Bracket(ring, angle, out int a, out int b, out float t, out _)) return;
+            if (a == b) { _dirW[a] += weight; return; }
+            _dirW[a] += weight * (1f - t);
+            _dirW[b] += weight * t;
+        }
+
         public void Tick(float dt)
         {
             if (!Valid) return;
 
             float s = _speed01;
-            float walkW, runW, idleTot;
-            if (s < 0.5f) { walkW = s / 0.5f; runW = 0f; idleTot = 1f - walkW; }
-            else { runW = (s - 0.5f) / 0.5f; walkW = 1f - runW; idleTot = 0f; }
+            float runTier, walkTier, idleTot;
+            if (s < 0.5f) { walkTier = s / 0.5f; runTier = 0f; idleTot = 1f - walkTier; }
+            else { runTier = (s - 0.5f) / 0.5f; walkTier = 1f - runTier; idleTot = 0f; }
             _readyW = Mathf.MoveTowards(_readyW, _ready ? 1f : 0f, dt / 0.25f);
             _loco.SetInputWeight(0, idleTot * (1f - _readyW));
             _loco.SetInputWeight(1, idleTot * _readyW);
-            _loco.SetInputWeight(2, walkW);
-            _loco.SetInputWeight(3, runW);
 
-            // 步幅同步：走/跑播放速率 = 真实移速 / 动画自然速度——步频与位移匹配，
-            // 脚落地不打滑（"脚的移动过程一目了然"的关键，参考电影/悟空的贴地感）
             float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
-            // 后退＝把走/跑片段【倒着播】。这是没有后退动作资源时的通行做法：
-            // 步态的每一帧都是对的，只是时间轴反过来，看上去就是在往后退。
-            // 正放↔倒放之间做 0.12 秒过渡，避免松杆瞬间脚步"啪"地反向。
-            _reverseW = Mathf.MoveTowards(_reverseW, _reverse ? 1f : 0f, dt / 0.12f);
-            float dir = Mathf.Lerp(1f, -1f, _reverseW);
-            if (walkW > 0.001f && _walkCp.IsValid())
-                _walkCp.SetSpeed(Mathf.Clamp(actual / WalkNaturalSpeed, 0.8f, 1.5f) * dir);
-            if (runW > 0.001f && _runCp.IsValid())
-                _runCp.SetSpeed(Mathf.Clamp(actual / RunNaturalSpeed, 0.8f, 1.35f) * dir);
+            BlendDirectional(walkTier, runTier, actual, dt);
 
             if (_cur >= 0)
             {

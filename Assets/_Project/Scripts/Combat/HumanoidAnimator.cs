@@ -247,6 +247,8 @@ namespace AdversityRoad.Combat
             get
             {
                 if (!_grounded || _rest) return false;
+                // 有成套方向片段时不做分离：方向已经由片段本身表达了
+                if (Mecanim && _mecanim.HasDirectionalSet) return false;
                 // 这几种姿态即使没有片段在播，身体朝向也不该被拧
                 if (_pose == PoseState.Knockdown || _pose == PoseState.Death ||
                     _pose == PoseState.Dodge || _pose == PoseState.Stagger ||
@@ -256,9 +258,6 @@ namespace AdversityRoad.Combat
                 return !IsActionPose(_pose) || _t * Mathf.Max(1f, _poseTimeScale) > ProcPoseNominal;
             }
         }
-
-        /// <summary>本帧是否该用【倒放】表达移动（夹角超过 125° = 明显在后退）。</summary>
-        bool StrafeReverse => Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle)) > 125f && _speed01 > 0.05f;
 
         /// <summary>把移动夹角折算成下半身偏航：
         /// 前半球直接用夹角（限幅），后半球用"180° 的补角"——因为片段已经倒放，
@@ -598,13 +597,13 @@ namespace AdversityRoad.Combat
 
         // ===== 横移 / 后退（面向目标不转身）=====
         //
-        // 本作的动作库里**只有向前走/跑**，没有侧步与后退片段。大作的做法有两种：
-        //   ① 备一套八方向的移动动作（成本最高、效果最好）；
-        //   ② 只用前向片段，靠【上下半身分离】+【倒放】合成——
-        //      腿朝着实际走的方向，上半身拧回来对着目标；后退则把走路片段倒着播。
-        // 本作走 ②：这是没有额外动作资源时的通行解法，观感上足够，
-        // 关键是它让"面向敌人的同时左右横跨/后撤"这件事**真的能做到**，
-        // 而不是像之前那样——想往左走就必须先把脸转到左边（转向 ≠ 横移）。
+        // 现在动作库里有成套的方向片段（后退、左右横移、斜向），移动层直接按方向
+        // 混合真片段（见 PlayableAnimator 的方向混合）——这是大作的标准做法，
+        // 上下半身的姿态都是对的。
+        //
+        // 下面这套【上下半身分离】只在**没有方向片段可用时**才启用（程序化方块骨骼、
+        // 或某个角色用的动作库里只有向前走）：腿拧向实际行进方向、上身回拧对着目标。
+        // 它是兜底，不是主路——真片段在场时必须让开，否则等于把已经正确的腿再拧一次。
         float _moveAngle;          // 目标夹角（度）
         float _strafeYaw;          // 平滑后的下半身偏航（度，正=向右）
         Transform _spine;          // 上半身回拧用（找不到就只转下半身）
@@ -622,7 +621,7 @@ namespace AdversityRoad.Combat
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01, _actualSpeed, StrafeReverse);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle);
                 _mecanim.SetReady(_ready);
                 if (_poseSerial != _lastMecanimSerial)
                 {

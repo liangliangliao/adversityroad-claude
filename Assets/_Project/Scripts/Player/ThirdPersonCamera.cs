@@ -853,14 +853,10 @@ namespace AdversityRoad.Player
                 float rate = CameraDirector.BlendRate(_shot, _shotTarget);
                 _shot = ShotProfile.Lerp(_shot, _shotTarget, 1f - Mathf.Exp(-rate * dt));
             }
+            // 锁定目标即战斗取景的依据。锁面向现在只由玩家主动锁定产生
+            //（见 PlayerController.FacingTarget），两者本来就是同一个目标，
+            // 所以这里不需要再从"软锁"另找一遍。
             Transform lockTarget = lockOn != null ? lockOn.CurrentTarget : null;
-            // 软锁面向的目标也按"锁定"取景：交战贴身时玩家的身体已经锁在它身上了
-            //（见 PlayerController 的横移），镜头却还按探索规则跟朝向——
-            // 两套规则各说各的，结果就是"打着打着不知道敌人在哪"。
-            // 交给战斗分支：它有低通滤波、3/4 侧位、自适应软区、出画兜底，
-            // 本来就是为"两个人同框且稳"设计的，而探索分支不是。
-            if (lockTarget == null && player != null && player.StrafeActive)
-                lockTarget = player.SoftLockTarget;
             bool combat = lockTarget != null;
             bool ultimate = _ultimateTimer > 0f;
             bool manualLook = Time.unscaledTime - _lastManualLook < autoFollowDelay;
@@ -1319,10 +1315,17 @@ namespace AdversityRoad.Player
                 //   · 要等朝向稳定 0.4 秒（转身途中不动，转完才动，绝不追着抖动跑）；
                 //   · 有回差（进 16°、出 7°），到位就停，不在死区边缘来回蹭；
                 //   · 玩家一碰右摇杆立刻让位（manualRecently）。
-                // 交战中（有软锁/锁定目标）不走归位：那时取景由战斗分支负责。
-                // 绕着敌人转圈时方位角每秒变七十度，归位会变成"镜头一直在追"，
-                // 正是上一轮好不容易压下去的那种晃。
-                bool settleAllowed = !fightingNow;
+                // 归位只在【玩家松开摇杆】时做。
+                //
+                // 摇杆是镜头相对的：H = C + θ 恒成立，**镜头每转 1°，角色的行进方向
+                // 就跟着转 1°**。所以只要玩家还推着杆，任何自动转镜都会把他的路线
+                // 掰成弧线，逼他不停补杆——读起来就是"角色不听摇杆的、飘"。
+                // 松开杆时角色不动，这时候把镜头摆正不会跟任何输入打架。
+                // 行进中的跟随另有 gentle 那一路负责（它有死区与速率上限）。
+                //
+                // 交战中（有锁定目标）也不归位：那时取景由战斗分支负责，
+                // 绕着敌人转圈方位角每秒变七十度，归位会变成"镜头一直在追"。
+                bool settleAllowed = !fightingNow && !stickHeld;
                 if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
