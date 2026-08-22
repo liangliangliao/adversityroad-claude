@@ -1138,7 +1138,7 @@ namespace AdversityRoad.AI
                     }
                 }
                 else if (poser != null)
-                    poser.SetPose(PoseState.Hit);
+                    poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
             }
             // 霸体冷却期间也要【看得出挨了打】：不打断攻防逻辑，但受击动作必播
             //（此前霸体期间连受击动画都不播，就是"被踢了一脚却站着没反应"的原因）。
@@ -1146,7 +1146,7 @@ namespace AdversityRoad.AI
             else if (!guardedHit && State != EnemyState.Stagger &&
                      Time.time > _swingUntil && poser != null)
             {
-                poser.SetPose(PoseState.Hit);
+                poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
             }
 
             if (_posture <= 0)

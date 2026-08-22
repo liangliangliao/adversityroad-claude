@@ -297,9 +297,13 @@ namespace AdversityRoad.OpenWorld
             {
                 // 从椅子上站起来 = 坐下倒放（腿先撑、身体再立起来）；
                 // 从床上/地上起来 = Getting Up（撑起身体），比把躺姿倒放自然得多。
+                // 从椅子上站起来优先用专用片段（Stand Up：撑扶手、重心前移再起身）；
+                // 没有才退回"坐下倒放"——倒放的顺序对，但少了起身那一下的发力。
                 _phaseDur = fromLying
                     ? _anim.PlayRestClip("getting up", false, false, 1.1f, 0.3f)
-                    : _anim.PlayRestClip("sitting", true, false, 1.25f, 0.3f);
+                    : _anim.PlayRestClip("stand up", false, false, 1.15f, 0.3f);
+                if (!fromLying && _phaseDur <= 0f)
+                    _phaseDur = _anim.PlayRestClip("sitting", true, false, 1.25f, 0.3f);
                 if (_phaseDur <= 0f) _phaseDur = 0.3f;
             }
             else

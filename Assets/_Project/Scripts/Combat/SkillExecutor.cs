@@ -276,6 +276,40 @@ namespace AdversityRoad.Combat
             _glideRoutine = StartCoroutine(GlideRoutine(offset, duration));
         }
 
+        /// <summary>
+        /// 带动作的突进：位移段播【突进斩】，位移一结束再切回这一击本身的判定姿态。
+        ///
+        /// 这是"技能像开挂不像发力"的头号解药。此前突进 2.2 米只播原地斩击片段——
+        /// 脚不动、人在飘。大作的通行做法就是把位移段与判定段分开播：
+        /// 先给零点几秒脚在动的冲刺，再接挥击，判定开在挥击那一段上。
+        /// 位移距离太短（&lt;0.8m）时不值得插一段，直接按原样播。
+        /// </summary>
+        void DashPose(PoseState strikePose, Vector3 offset, float duration, float strikeDur)
+        {
+            Glide(offset, duration);
+            if (_anim == null) _anim = GetComponent<HumanoidAnimator>();
+            if (offset.magnitude < 0.8f || _anim == null || !_anim.HasPose(PoseState.DashAttack))
+            {
+                Pose(strikePose, strikeDur);
+                return;
+            }
+            Pose(PoseState.DashAttack, duration);
+            StartCoroutine(SwitchPoseAfter(duration, strikePose, strikeDur));
+        }
+
+        IEnumerator SwitchPoseAfter(float delay, PoseState p, float dur)
+        {
+            yield return new WaitForSeconds(delay);
+            if (ComboAlive()) Pose(p, dur);
+        }
+
+        /// <summary>动作库里有这个姿态吗（没有就退回原来的姿态，不留空）。</summary>
+        bool HasPose(PoseState p)
+        {
+            if (_anim == null) _anim = GetComponent<HumanoidAnimator>();
+            return _anim != null && _anim.HasPose(p);
+        }
+
         IEnumerator GlideRoutine(Vector3 offset, float duration)
         {
             float t = 0;
@@ -348,7 +382,7 @@ namespace AdversityRoad.Combat
         {
             _fsm.RequestState(CombatState.Finisher, 1.25f);
             Core.GameEvents.RaiseSkillBanner("「定心·四象归一」");
-            Pose(PoseState.Charge);
+            Pose(HasPose(PoseState.ChargeLoop) ? PoseState.ChargeLoop : PoseState.Charge);
             CombatFeedback.ChargeGale(transform.position, 0.6f);
             yield return new WaitForSeconds(0.14f);
 
@@ -416,8 +450,8 @@ namespace AdversityRoad.Combat
                 FaceTarget();
                 // 旋踢→侧踹→旋踢：三段各有各的轨迹，清场读作"踢了三下"而不是"转了三圈"
                 var kickPose = i == 1 ? PoseState.SideKick : PoseState.SpinKick;
-                Pose(kickPose, 0.2f);
                 Glide(transform.forward * 0.7f, 0.12f);
+                Pose(kickPose, 0.2f);
                 CombatFeedback.SwingArc(transform, i >= 1, cyan);
                 Strike(kickPose, 14f + i * 5f, 18f, 3f, 0.06f, 0.14f, 1.25f, "player_skill_huishou");
                 yield return new WaitForSeconds(0.16f);
@@ -468,8 +502,7 @@ namespace AdversityRoad.Combat
 
             // 段2：横斩接力（承上启下的连贯挥击）
             FaceTarget();
-            Pose(PoseState.Attack, 0.2f);
-            Glide(transform.forward * 0.8f, 0.1f);
+            DashPose(PoseState.Attack, transform.forward * 0.8f, 0.1f, 0.2f);
             CombatFeedback.SwingArc(transform, false, green);
             Strike(PoseState.Attack, 22f, 18f, 3f, 0.06f, 0.14f, 1.2f, "player_skill_guihuan");
             yield return new WaitForSeconds(0.16f);
@@ -490,8 +523,7 @@ namespace AdversityRoad.Combat
 
             // 段4：弓步突刺——把「不属于我的」钉还回去
             FaceTarget();
-            Pose(PoseState.SwordThrust, 0.2f);
-            Glide(transform.forward * 1.6f, 0.12f);
+            DashPose(PoseState.SwordThrust, transform.forward * 1.6f, 0.12f, 0.2f);
             CombatFeedback.SwingArc(transform, false, green);
             Strike(PoseState.SwordThrust, 28f, 20f, 3f, 0.06f, 0.14f, 1.25f, "player_skill_guihuan");
             yield return new WaitForSeconds(0.16f);
@@ -542,8 +574,7 @@ namespace AdversityRoad.Combat
                 FaceTarget();
                 // 突刺→横斩→突刺：突进途中夹一记横扫，三连不再是同一记戳刺重播
                 var dashPose = i == 1 ? PoseState.Attack : PoseState.SwordThrust;
-                Pose(dashPose, 0.2f);
-                Glide(transform.forward * 2.2f, 0.13f);
+                DashPose(dashPose, transform.forward * 2.2f, 0.13f, 0.2f);
                 CombatFeedback.SwingArc(transform, i == 2, fire);
                 CombatFeedback.HitSpark(transform.position + transform.forward * 1.2f, fire, 5);
                 Strike(dashPose, 22f + i * 5f, 16f, 2.5f, 0.05f, 0.13f, 1.2f, "player_skill_huozhong");
@@ -615,7 +646,9 @@ namespace AdversityRoad.Combat
             for (int i = 0; i < 2 && ComboAlive(); i++)
             {
                 // 两记气刃一横斩一撩斩，掷出的姿势不重复
-                Pose(i == 0 ? PoseState.Attack : PoseState.AttackUp, 0.18f);
+                Pose(HasPose(PoseState.CastProjectile)
+                    ? PoseState.CastProjectile
+                    : (i == 0 ? PoseState.Attack : PoseState.AttackUp), 0.18f);
                 Vector3 origin = transform.position + Vector3.up * 1.2f + transform.forward * 0.7f;
                 Projectile.Launch(transform, origin, transform.forward, new DamageInfo
                 {
@@ -629,8 +662,7 @@ namespace AdversityRoad.Combat
 
             // 终结段「镜返突刺」：闪身欺近，反手一记弓步突刺 + 短时缓
             FaceTarget();
-            Pose(PoseState.SwordThrust, 0.3f);
-            Glide(transform.forward * 2.4f, 0.13f);
+            DashPose(PoseState.SwordThrust, transform.forward * 2.4f, 0.13f, 0.3f);
             CombatFeedback.SwingArc(transform, true, blue);
             Strike(PoseState.SwordThrust, 34f, 26f, 4f, 0.07f, 0.15f, 1.3f, "player_skill_budu");
             CombatFeedback.SlowMo(0.5f, 0.12f);

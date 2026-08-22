@@ -72,6 +72,14 @@ namespace AdversityRoad.Combat
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
 
+        /// <summary>兵器在不在手上：收刀后临战架势、蹲伏、踢击、死亡都换空手版本。</summary>
+        public void SetArmed(bool armed)
+        {
+            _armed = armed;
+            if (Mecanim) _mecanim.SetArmed(armed);
+        }
+        bool _armed = true;
+
         /// <summary>切到动捕模式：成功接管返回 true；失败保持程序化骨骼。
         /// animsFolder 可指定角色专属动作库目录（如 Characters/Anims2），
         /// 该目录无效时自动回退默认动作库（Mixamo 标准骨架通用）。</summary>
@@ -251,8 +259,10 @@ namespace AdversityRoad.Combat
                 if (Mecanim && _mecanim.HasDirectionalSet) return false;
                 // 这几种姿态即使没有片段在播，身体朝向也不该被拧
                 if (_pose == PoseState.Knockdown || _pose == PoseState.Death ||
-                    _pose == PoseState.Dodge || _pose == PoseState.Stagger ||
-                    _pose == PoseState.Charge) return false;
+                    _pose == PoseState.Dodge || _pose == PoseState.DodgeLeft ||
+                    _pose == PoseState.DodgeRight || _pose == PoseState.Stagger ||
+                    _pose == PoseState.Charge || _pose == PoseState.ChargeLoop ||
+                    _pose == PoseState.CrouchIdle || _pose == PoseState.FallLoop) return false;
                 if (Mecanim) return !_mecanim.ActionPlaying;
                 // 程序化骨骼没有播放机：按招式曲线的时间轴判断这一招演完没有
                 return !IsActionPose(_pose) || _t * Mathf.Max(1f, _poseTimeScale) > ProcPoseNominal;
@@ -410,6 +420,35 @@ namespace AdversityRoad.Combat
         public float ActionClipLength(PoseState p) =>
             Mecanim ? _mecanim.ActionLength(p) : 0f;
 
+        /// <summary>这个姿态有没有专用片段（没有就别切过去，留在原姿态更好看）。</summary>
+        public bool HasPose(PoseState p) => Mecanim && _mecanim.HasAction(p);
+
+        /// <summary>
+        /// 按这一击的分量挑受击姿态：轻击抖一下，重击整个人被打退。
+        ///
+        /// 这是打击感里最便宜也最有效的一条：伤害数字必须能从**挨打的人**身上读出来。
+        /// 只有一条受击片段时，10 点和 42 点看起来完全一样，玩家就无法从画面上
+        /// 判断自己这一下打得重不重——连招的爽感有一大半来源于此。
+        /// </summary>
+        public static PoseState HitPoseFor(float damage, float knockback) =>
+            damage >= 26f || knockback >= 4.5f ? PoseState.HitHeavy : PoseState.Hit;
+
+        /// <summary>按这一击的分量设受击姿态（没有重受击片段时自动退回普通受击）。</summary>
+        public void SetHitPose(float damage, float knockback, float duration = 0f)
+        {
+            var p = ResolveHitPose(damage, knockback);
+            HitPose = p;                      // 走 FSM 映射的那一路（玩家）也用这一条
+            SetPose(p, duration);
+        }
+
+        /// <summary>只挑姿态、不立刻切——供"先设好再请求 HitReaction 状态"的调用方用。</summary>
+        public PoseState ResolveHitPose(float damage, float knockback)
+        {
+            var p = HitPoseFor(damage, knockback);
+            if (p == PoseState.HitHeavy && !HasPose(PoseState.HitHeavy)) p = PoseState.Hit;
+            return p;
+        }
+
         float _tumbleT = -1f, _tumbleDur = 0.55f;
 
         /// <summary>击飞后翻滚：被打飞很远时播放腾空后翻（配合控制器的飞行位移），
@@ -513,6 +552,18 @@ namespace AdversityRoad.Combat
 
         /// <summary>下一次翻滚姿态的目标时长（由 PlayerController 按实际翻滚时长写入；0=按片段原速）。</summary>
         public float DodgeDuration { get; set; }
+
+        /// <summary>
+        /// 下一次闪避该用哪个身法。默认前滚翻；锁定目标时按摇杆方向换成
+        /// 左闪身 / 右闪身 / 后撤步——这是锁定战里"闪避有方向"的标准做法
+        /// （面向目标时向左推杆按闪避，人应该往左侧闪，而不是转身朝左滚出去）。
+        /// 由 PlayerController 在请求 Dodge 状态之前写入。
+        /// </summary>
+        public PoseState DodgePose { get; set; } = PoseState.Dodge;
+
+        /// <summary>下一次受击该用哪条受击片段（轻/重）。由伤害方在请求
+        /// HitReaction 之前按这一击的分量写入，见 HitPoseFor。</summary>
+        public PoseState HitPose { get; set; } = PoseState.Hit;
 
         public void SetPose(PoseState p) => SetPose(p, 0f);
 
@@ -621,8 +672,9 @@ namespace AdversityRoad.Combat
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch);
                 _mecanim.SetReady(_ready);
+                _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
                 {
                     _lastMecanimSerial = _poseSerial;
@@ -686,7 +738,8 @@ namespace AdversityRoad.Combat
                 {
                     float swingLen = _poseDur > 0.02f ? _poseDur : _mecanim.ActionLength(_pose);
                     if (swingLen <= 0.01f) swingLen = 0.45f;
-                    bool sw = IsActionPose(_pose) && _pose != PoseState.Hit && _t < swingLen;
+                    bool sw = IsActionPose(_pose) && _pose != PoseState.Hit &&
+                              _pose != PoseState.HitHeavy && _t < swingLen;
                     if (weaponTrail.emitting != sw)
                     {
                         weaponTrail.emitting = sw;
@@ -1106,7 +1159,8 @@ namespace AdversityRoad.Combat
             p == PoseState.JumpAttack || p == PoseState.Sweep ||
             p == PoseState.PunchJab || p == PoseState.PunchCross ||
             p == PoseState.AttackKick || p == PoseState.SideKick || p == PoseState.SpinKick ||
-            p == PoseState.JumpKick || p == PoseState.Hit;
+            p == PoseState.JumpKick || p == PoseState.Hit || p == PoseState.HitHeavy ||
+            p == PoseState.DashAttack;
 
         /// <summary>通用弓步：前腿(左)出招时踏前屈膝，后腿(右)蹬撑，重心随出招前压。</summary>
         static void Stance(ref float hipLp, ref float kneeLp, ref float hipRp, ref float kneeRp,
@@ -1200,8 +1254,8 @@ namespace AdversityRoad.Combat
                 // DodgeDuration，片段按这个时长加速播完。不这么做的话，
                 // 逻辑上翻滚 0.35 秒就结束了，动画却还在按片段原速演 0.8 秒，
                 // 于是"人已经能动了，画面还在滚"——读作闪避迟钝。
-                case CombatState.Dodge: SetPose(PoseState.Dodge, DodgeDuration); break;
-                case CombatState.HitReaction: SetPose(PoseState.Hit); break;
+                case CombatState.Dodge: SetPose(DodgePose, DodgeDuration); break;
+                case CombatState.HitReaction: SetPose(HitPose); break;
                 case CombatState.MentalStagger: SetPose(PoseState.Stagger); break;
                 case CombatState.Knockdown: SetPose(PoseState.Knockdown); break;
                 case CombatState.InnerPowerCast: SetPose(PoseState.Cast); break;

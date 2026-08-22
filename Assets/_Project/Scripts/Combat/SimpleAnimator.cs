@@ -19,7 +19,39 @@ namespace AdversityRoad.Combat
         SideKick,       // 侧踢
         SpinKick,       // 后旋踢
         JumpKick,       // 飞踢
-        SwordThrust     // 剑式·突刺（弓步直刺）
+        SwordThrust,    // 剑式·突刺（弓步直刺）
+
+        // ===== 移动层过渡（起步 / 急停 / 原地转身 / 后撤步）=====
+        // 大作里"角色听话"很大一部分来自这几个过渡：推杆有起步、松杆有刹停、
+        // 站着扭方向有原地转身，而不是站姿直接平移或整个人瞬间转过去。
+        StartMove,      // 起步（静止→移动）
+        StopMove,       // 急停（跑动→站定）
+        TurnLeft,       // 原地左转 90°
+        TurnRight,      // 原地右转 90°
+        Turn180,        // 原地掉头 180°
+        StepBack,       // 小步后撤（轻后闪，不消耗体力）
+
+        // ===== 腾空（起跳 / 下落 / 着陆）=====
+        JumpUp,         // 起跳
+        FallLoop,       // 下落循环（保持）
+        Land,           // 落地缓冲
+        LandHard,       // 重着陆（高坠）
+
+        // ===== 方向闪避（面向目标时的左右闪身）=====
+        DodgeLeft,      // 左闪身
+        DodgeRight,     // 右闪身
+
+        // ===== 蹲伏 =====
+        CrouchIdle,     // 蹲伏待机（保持）
+
+        // ===== 战斗补位 =====
+        DashAttack,     // 突进斩（技能位移段专用）
+        ChargeLoop,     // 蓄力循环（可保持，蓄多久播多久）
+        CastProjectile, // 掷出气刃 / 远程施法
+        HitHeavy,       // 重受击（大伤害 / 大击退）
+        GuardHit,       // 格挡受击（挡下时的抗力反馈）
+        DrawWeapon,     // 拔刀
+        SheathWeapon    // 收刀
     }
 
     /// <summary>

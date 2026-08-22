@@ -35,11 +35,40 @@ namespace AdversityRoad.Combat
             public float speed;
             public bool hold;
             public float start, end;
+            public bool pool;   // true=keys 里【每一条】都接进来，轮流播（变体池）
         }
 
         static ActionDef A(PoseState p, float speed, float start, float end, bool hold,
             params string[] keys) =>
             new ActionDef { pose = p, keys = keys, speed = speed, hold = hold, start = start, end = end };
+
+        /// <summary>
+        /// 收起兵器时的替身片段。
+        ///
+        /// 持剑与空手是两套身体语言——大作里它们是两套完整的动作集（武器收起
+        /// 走路的摆臂、蹲伏的重心、踢击的发力都不一样）。本作只对差别最扎眼的
+        /// 三个做替换，加上移动层的临战架势（见 combatIdleUnarmed），
+        /// 已经足以让"收刀之后人明显松下来"这件事被看见。
+        /// 表里没有的姿态一律沿用持剑版本。
+        /// </summary>
+        static readonly ActionDef[] UnarmedMap =
+        {
+            A(PoseState.CrouchIdle,  1.0f, 0f,    1f,    true,  "crouching idle"),
+            A(PoseState.AttackKick,  1.8f, 0.18f, 0.70f, false, "kicking"),
+            A(PoseState.Death,       1.0f, 0f,    1f,    true,  "dying"),
+        };
+
+        /// <summary>
+        /// 变体池：同一个姿态挂多条片段，每次出招轮换。
+        ///
+        /// 这是动作游戏里最省事也最有效的一条"不重复"规则。受击尤其明显：
+        /// 一套连招打在同一个敌人身上五下，若五下播的是同一条受击片段，
+        /// 那不叫"连了五下"，读作"抖了五下"。斩击、原地掉头同理。
+        /// A() 是**候选链**（第一条找得到的就用），AP() 是**变体池**（全都要，轮着来）。
+        /// </summary>
+        static ActionDef AP(PoseState p, float speed, float start, float end, params string[] keys) =>
+            new ActionDef { pose = p, keys = keys, speed = speed, hold = false,
+                            start = start, end = end, pool = true };
 
         // 手感三板斧（根治"出招慢、软绵绵、连点糊成一团"）：
         // ① start 起手偏移——Mixamo 原始攻击片段前 12%~22% 是缓慢的摆架势预备，
@@ -58,24 +87,62 @@ namespace AdversityRoad.Combat
         //    做不到，会被下一招切在半路。这是刻意的取舍，理由见 MaxDrivenSpeed。
         static readonly ActionDef[] ActionMap =
         {
-            A(PoseState.Attack,      1.75f, 0.20f, 0.68f, false, "great sword slash"),
-            A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword jump attack", "great sword jump", "great sword high spin attack"),
+            AP(PoseState.Attack,     1.75f, 0.20f, 0.68f,        "great sword slash", "great sword slash 5"),
+            A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword attack", "great sword slash 5", "great sword high spin attack"),
             A(PoseState.AttackUp,    1.75f, 0.20f, 0.68f, false, "great sword slash (1)", "great sword high spin attack"),
             A(PoseState.SwordThrust, 1.85f, 0.18f, 0.66f, false, "stabbing", "stab"),
-            A(PoseState.AttackLeap,  1.55f, 0.12f, 0.80f, false, "great sword jump attack", "great sword jump", "jump attack"),
+            // 跃劈与空中下劈【分家】：此前两者都指向 Great Sword Jump Attack，
+            // 于是四套技能的终结段播的是同一段动画，"最后一击"没有独占记忆点。
+            // 现在跃劈走 Slash 3（大开大合的下劈），Jump Attack 留给真正的空中终结。
+            A(PoseState.AttackLeap,  1.55f, 0.12f, 0.80f, false, "great sword slash 3", "great sword jump attack", "jump attack"),
             A(PoseState.JumpAttack,  1.6f,  0.15f, 0.84f, false, "great sword jump attack", "great sword jump", "jump attack"),
             A(PoseState.AttackSpin,  1.6f,  0.15f, 0.72f, false, "great sword high spin attack", "spin attack", "great sword slash (1)"),
             A(PoseState.PunchJab,    1.95f, 0.15f, 0.64f, false, "lead jab", "jab"),
             A(PoseState.PunchCross,  1.85f, 0.15f, 0.64f, false, "cross punch"),
-            A(PoseState.AttackKick,  1.8f,  0.18f, 0.70f, false, "kicking"),
+            A(PoseState.AttackKick,  1.8f,  0.18f, 0.70f, false, "great sword kick", "kicking"),
             A(PoseState.SideKick,    1.8f,  0.18f, 0.70f, false, "side kick"),
             A(PoseState.SpinKick,    1.65f, 0.12f, 0.78f, false, "spin flip kick", "spin kick"),
             A(PoseState.JumpKick,    1.7f,  0.12f, 0.80f, false, "flying kick"),
             A(PoseState.Sweep,       1.6f,  0.12f, 0.80f, false, "leg sweep", "spin flip kick"),
-            A(PoseState.Hit,         1.45f, 0.10f, 0.78f, false, "hit reaction", "great sword impact", "hit"),
+            AP(PoseState.Hit,        1.45f, 0.10f, 0.78f,        "great sword impact", "great sword impact 2",
+                                                                   "great sword impact 3", "hit reaction"),
+            // 重受击：大伤害/大击退时换一条更夸张的受击（见 HitPoseFor）——
+            // "10 点伤害和 42 点伤害看起来一模一样"是打击感最大的漏洞，
+            // 分档换片段是大作里最省事也最有效的一招。
+            AP(PoseState.HitHeavy,   1.2f,  0.05f, 0.86f,        "great sword impact 4", "great sword impact 5"),
+            A(PoseState.GuardHit,    1.5f,  0.08f, 0.80f, false, "great sword block hit", "great sword blocking"),
+
+            // ===== 移动层过渡 =====
+            A(PoseState.StartMove,   1.25f, 0f,    0.72f, false, "start walking"),
+            A(PoseState.StopMove,    1.35f, 0f,    0.85f, false, "run to stop"),
+            A(PoseState.TurnLeft,    1.3f,  0.05f, 0.95f, false, "left turn 90"),
+            A(PoseState.TurnRight,   1.3f,  0.05f, 0.95f, false, "right turn 90"),
+            AP(PoseState.Turn180,    1.35f, 0.05f, 0.95f,        "quick 180 turn", "quick 180 turn (1)"),
+            A(PoseState.StepBack,    1.4f,  0.05f, 0.90f, false, "step backward"),
+
+            // ===== 腾空 =====
+            A(PoseState.JumpUp,      1.2f,  0.05f, 0.85f, false, "jumping up"),
+            A(PoseState.FallLoop,    1.0f,  0f,    1f,    true,  "falling idle"),
+            A(PoseState.Land,        1.3f,  0f,    0.85f, false, "falling to landing"),
+            A(PoseState.LandHard,    1.15f, 0f,    0.90f, false, "hard landing"),
+
+            // ===== 方向闪避（面向目标时的左右闪身；前后仍走翻滚/后撤步）=====
+            A(PoseState.DodgeLeft,   1.6f,  0.05f, 0.92f, false, "standing dodge left"),
+            A(PoseState.DodgeRight,  1.6f,  0.05f, 0.92f, false, "dodging right"),
+
+            // ===== 蹲伏待机（持剑优先）=====
+            A(PoseState.CrouchIdle,  1.0f,  0f,    1f,    true,  "great sword crouching", "crouching idle"),
+
+            // ===== 技能补位 =====
+            // 突进斩：技能位移段专用——脚在动的那 0.1 秒交给它，判定段再切斩击，
+            // 否则 2.2 米的突进期间播的是原地斩，读作"人在飘"。
+            A(PoseState.DashAttack,  1.5f,  0.05f, 0.80f, false, "great sword slide attack"),
+            // 蓄力循环：可保持——蓄多久播多久，替掉"停在末帧的冻结姿势"
+            A(PoseState.ChargeLoop,  1.0f,  0f,    1f,    true,  "great sword power up", "great sword casting"),
+            A(PoseState.CastProjectile, 1.35f, 0.08f, 0.80f, false, "great sword casting", "spell casting"),
             // 击倒提速：受了重击身体应当干脆地倒下去，而不是慢悠悠飘倒
             A(PoseState.Knockdown,   1.3f,  0.04f, 1f,    true,  "knocked down", "sweep fall", "knockdown", "falling back"),
-            A(PoseState.Death,       1.0f,  0f,    1f,    true,  "dying", "great sword death", "death"),
+            A(PoseState.Death,       1.0f,  0f,    1f,    true,  "two handed sword death", "dying", "death"),
             A(PoseState.Cast,        1.0f,  0f,    1f,    false, "spell casting", "cast"),
             // ===== 动作库覆盖面补位（下载对应片段放入 Anims/ 后自动生效）=====
             // 每项前面的候选是【专用片段】，末尾候选是没有专用片段时的替代：
@@ -85,7 +152,7 @@ namespace AdversityRoad.Combat
             // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
             A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "great sword blocking", "blocking", "block", "fighting idle"),
             A(PoseState.Stagger,     0.55f, 0.10f, 1f,    false, "stunned", "dizzy", "stagger", "hit reaction"),
-            A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword casting", "warming up", "taunt", "charge", "spell casting"),
+            A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
         };
@@ -143,9 +210,21 @@ namespace AdversityRoad.Combat
             public float len;        // 片段时长
         }
 
+        /// <summary>速度档数：0=走 1=慢跑 2=跑 3=冲刺。
+        /// 四档而非两档的理由很实际：动作库里前/后/左/右各有四种速度的片段，
+        /// 两档时其中一半永远用不上，而且主导片段的自然速度与真实移速差得远，
+        /// 步幅同步只能靠 0.5~2.0 的倍速去凑——那正是"脚在滑"的来源。
+        /// 档位分得细，倍速就贴近 1.0，脚自然踩得实。</summary>
+        const int TierCount = 4;
+        /// <summary>蹲伏环的下标（不参与速度档混合，蹲下时整体接管）。</summary>
+        const int CrouchTier = TierCount;
+        /// <summary>移动混合器里方向片段的起始输入口：0=待机 1=持剑临战架势 2=空手临战架势。</summary>
+        const int DirBase = 3;
+
         readonly List<LocoDir> _dirs = new List<LocoDir>();
-        readonly List<int> _walkRing = new List<int>();   // 按角度排好序的下标
-        readonly List<int> _runRing = new List<int>();
+        // 每一档一圈，按角度排好序的下标；最后一圈是蹲伏
+        readonly List<int>[] _rings = new List<int>[TierCount + 1];
+        readonly float[] _tierW = new float[TierCount];
         float[] _dirW;               // 每帧算出来的方向权重
         float _phase01;              // 共享步态相位 [0,1)
         float _moveAngle;            // 行进方向相对角色正面（度）
@@ -170,13 +249,68 @@ namespace AdversityRoad.Combat
             {
                 string name = d.cp.IsValid() && d.cp.GetAnimationClip() != null
                     ? d.cp.GetAnimationClip().name : "?";
-                sb.Append("    ").Append(d.tier == 0 ? "走" : "跑")
+                sb.Append("    ").Append(TierName(d.tier))
                   .Append(" 角度=").Append(d.angle.ToString("F0")).Append("°")
                   .Append(" 自然速度=").Append(d.natSpeed.ToString("F2")).Append("m/s")
                   .Append(" 时长=").Append(d.len.ToString("F2")).Append("s")
                   .Append("  [").Append(name).Append("]\n");
             }
             return sb.ToString();
+        }
+
+        static string TierName(int tier)
+        {
+            switch (tier)
+            {
+                case 0: return "走  ";
+                case 1: return "慢跑";
+                case 2: return "跑  ";
+                case 3: return "冲刺";
+                default: return "蹲伏";
+            }
+        }
+
+        /// <summary>
+        /// 把招式 → 片段的实际映射打成一行行可读的文字（CI 诊断用）。
+        ///
+        /// 与方向表同理：某个姿态"有没有真的拿到片段、拿到的是不是预期那条"，
+        /// 光看代码看不出来——候选链有先后、变体池会被先到的招式抢走片段、
+        /// 空手替身还有第二套。让 CI 每次构建都把这张表打出来，
+        /// 少一条、串到别的片段上，都能在日志里当场看见。
+        /// </summary>
+        public string DescribeActionSet()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("招式片段 ").Append(_actionIndex.Count).Append(" 个姿态有片段，动作层共 ")
+              .Append(_actionCount).Append(" 条
+");
+            foreach (var kv in _actionIndex)
+            {
+                sb.Append("    ").Append(kv.Key.ToString().PadRight(16));
+                if (_actionVariants.TryGetValue(kv.Key, out var vs) && vs.Count > 1)
+                {
+                    sb.Append("[变体×").Append(vs.Count).Append("] ");
+                    for (int i = 0; i < vs.Count; i++)
+                    {
+                        if (i > 0) sb.Append(" | ");
+                        sb.Append(ClipNameAt(vs[i]));
+                    }
+                }
+                else sb.Append(ClipNameAt(kv.Value));
+                if (_unarmedIndex.TryGetValue(kv.Key, out int ua))
+                    sb.Append("   （空手：").Append(ClipNameAt(ua)).Append('）');
+                sb.Append('
+');
+            }
+            return sb.ToString();
+        }
+
+        string ClipNameAt(int idx)
+        {
+            if (idx < 0 || idx >= _actionCount) return "?";
+            var cp = (AnimationClipPlayable)_actions.GetInput(idx);
+            var c = cp.IsValid() ? cp.GetAnimationClip() : null;
+            return c != null ? c.name : "?";
         }
 
         /// <summary>驱动中的 Animator（供脚踝校准等后处理访问骨骼）。</summary>
@@ -189,6 +323,13 @@ namespace AdversityRoad.Combat
         static float WalkNaturalSpeed => MecanimCharacter.TargetHeight * 0.878f;
         static float RunNaturalSpeed => MecanimCharacter.TargetHeight * 2.098f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
+        // 变体池：同一姿态的多条片段 + 轮换游标（见 AP / NextVariant）
+        readonly Dictionary<PoseState, List<int>> _actionVariants =
+            new Dictionary<PoseState, List<int>>();
+        readonly Dictionary<PoseState, int> _variantCursor = new Dictionary<PoseState, int>();
+        // 空手替身（见 UnarmedMap）：收刀状态下这些姿态改播空手版本
+        readonly Dictionary<PoseState, int> _unarmedIndex = new Dictionary<PoseState, int>();
+        bool _armed = true;
         // 动作库全量索引（片段名→输入口）：未映射到招式的片段也接入，供预览试播
         readonly Dictionary<string, int> _clipIndex = new Dictionary<string, int>();
         float[] _actionLen;
@@ -223,6 +364,47 @@ namespace AdversityRoad.Combat
         /// 于是把它降级成补充库：谁做主库都行，主库没有的名字从这里补进来。
         /// </summary>
         const string ExtraFolder = "Characters/Anims2";
+
+        /// <summary>
+        /// 动作库文件清单（**按文件名寻址**，与片段内部叫什么无关）。
+        ///
+        /// 为什么需要这张表：Mixamo 导出的 FBX 里 take 一律叫 "mixamo.com"，
+        /// 只有 .meta 显式改名后 Resources.LoadAll 拿到的片段才有正经名字。
+        /// 新丢进目录、还没被 Unity 生成过命名 .meta 的文件，按名字一条都找不到
+        /// （Build 里那句 `k != "mixamo.com"` 就是被这件事逼出来的）。
+        /// 而 Resources.Load(路径) 取的是**文件里的第一个 AnimationClip**，
+        /// 与内部名无关，一定拿得到——于是把清单里的每个文件按路径加载一遍、
+        /// 用**文件名**注册进 byName，下游（招式表、变体池、PlayNamed、
+        /// 方向移动表）就统一按名字工作，不必各自再写一套按路径的兜底。
+        ///
+        /// 清单必须与目录内容一致：多写了（文件不存在）只是加载不到、静默跳过；
+        /// 少写了则那个文件永远不会被用上。CI 诊断会把两边对不上的地方打出来。
+        /// </summary>
+        static readonly string[] LibraryFiles =
+        {
+            // —— 移动：走档 / 慢跑档 / 跑档 / 冲刺档 ——
+            "Walking Backwards", "Left Strafe Walking", "Right Strafe Walking",
+            "Jog Forward", "Jog Backward", "Jog Strafe Left", "Jog Strafe Right",
+            "Jog Forward Diagonal", "Jog Backward Diagonal", "Slow Jog Backwards",
+            "Run Forward", "Running Backward", "Left Strafe", "Right Strafe", "Fast Run",
+            // —— 移动过渡：起步 / 急停 / 原地转身 / 后撤步 ——
+            "Start Walking", "Run To Stop", "Left Turn 90", "Right Turn 90",
+            "Quick 180 Turn", "Quick 180 Turn (1)", "Step Backward",
+            // —— 腾空 ——
+            "Jumping Up", "Falling Idle", "Falling To Landing", "Hard Landing",
+            // —— 方向闪避 ——
+            "Standing Dodge Left", "Dodging Right",
+            // —— 蹲伏 ——
+            "Crouching Idle", "Crouch Walk Back", "Crouched Sneaking Left", "Crouched Sneaking Right",
+            "Great Sword Crouching",
+            // —— 持剑战斗 ——
+            "Great Sword Idle", "Great Sword Attack", "Great Sword Slash 3", "Great Sword Slash 5",
+            "Great Sword Kick", "Great Sword Slide Attack", "Great Sword Power Up",
+            "Great Sword Block Hit", "Two Handed Sword Death",
+            // —— 受击变体池 ——
+            "Great Sword Impact", "Great Sword Impact 2", "Great Sword Impact 3",
+            "Great Sword Impact 4", "Great Sword Impact 5",
+        };
 
         public PlayableAnimator(Animator animator, string animsFolder = null)
         {
@@ -276,12 +458,24 @@ namespace AdversityRoad.Combat
                     string k = Norm(c.name);
                     if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
                 }
+            // 按文件名补齐（见 LibraryFiles）：没有命名 .meta 的 FBX 只能这样寻址
+            foreach (var f in LibraryFiles)
+            {
+                string fileKey = Norm(f);
+                if (fileKey.Length == 0 || byName.ContainsKey(fileKey)) continue;
+                var byPath = Resources.Load<AnimationClip>(_folder + "/" + f)
+                             ?? Resources.Load<AnimationClip>(ExtraFolder + "/" + f);
+                if (byPath != null) byName[fileKey] = byPath;
+            }
 
             var idle = Pick(byName, "idle", "breathing idle", "standing idle");
             var walk = Pick(byName, "walking", "great sword walk", "walk");
             var run = Pick(byName, "running", "great sword run", "run");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
+            // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
+            // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
+            var combatIdleUnarmed = Pick(byName, "fighting idle", "combat idle") ?? combatIdle;
 
             // 解析招式片段；目录中未被映射的片段也全部接入（动作库预览可逐个试播）
             var actionList =
@@ -289,6 +483,19 @@ namespace AdversityRoad.Combat
             var connected = new HashSet<AnimationClip>();
             foreach (var m in ActionMap)
             {
+                if (m.pool)
+                {
+                    // 变体池：keys 里每一条都接进来（已被别的招式占用的片段跳过），
+                    // 播放时轮换（见 NextVariant）
+                    foreach (var k in m.keys)
+                    {
+                        var v = Pick(byName, k);
+                        if (v == null || connected.Contains(v)) continue;
+                        actionList.Add((m.pose, v, m.speed, m.hold, m.start, m.end));
+                        connected.Add(v);
+                    }
+                    continue;
+                }
                 var clip = Pick(byName, m.keys);
                 if (clip != null)
                 {
@@ -296,8 +503,24 @@ namespace AdversityRoad.Combat
                     connected.Add(clip);
                 }
             }
+            // 空手替身：与持剑版本挂在同一个姿态上，但走单独的索引（见 NextVariant）
+            int unarmedFrom = actionList.Count;
+            var unarmedPose = new List<PoseState>();
+            foreach (var m in UnarmedMap)
+            {
+                var uc = Pick(byName, m.keys);
+                if (uc == null || connected.Contains(uc)) continue;
+                actionList.Add((null, uc, m.speed, m.hold, m.start, m.end));
+                connected.Add(uc);
+                unarmedPose.Add(m.pose);
+            }
+
+            // 未映射到招式的片段也全部接入（休息动作、拔刀收刀、动作库预览按名字播）。
+            // 按【片段对象】去重：同一片段可能同时以内部名和文件名两个键存在于 byName，
+            // 不去重会给同一个片段开两个混合器输入口。
+            var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
-                if (!connected.Contains(kv.Value))
+                if (listed.Add(kv.Value))
                     actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
 
             // ---- 方向移动片段：收集 + 实测每一条的行进方向与自然速度 ----
@@ -318,6 +541,7 @@ namespace AdversityRoad.Combat
             _actionStart = new float[Mathf.Max(1, _actionCount)];
             _actionEnd = new float[Mathf.Max(1, _actionCount)];
             _actionRawLen = new float[Mathf.Max(1, _actionCount)];
+            var clipToInput = new Dictionary<AnimationClip, int>();
             for (int i = 0; i < _actionCount; i++)
             {
                 var (pose, clip, speed, hold, start, end) = actionList[i];
@@ -328,9 +552,16 @@ namespace AdversityRoad.Combat
                 cp.SetSpeed(speed);
                 _graph.Connect(cp, 0, _actions, i);
                 _actions.SetInputWeight(i, 0f);
-                if (pose.HasValue) _actionIndex[pose.Value] = i;
+                if (pose.HasValue)
+                {
+                    if (!_actionIndex.ContainsKey(pose.Value)) _actionIndex[pose.Value] = i;
+                    if (!_actionVariants.TryGetValue(pose.Value, out var vs))
+                        _actionVariants[pose.Value] = vs = new List<int>();
+                    vs.Add(i);
+                }
                 string ck = Norm(clip.name);
                 if (!_clipIndex.ContainsKey(ck)) _clipIndex[ck] = i;
+                if (!clipToInput.ContainsKey(clip)) clipToInput[clip] = i;
                 _actionStart[i] = Mathf.Clamp01(start);
                 _actionEnd[i] = Mathf.Clamp(end, _actionStart[i] + 0.1f, 1f);
                 _actionLen[i] = Mathf.Max(0.05f,
@@ -340,23 +571,32 @@ namespace AdversityRoad.Combat
                 _actionRawLen[i] = clip.length;
             }
 
-            _loco = AnimationMixerPlayable.Create(_graph, 2 + dirDefs.Count);
-            ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1);
+            for (int u = 0; u < unarmedPose.Count; u++) _unarmedIndex[unarmedPose[u]] = unarmedFrom + u;
+
+            // 按名字播（PlayNamed/HasClip）的索引再按 byName 补一遍：
+            // 没有命名 .meta 的 FBX，clip.name 一律是 "mixamo.com"，上面那一轮
+            // 只能登记到第一条——补这一遍之后，它们用**文件名**也能播了。
+            foreach (var kv in byName)
+                if (!_clipIndex.ContainsKey(kv.Key) && clipToInput.TryGetValue(kv.Value, out int ci))
+                    _clipIndex[kv.Key] = ci;
+
+            for (int r = 0; r < _rings.Length; r++) _rings[r] = new List<int>();
+            _loco = AnimationMixerPlayable.Create(_graph, DirBase + dirDefs.Count);
+            ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1); ConnectLoco(combatIdleUnarmed, 2);
             for (int i = 0; i < dirDefs.Count; i++)
             {
                 var d = dirDefs[i];
-                var cp = ConnectLoco(d.clip, 2 + i);
+                var cp = ConnectLoco(d.clip, DirBase + i);
                 cp.SetSpeed(0f);   // 时间由 Tick 手动推（共享相位 + 步幅同步）
                 _dirs.Add(new LocoDir
                 {
                     cp = cp, angle = d.angle, tier = d.tier,
                     natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length)
                 });
-                (d.tier == 0 ? _walkRing : _runRing).Add(i);
+                _rings[Mathf.Clamp(d.tier, 0, CrouchTier)].Add(i);
             }
             _dirW = new float[_dirs.Count];
-            _walkRing.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
-            _runRing.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
+            foreach (var r in _rings) r.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
             HasDirectionalSet = CountDistinctDirections() >= 3;
             _loco.SetInputWeight(0, 1f);
 
@@ -399,22 +639,46 @@ namespace AdversityRoad.Combat
                 bool measured = MeasureClipMotion(clip, root, hips, out float mA, out float mS);
                 if (measured) { angle = mA; nat = mS; }
                 else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）
+                // 同一档、同一方向已经有片段了就跳过。动作库里难免有等价片段
+                //（Running 与 Run Forward、Jog Backward 与 Slow Jog Backwards），
+                // 两条都塞进同一圈会让 Bracket 拿到跨度为 0 的相邻对，插值出 NaN 权重。
+                // 先来的优先——候选表的顺序就是取舍顺序。
+                foreach (var d in list)
+                    if (d.tier == tier && Mathf.Abs(Mathf.DeltaAngle(d.angle, angle)) < 20f) return;
                 list.Add(new DirDef { clip = clip, angle = angle, tier = tier, natSpeed = nat });
             }
 
-            // 走档：前 / 后 / 左 / 右
+            // 档 0「走」：前 / 后 / 左 / 右
             Add(walk, 0f, 0, false);
             Add(PickFile(byName, "walking backwards", "Walking Backwards"), 180f, 0, false);
             Add(PickFile(byName, "left strafe walking", "Left Strafe Walking"), -90f, 0, false);
             Add(PickFile(byName, "right strafe walking", "Right Strafe Walking"), 90f, 0, false);
 
-            // 跑档：前 / 后 / 左右（有专门的跑动横移就用，没有则由走档顶上）/ 斜向
-            Add(run, 0f, 1, false);
-            Add(PickFile(byName, "slow jog backwards", "Slow Jog Backwards"), 180f, 1, false);
-            Add(PickFile(byName, "left strafe", "Left Strafe"), -90f, 1, false);
-            Add(PickFile(byName, "right strafe", "Right Strafe"), 90f, 1, false);
+            // 档 1「慢跑」：八方向最全的一档（含两条实测斜向）
+            Add(PickFile(byName, "jog forward", "Jog Forward"), 0f, 1, false);
+            Add(PickFile(byName, "jog backward", "Jog Backward"), 180f, 1, false);
+            Add(PickFile(byName, "jog strafe left", "Jog Strafe Left"), -90f, 1, false);
+            Add(PickFile(byName, "jog strafe right", "Jog Strafe Right"), 90f, 1, false);
             Add(PickFile(byName, "jog forward diagonal", "Jog Forward Diagonal"), 45f, 1, true);
             Add(PickFile(byName, "jog backward diagonal", "Jog Backward Diagonal"), 135f, 1, true);
+            Add(PickFile(byName, "slow jog backwards", "Slow Jog Backwards"), 180f, 1, false);
+
+            // 档 2「跑」：前 / 后 / 左 / 右
+            Add(run, 0f, 2, false);
+            Add(PickFile(byName, "run forward", "Run Forward"), 0f, 2, false);
+            Add(PickFile(byName, "running backward", "Running Backward"), 180f, 2, false);
+            Add(PickFile(byName, "left strafe", "Left Strafe"), -90f, 2, false);
+            Add(PickFile(byName, "right strafe", "Right Strafe"), 90f, 2, false);
+
+            // 档 3「冲刺」：只有正前方有片段——其余方向由下一档兜底（见 BlendDirectional）。
+            // 这与大作一致：冲刺本来就只有向前，横着冲刺不存在。
+            Add(PickFile(byName, "fast run", "Fast Run"), 0f, 3, false);
+
+            // 蹲伏圈：后退 / 左右潜行（没有蹲行前进的片段，正前方交给走档，
+            // 蹲姿由 HumanoidAnimator 的蹲伏压低叠加表达）
+            Add(PickFile(byName, "crouch walk back", "Crouch Walk Back"), 180f, CrouchTier, false);
+            Add(PickFile(byName, "crouched sneaking left", "Crouched Sneaking Left"), -90f, CrouchTier, false);
+            Add(PickFile(byName, "crouched sneaking right", "Crouched Sneaking Right"), 90f, CrouchTier, false);
             return list;
         }
 
@@ -537,21 +801,43 @@ namespace AdversityRoad.Combat
 
         /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）；
         /// moveAngleDeg=行进方向相对角色正面（0=正前、±90=横移、180=后退）。</summary>
-        public void SetLocomotion(float speed01, float actualSpeed = -1f, float moveAngleDeg = 0f)
+        public void SetLocomotion(float speed01, float actualSpeed = -1f, float moveAngleDeg = 0f,
+            bool crouch = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _actualSpeed = actualSpeed;
             _moveAngle = moveAngleDeg;
+            _crouch = crouch;
         }
+        bool _crouch;
         public void SetReady(bool ready) => _ready = ready;
+
+        /// <summary>兵器此刻在不在手上（收刀后改用空手架势与空手替身片段）。</summary>
+        public void SetArmed(bool armed) => _armed = armed;
 
         /// <summary>触发一次招式（有对应片段才生效，否则维持 locomotion）。
         /// targetDuration&gt;0 时按【招式帧数据】反推播放速度：这一招在游戏里占多久，
         /// 画面就在多久之内把发力窗打完——动作与判定从此对得上拍。</summary>
         public void PlayAction(PoseState p, float targetDuration = 0f)
         {
-            if (!Valid || !_actionIndex.TryGetValue(p, out int idx)) return;
+            if (!Valid) return;
+            int idx = NextVariant(p);
+            if (idx < 0) return;
             PlayIndex(idx, targetDuration);
+        }
+
+        /// <summary>这一招该播哪一条片段：有变体池就轮换，否则就是唯一那条。</summary>
+        int NextVariant(PoseState p)
+        {
+            // 收刀状态优先用空手版本（见 UnarmedMap）
+            if (!_armed && _unarmedIndex.TryGetValue(p, out int ua)) return ua;
+            if (_actionVariants.TryGetValue(p, out var list) && list.Count > 1)
+            {
+                _variantCursor.TryGetValue(p, out int c);
+                _variantCursor[p] = (c + 1) % list.Count;
+                return list[c % list.Count];
+            }
+            return _actionIndex.TryGetValue(p, out int i) ? i : -1;
         }
 
         /// <summary>按片段名试播动作库中任一动作（测试面板的逐个动作预览）。</summary>
@@ -670,10 +956,17 @@ namespace AdversityRoad.Combat
             _fadeFrom = _actionW;   // 连招接招：从当前权重继续淡入，不掉回 0（消除断档感）
         }
 
-        /// <summary>起身过程：把倒地片段【倒放】——从躺地姿态连贯地撑起站立
-        /// （腿脚先动、身体逐渐立起），播完自动淡回移动层。</summary>
+        /// <summary>
+        /// 从倒地爬起来。
+        ///
+        /// 有专用的爬起片段（Standing Up：从地上撑起来）就播它——那是真人怎么
+        /// 从地上站起来的动作数据。没有才退回【倒放倒地片段】那套合成手段：
+        /// 倒放的方向是对的（腿先动、身体后立），但它终究是"倒着摔下去"，
+        /// 手撑地、发力的重心转移都没有。
+        /// </summary>
         public void PlayGetUp()
         {
+            if (Valid && PlayNamed("standing up", false, false, 1.25f, 0.18f) > 0f) return;
             if (!Valid || !_actionIndex.TryGetValue(PoseState.Knockdown, out int idx))
             {
                 StopAction();
@@ -704,7 +997,7 @@ namespace AdversityRoad.Combat
         /// 方向混合：按摇杆方向在相邻两个片段之间取权重，按速度在走档/跑档之间取权重，
         /// 全部片段共享同一个步态相位，播放速率按**主导片段自己的**自然速度算。
         /// </summary>
-        void BlendDirectional(float walkTier, float runTier, float actual, float dt)
+        void BlendDirectional(float[] tierW, float actual, float dt)
         {
             if (_dirs.Count == 0) return;
             for (int i = 0; i < _dirW.Length; i++) _dirW[i] = 0f;
@@ -716,21 +1009,52 @@ namespace AdversityRoad.Combat
             _blendAngle = Mathf.DeltaAngle(0f,
                 Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, 900f * dt));
 
-            // 跑档在某些方向上没有片段（比如只有走档的横移）：那一档的权重就交给走档，
-            // 由步幅同步把走的片段提速播——总比硬套一个方向不对的跑片段好。
-            float rw = runTier, ww = walkTier;
-            bool runOk = RingCovers(_runRing, _blendAngle);
-            bool walkOk = RingCovers(_walkRing, _blendAngle);
-            if (runOk && !walkOk) { rw += ww; ww = 0f; }
-            else if (walkOk && !runOk) { ww += rw; rw = 0f; }
-            // 两圈都没覆盖到（动作库不全）：全交给走档——它是必定存在的那一圈
-            // （前进片段是 Build 的硬性前提），至少不会落到一个空环上。
-            else if (!walkOk && !runOk) { ww += rw; rw = 0f; }
+            // 蹲伏：整套权重交给蹲伏圈。它只有后/左/右三条，正前方由它覆盖不了——
+            // 那一份会在下面的"未覆盖转交"里落回走档（配合蹲伏压低叠加，
+            // 读作"猫着腰往前走"，而不是站起来走）。
+            if (_crouch && _rings[CrouchTier].Count > 0)
+            {
+                if (RingCovers(_rings[CrouchTier], _blendAngle))
+                    AddRing(_rings[CrouchTier], _blendAngle, 1f);
+                else
+                    AddRing(_rings[0], _blendAngle, 1f);
+                LeadAndPhase(actual, dt);
+                ApplyDirWeights();
+                return;
+            }
 
-            AddRing(_walkRing, _blendAngle, ww);
-            AddRing(_runRing, _blendAngle, rw);
+            // 某一档在这个方向上没有片段（比如冲刺档只有正前方）：把它那一份交给
+            // **最近的、覆盖得了的那一档**，由步幅同步按真实移速提速/降速播。
+            // 硬套一个方向不对的片段远比换一档难看。
+            for (int t = 0; t < TierCount; t++)
+            {
+                float w = tierW[t];
+                if (w <= 0.0001f) continue;
+                int use = NearestCoveringTier(t);
+                AddRing(_rings[use], _blendAngle, w);
+            }
 
-            // 主导片段：权重最大的那个，步幅同步与相位推进都按它算
+            LeadAndPhase(actual, dt);
+            ApplyDirWeights();
+        }
+
+        /// <summary>这一档在该方向上没片段时，改用最近的、覆盖得了的那一档。
+        /// 一档都不覆盖时退回档 0——前进片段是 Build 的硬性前提，那一圈必定非空。</summary>
+        int NearestCoveringTier(int tier)
+        {
+            if (RingCovers(_rings[tier], _blendAngle)) return tier;
+            for (int d = 1; d < TierCount; d++)
+            {
+                int lo = tier - d, hi = tier + d;
+                if (lo >= 0 && RingCovers(_rings[lo], _blendAngle)) return lo;
+                if (hi < TierCount && RingCovers(_rings[hi], _blendAngle)) return hi;
+            }
+            return 0;
+        }
+
+        /// <summary>主导片段：权重最大的那个，步幅同步与相位推进都按它算。</summary>
+        void LeadAndPhase(float actual, float dt)
+        {
             int lead = -1; float leadW = 0f;
             for (int i = 0; i < _dirW.Length; i++)
                 if (_dirW[i] > leadW) { leadW = _dirW[i]; lead = i; }
@@ -751,12 +1075,16 @@ namespace AdversityRoad.Combat
                 // 各自的一个完整步态周期，脚步不会互相错开。
                 _phase01 = Mathf.Repeat(_phase01 + dt * rate * sign / L.len, 1f);
             }
+        }
 
+        /// <summary>把算好的方向权重与共享相位写进混合器。</summary>
+        void ApplyDirWeights()
+        {
             for (int i = 0; i < _dirs.Count; i++)
             {
                 var d = _dirs[i];
                 if (!d.cp.IsValid()) continue;
-                _loco.SetInputWeight(2 + i, _dirW[i]);
+                _loco.SetInputWeight(DirBase + i, _dirW[i]);
                 // 共享归一化相位：每个片段都停在自己周期里的同一个百分比上
                 if (_dirW[i] > 0.001f) d.cp.SetTime(_phase01 * d.len);
             }
@@ -816,16 +1144,28 @@ namespace AdversityRoad.Combat
         {
             if (!Valid) return;
 
+            // 速度 → 档位权重：x∈[0,TierCount]，0=站立，每跨过一个整数就换一档，
+            // 相邻两档之间线性过渡（走→慢跑→跑→冲刺是连续的，不是三次跳变）。
             float s = _speed01;
-            float runTier, walkTier, idleTot;
-            if (s < 0.5f) { walkTier = s / 0.5f; runTier = 0f; idleTot = 1f - walkTier; }
-            else { runTier = (s - 0.5f) / 0.5f; walkTier = 1f - runTier; idleTot = 0f; }
+            for (int t = 0; t < TierCount; t++) _tierW[t] = 0f;
+            float x = s * TierCount;
+            float idleTot;
+            if (x <= 1f) { idleTot = 1f - x; _tierW[0] = x; }
+            else
+            {
+                idleTot = 0f;
+                int lo = Mathf.Clamp(Mathf.FloorToInt(x) - 1, 0, TierCount - 1);
+                float f = Mathf.Clamp01(x - Mathf.Floor(x));
+                if (lo >= TierCount - 1) { _tierW[TierCount - 1] = 1f; }
+                else { _tierW[lo] = 1f - f; _tierW[lo + 1] = f; }
+            }
             _readyW = Mathf.MoveTowards(_readyW, _ready ? 1f : 0f, dt / 0.25f);
             _loco.SetInputWeight(0, idleTot * (1f - _readyW));
-            _loco.SetInputWeight(1, idleTot * _readyW);
+            _loco.SetInputWeight(1, idleTot * _readyW * (_armed ? 1f : 0f));
+            _loco.SetInputWeight(2, idleTot * _readyW * (_armed ? 0f : 1f));
 
             float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
-            BlendDirectional(walkTier, runTier, actual, dt);
+            BlendDirectional(_tierW, actual, dt);
 
             if (_cur >= 0)
             {
