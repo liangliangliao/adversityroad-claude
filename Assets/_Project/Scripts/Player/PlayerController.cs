@@ -22,8 +22,11 @@ namespace AdversityRoad.Player
         // 防晕由镜头侧负责（软跟随 + 焦点死区 + 渐进回正），而不是靠拖慢角色本体。
         public float accelRate = 20f;              // 起步逼近速率
         public float decelRate = 26f;              // 停步逼近速率
-        public float rotateSpeed = 14f;            // 转身更跟手（大作级的方向响应）
-        public float quickTurnMultiplier = 2.1f;   // 大角度转身加速倍率：掉头近乎即时
+        // 转向的角速度上限（度/秒）。**不是** Slerp 的比例系数——旧的 rotateSpeed /
+        // quickTurnMultiplier 就是当比例用的，导致身体几乎瞬间贴到摇杆上，见移动方法里的说明。
+        public float turnDegPerSecStill = 620f;    // 站定：原地可以快转，推杆即回身
+        public float turnDegPerSecSprint = 260f;   // 全速：必须走出转向半径（跑步的惯性感）
+        public float quickTurnBoost = 1.4f;        // 掉头(>100°)加成：快一些，但依然有限
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -653,29 +656,9 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
-            // ThirdPersonController 的做法（其注释原文：curved result rather than a
-            // linear one giving a more organic speed change）。
-            // 起步瞬间给足冲量（前几帧就到大半速度＝跟手），末段自然收敛（不突兀）。
-            // 用 1-e^(-k·dt) 而非 Lerp(a,b,k·dt)：帧率无关，高低帧手感一致。
-            Vector3 targetVel = moveDir * speed;
-            float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
-            _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
-            CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
-            FallGuard();                // 掉出世界的兜底捞回
-            // 分步位移：掉帧时 dt 可达 0.1s 以上，配冲刺速度一次 Move 就是半米开外，
-            // 远超胶囊半径 —— 薄墙会整个落在扫掠的两次采样之间。**这是"卡顿时穿墙"
-            // 的直接路径**，而且掉帧越厉害越容易穿。上一轮只给突进技能加了分步，
-            // 漏掉了这条每帧都在走的主路径。
-            Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
-
-            // ===== 朝向：交战时【脸对着敌人】，移动方向由摇杆决定（横移/后撤/绕行）=====
-            //
-            // 这是本轮补上的一条基础能力。之前只有一条规则——"朝哪走就转向哪"，
-            // 于是想往左移动就必须先把身体转到左边：那是**转向**，不是横移。
-            // 一切近身格斗类游戏都把这两件事分开：锁定/交战时身体始终对着目标，
-            // 摇杆推左就左跨、推后就后撤、斜后就是撤步绕角，脸从头到尾没离开敌人。
-            // 只有脱离交战（探索行进）才回到"朝哪走就朝哪转"。
+            // ===== 顺序：先转向，再决定位移方向，最后位移 =====
+            // 原来是先位移后转向，而位移方向直接取摇杆、与朝向无关——那正是
+            // "被摇杆拖着走"的结构性来源（见下面两段根因说明）。
             if (face != null)
             {
                 Vector3 toT = face.position - transform.position; toT.y = 0;
@@ -701,12 +684,93 @@ namespace AdversityRoad.Player
                 }
                 else
                 {
-                    float ang = Quaternion.Angle(transform.rotation, target);
-                    float rs = rotateSpeed * (ang > 80f ? quickTurnMultiplier : 1f);
-                    transform.rotation = Quaternion.Slerp(transform.rotation, target, rs * dt);
+                    // 【根因一：转向根本没有角速度上限】
+                    // 原来这里是
+                    //     rs = rotateSpeed * (ang > 80 ? quickTurnMultiplier : 1);
+                    //     rotation = Quaternion.Slerp(rotation, target, rs * dt);
+                    // Slerp 的第三个参数是**比例**，不是角速度。60fps 下
+                    // rotateSpeed=14 ⇒ 每帧吃掉剩余角度的 23%；大角度时
+                    // quickTurn=2.1 ⇒ **每帧吃掉 49%**。
+                    //
+                    // 后果不是"转得快"，而是**转多远都花一样的时间**（指数收敛）：
+                    // 实测转到 1° 以内，90° 要 0.267s、180° 要 0.283s——差别只有 6%。
+                    // 真实的身体转两倍的角度要花两倍的时间；而这套写法里，
+                    // 身体只是在"追踪摇杆当前指向"，它没有自己的转速。
+                    // 这正是"完全是被摇杆拖动的"在物理上的定义。
+                    //
+                    // 改后（角速度上限）：站定 90°/180° = 0.15s / 0.25s，
+                    // 全速 = 0.35s / 0.60s——与角度成正比，且跑得越快转得越慢。
+                    //
+                    // 讽刺的是：同一个方法里，攻击分支与上面的锁定分支**早就**用的是
+                    // 正确的角速度上限（RotateTowards + 度/秒），攻击分支的注释还写着
+                    // "用明确的角速度上限（度/秒）而非低倍率 Slerp"——
+                    // 唯独最常用的自由移动分支漏在外面。
+                    //
+                    // 改为真正的角速度上限，且**随速度递减**：站着可以原地快转，
+                    // 全速时转向必须走出半径。跑步的惯性感就来自这条。
+                    float sp01 = Mathf.Clamp01(_hVel.magnitude / Mathf.Max(0.1f, runSpeed));
+                    float cap = Mathf.Lerp(turnDegPerSecStill, turnDegPerSecSprint, sp01);
+                    if (Quaternion.Angle(transform.rotation, target) > 100f)
+                        cap *= quickTurnBoost;      // 掉头可以快一些，但依然有限
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation,
+                        target, cap * dt);
                 }
             }
+
+            // ===== 位移方向：跟随身体朝向，而不是直接吃摇杆 =====
+            //
+            // 【根因二：位移方向与朝向完全解耦】
+            // 原来是 targetVel = moveDir * speed，而 moveDir 是**摇杆方向**，
+            // 与 transform.forward 毫无关系。于是位移方向当帧就跟着摇杆转，
+            // 身体朝向又在 50ms 内跟上——两者都瞬间跟随，角色就成了一个
+            // 被摇杆拖着的点，而不是一个在跑步的人。搓杆转一圈，人像陀螺一样
+            // 原地打转，脚下却没有任何"跑出一条弧线"的过程。
+            // 改后全速搓杆的轨迹半径 = v/ω = 5.2 / (260°/s) ≈ 1.15 m，
+            // 也就是真的会跑出一个圈来，而不是在原地转。
+            //
+            // 它还有一个不报错的连带后果，直接对上"几乎看不到角色自己的移动节奏"：
+            // 身体瞬间对齐位移方向之后，
+            //     moveAngle = SignedAngle(transform.forward, 实际位移)
+            // 恒 ≈ 0，方向混合永远命中 0°，于是搓杆转圈时播的一直是同一条正前跑
+            // 循环。上一轮 moveAngle 是被硬写成 0，这一轮是身体转太快让它自然趋近
+            // 0——同一个症状的两个来源，我上一轮只修掉了其中一个。
+            //
+            // 改为：摇杆决定【要去哪儿】（转向的目标），身体转过去，位移跟着身体走。
+            // 低速仍保留摇杆直控——起步与原地微调必须跟手，而且起步那一小段的
+            // 侧向位移正是侧步/倒步片段该出场的地方；越快越锁定到朝向。
+            Vector3 velDir = moveDir;
+            if (!StrafeActive && moveDir.sqrMagnitude > 0.01f)
+            {
+                // 上限留 0.9 而不是 1：全速时仍保留一点点横向修正权，
+                // 否则跑起来就完全"在轨道上"，微调不动，那是另一种不跟手。
+                float lockIn = 0.9f * Mathf.Clamp01(
+                    _hVel.magnitude / Mathf.Max(0.1f, walkSpeed * 1.2f));
+                // 【按角度插值，不用 Vector3.Slerp】
+                // Slerp 在两个向量接近 180° 时是退化的——全速中把摇杆猛推向身后，
+                // moveDir 与 forward 几乎反向，Slerp 会给出一个任意的垂直方向，
+                // 表现为莫名其妙的一下侧向甩动。绕轴转角在全角域都有定义。
+                float delta = Vector3.SignedAngle(transform.forward, moveDir, Vector3.up);
+                velDir = Quaternion.Euler(0f, delta * (1f - lockIn), 0f) * transform.forward;
+            }
+
+            // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
+            // ThirdPersonController 的做法（其注释原文：curved result rather than a
+            // linear one giving a more organic speed change）。
+            // 起步瞬间给足冲量（前几帧就到大半速度＝跟手），末段自然收敛（不突兀）。
+            // 用 1-e^(-k·dt) 而非 Lerp(a,b,k·dt)：帧率无关，高低帧手感一致。
+            Vector3 targetVel = velDir * speed;
+            float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
+            _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
+            CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
+            FallGuard();                // 掉出世界的兜底捞回
+            // 分步位移：掉帧时 dt 可达 0.1s 以上，配冲刺速度一次 Move 就是半米开外，
+            // 远超胶囊半径 —— 薄墙会整个落在扫掠的两次采样之间。**这是"卡顿时穿墙"
+            // 的直接路径**，而且掉帧越厉害越容易穿。上一轮只给突进技能加了分步，
+            // 漏掉了这条每帧都在走的主路径。
+            Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
         }
+
+
 
         /// <summary>交战中锁面向的角速度上限（度/秒）：跟得住绕后，又不会甩镜。</summary>
         const float FaceTargetDegPerSec = 420f;
@@ -963,10 +1027,14 @@ namespace AdversityRoad.Player
                         : (need > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
                     if (_anim.HasPose(tp))
                     {
-                        // 给时长，别让转身片段拖在身体后面：quickTurnMultiplier 下
-                        // 身体掉头只要 ≈0.2s，而转身片段原速要演 0.8s——不压时长的话
-                        // 人已经朝新方向跑起来了，腿还在演原地转身。
-                        _anim.SetPose(tp, absNeed > 150f ? 0.45f : 0.35f);
+                        // 片段时长【跟着身体实际转完的时间走】，不再拍两个固定值：
+                        // 原地转身触发时人是站定的，此刻角速度上限就是 turnDegPerSecStill
+                        //（掉头再乘 quickTurnBoost），转完所需时间是可以直接算出来的。
+                        // 拍固定值的写法在转速一改就会重新对不上——原注释引用的
+                        // quickTurnMultiplier 现在已经不存在了，正是这么过期的。
+                        float turnCap = turnDegPerSecStill * (absNeed > 100f ? quickTurnBoost : 1f);
+                        float bodyTurnT = absNeed / Mathf.Max(1f, turnCap);
+                        _anim.SetPose(tp, Mathf.Clamp(bodyTurnT, 0.22f, 0.5f));
                         _moveStateCd = 0.65f;
                     }
                 }
