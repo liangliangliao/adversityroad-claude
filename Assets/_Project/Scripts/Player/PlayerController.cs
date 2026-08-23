@@ -660,6 +660,40 @@ namespace AdversityRoad.Player
                 return;
             }
 
+            // ===== 跑动中的转身（急停—插步—起步），成熟动作游戏的第四条规则 =====
+            //
+            // 【资源一直都在，是我把它锁死了】
+            // Left Turn 90 / Right Turn 90 / Quick 180 Turn 早就在动作库里、也映射了
+            // PoseState，但触发条件写的是"站定 0.2 秒以上"（_stillT > 0.2，而 _stillT
+            // 只在 speed01 < 0.06 时累加）。于是**跑动中永远播不到**——而跑动中大角度
+            // 换向正是陀螺现象发生的那一刻。
+            //
+            // 当初这么锁是因为它在跑动中播时"人还在平移、腿却在演原地转身"。
+            // 我那是把功能关掉来消症状，没修真正的不匹配。大作的做法不是"跑动中
+            // 不播转身"，而是**让位移配合转身**：刹住 → 插步转过去 → 重新起步。
+            // 动作与位移一致，观感就成立，这也正是"一步一个脚印"的来源。
+            //
+            // 当初误触发的元凶是搓杆（速度经过零被误判成站定）。现在有了方向意图
+            // 置信度这道闸门，搓杆时 trust≈0 根本进不来，可以安全地对跑动开放。
+            if (_pivotT > 0f)
+            {
+                _pivotT -= dt;
+                // 朝向在片段时长内转到位：转速由"还剩多少角度 / 还剩多少时间"给出，
+                // 于是动作播完的那一刻朝向正好到位，不会出现"人已朝新方向跑、腿还在转"
+                float rem = Mathf.Max(0.02f, _pivotT);
+                float left = Quaternion.Angle(transform.rotation, _pivotTarget);
+                transform.rotation = Quaternion.RotateTowards(
+                    transform.rotation, _pivotTarget, (left / rem) * dt);
+                // 插步：这段片段本身没有前进位移，所以位移也要跟着刹住，
+                // 收尾再放开——这就是"急停—插步—起步"，而不是边平移边原地转。
+                _hVel = Vector3.MoveTowards(_hVel, Vector3.zero, PivotBrake * dt);
+                CarryByPlatform();
+                FallGuard();
+                Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
+                DbgTargetVel = 0f; DbgVel = _hVel.magnitude; DbgFinalSpeed = 0f;
+                DbgHitSides = (_cc.collisionFlags & CollisionFlags.Sides) != 0;
+                return;
+            }
             // ===== 顺序：先转向，再决定位移方向，最后位移 =====
             // 原来是先位移后转向，而位移方向直接取摇杆、与朝向无关——那正是
             // "被摇杆拖着走"的结构性来源（见下面两段根因说明）。
@@ -776,8 +810,34 @@ namespace AdversityRoad.Player
             // 始终匹配——这才是"正常移动"。
             Vector3 velDir = StrafeActive || moveDir.sqrMagnitude <= 0.01f
                 ? moveDir : transform.forward;
-            DbgTurnNeed = moveDir.sqrMagnitude > 0.01f
-                ? Mathf.Abs(Vector3.SignedAngle(transform.forward, moveDir, Vector3.up)) : 0f;
+            float needDeg = moveDir.sqrMagnitude > 0.01f
+                ? Vector3.SignedAngle(transform.forward, moveDir, Vector3.up) : 0f;
+            DbgTurnNeed = Mathf.Abs(needDeg);
+
+            // 触发跑动转身：确实在跑 + 方向意图明确（搓杆进不来）+ 要转的角度够大。
+            // 门槛取 100°：再小的换向靠角速度上限自然带出弧线就够了，
+            // 插一段转身反而会打断连续的跑动。
+            if (!StrafeActive && _anim != null && _cc.isGrounded && _pivotT <= 0f &&
+                _pivotCd <= 0f && _hVel.magnitude > walkSpeed * 0.7f &&
+                DbgDirTrust > 0.75f && DbgTurnNeed > 100f)
+            {
+                var pv = DbgTurnNeed > 150f
+                    ? PoseState.Turn180
+                    : (needDeg > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
+                if (_anim.HasPose(pv))
+                {
+                    float clipLen = _anim.ActionClipLength(pv);
+                    _pivotT = clipLen > 0.1f ? Mathf.Clamp(clipLen * 0.7f, 0.28f, 0.5f) : 0.36f;
+                    _pivotTarget = Quaternion.LookRotation(moveDir);
+                    _pivotCd = _pivotT + 0.25f;     // 防止一段接一段地连播
+                    // 压住移动过渡层：它在 LateUpdate 里跑，起步/急停/原地转身都会
+                    // 调 SetPose，会把这段转身片段当场覆盖掉（铁律二：两处写同一个东西）。
+                    // _moveStateCd 正是它自己的冷却闸门，借用它即可，不必再加一个标志。
+                    _moveStateCd = _pivotT + 0.12f;
+                    _anim.SetPose(pv, _pivotT);
+                }
+            }
+            _pivotCd -= dt;
 
             // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
             // ThirdPersonController 的做法（其注释原文：curved result rather than a
@@ -823,6 +883,13 @@ namespace AdversityRoad.Player
         Vector2 _dirMean;
         float _prevDirYaw;
         bool _dirMeanInit;
+
+        // 跑动转身（急停—插步—起步）的进行中状态
+        float _pivotT, _pivotCd;
+        Quaternion _pivotTarget = Quaternion.identity;
+        /// <summary>插步时把水平速度刹住的减速度（m/s²）。片段本身没有前进位移，
+        /// 位移必须跟着停，否则又变回"人在平移、腿在原地转"。</summary>
+        const float PivotBrake = 26f;
         /// <summary>方向向量的滑动平均速率——与 ThirdPersonCamera.DirMeanRate 同值，
         /// 两层对"什么才算一个方向"必须用同一把尺子。</summary>
         const float DirMeanRate = 2.2f;
