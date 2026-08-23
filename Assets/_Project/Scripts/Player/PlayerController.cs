@@ -717,41 +717,23 @@ namespace AdversityRoad.Player
                 }
             }
 
-            // ===== 位移方向：跟随身体朝向，而不是直接吃摇杆 =====
+            // ===== 位移方向 =====
+            // 【撤销上一轮的"位移跟随朝向"】
+            // 上一轮我把 targetVel 从摇杆方向改成了"朝向与摇杆之间按速度插值"：
+            //     velDir = Euler(0, delta*(1-lockIn), 0) * forward,  lockIn = 0.9*|v|/3.12
+            // 撤销有两个理由，都由实机数据给出：
             //
-            // 【根因二：位移方向与朝向完全解耦】
-            // 原来是 targetVel = moveDir * speed，而 moveDir 是**摇杆方向**，
-            // 与 transform.forward 毫无关系。于是位移方向当帧就跟着摇杆转，
-            // 身体朝向又在 50ms 内跟上——两者都瞬间跟随，角色就成了一个
-            // 被摇杆拖着的点，而不是一个在跑步的人。搓杆转一圈，人像陀螺一样
-            // 原地打转，脚下却没有任何"跑出一条弧线"的过程。
-            // 改后全速搓杆的轨迹半径 = v/ω = 5.2 / (260°/s) ≈ 1.15 m，
-            // 也就是真的会跑出一个圈来，而不是在原地转。
+            // 1. 它的前提是错的。我当时断定"身体瞬间对齐位移方向 ⇒ 夹角恒≈0 ⇒
+            //    方向片段永远轮不到"。而诊断实测夹角是 **-67°**，方向片段一直在用。
+            //    前提不成立，这个改动就失去了理由。
             //
-            // 它还有一个不报错的连带后果，直接对上"几乎看不到角色自己的移动节奏"：
-            // 身体瞬间对齐位移方向之后，
-            //     moveAngle = SignedAngle(transform.forward, 实际位移)
-            // 恒 ≈ 0，方向混合永远命中 0°，于是搓杆转圈时播的一直是同一条正前跑
-            // 循环。上一轮 moveAngle 是被硬写成 0，这一轮是身体转太快让它自然趋近
-            // 0——同一个症状的两个来源，我上一轮只修掉了其中一个。
+            // 2. 它引入了新回归——"反向搓杆时角色倒着移动"。lockIn 在中低速时很小，
+            //    velDir 落在朝向与摇杆之间的中间角上；摇杆推向身后时这个中间方向
+            //    带着大量向后/侧向分量，于是人一边面朝前一边倒着挪。而搓杆转圈时
+            //    速度始终上不去，lockIn 就长期卡在低位，现象持续存在。
             //
-            // 改为：摇杆决定【要去哪儿】（转向的目标），身体转过去，位移跟着身体走。
-            // 低速仍保留摇杆直控——起步与原地微调必须跟手，而且起步那一小段的
-            // 侧向位移正是侧步/倒步片段该出场的地方；越快越锁定到朝向。
+            // 回到最直接的语义：摇杆指哪就往哪走，朝向另有一套规则去追。
             Vector3 velDir = moveDir;
-            if (!StrafeActive && moveDir.sqrMagnitude > 0.01f)
-            {
-                // 上限留 0.9 而不是 1：全速时仍保留一点点横向修正权，
-                // 否则跑起来就完全"在轨道上"，微调不动，那是另一种不跟手。
-                float lockIn = 0.9f * Mathf.Clamp01(
-                    _hVel.magnitude / Mathf.Max(0.1f, walkSpeed * 1.2f));
-                // 【按角度插值，不用 Vector3.Slerp】
-                // Slerp 在两个向量接近 180° 时是退化的——全速中把摇杆猛推向身后，
-                // moveDir 与 forward 几乎反向，Slerp 会给出一个任意的垂直方向，
-                // 表现为莫名其妙的一下侧向甩动。绕轴转角在全角域都有定义。
-                float delta = Vector3.SignedAngle(transform.forward, moveDir, Vector3.up);
-                velDir = Quaternion.Euler(0f, delta * (1f - lockIn), 0f) * transform.forward;
-            }
 
             // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
             // ThirdPersonController 的做法（其注释原文：curved result rather than a
@@ -782,6 +764,11 @@ namespace AdversityRoad.Player
         public float DbgVel { get; private set; }
         /// <summary>诊断：这一帧 CharacterController 有没有撞到侧面（墙）。</summary>
         public bool DbgHitSides { get; private set; }
+        /// <summary>诊断：战斗状态机当前状态，以及它是不是【硬锁】。
+        /// 硬锁时移动方法在最开头就 return——转向照跑、水平位移归零，
+        /// 也就是说本文件下面所有的移动代码一行都不执行。</summary>
+        public string DbgCombatState => _combat != null ? _combat.Current.ToString() : "无";
+        public bool DbgHardLocked => _combat != null && _combat.IsHardLocked;
 
 
 

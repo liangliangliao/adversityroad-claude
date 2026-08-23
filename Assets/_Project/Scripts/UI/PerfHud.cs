@@ -99,58 +99,56 @@ namespace AdversityRoad.UI
         }
 
         Text _spin;
-        float _prevBodyYaw, _prevCamYaw;
+        float _prevBodyYaw;
         bool _yawInit;
 
-        // 上一版的缺陷（我自己的锅）：峰值/最小值/末值混在同一行，读出来的
-        // 六个数不是同一帧的，互相对不上账（身63°/s 配 半径0.3m 需要 382°/s，
-        // 明显矛盾）。这一版只保留**同一帧的完整快照**，挑选依据是
-        // 「速度丢得最厉害的那一帧」——因为要查的就是那 3.2m/s 去哪了。
-        string _snap = "";
-        float _worstLoss, _snapUntil;
+        // 【上一版诊断自己的毛病】判据是"取丢速最厉害的那一帧"，
+        // 而那保证抓到的是**离群单帧**（出招落地、碰撞解算的那一瞬），
+        // 不是持续行为——三张截图各抓到一个不同的离群点，互相对不上。
+        // 改为一秒内的统计：平均命令/平均实际、硬锁占比、撞墙占比、平均身体角速度。
+        // 持续现象才会体现在平均值里，一次性的毛刺被摊平。
+        int _n, _nLock, _nWall;
+        float _sCmd, _sVel, _sAct, _sBody, _sAngle;
+        string _line = "";
+        float _nextRoll;
 
         void SampleSpin(float dt)
         {
             if (_spin == null || dt <= 0.0001f) return;
             var pc = AdversityRoad.Core.ActorRegistry.Player;
             if (pc == null) { _spin.text = ""; return; }
-            var cam = Camera.main;
 
             float bodyYaw = pc.transform.eulerAngles.y;
-            float camYaw = cam != null ? cam.transform.eulerAngles.y : 0f;
-            if (!_yawInit) { _yawInit = true; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw; return; }
+            if (!_yawInit) { _yawInit = true; _prevBodyYaw = bodyYaw; return; }
             float bRate = Mathf.Abs(Mathf.DeltaAngle(_prevBodyYaw, bodyYaw)) / dt;
-            float cRate = Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, camYaw)) / dt;
-            _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
+            _prevBodyYaw = bodyYaw;
 
-            // 摇杆角速度不再直接测（摇杆量很低时方向是噪声，上一版因此炸出 7934°/s）。
-            // 身体角速度已经够用，且它才是"角色在不在转"的直接量。
-
-            float cmd = pc.DbgFinalSpeed;      // 这一帧命令的速度（m/s）
-            float vel = pc.DbgVel;             // 平滑后真正下发给 Move 的矢量模长
-            float act = pc.DbgActual;          // 由真实位移测出来的地面速度
-
-            // 只在【确实在推杆移动】时评判，否则松杆减速会被误判成"丢速"
-            if (pc.DbgInputMag > 0.6f && cmd > 1f)
+            // 只统计【确实在推杆】的帧：松杆减速本来就该丢速，混进来会污染平均
+            if (pc.DbgInputMag > 0.6f)
             {
-                float loss = cmd - act;
-                if (loss > _worstLoss || Time.unscaledTime > _snapUntil)
-                {
-                    _worstLoss = loss;
-                    _snapUntil = Time.unscaledTime + 3f;   // 快照保持 3 秒，够截图
-                    var anim = pc.GetComponent<Combat.HumanoidAnimator>();
-                    float radius = bRate > 5f ? act / (bRate * Mathf.Deg2Rad) : 999f;
-                    _snap = string.Format(
-                        "丢速快照 命令{0:F1}→矢量{1:F1}→实际{2:F1}m/s {3} | 身{4:F0} 镜{5:F0}°/s 半径{6} | 夹角{7:F0}° 步频{8:F2}",
-                        cmd, vel, act, pc.DbgHitSides ? "【撞墙】" : "未撞",
-                        bRate, cRate,
-                        radius > 100f ? "--" : radius.ToString("F1") + "m",
-                        pc.DbgMoveAngle, anim != null ? anim.DbgPhaseRate : 0f);
-                }
+                _n++;
+                _sCmd += pc.DbgFinalSpeed;
+                _sVel += pc.DbgVel;
+                _sAct += pc.DbgActual;
+                _sBody += bRate;
+                _sAngle += Mathf.Abs(pc.DbgMoveAngle);
+                if (pc.DbgHardLocked) _nLock++;
+                if (pc.DbgHitSides) _nWall++;
             }
-            else if (Time.unscaledTime > _snapUntil) _worstLoss = 0f;
 
-            _spin.text = _snap;
+            if (Time.unscaledTime < _nextRoll) { _spin.text = _line; return; }
+            _nextRoll = Time.unscaledTime + 1f;
+            if (_n < 3) { _spin.text = _line; return; }
+
+            float inv = 1f / _n;
+            _line = string.Format(
+                "推杆1秒均值 命令{0:F1}→矢量{1:F1}→实际{2:F1}m/s | 硬锁{3:F0}% 撞墙{4:F0}% | 身{5:F0}°/s 夹角{6:F0}° | 状态 {7}",
+                _sCmd * inv, _sVel * inv, _sAct * inv,
+                100f * _nLock / _n, 100f * _nWall / _n,
+                _sBody * inv, _sAngle * inv, pc.DbgCombatState);
+            _n = _nLock = _nWall = 0;
+            _sCmd = _sVel = _sAct = _sBody = _sAngle = 0f;
+            _spin.text = _line;
         }
 
         void Update()
