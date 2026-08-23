@@ -25,6 +25,8 @@ namespace AdversityRoad.UI
         public static bool Enabled = true;
 
         Text _text;
+        Text _move;              // 第二行：移动诊断
+        Player.PlayerController _pc;
         float _accum, _worst;
         int _frames;
         float _nextReport;
@@ -54,13 +56,32 @@ namespace AdversityRoad.UI
             rt.anchorMin = rt.anchorMax = new Vector2(1f, 1f);
             rt.pivot = new Vector2(1f, 1f);
             rt.anchoredPosition = new Vector2(-24f, -190f);   // 让开右上角的暂停/菜单/目标
-            rt.sizeDelta = new Vector2(560f, 40f);
+            rt.sizeDelta = new Vector2(700f, 40f);
+
+            // 第二行：移动诊断。速度是好几层倍率连乘出来的，"移动变慢"到底慢在
+            // 哪一层——行动力低？减速 debuff？锁定封顶？出招定步卡住？——
+            // 只看角色跑得快不快是分不出来的，必须把每一层原样摆出来。
+            var m = new GameObject("MoveText");
+            m.transform.SetParent(go.transform, false);
+            _move = m.AddComponent<Text>();
+            _move.font = _text.font;
+            _move.fontSize = 24;
+            _move.alignment = TextAnchor.UpperRight;
+            _move.color = new Color(0.6f, 0.9f, 1f);
+            _move.raycastTarget = false;
+            _move.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var mrt = _move.rectTransform;
+            mrt.anchorMin = mrt.anchorMax = new Vector2(1f, 1f);
+            mrt.pivot = new Vector2(1f, 1f);
+            mrt.anchoredPosition = new Vector2(-24f, -226f);
+            mrt.sizeDelta = new Vector2(700f, 40f);
         }
 
         void Update()
         {
             if (_text == null) return;
             if (_text.enabled != Enabled) _text.enabled = Enabled;
+            if (_move != null && _move.enabled != Enabled) _move.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -86,6 +107,31 @@ namespace AdversityRoad.UI
             _text.color = worstMs > 60f ? new Color(1f, 0.45f, 0.35f)
                                         : new Color(1f, 0.95f, 0.4f);
             _accum = 0f; _frames = 0; _worst = 0f;
+
+            ReportMovement();
+        }
+
+        void ReportMovement()
+        {
+            if (_move == null) return;
+            if (_pc == null)
+                _pc = Object.FindFirstObjectByType<Player.PlayerController>();
+            if (_pc == null) { _move.text = ""; return; }
+
+            // 实测移速：由控制器每帧量出来的真实位移换算（不是"打算走多快"，
+            // 而是"实际走了多快"）——两者对不上本身就是一条线索。
+            float want = _pc.DbgFinalSpeed;
+            string cap = _pc.DbgStrafeCap > 0.01f
+                ? string.Format("锁定封顶{0:F1}", _pc.DbgStrafeCap) : "无封顶";
+            _move.text = string.Format(
+                "杆{0:F2} 目标{1:F1}/{2:F1}m/s | 行动力×{3:F2} 减速×{4:F2} 出招×{5:F2} | {6} | {7}",
+                _pc.DbgInputMag, want, _pc.DbgRawSpeed,
+                _pc.DbgApMult, _pc.MoveSpeedMultiplier, _pc.DbgAttackFactor,
+                cap, _pc.StrafeActive ? "锁定中" : "自由");
+            // 任何一层把速度压到七成以下就标红——那就是"变慢"的那一层
+            bool slowed = _pc.DbgApMult < 0.95f || _pc.MoveSpeedMultiplier < 0.95f ||
+                          _pc.DbgAttackFactor < 0.95f;
+            _move.color = slowed ? new Color(1f, 0.6f, 0.35f) : new Color(0.6f, 0.9f, 1f);
         }
 
         float _nextCount;

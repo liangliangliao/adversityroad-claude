@@ -504,11 +504,17 @@ namespace AdversityRoad.Player
             // 锁定面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
             Transform face = FacingTarget();
             StrafeActive = face != null;
+            DbgStrafeCap = 0f;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
             float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
+            // 诊断用：速度是好几层倍率连乘出来的（行动力、减速 debuff、锁定封顶、
+            // 出招定步），"移动变慢"到底慢在哪一层，只看结果分不出来。
+            DbgApMult = apMult;
+            DbgInputMag = inputMag;
+            DbgRawSpeed = speed;
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
             // 室内只走不跑：在自己家里冲刺既不合情理，也是"转一圈就晕"的一部分——
@@ -544,6 +550,7 @@ namespace AdversityRoad.Player
                     cap = Mathf.Lerp(walkSpeed * 1.0f, walkSpeed * 0.8f,
                                      (sideAng - 90f) / 90f);                  // 正侧→后撤
                 speed = Mathf.Min(speed, cap * MoveSpeedMultiplier);
+                DbgStrafeCap = cap * MoveSpeedMultiplier;
             }
             // 出招定步（平滑化）：攻击动画占据全身，照常位移会读作"脚不动人在滑"。
             // 但此前用【硬性 ×0.1】会造成速度震荡——推着摇杆连打时，每一段出招速度
@@ -553,6 +560,8 @@ namespace AdversityRoad.Player
             _attackSpeedFactor = Mathf.MoveTowards(_attackSpeedFactor,
                 attacking ? 0.3f : 1f, dt / 0.07f);
             speed *= _attackSpeedFactor;
+            DbgAttackFactor = _attackSpeedFactor;
+            DbgFinalSpeed = speed;
 
             // 土狼时间（coyote time）：离开地面边缘后仍有一小段时间可以起跳——
             // 玩家的意图是"我在跳台边缘按了跳"，而不是"我晚了两帧所以活该掉下去"
@@ -689,6 +698,20 @@ namespace AdversityRoad.Player
 
         /// <summary>横移态（脸锁在目标上、移动方向独立）——镜头与动画都要知道。</summary>
         public bool StrafeActive { get; private set; }
+
+        // ===== 移动诊断读数（PerfHud 用；不参与任何逻辑）=====
+        /// <summary>行动力倍率（0.65~1）。行动力过低会压移速，这是设计内的机制。</summary>
+        public float DbgApMult { get; private set; } = 1f;
+        /// <summary>本帧摇杆幅度。</summary>
+        public float DbgInputMag { get; private set; }
+        /// <summary>各层封顶之前的原始目标速度。</summary>
+        public float DbgRawSpeed { get; private set; }
+        /// <summary>锁定横移时的方向封顶（0=本帧没有封顶）。</summary>
+        public float DbgStrafeCap { get; private set; }
+        /// <summary>出招定步倍率（0.3~1）。卡在 0.3 就是"永远只有三成速度"。</summary>
+        public float DbgAttackFactor { get; private set; } = 1f;
+        /// <summary>所有倍率乘完之后、真正喂给加减速的目标速度。</summary>
+        public float DbgFinalSpeed { get; private set; }
 
         /// <summary>
         /// 当前该锁面向谁——**只认玩家自己按下的锁定**（Q 键 / 触屏「锁」按钮）。
