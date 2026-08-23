@@ -1159,8 +1159,17 @@ namespace AdversityRoad.Combat
                 wSum += w;
             }
             if (wSum > 0.001f)
-                _phase01 = Mathf.Repeat(_phase01 + dt * (rateSum / wSum), 1f);
+            {
+                DbgPhaseRate = rateSum / wSum;          // 步态周期数/秒（诊断用，只读）
+                _phase01 = Mathf.Repeat(_phase01 + dt * DbgPhaseRate, 1f);
+            }
+            else DbgPhaseRate = 0f;
         }
+
+        /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
+        public float DbgPhaseRate { get; private set; }
+        /// <summary>诊断：方向混合实际落在的角度（度）。恒 ≈0 就说明方向片段全没用上。</summary>
+        public float DbgBlendAngle => _blendAngle;
 
         /// <summary>把算好的方向权重与共享相位写进混合器。</summary>
         void ApplyDirWeights()

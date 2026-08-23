@@ -44,6 +44,10 @@ namespace AdversityRoad.Combat
         int _poseSerial, _lastMecanimSerial = -1;
         bool Mecanim => _mecanim != null && _mecanim.Valid;
 
+        /// <summary>诊断：动画层实际用的方向混合角与步频（无动捕时为 0）。</summary>
+        public float DbgBlendAngle => Mecanim ? _mecanim.DbgBlendAngle : 0f;
+        public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
+
         /// <summary>诊断用：这个角色走的是不是【动捕】通路。
         /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
         /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，

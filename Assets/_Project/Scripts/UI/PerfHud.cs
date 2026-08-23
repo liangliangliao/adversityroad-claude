@@ -75,6 +75,90 @@ namespace AdversityRoad.UI
             mrt.pivot = new Vector2(1f, 1f);
             mrt.anchoredPosition = new Vector2(-24f, -226f);
             mrt.sizeDelta = new Vector2(700f, 40f);
+
+            // 第三行：**搓杆时的整条链**。"看不到角色自己的移动节奏"这句话，
+            // 从摇杆到腿一共经过六个环节，光看画面分不出断在哪一环：
+            //   杆角速度 → 身体角速度 → 镜头角速度 → 实际移速/转弯半径
+            //   → 喂给动画的夹角/混合角 → 步态相位速率
+            // 全打出来，一次搓杆截图就能定死是哪一环。峰值保持 1.2 秒，
+            // 否则搓完手一松数字就掉回 0，截图永远抓不到。
+            var s3 = new GameObject("SpinText");
+            s3.transform.SetParent(go.transform, false);
+            _spin = s3.AddComponent<Text>();
+            _spin.font = _text.font;
+            _spin.fontSize = 24;
+            _spin.alignment = TextAnchor.UpperRight;
+            _spin.color = new Color(1f, 0.75f, 0.95f);
+            _spin.raycastTarget = false;
+            _spin.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var srt = _spin.rectTransform;
+            srt.anchorMin = srt.anchorMax = new Vector2(1f, 1f);
+            srt.pivot = new Vector2(1f, 1f);
+            srt.anchoredPosition = new Vector2(-24f, -262f);
+            srt.sizeDelta = new Vector2(760f, 40f);
+        }
+
+        Text _spin;
+        float _prevStickYaw, _prevBodyYaw, _prevCamYaw;
+        bool _yawInit;
+        // 峰值保持：搓杆那一下的读数要留在屏幕上足够久，人才截得到
+        float _pkStick, _pkBody, _pkCam, _pkActual, _pkRadius, _pkAngle, _pkBlend, _pkPhase;
+        float _pkUntil;
+
+        /// <summary>把搓杆整条链每帧采样、取峰值保持，供第三行显示。</summary>
+        void SampleSpin(float dt)
+        {
+            if (_spin == null || dt <= 0.0001f) return;
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
+            var cam = Camera.main;
+            if (pc == null) { _spin.text = ""; return; }
+
+            Vector3 sw = pc.StickWorldDir;
+            float stickYaw = sw.sqrMagnitude > 0.04f
+                ? Quaternion.LookRotation(sw.normalized).eulerAngles.y : _prevStickYaw;
+            float bodyYaw = pc.transform.eulerAngles.y;
+            float camYaw = cam != null ? cam.transform.eulerAngles.y : 0f;
+
+            if (!_yawInit)
+            {
+                _yawInit = true;
+                _prevStickYaw = stickYaw; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
+                return;
+            }
+
+            float sRate = Mathf.Abs(Mathf.DeltaAngle(_prevStickYaw, stickYaw)) / dt;
+            float bRate = Mathf.Abs(Mathf.DeltaAngle(_prevBodyYaw, bodyYaw)) / dt;
+            float cRate = Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, camYaw)) / dt;
+            _prevStickYaw = stickYaw; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
+
+            var anim = pc.GetComponent<Combat.HumanoidAnimator>();
+            float actual = pc.DbgActual;
+            // 转弯半径 = v / ω：贴近 0 就是【原地打转】，那正是"被摇杆拖着转"的样子
+            float radius = bRate > 5f ? actual / (bRate * Mathf.Deg2Rad) : 999f;
+
+            // 只在真的在搓杆时刷新峰值（杆自己在转），否则保持上一次的读数
+            if (sRate > 60f || Time.unscaledTime < _pkUntil)
+            {
+                if (sRate > 60f) _pkUntil = Time.unscaledTime + 1.2f;
+                if (sRate > _pkStick) _pkStick = sRate;
+                if (bRate > _pkBody) _pkBody = bRate;
+                if (cRate > _pkCam) _pkCam = cRate;
+                _pkActual = actual;
+                if (radius < _pkRadius || _pkRadius <= 0.01f) _pkRadius = radius;
+                _pkAngle = pc.DbgMoveAngle;
+                if (anim != null) { _pkBlend = anim.DbgBlendAngle; _pkPhase = anim.DbgPhaseRate; }
+            }
+            else if (Time.unscaledTime > _pkUntil + 2f)
+            {
+                // 停手两秒后清零，下一次搓杆重新计峰
+                _pkStick = _pkBody = _pkCam = 0f; _pkRadius = 0f;
+            }
+
+            _spin.text = string.Format(
+                "搓杆 杆{0:F0} 身{1:F0} 镜{2:F0}°/s | 移{3:F1}m/s 半径{4} | 夹角{5:F0}° 混{6:F0}° | 步频{7:F2}/s",
+                _pkStick, _pkBody, _pkCam, _pkActual,
+                _pkRadius > 100f ? "--" : _pkRadius.ToString("F1") + "m",
+                _pkAngle, _pkBlend, _pkPhase);
         }
 
         void Update()
@@ -82,6 +166,7 @@ namespace AdversityRoad.UI
             if (_text == null) return;
             if (_text.enabled != Enabled) _text.enabled = Enabled;
             if (_move != null && _move.enabled != Enabled) _move.enabled = Enabled;
+            if (_spin != null && _spin.enabled != Enabled) _spin.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -90,6 +175,8 @@ namespace AdversityRoad.UI
             _accum += dt;
             _frames++;
             if (dt > _worst) _worst = dt;
+
+            SampleSpin(dt);   // 搓杆链路要每帧采（角速度是差分出来的，不能只在汇报时算）
 
             if (Time.unscaledTime < _nextReport) return;
             _nextReport = Time.unscaledTime + 0.5f;

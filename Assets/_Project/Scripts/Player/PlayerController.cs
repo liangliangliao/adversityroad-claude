@@ -791,6 +791,10 @@ namespace AdversityRoad.Player
         public float DbgAttackFactor { get; private set; } = 1f;
         /// <summary>所有倍率乘完之后、真正喂给加减速的目标速度。</summary>
         public float DbgFinalSpeed { get; private set; }
+        /// <summary>诊断：喂给动画层的行进夹角（度）。恒 ≈0 ⇒ 方向片段永远轮不到。</summary>
+        public float DbgMoveAngle { get; private set; }
+        /// <summary>诊断：由真实位移测出的地面速度（m/s），不是目标速度。</summary>
+        public float DbgActual { get; private set; }
 
         /// <summary>
         /// 当前该锁面向谁——**只认玩家自己按下的锁定**（Q 键 / 触屏「锁」按钮）。
@@ -871,6 +875,8 @@ namespace AdversityRoad.Player
             float moveAngle = 0f;
             if (planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+            DbgMoveAngle = moveAngle;   // 诊断：喂给动画层的行进夹角
+            DbgActual = actual;         // 诊断：由真实位移量出来的地面速度
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle, StrafeActive);
             UpdateMoveStatePose(speed01, dt);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
