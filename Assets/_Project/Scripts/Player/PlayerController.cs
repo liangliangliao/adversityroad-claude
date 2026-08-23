@@ -24,9 +24,13 @@ namespace AdversityRoad.Player
         public float decelRate = 26f;              // 停步逼近速率
         // 转向的角速度上限（度/秒）。**不是** Slerp 的比例系数——旧的 rotateSpeed /
         // quickTurnMultiplier 就是当比例用的，导致身体几乎瞬间贴到摇杆上，见移动方法里的说明。
-        public float turnDegPerSecStill = 720f;    // 站定：180° 用 0.25s，推杆即回身
-        public float turnDegPerSecSprint = 300f;   // 全速：转向半径 ≈1.0m，跑得出一个圈
-        // 掉头加成已删除——它在搓杆时恒定生效，是身体转到 453~784°/s 的直接原因
+        public float turnDegPerSecStill = 720f;    // 站定时的封顶：180° 用 0.25s，推杆即回身
+        /// <summary>转向允许的最大横向加速度（m/s²）。角速度由它反推：ω = a / v。
+        /// 这是本作转向手感的**唯一**旋钮，而且它有物理含义：
+        ///   · 调小 ⇒ 转弯半径大、更有重量感（10 ≈ 1g，接近真人极限）
+        ///   · 调大 ⇒ 转得紧、更街机（30 就会重新出现"陀螺"观感）
+        /// 16 ≈ 1.6g：全速转弯半径 1.69m、掉头 1.0s。</summary>
+        public float maxTurnLateralAccel = 16f;
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -708,16 +712,28 @@ namespace AdversityRoad.Player
                     //
                     // 改为真正的角速度上限，且**随速度递减**：站着可以原地快转，
                     // 全速时转向必须走出半径。跑步的惯性感就来自这条。
-                    // 【掉头加成已整个删除】它的触发条件是"离目标>100°"，
-                    // 而搓杆时这个条件恒定成立，加成一直挂着——实测身体角速度
-                    // 因此冲到 453°/s，加上降速那层之后更是到了 784°/s（每秒两圈）。
-                    // 这就是"陀螺"观感的直接来源。
+                    // ===== 转向上限由【横向加速度】反推，不再是拍出来的常数 =====
                     //
-                    // 现在只剩一条随速度递减的恒定上限：站定可以干脆地原地转，
-                    // 跑起来必须走出转向半径。全速时 5.2 / (300°/s) ≈ 1.0m，
-                    // 也就是搓杆会跑出一个一米左右的圆，而不是原地打转。
-                    float sp01 = Mathf.Clamp01(_hVel.magnitude / Mathf.Max(0.1f, runSpeed));
-                    float cap = Mathf.Lerp(turnDegPerSecStill, turnDegPerSecSprint, sp01);
+                    // 我此前一直凭感觉挑角速度（620/260、720/300），却从没算过
+                    // 它对应的横向加速度。实测 327°/s @ 4.9m/s 意味着：
+                    //     半径 = 4.9 / (327°/s) = 0.86m
+                    //     横向加速度 = v²/r = 28 m/s² ≈ **2.9g**
+                    // 人类跑动急转最多 1g 上下。所以即便速度恒定、位移也沿正面，
+                    // 角色仍在做物理上不可能的事——用 4.9m/s 绕 0.86m 的圈、一秒一圈，
+                    // 看上去就是被甩着转的陀螺。何况我们没有"跑动转弯"的动画
+                    //（无倾身、无转向混合），身体高速自转、腿演直线跑循环，
+                    // 正是"看不到自己的移动节奏"。
+                    //
+                    // 正确的物理关系是 a = ω·v ⇒ **ω_max = a_max / v**：
+                    // 速度越高越转不动，转弯半径 r = v²/a 恒定。
+                    //     v=1.0 → 917°/s (r 0.06m)    v=3.8 → 241°/s (r 0.90m)
+                    //     v=2.6 → 353°/s (r 0.42m)    v=5.2 → 176°/s (r 1.69m)
+                    // 低速端由 turnDegPerSecStill 封顶，站定原地转身照样干脆。
+                    float sp = _hVel.magnitude;
+                    float cap = sp > 0.05f
+                        ? Mathf.Min(turnDegPerSecStill, maxTurnLateralAccel / sp * Mathf.Rad2Deg)
+                        : turnDegPerSecStill;
+                    DbgLateralG = sp * cap * Mathf.Deg2Rad / 9.81f;
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
                 }
@@ -783,6 +799,8 @@ namespace AdversityRoad.Player
         public bool DbgHardLocked => _combat != null && _combat.IsHardLocked;
         /// <summary>诊断：摇杆方向与身体正面的夹角（度），也就是"还要转多少"。</summary>
         public float DbgTurnNeed { get; private set; }
+        /// <summary>诊断：当前转向上限对应的横向加速度（g）。超过 1g 就不像人在跑。</summary>
+        public float DbgLateralG { get; private set; }
 
 
 

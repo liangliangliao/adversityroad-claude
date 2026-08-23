@@ -108,7 +108,7 @@ namespace AdversityRoad.UI
         // 改为一秒内的统计：平均命令/平均实际、硬锁占比、撞墙占比、平均身体角速度。
         // 持续现象才会体现在平均值里，一次性的毛刺被摊平。
         int _n, _nLock, _nWall;
-        float _sCmd, _sVel, _sAct, _sBody, _sAngle, _sCam, _sNeed;
+        float _sCmd, _sVel, _sAct, _sBody, _sAngle, _sCam, _sNeed, _sG, _sPhase;
         string _line = "";
         float _nextRoll;
 
@@ -141,6 +141,9 @@ namespace AdversityRoad.UI
                 _sBody += bRate;
                 _sCam += cRate;
                 _sNeed += pc.DbgTurnNeed;
+                _sG += pc.DbgLateralG;             // 转向的横向加速度（g）：>1 就不像人在跑
+                var ha = pc.GetComponent<Combat.HumanoidAnimator>();
+                if (ha != null) _sPhase += ha.DbgPhaseRate;   // 步频：腿有没有跟上地面速度
                 _sAngle += Mathf.Abs(pc.DbgMoveAngle);
                 if (pc.DbgHardLocked) _nLock++;
                 if (pc.DbgHitSides) _nWall++;
@@ -152,13 +155,14 @@ namespace AdversityRoad.UI
 
             float inv = 1f / _n;
             _line = string.Format(
-                "推杆1秒均值 命令{0:F1}→实际{1:F1}m/s | 身{2:F0} 镜{3:F0}°/s | 夹角{4:F0}° 待转{5:F0}° | 硬锁{6:F0}% 撞墙{7:F0}% | {8}",
-                _sCmd * inv, _sAct * inv,
-                _sBody * inv, _sCam * inv,
-                _sAngle * inv, _sNeed * inv,
-                100f * _nLock / _n, 100f * _nWall / _n, pc.DbgCombatState);
+                "推杆1秒均值 命令{0:F1}→实际{1:F1}m/s 步频{2:F2} | 身{3:F0}°/s 横向{4:F2}g 半径{5:F1}m | 夹角{6:F0}° 待转{7:F0}° | 撞墙{8:F0}%",
+                _sCmd * inv, _sAct * inv, _sPhase * inv,
+                _sBody * inv, _sG * inv,
+                _sBody * inv > 1f
+                    ? (_sAct * inv) / (_sBody * inv * Mathf.Deg2Rad) : 0f,
+                _sAngle * inv, _sNeed * inv, 100f * _nWall / _n);
             _n = _nLock = _nWall = 0;
-            _sCmd = _sVel = _sAct = _sBody = _sAngle = _sCam = _sNeed = 0f;
+            _sCmd = _sVel = _sAct = _sBody = _sAngle = _sCam = _sNeed = _sG = _sPhase = 0f;
             _spin.text = _line;
         }
 
