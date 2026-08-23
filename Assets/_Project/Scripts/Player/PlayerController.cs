@@ -710,30 +710,50 @@ namespace AdversityRoad.Player
                     // 全速时转向必须走出半径。跑步的惯性感就来自这条。
                     float sp01 = Mathf.Clamp01(_hVel.magnitude / Mathf.Max(0.1f, runSpeed));
                     float cap = Mathf.Lerp(turnDegPerSecStill, turnDegPerSecSprint, sp01);
+                    // 掉头加成【只在低速给】。实测搓杆时身体转到 453°/s——因为加成的
+                    // 触发条件是"离目标>100°"，而搓杆时这个条件**恒定成立**，
+                    // 于是本该只用于"站定掉头"的加成一直挂着。乘上 (1-sp01) 之后，
+                    // 站定时照样干脆，跑起来就没有这份额外的旋转力。
                     if (Quaternion.Angle(transform.rotation, target) > 100f)
-                        cap *= quickTurnBoost;      // 掉头可以快一些，但依然有限
+                        cap *= Mathf.Lerp(quickTurnBoost, 1f, sp01);
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
                 }
             }
 
-            // ===== 位移方向 =====
-            // 【撤销上一轮的"位移跟随朝向"】
-            // 上一轮我把 targetVel 从摇杆方向改成了"朝向与摇杆之间按速度插值"：
-            //     velDir = Euler(0, delta*(1-lockIn), 0) * forward,  lockIn = 0.9*|v|/3.12
-            // 撤销有两个理由，都由实机数据给出：
+            // ===== 位移方向：永远沿身体正面，绝不斜着滑 =====
             //
-            // 1. 它的前提是错的。我当时断定"身体瞬间对齐位移方向 ⇒ 夹角恒≈0 ⇒
-            //    方向片段永远轮不到"。而诊断实测夹角是 **-67°**，方向片段一直在用。
-            //    前提不成立，这个改动就失去了理由。
+            // 实测（推杆一秒均值）：身体 453°/s、**夹角 75~80°**、实际速度等于命令速度。
+            // 也就是说角色在以全速【几乎横着】滑行，同时身体每秒转 1.26 圈。
+            // 身体朝向与移动方向完全脱钩——这就是"被摇杆拖动、看不到移动节奏"
+            // 在数据上的样子，而不是丢速、不是硬锁、不是帧率（那三条都已被实测排除）。
             //
-            // 2. 它引入了新回归——"反向搓杆时角色倒着移动"。lockIn 在中低速时很小，
-            //    velDir 落在朝向与摇杆之间的中间角上；摇杆推向身后时这个中间方向
-            //    带着大量向后/侧向分量，于是人一边面朝前一边倒着挪。而搓杆转圈时
-            //    速度始终上不去，lockIn 就长期卡在低位，现象持续存在。
+            // 成因是结构性的：velDir = moveDir 让位移方向【当帧】跟上摇杆，
+            // 而转向有速率上限。只要摇杆转得比身体快，两者必然脱钩，
+            // 夹角趋于 90°——实测 75~80° 正是这个稳态。
             //
-            // 回到最直接的语义：摇杆指哪就往哪走，朝向另有一套规则去追。
+            // 【上一次我改错在哪】上一轮我用的是"朝向与摇杆之间按速度插值"，
+            // 那个中间方向在中低速时带着大量向后分量，于是改出了"倒着走"。
+            // 中间方向本身就是错的：真人跑动时位移**只会沿着身体正面**，
+            // 换方向靠的是先把身体转过去。
+            //
+            // 所以：位移方向恒等于 transform.forward；摇杆只负责给转向定目标；
+            // 需要大幅转向时降速——真人不能全速横切，必须先减速把方向换过来。
+            // 这条同时是自稳的：降速 ⇒ 转向上限回升（cap 随速度递减）⇒ 身体追上
+            // ⇒ 夹角变小 ⇒ 速度恢复。搓杆最终稳定成"跑一个圈"，而不是横滑加打转。
             Vector3 velDir = moveDir;
+            if (!StrafeActive && moveDir.sqrMagnitude > 0.01f)
+            {
+                velDir = transform.forward;
+                float need = Mathf.Abs(
+                    Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
+                // 30° 以内不减速（日常走位要跟手）；越接近掉头压得越狠，
+                // 到 150° 只剩 15%——那一下读作"站住、转身、再起步"。
+                speed *= Mathf.Lerp(1f, 0.15f, Mathf.Clamp01((need - 30f) / 120f));
+                DbgFinalSpeed = speed;   // 诊断行要如实反映这一层，否则"命令"是假的
+                DbgTurnNeed = need;
+            }
+            else DbgTurnNeed = 0f;
 
             // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
             // ThirdPersonController 的做法（其注释原文：curved result rather than a
@@ -769,6 +789,8 @@ namespace AdversityRoad.Player
         /// 也就是说本文件下面所有的移动代码一行都不执行。</summary>
         public string DbgCombatState => _combat != null ? _combat.Current.ToString() : "无";
         public bool DbgHardLocked => _combat != null && _combat.IsHardLocked;
+        /// <summary>诊断：摇杆方向与身体正面的夹角（度），也就是"还要转多少"。</summary>
+        public float DbgTurnNeed { get; private set; }
 
 
 

@@ -99,7 +99,7 @@ namespace AdversityRoad.UI
         }
 
         Text _spin;
-        float _prevBodyYaw;
+        float _prevBodyYaw, _prevCamYaw;
         bool _yawInit;
 
         // 【上一版诊断自己的毛病】判据是"取丢速最厉害的那一帧"，
@@ -108,7 +108,7 @@ namespace AdversityRoad.UI
         // 改为一秒内的统计：平均命令/平均实际、硬锁占比、撞墙占比、平均身体角速度。
         // 持续现象才会体现在平均值里，一次性的毛刺被摊平。
         int _n, _nLock, _nWall;
-        float _sCmd, _sVel, _sAct, _sBody, _sAngle;
+        float _sCmd, _sVel, _sAct, _sBody, _sAngle, _sCam, _sNeed;
         string _line = "";
         float _nextRoll;
 
@@ -118,10 +118,18 @@ namespace AdversityRoad.UI
             var pc = AdversityRoad.Core.ActorRegistry.Player;
             if (pc == null) { _spin.text = ""; return; }
 
+            var cam = Camera.main;
             float bodyYaw = pc.transform.eulerAngles.y;
-            if (!_yawInit) { _yawInit = true; _prevBodyYaw = bodyYaw; return; }
+            float camYaw = cam != null ? cam.transform.eulerAngles.y : 0f;
+            if (!_yawInit)
+            {
+                _yawInit = true; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw; return;
+            }
             float bRate = Mathf.Abs(Mathf.DeltaAngle(_prevBodyYaw, bodyYaw)) / dt;
-            _prevBodyYaw = bodyYaw;
+            // 镜头角速度上一版被我删掉了，结果无法验证 H = C + θ 那条反馈环
+            //（摇杆是镜头相对的，镜头转 1° 行进方向就跟着转 1°）。加回来。
+            float cRate = Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, camYaw)) / dt;
+            _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
 
             // 只统计【确实在推杆】的帧：松杆减速本来就该丢速，混进来会污染平均
             if (pc.DbgInputMag > 0.6f)
@@ -131,6 +139,8 @@ namespace AdversityRoad.UI
                 _sVel += pc.DbgVel;
                 _sAct += pc.DbgActual;
                 _sBody += bRate;
+                _sCam += cRate;
+                _sNeed += pc.DbgTurnNeed;
                 _sAngle += Mathf.Abs(pc.DbgMoveAngle);
                 if (pc.DbgHardLocked) _nLock++;
                 if (pc.DbgHitSides) _nWall++;
@@ -142,12 +152,13 @@ namespace AdversityRoad.UI
 
             float inv = 1f / _n;
             _line = string.Format(
-                "推杆1秒均值 命令{0:F1}→矢量{1:F1}→实际{2:F1}m/s | 硬锁{3:F0}% 撞墙{4:F0}% | 身{5:F0}°/s 夹角{6:F0}° | 状态 {7}",
-                _sCmd * inv, _sVel * inv, _sAct * inv,
-                100f * _nLock / _n, 100f * _nWall / _n,
-                _sBody * inv, _sAngle * inv, pc.DbgCombatState);
+                "推杆1秒均值 命令{0:F1}→实际{1:F1}m/s | 身{2:F0} 镜{3:F0}°/s | 夹角{4:F0}° 待转{5:F0}° | 硬锁{6:F0}% 撞墙{7:F0}% | {8}",
+                _sCmd * inv, _sAct * inv,
+                _sBody * inv, _sCam * inv,
+                _sAngle * inv, _sNeed * inv,
+                100f * _nLock / _n, 100f * _nWall / _n, pc.DbgCombatState);
             _n = _nLock = _nWall = 0;
-            _sCmd = _sVel = _sAct = _sBody = _sAngle = 0f;
+            _sCmd = _sVel = _sAct = _sBody = _sAngle = _sCam = _sNeed = 0f;
             _spin.text = _line;
         }
 
