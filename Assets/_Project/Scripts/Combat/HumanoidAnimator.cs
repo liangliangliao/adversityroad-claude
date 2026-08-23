@@ -707,6 +707,7 @@ namespace AdversityRoad.Combat
 
         static Transform _lodCam;
         bool _lodExempt;                  // 玩家永不降频
+        static int _lodSeq;               // 自发的错开序号（见 OnEnable）
         int _lodJitter;
         int _lodStride = 1;
         float _lodDt, _nextLodEval;
@@ -716,9 +717,11 @@ namespace AdversityRoad.Combat
         // 用 OnEnable 而不是 Awake：对象池复用时也会重新跑到。
         void OnEnable()
         {
-            // & 7 对负数同样落在 0~7（二进制补码），不需要 Mathf.Abs
-            //（GetInstanceID() 理论上可能是 int.MinValue，那时 Abs 会溢出）
-            _lodJitter = GetInstanceID() & 7;
+            // 错开量自己发号：Unity 6000.5 起 GetInstanceID() 被标记为
+            // obsolete-as-error（CS0619）——本仓库 ShameLineEnemies 里早有同样的
+            // 注记，我这次径直踩了回去。而这里要的只是"让各实例落在不同帧"，
+            // 一个自增序号足矣，根本不需要引擎的实例 id。
+            _lodJitter = (_lodSeq++) & 7;
             _lodExempt = GetComponent<Player.PlayerController>() != null;
             _lodStride = 1;
             _lodDue = true;

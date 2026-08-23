@@ -8,6 +8,7 @@ python3 tools/cslint.py      # CS8641：else 找不到它的 if（括号平衡�
 python3 tools/csquote.py     # CS1010：字符串/字符字面量里混进了真换行
 python3 tools/csshadow.py    # CS0136：内层局部名与外层重名（C# 不看先后）
 python3 tools/csident.py     # CS0103：受体写成了 anim / _anim 里错的那一个
+python3 tools/csobsolete.py  # CS0619：用了本 Unity 版本 obsolete-as-error 的 API
 python3 tools/animaudit.py   # 动作库里有没有"放进来了却没人用"的 FBX
 python3 tools/resolvesim.py  # 复刻运行时解析顺序，推出每个 FBX 落到哪个槽位
 ```
