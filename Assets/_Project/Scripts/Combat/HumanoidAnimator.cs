@@ -324,6 +324,8 @@ namespace AdversityRoad.Combat
 
         void LateUpdate()
         {
+            // 这一帧 Update 没更新姿态，骨骼就没动，钉髋/贴地/前摇也无事可做
+            if (!_lodDue) return;
             if (!Mecanim)
             {
                 // 程序化方块骨骼：同一套上下半身分离（骨盆转、躯干回拧）
@@ -687,10 +689,75 @@ namespace AdversityRoad.Combat
         /// 否则骨盆要拧出人体做不到的角度。55° 是常见取值（左右横跨自然，后撤走倒放）。</summary>
         const float MaxLowerBodyYaw = 55f;
 
+        // ===================== 距离分级（远处的人不必每帧算） =====================
+        //
+        // 这个 Update 是四百多行、每帧几十次三角函数与四元数运算，而实机上同时
+        // 存在**一百三十来个**角色（市民、路人、敌人）。此前没有任何距离或可见性
+        // 剔除：站在城市另一头、屏幕上只有几个像素的路人，和贴脸的敌人跑一样多的
+        // 计算。动捕角色更贵——每个各持一张 PlayableGraph，跳过一帧就是省下整张图
+        // 的求值。
+        //
+        // 做法是**降频**而不是关掉：远处按 1/2、1/4、1/8 的频率更新，跳过的时间
+        // 累加起来在真正更新的那一帧一次性推进（_lodDt），所以步态相位不会走慢——
+        // 远处的人依旧在正常速度地走路，只是动画的时间分辨率低一些。
+        // 各实例按 InstanceID 错开，避免所有人挤在同一帧更新形成周期性尖刺。
+        const float LodFullDist = 30f;    // 以内每帧
+        const float LodHalfDist = 55f;    // 1/2
+        const float LodQuarterDist = 85f; // 1/4，再远 1/8
+
+        static Transform _lodCam;
+        bool _lodExempt;                  // 玩家永不降频
+        int _lodJitter;
+        int _lodStride = 1;
+        float _lodDt, _nextLodEval;
+        bool _lodDue = true;              // 本帧是否真的更新（LateUpdate 跟随同一决定）
+
+        // 本组件原本没有 Awake/Start，分级参数要有地方初始化。
+        // 用 OnEnable 而不是 Awake：对象池复用时也会重新跑到。
+        void OnEnable()
+        {
+            // & 7 对负数同样落在 0~7（二进制补码），不需要 Mathf.Abs
+            //（GetInstanceID() 理论上可能是 int.MinValue，那时 Abs 会溢出）
+            _lodJitter = GetInstanceID() & 7;
+            _lodExempt = GetComponent<Player.PlayerController>() != null;
+            _lodStride = 1;
+            _lodDue = true;
+            _nextLodEval = 0f;
+        }
+
+        bool LodDueThisFrame()
+        {
+            if (_lodExempt) return true;
+            if (Time.unscaledTime >= _nextLodEval)
+            {
+                // 半秒重估一次距离档位就够，且 Camera.main 会按 tag 查找，不能每帧调
+                _nextLodEval = Time.unscaledTime + 0.5f;
+                if (_lodCam == null && Camera.main != null) _lodCam = Camera.main.transform;
+                if (_lodCam == null) _lodStride = 1;
+                else
+                {
+                    float d = Vector3.Distance(_lodCam.position, transform.position);
+                    _lodStride = d < LodFullDist ? 1
+                               : d < LodHalfDist ? 2
+                               : d < LodQuarterDist ? 4 : 8;
+                }
+            }
+            if (_lodStride <= 1) return true;
+            return ((Time.frameCount + _lodJitter) % _lodStride) == 0;
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
+            // 状态映射照常每帧跑：它决定"该摆什么姿态"，属于玩法，不是画面开销
             if (fsm != null) MapFromFsm();
+
+            // 降频：跳过的那几帧把时间攒着，轮到自己时一次性推进
+            _lodDt += dt;
+            _lodDue = LodDueThisFrame();
+            if (!_lodDue) return;
+            dt = _lodDt;
+            _lodDt = 0f;
 
             // 动捕模式：用 Playables 播 Mixamo 片段，跳过下方程序化骨骼
             if (Mecanim)
