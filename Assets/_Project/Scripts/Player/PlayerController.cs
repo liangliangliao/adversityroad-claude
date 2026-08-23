@@ -733,6 +733,22 @@ namespace AdversityRoad.Player
                     float cap = sp > 0.05f
                         ? Mathf.Min(turnDegPerSecStill, maxTurnLateralAccel / sp * Mathf.Rad2Deg)
                         : turnDegPerSecStill;
+
+                    // ===== 方向意图置信度：输入不成向就不转身 =====
+                    //
+                    // 这是成熟动作游戏移动层的第三条规则，也是本项目**唯独角色这边缺失**
+                    // 的一条——ThirdPersonCamera 里早就有同一套判据：
+                    //     orbit *= dirTrust;   // "搓杆则趋零"
+                    // 镜头知道"每帧都在变的方向不构成意图"，角色控制器却把摇杆方向
+                    // 当帧直接当作朝向目标，摇杆转多快就试图转多快——于是成了陀螺。
+                    //
+                    // 魂系/怪猎那一类里搓杆转圈，角色**不会跟着转**：它保持大致朝向
+                    // 继续跑。因为一个方向要先被确认成"玩家真的想去那边"，才配当目标。
+                    //
+                    // 判据与镜头侧完全一致（方向向量的滑动平均，相反方向互相抵消）：
+                    // 稳定推一个方向 ⇒ 模长→1 ⇒ 满速转向；搓杆 ⇒ 模长→0 ⇒ 几乎不转。
+                    // 留 0.15 的地板：始终保留一点跟随，绝不会完全不听摇杆。
+                    cap *= Mathf.Lerp(0.15f, 1f, DirTrust(moveDir, dt));
                     DbgLateralG = sp * cap * Mathf.Deg2Rad / 9.81f;
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
@@ -801,6 +817,46 @@ namespace AdversityRoad.Player
         public float DbgTurnNeed { get; private set; }
         /// <summary>诊断：当前转向上限对应的横向加速度（g）。超过 1g 就不像人在跑。</summary>
         public float DbgLateralG { get; private set; }
+        /// <summary>诊断：方向意图置信度（0~1）。搓杆时趋 0，稳定推杆时趋 1。</summary>
+        public float DbgDirTrust { get; private set; } = 1f;
+
+        Vector2 _dirMean;
+        float _prevDirYaw;
+        bool _dirMeanInit;
+        /// <summary>方向向量的滑动平均速率——与 ThirdPersonCamera.DirMeanRate 同值，
+        /// 两层对"什么才算一个方向"必须用同一把尺子。</summary>
+        const float DirMeanRate = 2.2f;
+
+        /// <summary>
+        /// 「这个方向有多像玩家真的想去的方向」。做法与镜头侧一致：把方向当成单位向量
+        /// 做滑动平均，搓杆时相反方向互相抵消、模长趋零；稳定推一个方向则趋一。
+        /// 0.55 起步、0.85 满信任（同镜头侧口径）。
+        /// </summary>
+        float DirTrust(Vector3 dir, float dt)
+        {
+            if (dir.sqrMagnitude < 0.01f)
+            {
+                _dirMeanInit = false;
+                return DbgDirTrust = 1f;   // 没在推杆：不参与判定，别影响站定转身
+            }
+            Vector3 n = dir.normalized;
+            Vector2 v = new Vector2(n.x, n.z);
+            float yaw = Mathf.Atan2(n.x, n.z) * Mathf.Rad2Deg;
+            if (!_dirMeanInit) { _dirMeanInit = true; _dirMean = v; _prevDirYaw = yaw; }
+
+            // 【必须区分"掉头"与"搓杆"，否则会误伤真正的换向】
+            // 单纯的滑动平均有个数学上的坑：180° 掉头时平均向量会**经过原点**，
+            // 模长归零 ⇒ 被判成搓杆 ⇒ 玩家真想掉头时反而转不动。
+            // 两者的可分特征是【持续性】：搓杆是一直在转，掉头是拨一下就停。
+            // 所以让平均的收敛速率随瞬时角速度变化：
+            //   · 拨完就稳住（瞬时速率低）⇒ 快速收敛(9)，掉头只被压住 <0.1s；
+            //   · 一直在转（瞬时速率高）⇒ 慢速平均(2.2)，正反方向被充分抵消。
+            float inst = Mathf.Abs(Mathf.DeltaAngle(_prevDirYaw, yaw)) / Mathf.Max(dt, 1e-4f);
+            _prevDirYaw = yaw;
+            float k = Mathf.Lerp(9f, DirMeanRate, Mathf.Clamp01(inst / 300f));
+            _dirMean = Vector2.Lerp(_dirMean, v, 1f - Mathf.Exp(-k * dt));
+            return DbgDirTrust = Mathf.Clamp01((_dirMean.magnitude - 0.55f) / 0.30f);
+        }
 
 
 
