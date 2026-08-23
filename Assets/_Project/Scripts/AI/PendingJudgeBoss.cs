@@ -43,7 +43,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
             // 不可击杀：打他只会硬直。血线保护把"打赢"这条路直接关掉
@@ -146,7 +146,7 @@ namespace AdversityRoad.AI
             if (_ec.dialogue != null) _ec.dialogue.Show("算了，这次先不用了。", 2.6f);
             GameEvents.RaiseSubtitle("【临时取消】说明不办了。抬起来的东西被撤走时，比办了还重——" +
                 "但要不要说、什么时候说，本来就不该由他定。");
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 float dmg = 12f;

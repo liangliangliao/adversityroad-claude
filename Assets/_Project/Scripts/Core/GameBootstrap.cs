@@ -40,7 +40,13 @@ namespace AdversityRoad.Core
         void Start()
         {
             // 场景重载时系统单例仍在，但世界内容需要重建
-            if (Object.FindFirstObjectByType<PlayerController>() != null) return;
+            if (AdversityRoad.Core.ActorRegistry.Player != null) return;
+
+            // 走到这里＝确实要重建世界。此刻新世界还一个敌人都没生成，
+            // 清空登记表既安全又能扫掉上一个世界残留的条目。
+            // （注意不能放在上面那句 return 之前：世界已经建好时清空，
+            //  在场敌人不会再触发 OnEnable 重新登记，名册就永久空了。）
+            AdversityRoad.Core.ActorRegistry.Reset();
 
             ApplyComfortAndPerformance();
             EnsureSystems();

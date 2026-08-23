@@ -77,7 +77,7 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         static void Evaluate()
         {
-            if (_pc == null) _pc = FindFirstObjectByType<PlayerController>();
+            if (_pc == null) _pc = AdversityRoad.Core.ActorRegistry.Player;
 
             bool inside = false;
             if (_pc != null)
@@ -128,7 +128,7 @@ namespace AdversityRoad.OpenWorld
             _frame = -1;
             ThirdPersonCamera.IndoorMode = false;
             SitController.ForceStand();   // 绝不能带着"坐着"的状态离开住处
-            _pc = FindFirstObjectByType<PlayerController>();
+            _pc = AdversityRoad.Core.ActorRegistry.Player;
             if (_pc != null) _pc.IndoorPace = false;
         }
     }

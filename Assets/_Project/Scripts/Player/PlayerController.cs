@@ -311,8 +311,7 @@ namespace AdversityRoad.Player
         /// <summary>附近有没有活着的敌人（判断"是不是正在打"，别在战斗中把人传走）。</summary>
         static bool EnemyNearby(Vector3 pos, float radius)
         {
-            foreach (var e in Object.FindObjectsByType<AI.EnemyController>(
-                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.State == AI.EnemyState.Dead) continue;
                 if ((e.transform.position - pos).sqrMagnitude <= radius * radius) return true;

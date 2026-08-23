@@ -74,7 +74,7 @@ namespace AdversityRoad.UI
                 return;
             }
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
 
             // 从生成场景里直接传去经典关卡：必须先解除"人在场景里"这个状态。

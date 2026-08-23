@@ -110,7 +110,7 @@ namespace AdversityRoad.OpenWorld
             if (SitController.Busy) return;
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (Vector3.Distance(SeatPoint, _player.transform.position) > range) return;
@@ -552,7 +552,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
                 _cc = _player.GetComponent<CharacterController>();
             }

@@ -152,7 +152,7 @@ namespace AdversityRoad.Shame
 
         PlayerController Player()
         {
-            if (_player == null) _player = FindObjectOfType<PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             return _player;
         }
 

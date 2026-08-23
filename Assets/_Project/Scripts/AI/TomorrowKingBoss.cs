@@ -30,7 +30,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _ec.externalDamageMult = shieldedDamageMult;
             GameEvents.RaiseSubtitle("『明天之王』裹着打不动的泥壳——点燃场边三座「五分钟火种台」，让行动烧穿拖延！");

@@ -39,7 +39,7 @@ namespace AdversityRoad.Combat
             transform.position = _basePos + Vector3.up * Mathf.Sin(_bob * 2f) * 0.15f;
             transform.Rotate(0, 70f * Time.deltaTime, 0);
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > 1.6f) return;
 
@@ -143,7 +143,7 @@ namespace AdversityRoad.Combat
             if (_glow != null) _glow.SetActive(ready);
             if (!ready) return;
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 
@@ -157,7 +157,7 @@ namespace AdversityRoad.Combat
 
             // 低谷巨像在场：求助的声音让"无力感"松动——Boss 大破绽
             AI.EnemyController colossus = null;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != AI.EnemyState.Dead && e.profile != null &&
                     e.profile.enemyId != null && e.profile.enemyId.StartsWith("boss_valley_colossus"))
                 { colossus = e; break; }

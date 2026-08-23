@@ -397,7 +397,7 @@ namespace AdversityRoad.Combat
                 CombatFeedback.ShockRing(transform.position, ringColor, 5.5f - i * 1.4f);
                 CombatFeedback.HitSpark(transform.position + Vector3.up * 1.1f, ringColor, 4);
                 Strike(ringPose, 10f + i * 4f, 16f, 2.5f, 0.02f, 0.12f, 1.2f, "player_skill_dingxin");
-                foreach (var e in FindObjectsOfType<AI.EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                     e.Repel(transform.position, 4.5f, 5f, 0.16f);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.5f);
                 yield return new WaitForSeconds(0.16f);

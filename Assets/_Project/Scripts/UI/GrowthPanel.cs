@@ -101,7 +101,7 @@ namespace AdversityRoad.UI
                 return;
             }
             // 上限类节点立刻生效
-            var pc = FindObjectOfType<PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             if (pc != null) GrowthSystem.ApplyMaxBonuses(pc.Stats);
             GameAudio.Play(GameAudio.Sfx.Parry, 0.8f);
             GameEvents.RaiseSubtitle("技能树节点解锁——成长落到了身上。");

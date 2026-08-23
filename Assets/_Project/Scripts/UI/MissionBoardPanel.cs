@@ -94,7 +94,7 @@ namespace AdversityRoad.UI
 
         void OnComplete()
         {
-            var pc = FindObjectOfType<PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             if (!GoalSystem.CompleteToday(pc != null ? pc.Stats : null))
             {
                 GameEvents.RaiseSubtitle(GoalSystem.DoneToday

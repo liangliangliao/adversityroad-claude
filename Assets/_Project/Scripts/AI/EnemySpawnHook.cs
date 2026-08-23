@@ -25,7 +25,7 @@ namespace AdversityRoad.AI
         public static int AliveCount(string baseIdPrefix)
         {
             int n = 0;
-            foreach (var e in Object.FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != EnemyState.Dead && e.profile != null &&
                     e.profile.enemyId != null && e.profile.enemyId.StartsWith(baseIdPrefix))
                     n++;

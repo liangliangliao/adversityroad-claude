@@ -1782,7 +1782,7 @@ namespace AdversityRoad.OpenWorld
         void Update()
         {
             if (Time.time < _next) return;
-            var player = FindObjectOfType<Player.PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             if (Vector3.Distance(transform.position, player.transform.position) > 6f) return;
             _next = Time.time + 25f;

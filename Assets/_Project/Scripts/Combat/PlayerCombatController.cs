@@ -991,7 +991,7 @@ namespace AdversityRoad.Combat
         /// <summary>蓄力气场：强风场把半径内的敌人持续推出（蓄力期间无法被近身）。</summary>
         void RepelEnemies(float dt)
         {
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 e.Repel(transform.position, 3.8f, 6.5f, dt);
         }
 
@@ -1249,7 +1249,7 @@ namespace AdversityRoad.Combat
             var locked = LockedTarget();
             if (locked != null) return locked;
             if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：完全手操
-            var enemies = FindObjectsOfType<AI.EnemyController>();
+            var enemies = AdversityRoad.Core.ActorRegistry.Enemies;
             Transform best = null;
             float bestScore = float.MaxValue;
             bool hasDir = preferDir.sqrMagnitude > 0.02f;
@@ -1433,7 +1433,7 @@ namespace AdversityRoad.Combat
         {
             AI.EnemyController best = null;
             float bestD = 9f;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.State == AI.EnemyState.Dead) continue;
                 if (!string.IsNullOrEmpty(dmg.attackerId) && e.profile != null &&
@@ -1471,7 +1471,7 @@ namespace AdversityRoad.Combat
             var locked = LockedTarget();
             if (locked != null) return locked;
             if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：技能也完全手操
-            var enemies = FindObjectsOfType<AI.EnemyController>();
+            var enemies = AdversityRoad.Core.ActorRegistry.Enemies;
             Transform best = null;
             float bestDist = Mathf.Max(autoAimRange, 14f);
             foreach (var e in enemies)

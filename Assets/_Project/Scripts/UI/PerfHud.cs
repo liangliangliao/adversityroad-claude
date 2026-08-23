@@ -99,10 +99,11 @@ namespace AdversityRoad.UI
             // 最坏那一帧对应的冲刺位移：直接告诉你"这一帧人挪了多远"，
             // 与胶囊半径（0.4m 上下）一比就知道会不会穿墙。
             float worstStep = _worst * 5.2f;
-            int chars = CountCharacters();
+            CountCharacters();
             _text.text = string.Format(
-                "FPS {0:F0} | 最长帧 {1:F0}ms（单帧位移 {2:F2}m）| 角色 {3}",
-                fps, worstMs, worstStep, chars);
+                "FPS {0:F0} | 最长帧 {1:F0}ms（单帧位移 {2:F2}m）| 角色 {3}（动捕 {4}）| 敌 {5}",
+                fps, worstMs, worstStep, _charCache, _mocapCache,
+                AdversityRoad.Core.ActorRegistry.Enemies.Length);
             // 最坏帧偏红：一眼能看出这半秒里有没有大顿
             _text.color = worstMs > 60f ? new Color(1f, 0.45f, 0.35f)
                                         : new Color(1f, 0.95f, 0.4f);
@@ -115,7 +116,7 @@ namespace AdversityRoad.UI
         {
             if (_move == null) return;
             if (_pc == null)
-                _pc = Object.FindFirstObjectByType<Player.PlayerController>();
+                _pc = AdversityRoad.Core.ActorRegistry.Player;
             if (_pc == null) { _move.text = ""; return; }
 
             // 实测移速：由控制器每帧量出来的真实位移换算（不是"打算走多快"，
@@ -139,14 +140,19 @@ namespace AdversityRoad.UI
         float _nextCount;
         int _charCache;
 
-        int CountCharacters()
+        int _mocapCache;
+
+        void CountCharacters()
         {
             // 每 2 秒数一次就够——FindObjects 本身不便宜，别让诊断自己变成卡顿源
-            if (Time.unscaledTime < _nextCount) return _charCache;
+            if (Time.unscaledTime < _nextCount) return;
             _nextCount = Time.unscaledTime + 2f;
-            _charCache = Object.FindObjectsByType<Combat.HumanoidAnimator>(
-                FindObjectsInactive.Exclude, FindObjectsSortMode.None).Length;
-            return _charCache;
+            var all = Object.FindObjectsByType<Combat.HumanoidAnimator>(
+                FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            _charCache = all.Length;
+            int m = 0;
+            for (int i = 0; i < all.Length; i++) if (all[i].IsMocap) m++;
+            _mocapCache = m;
         }
     }
 }

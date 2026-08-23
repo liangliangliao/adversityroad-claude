@@ -124,7 +124,7 @@ namespace AdversityRoad.Combat
         void Start()
         {
             _dieAt = Time.time + lifetime;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
         }
 
@@ -159,7 +159,7 @@ namespace AdversityRoad.Combat
             _hitCd = Time.time + 0.4f;
 
             // 打幻影 = 把力气花在猜测上：消耗专注、累积反刍
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.NoiseSensitivity, 6f);

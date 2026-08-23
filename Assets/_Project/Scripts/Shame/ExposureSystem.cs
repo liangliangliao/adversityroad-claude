@@ -122,7 +122,7 @@ namespace AdversityRoad.Shame
         {
             if (Time.time - _steadyRewardAt < 1f) return;
             _steadyRewardAt = Time.time;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) p.Stats.RestoreAxis(Personalization.WeaknessAxis.Shame, 2.5f);
         }
 
@@ -201,9 +201,9 @@ namespace AdversityRoad.Shame
             if (Time.time < _nextRevealTick) return;
             _nextRevealTick = Time.time + 0.5f;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.State == AI.EnemyState.Dead) continue;
                 e.provoked = true;

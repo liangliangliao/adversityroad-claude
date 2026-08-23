@@ -79,7 +79,7 @@ namespace AdversityRoad.Adversity
             _surgeUntil = Time.time + SurgeDuration;
             _surgeAnnounced = true;
 
-            if (_player == null) _player = FindObjectOfType<PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             if (_player != null && _player.Stats != null)
             {
                 // 部分恢复，而不是回满：逆转是喘一口气，不是重开一局

@@ -507,7 +507,7 @@ namespace AdversityRoad.OpenWorld
         void Update()
         {
             if (Time.time - _lastHint < 10f) return;
-            var player = FindObjectOfType<Player.PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             if (Vector3.Distance(transform.position, player.transform.position) > 3.5f) return;
             _lastHint = Time.time;

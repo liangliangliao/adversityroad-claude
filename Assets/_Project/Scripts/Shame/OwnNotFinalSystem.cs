@@ -98,7 +98,7 @@ namespace AdversityRoad.Shame
         public bool Accuse(EnemyController src, ClaimData claim, float mentalDamage)
         {
             if (Active || claim == null) return false;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return false;
             if (p.Stats.maxSelfWorth > 0 &&
                 p.Stats.selfWorth / p.Stats.maxSelfWorth < NoAccuseSelfWorthRatio)
@@ -192,7 +192,7 @@ namespace AdversityRoad.Shame
         void ResolveOwn()
         {
             _resolved = true;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
 
             if (!_claim.truthTag)
             {
@@ -252,7 +252,7 @@ namespace AdversityRoad.Shame
         void ResolveFactBlade()
         {
             _resolved = true;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
 
             if (IdentityNailSystem.FactBladeLocked)
             {
@@ -312,7 +312,7 @@ namespace AdversityRoad.Shame
 
         void ApplyAccusationDamage(bool mountNail)
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 // Exposure 的放大倍率由 PlayerStats 统一施加，这里只管强度设置

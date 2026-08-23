@@ -38,7 +38,7 @@ namespace AdversityRoad.Combat
         void Update()
         {
             if (_archived) return;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             float dist = Vector3.Distance(transform.position, p.transform.position);
 
@@ -139,7 +139,7 @@ namespace AdversityRoad.Combat
         void Update()
         {
             if (_done) return;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             float dist = Vector3.Distance(transform.position, p.transform.position);
             if (dist > 3.2f)
@@ -204,7 +204,7 @@ namespace AdversityRoad.Combat
         {
             if (_player == null)
             {
-                var p = FindObjectOfType<PlayerController>();
+                var p = AdversityRoad.Core.ActorRegistry.Player;
                 if (p == null) return;
                 _player = p.transform;
             }

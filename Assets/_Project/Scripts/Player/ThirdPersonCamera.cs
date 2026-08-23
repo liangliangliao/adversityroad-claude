@@ -751,7 +751,7 @@ namespace AdversityRoad.Player
                 _threatDirs.Clear();
                 Transform focusPick = null;
                 float focusBest = float.MaxValue;
-                foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 {
                     if (e.State == AI.EnemyState.Dead) continue;
                     Vector3 to = e.transform.position - target.position; to.y = 0;

@@ -53,7 +53,7 @@ namespace AdversityRoad.OpenWorld
 
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (!DistrictCatalog.Ready) return;
@@ -164,7 +164,7 @@ namespace AdversityRoad.OpenWorld
         public static void ReturnToReality()
         {
             if (!_hasReturn) return;
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
             {
                 var cc = player.GetComponent<CharacterController>();
@@ -239,7 +239,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (Vector3.Distance(transform.position, _player.transform.position) > range) return;

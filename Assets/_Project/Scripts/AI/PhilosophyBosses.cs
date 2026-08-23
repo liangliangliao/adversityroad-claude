@@ -31,7 +31,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             _ec.externalDamageMult = shieldedDamageMult;
             GameEvents.RaiseSubtitle("『概念迷宫师』被层层引文护体——点亮馆内三座「行动灯台」，让行动烧穿概念！");
@@ -178,7 +178,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             GameEvents.RaiseSubtitle("『无限问题兽』现身——它的问题没有尽头，别一题一题接；反刍高了记得复盘归档。");
         }
@@ -268,7 +268,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『无限追问者』立于断桥尽头——桥边发亮的「行动答台」能让它当场语塞。");
         }

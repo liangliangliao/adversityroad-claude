@@ -167,7 +167,7 @@ namespace AdversityRoad.Shame
         /// <summary>玩家此刻同时被几只锥覆盖（交叉视线区在 8-2 是设计上的难点区）。</summary>
         public int ConesOnPlayer()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return 0;
             int n = 0;
             foreach (var c in _cones)
@@ -178,7 +178,7 @@ namespace AdversityRoad.Shame
         /// <summary>玩家此刻承受的 Exposure 每秒增量（多锥叠加，但按平方根收敛，避免人一多就爆表）。</summary>
         public float ExposureRateOnPlayer()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return 0f;
             float sum = 0f;
             int n = 0;

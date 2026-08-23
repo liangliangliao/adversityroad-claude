@@ -104,7 +104,7 @@ namespace AdversityRoad.UI
         {
             if (_player == null)
             {
-                var pc = FindFirstObjectByType<PlayerController>();
+                var pc = AdversityRoad.Core.ActorRegistry.Player;
                 if (pc == null) { HideAll(); return; }
                 _player = pc.transform;
             }
@@ -114,8 +114,7 @@ namespace AdversityRoad.UI
             float ring = Mathf.Min(_canvasRt.rect.width, _canvasRt.rect.height) * Radius;
             int used = 0;
 
-            foreach (var e in Object.FindObjectsByType<EnemyController>(
-                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (used >= Pool) break;
                 if (e == null || !e.Telegraphing || e.State == EnemyState.Dead) continue;

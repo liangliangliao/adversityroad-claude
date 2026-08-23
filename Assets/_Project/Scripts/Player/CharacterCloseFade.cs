@@ -49,7 +49,7 @@ namespace AdversityRoad.Player
             _entries.Clear();
 
             if (player != null) AddEntry(player, true, old);
-            foreach (var ec in FindObjectsOfType<AI.EnemyController>())
+            foreach (var ec in AdversityRoad.Core.ActorRegistry.Enemies)
                 AddEntry(ec.transform, false, old);
         }
 

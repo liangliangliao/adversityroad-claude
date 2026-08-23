@@ -85,7 +85,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
 

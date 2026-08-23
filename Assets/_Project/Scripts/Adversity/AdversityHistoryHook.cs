@@ -47,7 +47,7 @@ namespace AdversityRoad.Adversity
         {
             // 交战计时：第一个进入追击状态的敌人开始计时
             if (_lastFightStart > 0f) return;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State == EnemyState.Chase || e.State == EnemyState.Attack)
                 {
                     _lastFightStart = Time.time;
@@ -60,7 +60,7 @@ namespace AdversityRoad.Adversity
         void OnPlayerDied(string reason)
         {
             var killer = ResolveKiller(FailureLog.LastAttackerId);
-            var pc = FindObjectOfType<PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             var diag = FailureAnalyzer.Diagnose(pc != null ? pc.Stats : null);
 
             NemesisSystem.NoteDefeatedBy(killer, Survival(), diag.cause);
@@ -93,7 +93,7 @@ namespace AdversityRoad.Adversity
         static EnemyController ResolveKiller(string enemyId)
         {
             if (string.IsNullOrEmpty(enemyId)) return null;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e != null && e.profile != null && e.profile.enemyId == enemyId) return e;
             return null;
         }

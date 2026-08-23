@@ -33,7 +33,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『万眼审判者』睁开千目——虚假凝视点是幻影，用「不读心盾」「注意力回收」破解。");
         }
@@ -191,7 +191,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             BuildMark();
             GameEvents.RaiseSubtitle("『挑衅镜像』现身——它亮出【挑衅】标记时别出手：打它它变强，不理它它自己露破绽。");

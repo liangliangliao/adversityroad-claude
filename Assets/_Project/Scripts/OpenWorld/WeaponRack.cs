@@ -105,7 +105,7 @@ namespace AdversityRoad.OpenWorld
             if (SitController.Busy) return;
             if (_pc == null)
             {
-                _pc = FindObjectOfType<PlayerController>();
+                _pc = AdversityRoad.Core.ActorRegistry.Player;
                 if (_pc == null) return;
                 _appearance = _pc.GetComponent<PlayerAppearance>();
                 _anim = _pc.GetComponent<Combat.HumanoidAnimator>();

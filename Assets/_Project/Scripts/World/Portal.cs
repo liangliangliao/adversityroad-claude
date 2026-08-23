@@ -195,8 +195,7 @@ namespace AdversityRoad.World
         /// <summary>附近是否还有活着且已经进入战斗状态的敌人。</summary>
         static bool EnemyEngaged(Vector3 pos)
         {
-            foreach (var e in Object.FindObjectsByType<AI.EnemyController>(
-                         FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 // 待机/巡逻的敌人还没发现你，不该锁门；只有真正咬上来的才算交战
                 if (e == null || e.State == AI.EnemyState.Dead ||

@@ -29,7 +29,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             GameEvents.RaiseSubtitle("『两元赖账王』上桌——桌上的账本记着事实，走近「账本对质」可令它语塞破绽。");
         }
@@ -143,7 +143,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             _ec.externalDamageMult = shieldedDamageMult;
             GameEvents.RaiseSubtitle("『新车债王』被「未结清的故事」护体——收集场中三张发光的欠条残片，护体即碎！");

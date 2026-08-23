@@ -44,6 +44,12 @@ namespace AdversityRoad.Combat
         int _poseSerial, _lastMecanimSerial = -1;
         bool Mecanim => _mecanim != null && _mecanim.Valid;
 
+        /// <summary>诊断用：这个角色走的是不是【动捕】通路。
+        /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
+        /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，
+        /// 只报"角色 131"分不出贵在哪儿。</summary>
+        public bool IsMocap => Mecanim;
+
         // ---- 髋骨 XZ 锚定（Generic 原样播放的原地化）----
         // 本动作包的走/跑等片段自带水平位移（实测 Walking +1.8m），Generic 播放
         // 会把模型带离胶囊体。每帧动画求值后把髋骨水平位置钉回绑定位（在模型

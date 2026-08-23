@@ -48,7 +48,7 @@ namespace AdversityRoad.Core
         {
             if (_deathShown || Time.unscaledTime < _nextDeathCheck) return;
             _nextDeathCheck = Time.unscaledTime + 0.5f;   // 每秒两次足够，别每帧全场搜
-            if (_pc == null) _pc = FindObjectOfType<Player.PlayerController>();
+            if (_pc == null) _pc = AdversityRoad.Core.ActorRegistry.Player;
             if (_pc != null && _pc.Stats != null && _pc.Stats.IsDead) HandlePlayerDied("watchdog");
         }
 
@@ -72,7 +72,7 @@ namespace AdversityRoad.Core
         /// </summary>
         static float DeathAnimSeconds()
         {
-            var pc = FindObjectOfType<Player.PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             var anim = pc != null ? pc.GetComponent<Combat.HumanoidAnimator>() : null;
             float len = anim != null ? anim.ActionClipLength(Combat.PoseState.Death) : 0f;
             return Mathf.Clamp(len > 0.1f ? len + 0.6f : 2.4f, 2.0f, 6.5f);
@@ -84,7 +84,7 @@ namespace AdversityRoad.Core
             yield return new WaitForSecondsRealtime(DeathAnimSeconds());
 
             // 个性化失败诊断：为什么这次输了 + 针对性策略（围绕心理数值轴）
-            var pc = FindObjectOfType<Player.PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             var diag = FailureAnalyzer.Diagnose(pc != null ? pc.Stats : null);
 
             // 致死心魔归因（近 8 秒内的最后来袭者，解析显示名）
@@ -114,7 +114,7 @@ namespace AdversityRoad.Core
         static string ResolveKillerLabel(string killerId)
         {
             if (string.IsNullOrEmpty(killerId)) return "";
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e != null && e.profile != null && e.profile.enemyId == killerId)
                     return e.profile.displayName;
             return "";

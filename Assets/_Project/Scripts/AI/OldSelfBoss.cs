@@ -44,7 +44,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             // 血线保护：旧我不能被打死——终局必须走「整合」而非击杀
             _ec.minHpFloor = 0.12f;
@@ -242,7 +242,7 @@ namespace AdversityRoad.AI
             CombatFeedback.RecipeBurst(transform.position, new Color(0.85f, 0.9f, 1f));
             GameAudio.Play(GameAudio.Sfx.Parry, 1f);
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 p.Stats.ReduceRumination(999f);

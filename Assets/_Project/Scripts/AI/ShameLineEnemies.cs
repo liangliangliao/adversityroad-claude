@@ -29,7 +29,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
         }
 
@@ -149,7 +149,7 @@ namespace AdversityRoad.AI
         {
             _ec.pacified = true;      // 它不打人，也打不动
             _ec.holdPosition = true;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
         }
@@ -333,7 +333,7 @@ namespace AdversityRoad.AI
         void Start()
         {
             _ec.minHpFloor = 0.2f;      // 不可击杀
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
             if (_ec.dialogue != null)
@@ -443,7 +443,7 @@ namespace AdversityRoad.AI
             _ec.pacified = true;
             _ec.holdPosition = true;
             if (_ec.statusBar != null) _ec.statusBar.gameObject.SetActive(false);
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
         }
 
@@ -477,6 +477,10 @@ namespace AdversityRoad.AI
     public class WeeklyInquirer : MonoBehaviour
     {
         public float leashRadius = 9f;
+        /// <summary>超出这个距离就【判定追问结束】，无条件解除减速。
+        /// 没有这条时，leashRadius 之外一律减速＝玩家走到天边、换了章节，
+        /// 这条 0.55 依然挂在身上——那不是拴绳，是全局永久减速。</summary>
+        public float releaseRadius = 22f;
 
         EnemyController _ec;
         Transform _player;
@@ -489,20 +493,34 @@ namespace AdversityRoad.AI
         {
             _ec.pacified = true;         // 追问本身就是攻击，不需要动手
             _anchor = transform.position;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
         }
 
         void Update()
         {
-            if (_ec == null || _player == null || _ec.State == EnemyState.Dead) return;
+            if (_ec == null || _player == null) return;
+            var pc = _player.GetComponent<PlayerController>();
+
+            // 【死了要放人】原来这里是 `|| _ec.State == Dead` 直接 return，
+            // 于是追问者一死，最后一帧登记的减速就再也没人撤——永久挂着。
+            if (_ec.State == EnemyState.Dead)
+            {
+                if (pc != null) pc.ClearSlow(this);
+                return;
+            }
 
             // 限制移动范围：站在这一段里，玩家跑不掉，但也没有人动手
             float d = Vector3.Distance(_player.position, _anchor);
-            var pc = _player.GetComponent<PlayerController>();
             if (pc != null)
             {
-                if (d > leashRadius) pc.SetSlow(this, 0.55f);
+                // 【拴绳必须有外沿】原来是 d > leashRadius 就减速，没有上界。
+                // 拴绳的语义是"在这一段里走不快"，可它写出来的效果是
+                // **离得越远越拴得住**——玩家走出这场追问、走出这个区域、
+                // 甚至进了下一章，0.55 都还挂着。实机三张截图分属三个不同章节，
+                // 全都显示"减速×0.55"，就是这条。
+                // 超出 releaseRadius＝人已经走掉了，这场追问结束，无条件放人。
+                if (d > leashRadius && d <= releaseRadius) pc.SetSlow(this, 0.55f);
                 else pc.ClearSlow(this);
             }
 
@@ -511,7 +529,11 @@ namespace AdversityRoad.AI
             if (_ec.dialogue != null) _ec.dialogue.Show("这周呢？", 2.2f);
         }
 
-        void OnDestroy()
+        // OnDisable 也要放人：切场景/对象被禁用时 OnDestroy 不一定跑得到玩家还在的那一刻
+        void OnDisable() => Release();
+        void OnDestroy() => Release();
+
+        void Release()
         {
             if (_player == null) return;
             var pc = _player.GetComponent<PlayerController>();

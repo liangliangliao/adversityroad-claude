@@ -148,7 +148,7 @@ namespace AdversityRoad.UI
         /// <summary>一键返回安全屋：不论身处哪个区域/是否交战，立即传送回独居小屋。</summary>
         void ReturnToSafeHouse()
         {
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;

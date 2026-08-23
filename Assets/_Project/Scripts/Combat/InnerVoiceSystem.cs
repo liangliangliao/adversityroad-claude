@@ -86,7 +86,7 @@ namespace AdversityRoad.Combat
 
         bool InnerEnemyNearby()
         {
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e.State == EnemyState.Dead || e.profile == null) continue;
                 if (e.profile.category != EnemyCategory.Internal) continue;
@@ -129,7 +129,7 @@ namespace AdversityRoad.Combat
         {
             if (innerNear)
             {
-                foreach (var e in FindObjectsOfType<EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                     if (e.State != EnemyState.Dead && e.profile != null &&
                         e.profile.category == EnemyCategory.Internal &&
                         Echoes.ContainsKey(e.profile.targetWeakness))

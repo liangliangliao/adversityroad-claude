@@ -141,7 +141,7 @@ namespace AdversityRoad.Shame
             if (alive.Count < 3) return;
 
             // 从"离玩家最远的一端"起链：重建总是从另一处开始，而不是原地复活
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
                 alive.Sort((a, b) =>
                     (b.transform.position - player.transform.position).sqrMagnitude

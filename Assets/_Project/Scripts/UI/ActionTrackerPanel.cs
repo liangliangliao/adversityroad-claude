@@ -141,7 +141,7 @@ namespace AdversityRoad.UI
 
         void OnDone(ActionCommitment c)
         {
-            var pc = FindObjectOfType<PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             ActionSystem.MarkDone(c, pc != null ? pc.Stats : null);
             GameAudio.Play(GameAudio.Sfx.Parry, 0.8f);
             Rebuild();

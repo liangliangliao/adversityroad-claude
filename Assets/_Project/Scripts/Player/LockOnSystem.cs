@@ -103,7 +103,7 @@ namespace AdversityRoad.Player
         {
             Transform best = null;
             float bestDist = acquireRange;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e.State == AI.EnemyState.Dead) continue;
                 float d = Vector3.Distance(transform.position, e.transform.position);

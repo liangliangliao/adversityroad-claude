@@ -385,7 +385,7 @@ namespace AdversityRoad.Core
         {
             if (AllCleared) return;
             // 清掉当前章节心魔（若在场），避免残留旧 Boss
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.profile != null && e.profile.enemyId == Current.enemyId)
                     Destroy(e.gameObject);
             Advance();

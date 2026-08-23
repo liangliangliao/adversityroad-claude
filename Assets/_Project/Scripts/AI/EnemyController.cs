@@ -109,6 +109,11 @@ namespace AdversityRoad.AI
         /// <summary>当前血量比例（Boss 阶段机 0-1）。</summary>
         public float HpRatio => profile.maxHealth > 0 ? Mathf.Clamp01(_hp / profile.maxHealth) : 0f;
 
+        // 登记表：替掉各处 Update 里的全场景敌人扫描（见 Core.ActorRegistry）
+        //（每次调用都是全场景扫描 + 一次数组分配，见 Core.ActorRegistry）
+        void OnEnable() => Core.ActorRegistry.Register(this);
+        void OnDisable() => Core.ActorRegistry.Unregister(this);
+
         void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
@@ -123,7 +128,7 @@ namespace AdversityRoad.AI
             _posture = profile.posture;
             _agent.speed = profile.moveSpeed;
             _tauntTimer = Random.Range(4f, 9f);
-            var p = FindObjectOfType<Player.PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             if (statusBar != null)
             {
