@@ -1749,17 +1749,21 @@ namespace AdversityRoad.Player
             // 镜头被迫急缩急伸，这是"互击时镜头严重晃动"的最大来源。
             // 探测球略缩小（0.25→0.18）：转身时吊杆扫过墙角/柱子不再因"擦边"就大幅回缩，
             // 减少「一转身视野突然变窄」的误触发
+            // 【无 GC】这一句每帧都在跑，而 SphereCastAll 每次调用都新建一个数组
+            // ——本文件下方给"通视探测"改 NonAlloc 时写过这条理由，却漏了**主回缩**
+            // 这条更热的路径。60fps 下就是每秒 60 次分配，攒够一波就是一次 GC 长帧。
             float wantDist = maxDist;
-            var occluders = Physics.SphereCastAll(pivot, 0.18f, boomDir, maxDist,
+            int nOcc = Physics.SphereCastNonAlloc(pivot, 0.18f, boomDir, BoomHits, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (var hit in occluders)
+            // 循环变量不叫 i：LateUpdate 是个很长的方法（634~1820 行），
+            // 上面第 820 行的换角探测里已经有一个 i，而 CS0136 **不看先后**，
+            // 同方法内层与外层重名就是编译错误。
+            for (int oi = 0; oi < nOcc; oi++)
             {
+                var hit = BoomHits[oi];
                 if (hit.distance <= 0.001f) continue;                       // 起点内嵌，忽略
                 var col = hit.collider;
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic)
-                    continue;                                               // 飞散碎屑
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                if (!IsEnvironment(col)) continue;                          // 碎屑/玩家/敌人身体
                 // 【这里曾经写反】原本是
                 //     wantDist = Min(wantDist, Max(floor, hit.distance - 0.1f))
                 // 而 Max(floor, ...) 的意思正是"**吊杆不许短于 floor**"——
@@ -1820,6 +1824,21 @@ namespace AdversityRoad.Player
 
         // 脱出检测的重叠缓冲（每帧一次，必须无 GC）
         static readonly Collider[] BoomOverlap = new Collider[8];
+        // 主吊杆回缩与换角探测各自的扫掠缓冲（同上，避免每帧新建数组）
+        static readonly RaycastHit[] BoomHits = new RaycastHit[12];
+        static readonly RaycastHit[] ProbeHits = new RaycastHit[12];
+
+        /// <summary>这个碰撞体算不算【环境】——即吊杆该不该被它挡住。
+        /// 排除飞散的物理碎屑、玩家与敌人的身体胶囊。
+        /// （原本这三行判断在四处各抄了一遍，改一处就得记得改四处。）</summary>
+        static bool IsEnvironment(Collider col)
+        {
+            if (col == null) return false;
+            if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) return false;
+            if (col.GetComponentInParent<PlayerController>() != null) return false;
+            if (col.GetComponentInParent<AI.EnemyController>() != null) return false;
+            return true;
+        }
 
         /// <summary>
         /// 若镜头位置嵌在环境几何里，沿吊杆方向朝取景点收，直到脱出（或到达硬下限）。
@@ -1851,10 +1870,7 @@ namespace AdversityRoad.Player
             for (int i = 0; i < n; i++)
             {
                 var col = BoomOverlap[i];
-                if (col == null) continue;
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                if (col == null || !IsEnvironment(col)) continue;
                 return true;
             }
             return false;
@@ -1868,15 +1884,16 @@ namespace AdversityRoad.Player
         {
             Vector3 dir = (Quaternion.Euler(_curPitch, yawDeg, 0) * offset).normalized;
             float best = maxDist;
-            var hits = Physics.SphereCastAll(pivot, 0.18f, dir, maxDist,
+            // 换角探测一帧内要打好几个方向，同样不能每次分配一个数组。
+            // 用独立缓冲：它与主回缩不在同一段代码里，但共用一个缓冲会在将来
+            // 某次"探测里再套探测"时静默互相覆盖，分开更省心。
+            int nHit = Physics.SphereCastNonAlloc(pivot, 0.18f, dir, ProbeHits, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (var hit in hits)
+            for (int i = 0; i < nHit; i++)
             {
+                var hit = ProbeHits[i];
                 if (hit.distance <= 0.001f) continue;
-                var col = hit.collider;
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                if (!IsEnvironment(hit.collider)) continue;
                 // 同样不能有下限：写 Max(1.6f, ...) 会让【所有比 1.6m 更近就被挡死
                 // 的方向】一律报 1.6m，于是换角探针分不出"墙贴脸"和"还算通透"，
                 // 挑出来的新机位可能一样是堵墙。如实报告探到的距离。
@@ -1906,12 +1923,9 @@ namespace AdversityRoad.Player
             {
                 var hit = SightHits[i];
                 if (hit.distance <= 0.001f) continue;
-                var col = hit.collider;
                 // 忽略动态碎屑、玩家与敌人本体：它们不构成"视野受限"，
                 // 敌人挡一下反而是你正想看的东西
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                if (!IsEnvironment(hit.collider)) continue;
                 best = Mathf.Min(best, hit.distance);
             }
             return best;
