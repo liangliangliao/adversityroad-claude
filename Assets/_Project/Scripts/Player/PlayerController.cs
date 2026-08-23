@@ -24,9 +24,9 @@ namespace AdversityRoad.Player
         public float decelRate = 26f;              // 停步逼近速率
         // 转向的角速度上限（度/秒）。**不是** Slerp 的比例系数——旧的 rotateSpeed /
         // quickTurnMultiplier 就是当比例用的，导致身体几乎瞬间贴到摇杆上，见移动方法里的说明。
-        public float turnDegPerSecStill = 620f;    // 站定：原地可以快转，推杆即回身
-        public float turnDegPerSecSprint = 260f;   // 全速：必须走出转向半径（跑步的惯性感）
-        public float quickTurnBoost = 1.4f;        // 掉头(>100°)加成：快一些，但依然有限
+        public float turnDegPerSecStill = 720f;    // 站定：180° 用 0.25s，推杆即回身
+        public float turnDegPerSecSprint = 300f;   // 全速：转向半径 ≈1.0m，跑得出一个圈
+        // 掉头加成已删除——它在搓杆时恒定生效，是身体转到 453~784°/s 的直接原因
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -708,52 +708,44 @@ namespace AdversityRoad.Player
                     //
                     // 改为真正的角速度上限，且**随速度递减**：站着可以原地快转，
                     // 全速时转向必须走出半径。跑步的惯性感就来自这条。
+                    // 【掉头加成已整个删除】它的触发条件是"离目标>100°"，
+                    // 而搓杆时这个条件恒定成立，加成一直挂着——实测身体角速度
+                    // 因此冲到 453°/s，加上降速那层之后更是到了 784°/s（每秒两圈）。
+                    // 这就是"陀螺"观感的直接来源。
+                    //
+                    // 现在只剩一条随速度递减的恒定上限：站定可以干脆地原地转，
+                    // 跑起来必须走出转向半径。全速时 5.2 / (300°/s) ≈ 1.0m，
+                    // 也就是搓杆会跑出一个一米左右的圆，而不是原地打转。
                     float sp01 = Mathf.Clamp01(_hVel.magnitude / Mathf.Max(0.1f, runSpeed));
                     float cap = Mathf.Lerp(turnDegPerSecStill, turnDegPerSecSprint, sp01);
-                    // 掉头加成【只在低速给】。实测搓杆时身体转到 453°/s——因为加成的
-                    // 触发条件是"离目标>100°"，而搓杆时这个条件**恒定成立**，
-                    // 于是本该只用于"站定掉头"的加成一直挂着。乘上 (1-sp01) 之后，
-                    // 站定时照样干脆，跑起来就没有这份额外的旋转力。
-                    if (Quaternion.Angle(transform.rotation, target) > 100f)
-                        cap *= Mathf.Lerp(quickTurnBoost, 1f, sp01);
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
                 }
             }
 
-            // ===== 位移方向：永远沿身体正面，绝不斜着滑 =====
+            // ===== 位移方向：永远沿身体正面，速度恒定 =====
             //
-            // 实测（推杆一秒均值）：身体 453°/s、**夹角 75~80°**、实际速度等于命令速度。
-            // 也就是说角色在以全速【几乎横着】滑行，同时身体每秒转 1.26 圈。
-            // 身体朝向与移动方向完全脱钩——这就是"被摇杆拖动、看不到移动节奏"
-            // 在数据上的样子，而不是丢速、不是硬锁、不是帧率（那三条都已被实测排除）。
+            // 实测证明这条是对的：改成 velDir = forward 之后，
+            // **夹角从 75~80° 降到 20~29°**——位移方向与身体正面基本一致，
+            // 横着滑行的现象消失了。
             //
-            // 成因是结构性的：velDir = moveDir 让位移方向【当帧】跟上摇杆，
-            // 而转向有速率上限。只要摇杆转得比身体快，两者必然脱钩，
-            // 夹角趋于 90°——实测 75~80° 正是这个稳态。
+            // 【但我在它上面加的"大转向降速"是错的，已删除】
+            // 那一层造成了恶性循环：待转角大 ⇒ 速度压到 15% ⇒ 速度低 ⇒
+            // 转向上限反而升高（cap 随速度递减）⇒ 身体转得更快 ⇒ 待转角依旧大。
+            // 实测结果是【目标速度 0.6m/s、身体 784°/s】——人几乎不动，
+            // 却像陀螺一样每秒转两圈，比改之前更糟。
+            // 我当时称它"自稳"，那是错的：摇杆一直在动，这个环根本不收敛。
             //
-            // 【上一次我改错在哪】上一轮我用的是"朝向与摇杆之间按速度插值"，
-            // 那个中间方向在中低速时带着大量向后分量，于是改出了"倒着走"。
-            // 中间方向本身就是错的：真人跑动时位移**只会沿着身体正面**，
-            // 换方向靠的是先把身体转过去。
-            //
-            // 所以：位移方向恒等于 transform.forward；摇杆只负责给转向定目标；
-            // 需要大幅转向时降速——真人不能全速横切，必须先减速把方向换过来。
-            // 这条同时是自稳的：降速 ⇒ 转向上限回升（cap 随速度递减）⇒ 身体追上
-            // ⇒ 夹角变小 ⇒ 速度恢复。搓杆最终稳定成"跑一个圈"，而不是横滑加打转。
-            Vector3 velDir = moveDir;
-            if (!StrafeActive && moveDir.sqrMagnitude > 0.01f)
-            {
-                velDir = transform.forward;
-                float need = Mathf.Abs(
-                    Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
-                // 30° 以内不减速（日常走位要跟手）；越接近掉头压得越狠，
-                // 到 150° 只剩 15%——那一下读作"站住、转身、再起步"。
-                speed *= Mathf.Lerp(1f, 0.15f, Mathf.Clamp01((need - 30f) / 120f));
-                DbgFinalSpeed = speed;   // 诊断行要如实反映这一层，否则"命令"是假的
-                DbgTurnNeed = need;
-            }
-            else DbgTurnNeed = 0f;
+            // 现在的规则只有两条，都不带任何速度调制：
+            //   · 位移方向 = 身体正面（横滑消失）
+            //   · 速度 = 命令速度，恒定不变（不快进、不放慢）
+            // 转向快慢完全交给下面的角速度上限，速度不再参与其中。
+            // 于是搓杆 = 以恒定速度沿一个半径 v/ω 的圆跑，脚步频率与地面速度
+            // 始终匹配——这才是"正常移动"。
+            Vector3 velDir = StrafeActive || moveDir.sqrMagnitude <= 0.01f
+                ? moveDir : transform.forward;
+            DbgTurnNeed = moveDir.sqrMagnitude > 0.01f
+                ? Mathf.Abs(Vector3.SignedAngle(transform.forward, moveDir, Vector3.up)) : 0f;
 
             // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
             // ThirdPersonController 的做法（其注释原文：curved result rather than a
@@ -1055,13 +1047,11 @@ namespace AdversityRoad.Player
                         : (need > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
                     if (_anim.HasPose(tp))
                     {
-                        // 片段时长【跟着身体实际转完的时间走】，不再拍两个固定值：
-                        // 原地转身触发时人是站定的，此刻角速度上限就是 turnDegPerSecStill
-                        //（掉头再乘 quickTurnBoost），转完所需时间是可以直接算出来的。
-                        // 拍固定值的写法在转速一改就会重新对不上——原注释引用的
-                        // quickTurnMultiplier 现在已经不存在了，正是这么过期的。
-                        float turnCap = turnDegPerSecStill * (absNeed > 100f ? quickTurnBoost : 1f);
-                        float bodyTurnT = absNeed / Mathf.Max(1f, turnCap);
+                        // 片段时长【跟着身体实际转完的时间走】，不再拍固定值：
+                        // 原地转身触发时人是站定的，此刻角速度上限就是 turnDegPerSecStill，
+                        // 转完所需时间可以直接算出来。拍固定值的写法在转速一改就会
+                        // 重新对不上——这一段的注释已经因此过期过两次了。
+                        float bodyTurnT = absNeed / Mathf.Max(1f, turnDegPerSecStill);
                         _anim.SetPose(tp, Mathf.Clamp(bodyTurnT, 0.22f, 0.5f));
                         _moveStateCd = 0.65f;
                     }
