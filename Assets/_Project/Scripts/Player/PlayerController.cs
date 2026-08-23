@@ -84,7 +84,22 @@ namespace AdversityRoad.Player
         /// 不是减益：减益会写进"移速倍率"里被当成中了负面状态，也会被清减益的地方抹掉。
         /// 这是一条场地规则——屋里就是不跑，出门自动恢复。
         /// </summary>
+        /// <summary>【身份钉·冲刺锁】跑不起来，只能走。硬性 debuff，就是要难受。</summary>
         public bool WalkOnly { get; set; }
+
+        /// <summary>
+        /// 【室内步速】在自己家里不冲刺。与 WalkOnly 是**两件事**，必须分开存：
+        /// 两者此前共用 WalkOnly 一个字段，而 IndoorZone.Evaluate 与
+        /// IdentityNailSystem.ApplyLocks 都在无条件写它——谁后跑谁说了算。
+        /// 于是带着冲刺钉走出屋子会把钉子的效果一起清掉，反之亦然（铁律二）。
+        /// </summary>
+        public bool IndoorPace { get; set; }
+
+        /// <summary>室内步速上限：仍然"不冲刺"，但不是"减速一半"。
+        /// runSpeed 5.2 本就是冲刺档，拿 walkSpeed 2.6 去封顶等于**整整慢一倍**，
+        /// 而序章整章都在屋里——玩家读到的就是"移动被放慢了"。
+        /// 取小跑档：屋里不冲刺的意图保住了，人也不再像在泥里走。</summary>
+        public float indoorPaceSpeed = 3.8f;
 
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier
@@ -522,6 +537,7 @@ namespace AdversityRoad.Player
             // 唯一的例外由 IndoorZone.SetRunPass 开出来：健身房的跑步机就是用来跑的，
             // 走速正好等于履带速度，不许跑等于那台机器是坏的。
             if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
+            if (IndoorPace) speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
             if (IsCrouched) speed *= crouchSpeedMult;
             // ===== 锁定期间是【步法】，不是冲刺 =====
             //

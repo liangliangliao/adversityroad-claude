@@ -397,7 +397,20 @@ namespace AdversityRoad.Combat
                 }
                 // 脚底高度校准仍只在【静立姿态】更新目标：出招/受击时脚离地是正常的，
                 // 拿那些帧去量最低脚会把整个模型上下拽（腾空/翻滚沿用上次值）
-                bool calibrate = _grounded &&
+                //
+                // 【本轮修正：真正判"站定"，而不是判"没在出招"】
+                // 原判据只有 _pose == Idle/Guard。但 _pose 记的是**招式**姿态，
+                // 走路跑步根本不经过 SetPose——移动全程 _pose 恒等于 Idle。
+                // 于是这段"只在静立时校准"的代码，实际上**每一步都在跑**：
+                //   _feetTarget = _feetOffset + (_groundLocalY - minY)
+                // 是个反馈积分器，它每帧都想把"最低那只脚"按回地面。而跑动片段里
+                // 最低脚的高度本来就随步态起伏（冲刺还有双脚离地的腾空相），
+                // 于是整个模型被按着步频上下拽——读作**"人不是自己在跑，是被拉着腾空"**。
+                // 搓杆换向时方向片段一混合，minY 更是直接跳变，模型跟着被猛拽一下。
+                //
+                // 又一次栽在同一条上（铁律一）：判据写在了"恰好相关的量"(_pose)上，
+                // 而意图是"站定"。意图就在手边——_speed01。
+                bool calibrate = _grounded && _speed01 < 0.05f &&
                     (_pose == PoseState.Idle || _pose == PoseState.Guard);
                 if (calibrate)
                 {

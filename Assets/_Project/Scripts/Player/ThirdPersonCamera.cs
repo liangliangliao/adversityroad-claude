@@ -333,7 +333,11 @@ namespace AdversityRoad.Player
         /// 室外 1.2 米。镜头真的贴近时由 CharacterCloseFade 把角色淡开
         /// （它 1.1 米起淡、0.45 米最透），所以近到 0.5 米也不会"整屏一张脸"。
         /// </summary>
-        const float BoomFloorIndoor = 0.5f, BoomFloorOutdoor = 1.2f;
+        /// <summary>吊杆的绝对下限：只保证镜头不缩进近裁剪面，不承担任何取景职责。
+        /// **它永远不会把镜头推到障碍物之外**——见碰撞回缩处的说明。</summary>
+        const float BoomHardMin = 0.14f;
+        /// <summary>碰撞回缩留出的皮肤厚度（比探测球半径 0.18 稍薄即可）。</summary>
+        const float BoomSkin = 0.12f;
 
         // ===== 取景窗（camera window）：镜头运动的第一原则 =====
         // 出自 Mark Haigh-Hutchinson《Real-Time Cameras》，也是所有成熟动作游戏的骨架：
@@ -1756,10 +1760,17 @@ namespace AdversityRoad.Player
                     continue;                                               // 飞散碎屑
                 if (col.GetComponentInParent<PlayerController>() != null) continue;
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                // 下限见 BoomFloorIndoor/Outdoor：**下限不能高过障碍物的距离**，
-                // 否则镜头就被按在障碍物里面（那才是玩家看到的"镜头被遮挡"）
-                float floor = IndoorMode ? BoomFloorIndoor : BoomFloorOutdoor;
-                wantDist = Mathf.Min(wantDist, Mathf.Max(floor, hit.distance - 0.1f));
+                // 【这里曾经写反】原本是
+                //     wantDist = Min(wantDist, Max(floor, hit.distance - 0.1f))
+                // 而 Max(floor, ...) 的意思正是"**吊杆不许短于 floor**"——
+                // 也就是上一行注释明令禁止的那件事。墙比 floor 近时（室内 0.5m、
+                // 露天 1.2m），镜头被强行摆到 floor 处，而那个点在墙的**另一侧**：
+                // 这就是截图里镜头整个在墙里的由来，屋里越窄越必然。
+                //
+                // 修正：障碍物距离是**硬上限**，唯一的下限是"别缩进近裁剪面"。
+                // 墙贴到脸上时正确的表现是画面被迫拉近（难看但成立），
+                // 而不是穿过去（直接看穿关卡）。取景审美绝不能凌驾于几何之上。
+                wantDist = Mathf.Min(wantDist, Mathf.Max(BoomHardMin, hit.distance - BoomSkin));
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
@@ -1780,6 +1791,14 @@ namespace AdversityRoad.Player
                 _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
             }
 
+            // 【兜底】上面的回缩只沿"取景点 → 镜头"这一条射线做扫掠，
+            // 而镜头绕行时走的是一段**圆弧**：与弧线相切的墙不落在任何一帧的射线上，
+            // 等它出现在射线上时镜头已经在墙里了。回缩本身也带平滑（室内 0.1s），
+            // 阶跃目标下总有几帧落在障碍物内。
+            // 所以最后再做一次脱出：镜头此刻若嵌在环境里，就沿吊杆往取景点收，
+            // 直到脱出为止。这一步只会让镜头更近，不会把它推远，因此不可能造成
+            // "卡在墙后跟不上角色"。
+            pos = DepenetrateBoom(pivot, pos);
             transform.position = pos;
             // 视线目标略高于取景点（锁定时再抬一点）：角色落于画面下半部，
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
@@ -1799,6 +1818,48 @@ namespace AdversityRoad.Player
                     fieldOfView + _shot.fovBias, 12f * dt);
         }
 
+        // 脱出检测的重叠缓冲（每帧一次，必须无 GC）
+        static readonly Collider[] BoomOverlap = new Collider[8];
+
+        /// <summary>
+        /// 若镜头位置嵌在环境几何里，沿吊杆方向朝取景点收，直到脱出（或到达硬下限）。
+        /// 过滤规则与碰撞回缩一致：忽略触发器、玩家/敌人身体、飞散的物理碎屑。
+        /// </summary>
+        Vector3 DepenetrateBoom(Vector3 pivot, Vector3 pos)
+        {
+            Vector3 back = pos - pivot;
+            float dist = back.magnitude;
+            if (dist < 0.01f) return pos;
+            Vector3 dir = back / dist;
+            // 由远及近试探：每次收一小段，最多收到硬下限。步长取皮肤厚度，
+            // 收满全程也只有二十来次，且绝大多数帧第一次就通过、直接返回。
+            for (int i = 0; i < 24; i++)
+            {
+                if (!BoomBlocked(pos)) return pos;
+                dist -= BoomSkin;
+                if (dist <= BoomHardMin) return pivot + dir * BoomHardMin;
+                pos = pivot + dir * dist;
+            }
+            return pos;
+        }
+
+        /// <summary>该点是否嵌在【环境】碰撞体里。</summary>
+        static bool BoomBlocked(Vector3 p)
+        {
+            int n = Physics.OverlapSphereNonAlloc(p, BoomSkin, BoomOverlap,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = BoomOverlap[i];
+                if (col == null) continue;
+                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
+                if (col.GetComponentInParent<PlayerController>() != null) continue;
+                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>
         /// 探测「若把镜头转到该偏航角，吊杆能退到多远」——用于避免把镜头甩进墙里。
         /// 与主碰撞回缩同一套过滤规则（忽略触发器、玩家/敌人身体、飞散碎屑）。
@@ -1816,7 +1877,10 @@ namespace AdversityRoad.Player
                 if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
                 if (col.GetComponentInParent<PlayerController>() != null) continue;
                 if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                best = Mathf.Min(best, Mathf.Max(1.6f, hit.distance - 0.1f));
+                // 同样不能有下限：写 Max(1.6f, ...) 会让【所有比 1.6m 更近就被挡死
+                // 的方向】一律报 1.6m，于是换角探针分不出"墙贴脸"和"还算通透"，
+                // 挑出来的新机位可能一样是堵墙。如实报告探到的距离。
+                best = Mathf.Min(best, Mathf.Max(0f, hit.distance - BoomSkin));
             }
             return best;
         }

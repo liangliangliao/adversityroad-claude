@@ -122,7 +122,9 @@ namespace AdversityRoad.UI
             // 而是"实际走了多快"）——两者对不上本身就是一条线索。
             float want = _pc.DbgFinalSpeed;
             string cap = _pc.DbgStrafeCap > 0.01f
-                ? string.Format("锁定封顶{0:F1}", _pc.DbgStrafeCap) : "无封顶";
+                ? string.Format("锁定封顶{0:F1}", _pc.DbgStrafeCap)
+                : _pc.WalkOnly ? "冲刺锁"
+                : _pc.IndoorPace ? "室内步速" : "无封顶";
             _move.text = string.Format(
                 "杆{0:F2} 目标{1:F1}/{2:F1}m/s | 行动力×{3:F2} 减速×{4:F2} 出招×{5:F2} | {6} | {7}",
                 _pc.DbgInputMag, want, _pc.DbgRawSpeed,
