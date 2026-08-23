@@ -767,8 +767,21 @@ namespace AdversityRoad.Player
             // 远超胶囊半径 —— 薄墙会整个落在扫掠的两次采样之间。**这是"卡顿时穿墙"
             // 的直接路径**，而且掉帧越厉害越容易穿。上一轮只给突进技能加了分步，
             // 漏掉了这条每帧都在走的主路径。
+            // 【诊断】把"指令"与"实际"分开记：目标 5.2 而实测位移只有 2.0 时，
+            // 丢失的那一截要么是速度矢量本身没建立起来（看 DbgVel），
+            // 要么是位移被碰撞吃掉了（看 DbgHitSides）。两者的修法完全不同。
+            DbgTargetVel = targetVel.magnitude;
+            DbgVel = _hVel.magnitude;
             Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
+            DbgHitSides = (_cc.collisionFlags & CollisionFlags.Sides) != 0;
         }
+
+        /// <summary>诊断：这一帧的目标速度矢量模长（m/s）。</summary>
+        public float DbgTargetVel { get; private set; }
+        /// <summary>诊断：平滑后实际下发给 Move 的速度矢量模长（m/s）。</summary>
+        public float DbgVel { get; private set; }
+        /// <summary>诊断：这一帧 CharacterController 有没有撞到侧面（墙）。</summary>
+        public bool DbgHitSides { get; private set; }
 
 
 

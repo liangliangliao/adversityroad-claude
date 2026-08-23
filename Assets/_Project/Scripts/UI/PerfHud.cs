@@ -99,66 +99,58 @@ namespace AdversityRoad.UI
         }
 
         Text _spin;
-        float _prevStickYaw, _prevBodyYaw, _prevCamYaw;
+        float _prevBodyYaw, _prevCamYaw;
         bool _yawInit;
-        // 峰值保持：搓杆那一下的读数要留在屏幕上足够久，人才截得到
-        float _pkStick, _pkBody, _pkCam, _pkActual, _pkRadius, _pkAngle, _pkBlend, _pkPhase;
-        float _pkUntil;
 
-        /// <summary>把搓杆整条链每帧采样、取峰值保持，供第三行显示。</summary>
+        // 上一版的缺陷（我自己的锅）：峰值/最小值/末值混在同一行，读出来的
+        // 六个数不是同一帧的，互相对不上账（身63°/s 配 半径0.3m 需要 382°/s，
+        // 明显矛盾）。这一版只保留**同一帧的完整快照**，挑选依据是
+        // 「速度丢得最厉害的那一帧」——因为要查的就是那 3.2m/s 去哪了。
+        string _snap = "";
+        float _worstLoss, _snapUntil;
+
         void SampleSpin(float dt)
         {
             if (_spin == null || dt <= 0.0001f) return;
             var pc = AdversityRoad.Core.ActorRegistry.Player;
-            var cam = Camera.main;
             if (pc == null) { _spin.text = ""; return; }
+            var cam = Camera.main;
 
-            Vector3 sw = pc.StickWorldDir;
-            float stickYaw = sw.sqrMagnitude > 0.04f
-                ? Quaternion.LookRotation(sw.normalized).eulerAngles.y : _prevStickYaw;
             float bodyYaw = pc.transform.eulerAngles.y;
             float camYaw = cam != null ? cam.transform.eulerAngles.y : 0f;
-
-            if (!_yawInit)
-            {
-                _yawInit = true;
-                _prevStickYaw = stickYaw; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
-                return;
-            }
-
-            float sRate = Mathf.Abs(Mathf.DeltaAngle(_prevStickYaw, stickYaw)) / dt;
+            if (!_yawInit) { _yawInit = true; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw; return; }
             float bRate = Mathf.Abs(Mathf.DeltaAngle(_prevBodyYaw, bodyYaw)) / dt;
             float cRate = Mathf.Abs(Mathf.DeltaAngle(_prevCamYaw, camYaw)) / dt;
-            _prevStickYaw = stickYaw; _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
+            _prevBodyYaw = bodyYaw; _prevCamYaw = camYaw;
 
-            var anim = pc.GetComponent<Combat.HumanoidAnimator>();
-            float actual = pc.DbgActual;
-            // 转弯半径 = v / ω：贴近 0 就是【原地打转】，那正是"被摇杆拖着转"的样子
-            float radius = bRate > 5f ? actual / (bRate * Mathf.Deg2Rad) : 999f;
+            // 摇杆角速度不再直接测（摇杆量很低时方向是噪声，上一版因此炸出 7934°/s）。
+            // 身体角速度已经够用，且它才是"角色在不在转"的直接量。
 
-            // 只在真的在搓杆时刷新峰值（杆自己在转），否则保持上一次的读数
-            if (sRate > 60f || Time.unscaledTime < _pkUntil)
+            float cmd = pc.DbgFinalSpeed;      // 这一帧命令的速度（m/s）
+            float vel = pc.DbgVel;             // 平滑后真正下发给 Move 的矢量模长
+            float act = pc.DbgActual;          // 由真实位移测出来的地面速度
+
+            // 只在【确实在推杆移动】时评判，否则松杆减速会被误判成"丢速"
+            if (pc.DbgInputMag > 0.6f && cmd > 1f)
             {
-                if (sRate > 60f) _pkUntil = Time.unscaledTime + 1.2f;
-                if (sRate > _pkStick) _pkStick = sRate;
-                if (bRate > _pkBody) _pkBody = bRate;
-                if (cRate > _pkCam) _pkCam = cRate;
-                _pkActual = actual;
-                if (radius < _pkRadius || _pkRadius <= 0.01f) _pkRadius = radius;
-                _pkAngle = pc.DbgMoveAngle;
-                if (anim != null) { _pkBlend = anim.DbgBlendAngle; _pkPhase = anim.DbgPhaseRate; }
+                float loss = cmd - act;
+                if (loss > _worstLoss || Time.unscaledTime > _snapUntil)
+                {
+                    _worstLoss = loss;
+                    _snapUntil = Time.unscaledTime + 3f;   // 快照保持 3 秒，够截图
+                    var anim = pc.GetComponent<Combat.HumanoidAnimator>();
+                    float radius = bRate > 5f ? act / (bRate * Mathf.Deg2Rad) : 999f;
+                    _snap = string.Format(
+                        "丢速快照 命令{0:F1}→矢量{1:F1}→实际{2:F1}m/s {3} | 身{4:F0} 镜{5:F0}°/s 半径{6} | 夹角{7:F0}° 步频{8:F2}",
+                        cmd, vel, act, pc.DbgHitSides ? "【撞墙】" : "未撞",
+                        bRate, cRate,
+                        radius > 100f ? "--" : radius.ToString("F1") + "m",
+                        pc.DbgMoveAngle, anim != null ? anim.DbgPhaseRate : 0f);
+                }
             }
-            else if (Time.unscaledTime > _pkUntil + 2f)
-            {
-                // 停手两秒后清零，下一次搓杆重新计峰
-                _pkStick = _pkBody = _pkCam = 0f; _pkRadius = 0f;
-            }
+            else if (Time.unscaledTime > _snapUntil) _worstLoss = 0f;
 
-            _spin.text = string.Format(
-                "搓杆 杆{0:F0} 身{1:F0} 镜{2:F0}°/s | 移{3:F1}m/s 半径{4} | 夹角{5:F0}° 混{6:F0}° | 步频{7:F2}/s",
-                _pkStick, _pkBody, _pkCam, _pkActual,
-                _pkRadius > 100f ? "--" : _pkRadius.ToString("F1") + "m",
-                _pkAngle, _pkBlend, _pkPhase);
+            _spin.text = _snap;
         }
 
         void Update()
