@@ -436,7 +436,8 @@ namespace AdversityRoad.Player
             if (_dodgeTimer > 0)
             {
                 _dodgeTimer -= dt;
-                _cc.Move(_dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
+                Combat.CharacterMotion.StepMove(_cc,
+                    _dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
                 // 【收势取消】：滚动主体走完（>62%）之后，攻击/跳/再次翻滚可以立刻打断收势。
                 // 此前必须把整段滚翻播完才能做别的事——"闪完还要等一下才打得出来"，
@@ -638,7 +639,11 @@ namespace AdversityRoad.Player
             _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
             CarryByPlatform();          // 站在会动的东西上（车顶等）要跟着它走
             FallGuard();                // 掉出世界的兜底捞回
-            _cc.Move(_hVel * dt + Vector3.up * _vy * dt);
+            // 分步位移：掉帧时 dt 可达 0.1s 以上，配冲刺速度一次 Move 就是半米开外，
+            // 远超胶囊半径 —— 薄墙会整个落在扫掠的两次采样之间。**这是"卡顿时穿墙"
+            // 的直接路径**，而且掉帧越厉害越容易穿。上一轮只给突进技能加了分步，
+            // 漏掉了这条每帧都在走的主路径。
+            Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
 
             // ===== 朝向：交战时【脸对着敌人】，移动方向由摇杆决定（横移/后撤/绕行）=====
             //

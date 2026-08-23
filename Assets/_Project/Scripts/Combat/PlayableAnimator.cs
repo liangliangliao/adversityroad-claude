@@ -291,7 +291,10 @@ namespace AdversityRoad.Combat
         {
             var sb = new System.Text.StringBuilder();
             sb.Append("招式片段 ").Append(_actionIndex.Count).Append(" 个姿态有片段，动作层共 ")
-              .Append(_actionCount).Append(" 条").Append(NL);
+              .Append(_actionCount).Append(" 条；移动层 ").Append(_dirs.Count + DirBase)
+              .Append(" 条；本角色 AnimationClipPlayable 合计 ")
+              .Append(_actionCount + _dirs.Count + DirBase)
+              .Append("（每帧都要过一遍，场上每个角色各一份）").Append(NL);
             foreach (var kv in _actionIndex)
             {
                 sb.Append("    ").Append(kv.Key.ToString().PadRight(16));
@@ -501,6 +504,19 @@ namespace AdversityRoad.Combat
             var combatIdleUnarmed = Pick(byName, "fighting idle", "combat idle") ?? combatIdle;
 
             // 解析招式片段；目录中未被映射的片段也全部接入（动作库预览可逐个试播）
+            // ---- 方向移动片段先收集：它们要从动作层里【排除】掉 ----
+            // 这一步此前排在 actionList 之后，于是每条方向片段都被连接了**两次**：
+            // 一次进移动混合器（正经用途），一次又被下面"未映射片段全部接入"
+            // 那一轮塞进动作混合器（永远不会被播到）。
+            // 动作库从 43 条涨到 84 条之后，白连的那份从十来个变成二十来个，
+            // 每个角色的 AnimationClipPlayable 总数因此逼近 105——而场上同时有
+            // 玩家 + 若干敌人 + 路人，每一帧都要过这些 playable。
+            // 掉帧本身就会放大所有"单帧位移过大"的问题（见 CharacterMotion.StepMove），
+            // 所以这里省下的不只是动画开销。
+            var dirDefs = CollectDirectional(byName, walk, run);
+            var locoOnly = new HashSet<AnimationClip> { idle, combatIdle, combatIdleUnarmed };
+            foreach (var d in dirDefs) locoOnly.Add(d.clip);
+
             var actionList =
                 new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start, float end)>();
             var connected = new HashSet<AnimationClip>();
@@ -543,15 +559,13 @@ namespace AdversityRoad.Combat
             // 不去重会给同一个片段开两个混合器输入口。
             var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
-                if (listed.Add(kv.Value))
+                if (!locoOnly.Contains(kv.Value) && listed.Add(kv.Value))
                     actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
 
             // ---- 方向移动片段：收集 + 实测每一条的行进方向与自然速度 ----
             // 必须在**建图之前**做：实测走的是 clip.SampleAnimation，它直接往骨骼上写姿态，
             // 而图一旦接上 Animator 输出就开始争夺同一批骨骼的写入权。先量完再建图，
             // 两者不重叠。
-            var dirDefs = CollectDirectional(byName, walk, run);
-
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
             var output = AnimationPlayableOutput.Create(_graph, "out", _animator);

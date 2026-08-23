@@ -279,6 +279,24 @@ namespace AdversityRoad.Core
             int hz = Mathf.RoundToInt((float)Screen.currentResolution.refreshRateRatio.value);
             Application.targetFrameRate = Mathf.Clamp(hz, 60, 120);
 
+            // 【单帧步长的硬上限】Unity 默认 maximumDeltaTime = 0.333s：一次 GC 或加载
+            // 造成的顿帧，会让下一帧的 dt 直接给到三分之一秒。配上冲刺速度 5.2m/s，
+            // 那一帧角色挪 1.7 米——任何普通厚度的墙都挡不住（扫掠检测只扫一条线段），
+            // 摇杆方向也在这一帧里跨了很大角度，读作"人被瞬移过去"。
+            // 取 0.2s 而不是更小：这个钳制的副作用是**帧率低于 1/上限时游戏走慢动作**。
+            // 0.1s 意味着低于 10fps 就开始慢放——而"移动变慢"正是要排查的现象之一，
+            // 不能在这时候引入一个会造成慢放的东西。0.2s（5fps）在任何还能玩的帧率下
+            // 都不会触发，只用来兜住加载/GC 那种一次性巨顿。
+            // 真正防穿墙的是 CharacterMotion.StepMove 的分步位移（结构性保证，
+            // 与帧率无关），这里只是再加一道上限。
+            Time.maximumDeltaTime = 0.2f;
+
+            // 帧率读数（右上角）：低帧率会同时造出"穿墙/被拉着转/时快时慢"这一整串
+            // 现象，而它们与逻辑 bug 在描述上分不开。把数字摆出来，别再靠猜。
+            var perf = new GameObject("PerfHud");
+            Object.DontDestroyOnLoad(perf);
+            perf.AddComponent<UI.PerfHud>();
+
             // 后处理防晕：禁用运动模糊/色差/镜头畸变/噪点，压低暗角强度
             var vol = Object.FindFirstObjectByType<Volume>();
             if (vol != null && vol.profile != null)
