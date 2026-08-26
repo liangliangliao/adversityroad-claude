@@ -333,9 +333,17 @@ namespace AdversityRoad.Player
         /// 室外 1.2 米。镜头真的贴近时由 CharacterCloseFade 把角色淡开
         /// （它 1.1 米起淡、0.45 米最透），所以近到 0.5 米也不会"整屏一张脸"。
         /// </summary>
-        /// <summary>吊杆的绝对下限：只保证镜头不缩进近裁剪面，不承担任何取景职责。
-        /// **它永远不会把镜头推到障碍物之外**——见碰撞回缩处的说明。</summary>
-        const float BoomHardMin = 0.14f;
+        /// <summary>吊杆的【可用下限】。
+        ///
+        /// 上一版我把它定成 0.14m，理由是"只保证不缩进近裁剪面"。那个理由只考虑了
+        /// 几何，没考虑取景：住所里两三步一堵墙，吊杆于是被压到十几厘米——
+        /// 镜头正好卡在角色头顶，玩家反馈的"只拍摄到头顶画面"就是它。
+        /// 而看不见自己站在哪儿，进门当然对不准（"移动尺度过大而对不上门口位置"）。
+        ///
+        /// 0.9m 是"还能看出角色站位"的下限。墙比它更近时不再继续压缩——
+        /// 宁可让吊杆稍微擦进墙面（近裁剪 + 角色头部淡出已能兜住观感），
+        /// 也不能把画面缩成一颗后脑勺：看不见位置的镜头，比穿帮的镜头更难操作。</summary>
+        const float BoomHardMin = 0.9f;
         /// <summary>碰撞回缩留出的皮肤厚度（比探测球半径 0.18 稍薄即可）。</summary>
         const float BoomSkin = 0.12f;
 
@@ -1856,6 +1864,8 @@ namespace AdversityRoad.Player
             {
                 if (!BoomBlocked(pos)) return pos;
                 dist -= BoomSkin;
+                // 脱出同样不许突破可用下限：否则它会绕过上面那条，
+                // 把镜头一路收回头顶——那正是上一版实机看到的样子。
                 if (dist <= BoomHardMin) return pivot + dir * BoomHardMin;
                 pos = pivot + dir * dist;
             }

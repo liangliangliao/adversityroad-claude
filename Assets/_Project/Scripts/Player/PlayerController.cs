@@ -373,16 +373,35 @@ namespace AdversityRoad.Player
                         Mathf.Max(0.1f, _cc.radius * 0.85f), Vector3.down,
                         out RaycastHit hit, castLen, ~0, QueryTriggerInteraction.Ignore))
                 {
-                    var t = hit.collider != null ? hit.collider.transform : null;
-                    if (t != null && !t.IsChildOf(transform)) found = t;
+                    var col = hit.collider;
+                    var t = col != null ? col.transform : null;
+                    // 【只认真正的"会动的地板"，不是脚下随便什么东西】
+                    // 原判据是"扫到的任何碰撞体，只要不是自己的子物体"，掩码还是 ~0。
+                    // 于是家具、道具、门、路人的胶囊、敌人全被当成平台——只要那个
+                    // transform 动一下，玩家就被 delta 拖着走。住所里家具最密，
+                    // 所以"漂移/穿墙/不受控制"在屋里最明显。
+                    // 角色一律排除：站在别人头上被一起搬走没有任何合理性。
+                    if (t != null && !t.IsChildOf(transform) &&
+                        col.GetComponentInParent<PlayerController>() == null &&
+                        col.GetComponentInParent<AI.EnemyController>() == null &&
+                        col.GetComponentInParent<Combat.HumanoidAnimator>() == null &&
+                        !t.gameObject.isStatic)          // 静态几何永远不动，不必跟随
+                        found = t;
                 }
             }
 
             if (found != null && found == _platform)
             {
                 Vector3 delta = found.position - _platformLastPos;
-                // 只跟随合理幅度的位移：平台被瞬移/重生时不要把角色一起甩飞
-                if (delta.sqrMagnitude > 1e-8f && delta.sqrMagnitude < 25f) _cc.Move(delta);
+                // 【阈值 25 是 5 米——那不叫"合理幅度"，那是一次瞬移】
+                // 原来允许单帧跟随 5 米，且用的是裸 Move 不是分步扫掠：
+                // 5 米的单段扫掠必然跨过一整堵墙，这就是屋里"漂移穿墙"的直接来源。
+                // 真实的移动平台（车顶、电梯）单帧位移不会超过几厘米；
+                // 超过 0.4m 一律判为"平台被瞬移/重生"，不跟随。
+                const float MaxCarryPerFrame = 0.4f;
+                float d2 = delta.sqrMagnitude;
+                if (d2 > 1e-8f && d2 < MaxCarryPerFrame * MaxCarryPerFrame)
+                    Combat.CharacterMotion.StepMove(_cc, delta);   // 分步，绝不跨墙
             }
             _platform = found;
             if (found != null) _platformLastPos = found.position;
