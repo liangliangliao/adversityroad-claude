@@ -344,10 +344,50 @@ namespace AdversityRoad.Player
         /// 镜头正好卡在角色头顶，玩家反馈的"只拍摄到头顶画面"就是它。
         /// 而看不见自己站在哪儿，进门当然对不准（"移动尺度过大而对不上门口位置"）。
         ///
-        /// 0.9m 是"还能看出角色站位"的下限。墙比它更近时不再继续压缩——
-        /// 宁可让吊杆稍微擦进墙面（近裁剪 + 角色头部淡出已能兜住观感），
-        /// 也不能把画面缩成一颗后脑勺：看不见位置的镜头，比穿帮的镜头更难操作。</summary>
+        /// 0.9m 是"还能看出角色站位"的【取景偏好】——**不是几何下限**。
+        ///
+        /// 【录屏定位：这两个概念被混成一个常量，镜头因此被钉在墙里】
+        /// 上一版把它当成硬下限用：
+        ///     wantDist = Min(wantDist, Max(BoomHardMin, hit.distance - Skin))
+        /// 墙在 0.5m 处时 Max(0.9, 0.38) = 0.9 ⇒ 镜头被摆到 0.9m，
+        /// 也就是**墙的另一侧 0.4m 处**。而我在同一轮里还把这个值从 0.14
+        /// 提到 0.9，等于把这个错误放大了六倍。屋里两三步一堵墙，于是常驻穿墙。
+        /// 那一行上面我自己的注释写的正是"Max(floor, …) 就是禁止的那件事"，
+        /// 然后下一行照旧写了 Max(BoomHardMin, …)。
+        ///
+        /// 更糟的是脱出兜底也用它：DepenetrateBoom 一收到 0.9m 就 return，
+        /// **返回一个它已经判定为嵌在墙里的位置**。最后一道防线被同一个常量关掉了。
+        ///
+        /// 录屏里的因果链非常清楚（6.0→8.0 秒）：
+        ///   6.0~6.8s 角色在画面里正常跑，撞墙 0%
+        ///   7.2s     镜头贴到极近后角色整个消失
+        ///   7.6~8.0s 撞墙 100%、速度从 3.8 掉到 0.6m/s
+        /// 先失明，后撞墙。移动那边的数已经全对了（横向 0.61g、姿态 Idle、
+        /// 横移片段有权重），玩家只是看不见自己在哪儿。
+        ///
+        /// 现在拆成两个：这一条只在几何允许时作为**偏好**生效；
+        /// 真正不可逾越的是下面的 BoomFloor（近裁剪面）。</summary>
         const float BoomHardMin = 0.9f;
+        /// <summary>吊杆的【几何下限】：唯一的理由是别缩进近裁剪面（近裁≈0.1）。
+        /// 障碍物距离永远是硬上限——墙贴到脸上时正确的表现是画面被迫拉近
+        /// （难看但成立），而不是穿过去。取景审美绝不能凌驾于几何之上。</summary>
+        const float BoomFloor = 0.12f;
+
+        // ===== 镜头诊断（PerfHud 第六行；不参与任何逻辑）=====
+        // 这一路我给了移动和动画一堆读数，却从没量过镜头——而录屏显示
+        // 十三帧里有十帧角色根本不在画面里。"看不见自己"是这几条抱怨的
+        // 共同上游（撞墙、进不去门、盲区），它必须有一个数。
+        /// <summary>当前吊杆长度（米）与它想要的长度。差得远＝正被墙压着。</summary>
+        public static float DbgBoom, DbgBoomWant;
+        /// <summary>贴墙抬高量（米）。</summary>
+        public static float DbgLift;
+        /// <summary>镜头俯角（度，正=往下看）。</summary>
+        public static float DbgPitch;
+        /// <summary>脱出之后镜头**仍然**嵌在环境里——这一帧玩家几乎必然看不见东西。</summary>
+        public static bool DbgStuck;
+        /// <summary>角色胸口这一点在不在视口内、且没有被环境挡住。
+        /// 这是整条镜头链路唯一真正要紧的输出：它为假，玩家就是在盲操。</summary>
+        public static bool DbgSeeSelf;
         /// <summary>吊杆被墙压短时镜头（连同视线目标）最多抬起多少米。
         /// 再高就会钻进天花板与吊灯里——室内层高本来就只有三米出头。</summary>
         const float MaxPinchLift = 0.55f;
@@ -1807,7 +1847,9 @@ namespace AdversityRoad.Player
                 // 修正：障碍物距离是**硬上限**，唯一的下限是"别缩进近裁剪面"。
                 // 墙贴到脸上时正确的表现是画面被迫拉近（难看但成立），
                 // 而不是穿过去（直接看穿关卡）。取景审美绝不能凌驾于几何之上。
-                wantDist = Mathf.Min(wantDist, Mathf.Max(BoomHardMin, hit.distance - BoomSkin));
+                // 下限用 BoomFloor（近裁剪面），**不是** BoomHardMin（取景偏好）。
+                // 用后者就等于"墙比 0.9m 近时把镜头摆到墙的另一侧"，见常量注释。
+                wantDist = Mathf.Min(wantDist, Mathf.Max(BoomFloor, hit.distance - BoomSkin));
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
@@ -1850,6 +1892,12 @@ namespace AdversityRoad.Player
             float frameNeed = 0.62f * 1.8f / Mathf.Tan(Mathf.Deg2Rad * fovNow * 0.5f);
             // 抬高量另设上限：即便同抬视线目标，抬太多也会让镜头钻进天花板/吊灯。
             float lift = Mathf.Min(Mathf.Max(0f, frameNeed - _boomDist), MaxPinchLift);
+            // 抬高必须自己负责脱出：下面的 DepenetrateBoom 只沿【吊杆方向】收，
+            // 抬进天花板/吊灯它一点忙都帮不上（那是垂直方向的嵌入）。
+            // 逐级退让，退到 0 为止——宁可不抬，也不能把镜头塞进楼板。
+            while (lift > 0.01f && BoomBlocked(pivot + boomDir * _boomDist + Vector3.up * lift))
+                lift -= 0.12f;
+            lift = Mathf.Max(0f, lift);
             Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * lift;
 
             // ---- 受击纵向脉冲（幅度小、衰减快） ----
@@ -1868,6 +1916,8 @@ namespace AdversityRoad.Player
             // "卡在墙后跟不上角色"。
             pos = DepenetrateBoom(pivot, pos);
             transform.position = pos;
+            DbgBoom = _boomDist; DbgBoomWant = maxDist; DbgLift = lift;
+            DbgStuck = BoomBlocked(pos);
             // 视线目标略高于取景点（锁定时再抬一点）：角色落于画面下半部，
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
             // 视线高度随景别变化：特写抬高到面部（看清神情与这一击落点），
@@ -1880,6 +1930,31 @@ namespace AdversityRoad.Player
                            // 少了这一项，抬高就变成了"把镜头低头按向后脑勺"。
                            + lift;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
+
+            DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
+            // 角色胸口在不在画面里：视口内 + 没有被环境挡住。
+            // 这两条缺一不可——在视口内但被墙挡住，玩家一样什么都看不见。
+            {
+                var cc0 = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
+                Vector3 chest = pivot;
+                bool onScreen = false;
+                if (cc0 != null)
+                {
+                    Vector3 vp = cc0.WorldToViewportPoint(chest);
+                    onScreen = vp.z > 0f && vp.x > 0.02f && vp.x < 0.98f &&
+                               vp.y > 0.02f && vp.y < 0.98f;
+                }
+                if (onScreen)
+                {
+                    Vector3 d = chest - pos;
+                    float dl = d.magnitude;
+                    onScreen = dl < 0.05f ||
+                        !Physics.Raycast(pos, d / dl, out RaycastHit vh, dl - 0.05f,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ||
+                        !IsEnvironment(vh.collider);
+                }
+                DbgSeeSelf = onScreen;
+            }
 
             // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
             // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
@@ -1925,9 +2000,10 @@ namespace AdversityRoad.Player
             {
                 if (!BoomBlocked(pos)) return pos;
                 dist -= BoomSkin;
-                // 脱出同样不许突破可用下限：否则它会绕过上面那条，
-                // 把镜头一路收回头顶——那正是上一版实机看到的样子。
-                if (dist <= BoomHardMin) return pivot + dir * BoomHardMin;
+                // 收到几何下限为止。上一版这里写的是 BoomHardMin(0.9)——
+                // 一到 0.9 就 return，而 return 的正是刚判定为"嵌在墙里"的那个点：
+                // 最后一道防线被取景偏好关掉了。脱出只该受近裁剪面约束。
+                if (dist <= BoomFloor) return pivot + dir * BoomFloor;
                 pos = pivot + dir * dist;
             }
             return pos;

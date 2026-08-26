@@ -135,9 +135,26 @@ namespace AdversityRoad.UI
             srt5.pivot = new Vector2(1f, 1f);
             srt5.anchoredPosition = new Vector2(-24f, -334f);
             srt5.sizeDelta = new Vector2(900f, 40f);
+
+            // 第六行：镜头。**「见自己」是这一行里唯一真正要紧的**——
+            // 录屏显示十三帧里有十帧角色根本不在画面里，而"撞墙 / 进不去门 /
+            // 陷入盲区"全都是它的下游。看不见自己的时候，移动数据再对也没用。
+            var a6 = new GameObject("CamText");
+            a6.transform.SetParent(go.transform, false);
+            _cam6 = a6.AddComponent<Text>();
+            _cam6.font = _text.font;
+            _cam6.fontSize = 24;
+            _cam6.alignment = TextAnchor.UpperRight;
+            _cam6.raycastTarget = false;
+            _cam6.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var srt6 = _cam6.rectTransform;
+            srt6.anchorMin = srt6.anchorMax = new Vector2(1f, 1f);
+            srt6.pivot = new Vector2(1f, 1f);
+            srt6.anchoredPosition = new Vector2(-24f, -370f);
+            srt6.sizeDelta = new Vector2(900f, 40f);
         }
 
-        Text _anim4, _slip5;
+        Text _anim4, _slip5, _cam6;
 
         Text _spin;
         float _prevBodyYaw, _prevCamYaw;
@@ -225,6 +242,7 @@ namespace AdversityRoad.UI
             if (_spin != null && _spin.enabled != Enabled) _spin.enabled = Enabled;
             if (_anim4 != null && _anim4.enabled != Enabled) _anim4.enabled = Enabled;
             if (_slip5 != null && _slip5.enabled != Enabled) _slip5.enabled = Enabled;
+            if (_cam6 != null && _cam6.enabled != Enabled) _cam6.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -259,6 +277,22 @@ namespace AdversityRoad.UI
                     // 单帧位移超过 0.4m（≈胶囊半径）就标红：那已经足以穿过一堵薄墙
                     _slip5.color = pcx != null && pcx.DbgMaxStep > 0.4f
                         ? new Color(1f, 0.45f, 0.35f) : new Color(1f, 0.85f, 0.6f);
+                }
+                if (_cam6 != null)
+                {
+                    bool see = Player.ThirdPersonCamera.DbgSeeSelf;
+                    _cam6.text = string.Format(
+                        "镜头 吊杆{0:F2}/{1:F2}m 抬{2:F2} 俯{3:F0}° {4}｜ 见自己 {5}",
+                        Player.ThirdPersonCamera.DbgBoom,
+                        Player.ThirdPersonCamera.DbgBoomWant,
+                        Player.ThirdPersonCamera.DbgLift,
+                        Player.ThirdPersonCamera.DbgPitch,
+                        Player.ThirdPersonCamera.DbgStuck ? "[嵌墙] " : "",
+                        see ? "是" : "否");
+                    // 看不见自己就整行标红——那一刻玩家是在盲操，
+                    // 之后所有的"撞墙/进不去门"都只是它的后果。
+                    _cam6.color = see ? new Color(0.75f, 0.85f, 1f)
+                                      : new Color(1f, 0.35f, 0.3f);
                 }
             }
 
