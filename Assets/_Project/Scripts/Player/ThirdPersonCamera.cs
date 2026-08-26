@@ -1834,9 +1834,26 @@ namespace AdversityRoad.Player
             for (int oi = 0; oi < nOcc; oi++)
             {
                 var hit = BoomHits[oi];
-                if (hit.distance <= 0.001f) continue;                       // 起点内嵌，忽略
                 var col = hit.collider;
                 if (!IsEnvironment(col)) continue;                          // 碎屑/玩家/敌人身体
+                // ===== 两条判断的顺序反了，后果是"取景点嵌在墙里时回缩整个失效" =====
+                //
+                // 原来先看 distance≤0.001（起点内嵌）就 continue，再看是不是环境。
+                // 于是**分不清那个零距离命中是谁**：既可能是角色自己的胶囊
+                //（无所谓），也可能是取景点真的埋在门框/矮墙/家具里（要命）。
+                // 一律忽略的结果是：取景点一旦嵌进环境，这一整圈扫掠就什么都拦不住，
+                // 吊杆保持全长，镜头直接落到墙的另一侧——**而且它并没有嵌在任何东西里**，
+                // 所以下面的 DepenetrateBoom 判定为"没问题"，一路放行。
+                // 这正是新加的诊断行里会读到「见自己 否、嵌墙 否」的那一档：
+                // 镜头本身在空气里，只是隔着一堵墙看不见人。
+                //
+                // 先认身份、再看距离：确认是环境之后，零距离就是**最坏情况**
+                //（取景点本身被埋了），必须一路收到几何下限，而不是无视。
+                if (hit.distance <= 0.001f)
+                {
+                    wantDist = BoomFloor;
+                    continue;
+                }
                 // 【这里曾经写反】原本是
                 //     wantDist = Min(wantDist, Max(floor, hit.distance - 0.1f))
                 // 而 Max(floor, ...) 的意思正是"**吊杆不许短于 floor**"——
