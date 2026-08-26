@@ -214,6 +214,7 @@ namespace AdversityRoad.Combat
             public int tier;         // 0=走档 1=跑档
             public float natSpeed;   // 该片段自身的位移速度（m/s，世界尺度）
             public float len;        // 片段时长
+            public string name;      // 片段名（只给屏幕上的调试叠层用）
         }
 
         /// <summary>速度档数：0=走 1=慢跑 2=跑 3=冲刺。
@@ -669,7 +670,8 @@ namespace AdversityRoad.Combat
                 _dirs.Add(new LocoDir
                 {
                     cp = cp, angle = d.angle, tier = d.tier,
-                    natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length)
+                    natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length),
+                    name = d.clip.name
                 });
                 _rings[Mathf.Clamp(d.tier, 0, CrouchTier)].Add(i);
                 // 每档的"代表自然速度"取该档【最接近正前方】那条片段的实测值：
@@ -1247,9 +1249,9 @@ namespace AdversityRoad.Combat
             }
             sb.Append("移动 ");
             if (a1 >= 0 && _dirW[a1] > 0.01f)
-                sb.Append(_dirs[a1].clip.name).Append(' ').Append(_dirW[a1].ToString("F2"));
+                sb.Append(_dirs[a1].name).Append(' ').Append(_dirW[a1].ToString("F2"));
             if (a2 >= 0 && _dirW[a2] > 0.01f)
-                sb.Append(" + ").Append(_dirs[a2].clip.name).Append(' ')
+                sb.Append(" + ").Append(_dirs[a2].name).Append(' ')
                   .Append(_dirW[a2].ToString("F2"));
             if (a1 < 0 || _dirW[a1] <= 0.01f) sb.Append("待机");
             return sb.ToString();

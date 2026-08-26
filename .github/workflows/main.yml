@@ -8,6 +8,30 @@ on:
       - 'claude/**'
 
 jobs:
+  # 静态检查：六条自制 linter，专打 Unity 构建要跑二十分钟才报出来的编译错。
+  # 覆盖 CS8641 / CS0136 / CS1010 / CS0103 / CS0619 / CS1061 六类——
+  # 它们全都出现过在这个仓库的 CI 红上，每次都是等一次完整 Android 构建才知道。
+  # 这个作业不到一分钟，放在最前面，红了就不必再等后面两个。
+  # 另加一条动画链路审计（tools/animchain.py）：片段掉引用是无声的，
+  # 编译器不会管，只有跑起来才发现"这个动作没动画"。
+  #
+  # csshadow 故意不在这里跑：它对 CS0136 的判据不看作用域嵌套关系，
+  # 当前有 46 条已知误报（都是不同分支里的同名变量，合法）。
+  # 会喊狼来了的检查放进门禁只会让人学会忽略门禁——它留作人工排查用。
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: C# 静态检查
+        run: |
+          set -e
+          for t in cslint csquote csident csobsolete csmember; do
+            echo "===== $t ====="
+            python3 tools/$t.py
+          done
+      - name: 动画链路审计
+        run: python3 tools/animchain.py
+
   # 资产运行时诊断：在 CI 里加载武器/背包资源并把导入后的真实层级/轴向/装配核对
   # 打进日志（搜 [CIDIAG]）。远程排查“导入结果与源文件不一致”类问题用，
   # 跑编辑器方法不出包，比 Android 构建快得多。
