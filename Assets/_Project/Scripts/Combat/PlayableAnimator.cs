@@ -1254,6 +1254,30 @@ namespace AdversityRoad.Combat
             if (a1 < 0 || _dirW[a1] <= 0.01f) sb.Append("待机");
             return sb.ToString();
         }
+        /// <summary>
+        /// 这个行进夹角上，动作库里【最快的那条片段】的自然速度（m/s）；没有片段则返回 0。
+        ///
+        /// 给横移封顶用。横移速度必须 ≤ 该方向片段能撑起来的速度，否则脚打滑；
+        /// 但也不该比它慢——慢了就是白白把玩家钉死在走路速度上。
+        /// 此前那张封顶表是**手写死的**（walkSpeed×1.45 / ×1.0 / ×0.8），
+        /// 和库里到底有什么片段完全无关：库里明明有 Left/Right Strafe（跑档横移）
+        /// 和 Running Backward（跑档后退），封顶却照旧按走档给，于是一进战斗
+        /// 就整整慢一倍。改成按实测自然速度反推——库里加了更快的片段，
+        /// 封顶自动跟着放开，不用再回来改一张表。
+        /// </summary>
+        public float NaturalSpeedAt(float angle)
+        {
+            float best = 0f;
+            for (int i = 0; i < _dirs.Count; i++)
+            {
+                var d = _dirs[i];
+                if (d.tier == CrouchTier) continue;                 // 蹲伏不参与
+                if (Mathf.Abs(Mathf.DeltaAngle(d.angle, angle)) > 50f) continue;
+                if (d.natSpeed > best) best = d.natSpeed;
+            }
+            return best;
+        }
+
         /// <summary>诊断：方向混合实际落在的角度（度）。恒 ≈0 就说明方向片段全没用上。</summary>
         public float DbgBlendAngle => _blendAngle;
 

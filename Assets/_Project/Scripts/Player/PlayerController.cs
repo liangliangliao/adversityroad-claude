@@ -15,6 +15,9 @@ namespace AdversityRoad.Player
     {
         [Header("移动（速度按真实体感收敛，防晕）")]
         public float walkSpeed = 2.6f;
+        /// <summary>步幅可拉伸的上限倍率：横移封顶 = 该方向片段自然速度 × 它。
+        /// 超过这个倍数，播放速率就把步子撑得太开，脚开始打滑。</summary>
+        const float StrideRateCap = 1.35f;
         public float runSpeed = 5.2f;
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
@@ -583,7 +586,21 @@ namespace AdversityRoad.Player
                 float sideAng = Mathf.Abs(
                     Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
                 float cap;
-                if (sideAng <= 45f) cap = walkSpeed * 1.45f;                  // 正面推进
+                // ===== 封顶按【库里这个方向最快的片段】反推，不再手写死表 =====
+                // 原来那三行是常数表（walkSpeed×1.45 / ×1.0 / ×0.8），与素材无关。
+                // 而库里明明已经有跑档横移（Left/Right Strafe）与跑档后退
+                // （Running Backward），封顶却照旧按走档给——一进战斗就整整慢一倍，
+                // 这正是"移动速度显然被放慢了"里锁定那一路的份额。
+                // 改成：封顶 = 该方向最快片段的自然速度 × StrideRateCap。
+                // StrideRateCap 是可接受的步幅拉伸上限（1.35≈脚还踩得实的极限），
+                // 于是"不打滑"这条约束由**实测**给出，库里加了更快的片段自动放开。
+                float natAt = _anim != null
+                    ? _anim.NaturalSpeedAt(Vector3.SignedAngle(
+                        transform.forward, moveDir, Vector3.up))
+                    : 0f;
+                if (natAt > 0.05f) cap = natAt * StrideRateCap;
+                // 兜底（这个方向压根没片段）：退回原来的常数表
+                else if (sideAng <= 45f) cap = walkSpeed * 1.45f;              // 正面推进
                 else if (sideAng <= 90f)
                     cap = Mathf.Lerp(walkSpeed * 1.45f, walkSpeed * 1.0f,
                                      (sideAng - 45f) / 45f);                  // 斜向→正侧
@@ -936,7 +953,65 @@ namespace AdversityRoad.Player
         Transform FacingTarget()
         {
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
-            return _lockOn != null ? _lockOn.CurrentTarget : null;
+            var hard = _lockOn != null ? _lockOn.CurrentTarget : null;
+            if (hard != null) { _softFace = null; return hard; }
+            return SoftFaceTarget();
+        }
+
+        // ===== 软锁面向：这才是"横移/后退动画放进去了却永远看不到"的原因 =====
+        //
+        // 链路是这样的（每一环都对，合起来就永远走不到）：
+        //   StrafeActive = FacingTarget() != null
+        //   ↓ 不横移时 velDir = transform.forward（身体永远朝着走的方向）
+        //   ↓ moveAngle = 身体前方 与 实际位移 的夹角 ≡ 0
+        //   ↓ 方向环按 moveAngle 混合 ⇒ 只有 0°（正前）那一条有权重
+        //   ⇒ Left/Right Strafe、Walking Backwards、Jog Backward… 17 条里 13 条恒为 0
+        // 而 FacingTarget 此前只认【硬锁】，硬锁又是手动按 Q／「锁」按钮才有的，
+        // 且 LockOnSystem.AutoAcquire 默认 **0（关）**。
+        // 也就是说：不手动按锁定键，横移与后退的片段一帧都不会出现。
+        // 片段没问题、映射没问题、混合没问题——是闸门根本没人开。
+        //
+        // 补法用【软锁】：临战 + 身边 6 米内有活着的敌人 ⇒ 面向它、改走横移。
+        // 这是对马岛/地平线那一路的做法（身体对敌、镜头不强制锁），
+        // 比魂系"必须先按锁定"更适合触屏。三条克制：
+        //   · 只在 CombatStateMachine.InCombat（最后一次战斗动作 4 秒内）才成立，
+        //     否则路过一个敌人就被迫横着走；
+        //   · 进 6m 出 8.5m 的回差，站在边界上不来回抖；
+        //   · **背身全速跑＝脱离**：朝着背离目标 120° 以上且跑起来了就立刻放开，
+        //     否则想撤退会变成倒着跑（锁定类系统最经典的手感事故）。
+        const float SoftFaceEnter = 6f, SoftFaceExit = 8.5f;
+        Transform _softFace;
+        float _softFaceScan;
+
+        Transform SoftFaceTarget()
+        {
+            if (_combat == null || !_combat.InCombat) { _softFace = null; return null; }
+
+            // 已有软锁：先判脱离，再判回差
+            if (_softFace != null)
+            {
+                var keep = _softFace.GetComponentInParent<AI.EnemyController>();
+                Vector3 to = _softFace.position - transform.position; to.y = 0f;
+                if (keep == null || keep.State == AI.EnemyState.Dead ||
+                    to.magnitude > SoftFaceExit)
+                    _softFace = null;
+                else if (_hVel.magnitude > runSpeed * 0.5f && to.sqrMagnitude > 1e-4f &&
+                         Vector3.Angle(_hVel.normalized, to.normalized) > 120f)
+                    _softFace = null;   // 背身全速跑＝我要走，不是要打
+                else return _softFace;
+            }
+
+            if (Time.time < _softFaceScan) return null;
+            _softFaceScan = Time.time + 0.25f;
+            float best = SoftFaceEnter;
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                float dist = d.magnitude;
+                if (dist < best) { best = dist; _softFace = e.transform; }
+            }
+            return _softFace;
         }
 
         // ---- 出招转向影响（大作 attack steering）速率表（度/秒）----

@@ -52,6 +52,10 @@ namespace AdversityRoad.Combat
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
 
+        /// <summary>该行进夹角上最快的方向片段的自然速度（m/s）；0=这个方向没片段。
+        /// 横移封顶按它给，不再手写一张与素材无关的表。</summary>
+        public float NaturalSpeedAt(float angle) => Mecanim ? _mecanim.NaturalSpeedAt(angle) : 0f;
+
         /// <summary>诊断用：这个角色走的是不是【动捕】通路。
         /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
         /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，
