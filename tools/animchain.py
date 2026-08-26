@@ -84,6 +84,40 @@ def parse_map(name):
         out.append((call.group(2), [norm(k) for k in keys]))
     return out
 
+def parse_map_full(name):
+    """同 parse_map，但把 speed/start/end/hold/pool 也读出来（供 --table）。"""
+    mm = re.search(name + r"\s*=\s*\{(.*?)\n        \};", pac, re.S)
+    if not mm: return []
+    body, out = mm.group(1), []
+    for call in re.finditer(r"\b(A|AP)\(\s*PoseState\.(\w+)\s*,(.*?)\)\s*,\s*(?=\n|$)",
+                            body, re.S):
+        kind, pose, rest = call.group(1), call.group(2), call.group(3)
+        nums = re.findall(r"(-?\d+(?:\.\d+)?)f", rest)
+        hold = bool(re.search(r"\btrue\b", rest.split('"')[0]))
+        keys = [norm(k) for k in re.findall(r'"([^"]+)"', rest)]
+        sp, st, en = (nums + ["?", "?", "?"])[:3]
+        out.append((pose, keys, sp, st, en, hold, kind == "AP"))
+    return out
+
+armed_rows   = parse_map_full("ActionMap")
+unarmed_rows = parse_map_full("UnarmedMap")
+action_rows  = armed_rows + unarmed_rows
+
+# 方向环行：Add(PickFile(byName,"key","File"), 角度, 档, 斜向) / Add(walk|run, ...)
+# `var walk = Pick(byName, "…", "…")` —— 环里的 Add(walk, …) 传的是**已解析好的
+# 变量**，不是搜索键。初版直接拿变量名去做包含匹配，"walk" 命中了
+# Crouch Walk Back，报出一条根本不存在的错。变量名必须映射回它自己的候选链。
+varkeys = {}
+for m in re.finditer(r'\bvar\s+(\w+)\s*=\s*Pick\(\s*byName\s*,\s*((?:"[^"]+"\s*,?\s*)+)\)', pac):
+    varkeys[m.group(1)] = [norm(k) for k in re.findall(r'"([^"]+)"', m.group(2))]
+
+ring_rows = []
+for m in re.finditer(r'Add\(\s*(?:PickFile\(\s*byName\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)'
+                     r'|(\w+))\s*,\s*(-?[\d.]+)f\s*,\s*(\w+)', pac):
+    key = m.group(1) or m.group(3)
+    disp = m.group(2) or m.group(3)
+    ring_rows.append((m.group(4), m.group(5), key, disp))
+
 action_map  = parse_map("ActionMap")
 unarmed_map = parse_map("UnarmedMap")
 
@@ -167,8 +201,96 @@ for f in sorted(glob.glob(str(SRC / "**/*.cs"), recursive=True)):
         for p in re.findall(r"PoseState\.(\w+)", code):
             triggered.setdefault(p, []).append(f"{rel}:{i}")
 
+# ---------- 对齐表（--table）：哪个动作由哪条动画合成、参数是什么 ----------
+# 用意很直接：这张表必须是**从代码里读出来的**，不是手写的。
+# 手写的表第二天就和代码不一致，而"动画接错了"恰恰是不一致造成的。
+def emit_table():
+    print("# 动作 ↔ 动画 对齐表（由 tools/animchain.py 从源码生成）")
+    print()
+    print("## 一、移动层：方向环")
+    print()
+    print("移动层是**按行进夹角在一圈片段之间混合**，不是"
+          "\"一个状态播一条\"。同一时刻通常有 2 条片段各占权重，")
+    print("并且共享同一个归一化步态相位；每条片段的播放速率 = 实际速度 / 该片段实测自然速度。")
+    print()
+    print("| 档 | 角度 | 片段 | 在库 |")
+    print("|---|---|---|---|")
+    tiername = {"0": "0 走", "1": "1 慢跑", "2": "2 跑", "3": "3 冲刺", "CrouchTier": "蹲伏"}
+    for ang, tier, key, disp in ring_rows:
+        hit = resolve(varkeys.get(key, [norm(key)]))
+        print("| %s | %s° | %s | %s |" % (tiername.get(tier, tier), ang,
+              files[hit] if hit else "（缺）**" + disp + "**", "✔" if hit else "✘"))
+    print()
+    print("## 二、动作层：招式 / 过渡 / 状态")
+    print()
+    print("动作层**替换**移动层的输出（不是叠加）。所以只有"
+          "\"整段身体都归它\"的动作才该走这一层；")
+    print("移动过渡（起步/急停/转身）不属于这里——盖上去就会和位移打架。")
+    print()
+    def dump(rows):
+        print("| 姿态 | 片段 | 倍速下限 | 起手裁切 | 收招裁切 | 可保持 | 变体池 | 玩法触发 |")
+        print("|---|---|---|---|---|---|---|---|")
+        for pose, keys, sp, st, en, hold, pool in rows:
+            hit = resolve(keys)
+            t = triggered.get(pose, [])
+            print("| %s | %s | %s | %s | %s | %s | %s | %d 处 |" % (
+                pose, os.path.basename(files[hit])[:-4] if hit else "**（缺）**",
+                sp, st, en, "是" if hold else "", "是" if pool else "", len(t)))
+        print()
+    dump(armed_rows)
+    print("### 空手（收刀后用这一套，避免\"凭空攥着一把剑\"）")
+    print()
+    dump(unarmed_rows)
+
+    # ---- 方向环的缺口：哪些档缺哪些方向 ----
+    print("## 三、方向环的缺口（补片段即自动生效，无需改代码）")
+    print()
+    want = [-135, -90, -45, 0, 45, 90, 135, 180]
+    have = {}
+    for ang, tier, key, disp in ring_rows:
+        if resolve(varkeys.get(key, [norm(key)])):
+            have.setdefault(tier, set()).add(int(float(ang)))
+    print("| 档 | 已有方向 | 缺的方向 |")
+    print("|---|---|---|")
+    for tier in ["0", "1", "2", "3", "CrouchTier"]:
+        h = sorted(have.get(tier, set()))
+        gap = [a for a in want if a not in h]
+        print("| %s | %s | %s |" % (tiername.get(tier, tier),
+              " ".join("%d°" % a for a in h) or "—",
+              " ".join("%d°" % a for a in gap) or "（齐）"))
+    print()
+    print("缺的方向不会留空——`BlendDirectional` 会在相邻两条之间插值、"
+          "或退到 `NearestCoveringTier` 借上下档的片段。")
+    print("所以缺口表现为\"这个方向的步子不太对\"，而不是\"这个方向不动\"。")
+    print()
+    print("两点必须说清楚，免得照着这张表下判断时判错：")
+    print()
+    print("1. **斜向那两条的角度是运行时实测的，不是表里写的。**"
+          " `Jog Forward/Backward Diagonal` 在 `Add(..., measured: true)` 下")
+    print("   会用 `clip.SampleAnimation` 量髋部位移反推真实角度——"
+          "Mixamo 的斜向片段是左前还是右前各家素材不一样。")
+    print("   所以 45°/135° 这两行**实际可能落在 −45°/−135°**。"
+          "屏幕上第四行 HUD 打的是真正在播的片段名，以它为准。")
+    print("2. **左右不对称是真的。** 慢跑档只有一侧有专用斜向片段，"
+          "另一侧靠 0° 与 ±90° 插值补出来——")
+    print("   于是同样是斜着跑，一边有专用步法、一边是混出来的，"
+          "读作\"往一边跑更自然\"。")
+    print("   补法是去 Mixamo 把那条斜向片段勾上 Mirror 再下一份，"
+          "丢进 `Anims/` 即可，代码不用动。")
+    print()
+    print("## 四、参数含义")
+    print()
+    print("- **倍速下限**：真正的播放速度由招式帧数据反推，这里只是下限（见 PlayIndex）。")
+    print("- **起手裁切 / 收招裁切**：片段的 [start, end] 归一化区间。"
+          "Mixamo 原始片段前 12~22% 是摆架势、尾部 20~32% 是走回站姿，都要裁掉。")
+    print("- **可保持**：播到 end 处停住不回落（格挡、蓄力、倒地、死亡）。")
+    print("- **变体池**：同一姿态挂多条，每次轮换（受击、斩击、掉头）。")
+
 # ---------- 报告 ----------
 verbose = "-v" in sys.argv
+if "--table" in sys.argv:
+    emit_table()
+    sys.exit(0)
 bad = 0
 print(f"L1 目录 FBX {len(files)} 个 | L2 已加载 {len(loaded)} | L3 已映射 {len(mapped)}")
 print()
