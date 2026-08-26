@@ -1338,6 +1338,50 @@ namespace AdversityRoad.Combat
             return best;
         }
 
+        // ===== 结构化诊断（给调试日志用）=====
+        // HUD 那几行是给人眼看的拼接字符串；日志要的是**可解析的列**，
+        // 否则每次都得靠正则从中文里抠数字。同一份数据，两种出口。
+        public string DbgActionName =>
+            _cur >= 0 && _actionName != null && _cur < _actionName.Length ? _actionName[_cur] : "";
+        public float DbgActionW => _actionW;
+        public string DbgSlipClip => _slipClip ?? "";
+        public float DbgSlipWant => _slipWant;
+        public float DbgSlipGot => _slipGot;
+
+        /// <summary>权重最高的两条方向片段（名字 + 权重）。</summary>
+        public void DbgTopDirs(out string n1, out float w1, out string n2, out float w2)
+        {
+            n1 = ""; w1 = 0f; n2 = ""; w2 = 0f;
+            if (!Valid || _dirW == null) return;
+            int a = -1, b = -1;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (a < 0 || _dirW[i] > _dirW[a]) { b = a; a = i; }
+                else if (b < 0 || _dirW[i] > _dirW[b]) b = i;
+            }
+            if (a >= 0 && _dirW[a] > 0.005f) { n1 = _dirs[a].name; w1 = _dirW[a]; }
+            if (b >= 0 && _dirW[b] > 0.005f) { n2 = _dirs[b].name; w2 = _dirW[b]; }
+        }
+
+        /// <summary>这一帧实际每个步态周期走了多远（米）。</summary>
+        public float DbgStrideActual(float actual) =>
+            DbgPhaseRate > 0.001f ? actual / DbgPhaseRate : 0f;
+
+        /// <summary>混合中各片段自带步幅的加权平均（米）——脚"应该"走多远。</summary>
+        public float DbgStrideWant()
+        {
+            if (!Valid || _dirW == null) return 0f;
+            float w = 0f, s2 = 0f;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (_dirW[i] <= 0.001f) continue;
+                var d = _dirs[i];
+                s2 += _dirW[i] * Mathf.Max(0.05f, d.natSpeed) * Mathf.Max(0.05f, d.len);
+                w += _dirW[i];
+            }
+            return w > 0.001f ? s2 / w : 0f;
+        }
+
         /// <summary>诊断：方向混合实际落在的角度（度）。恒 ≈0 就说明方向片段全没用上。</summary>
         public float DbgBlendAngle => _blendAngle;
 

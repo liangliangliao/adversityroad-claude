@@ -460,6 +460,9 @@ namespace AdversityRoad.Player
         /// <summary>手指/方向键此刻是否在推——**零平滑、零延迟**。
         /// 镜头的跟随起停以它为准（见 ThirdPersonCamera 的 active 判据）。</summary>
         public bool StickHeld { get; private set; }
+
+        /// <summary>此刻胶囊是不是贴着地（调试日志用；_cc 是私有的）。</summary>
+        public bool IsGroundedNow => _cc != null && _cc.isGrounded;
         /// <summary>是否离地（跳跃/坠落中）。镜头据此切"腾空·拉远看落点"景别。</summary>
         public bool Airborne => _cc != null && !_cc.isGrounded;
         /// <summary>纵向速度（负=下坠）。镜头用它区分"起跳上升"与"真的在往下掉"。</summary>

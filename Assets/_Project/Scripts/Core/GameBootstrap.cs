@@ -303,6 +303,12 @@ namespace AdversityRoad.Core
             Object.DontDestroyOnLoad(perf);
             perf.AddComponent<UI.PerfHud>();
 
+            // 逐帧调试日志：HUD 是给人眼看的，日志是给分析用的。
+            // 录屏截帧一段 20 秒只能抠出十来个采样点，而"起步滑一下""转向那一瞬漂了"
+            // 只存在于零点几秒里——十来个点大概率整个错过。日志每帧一行，一段测试
+            // 就是上千行完整状态，任何一帧都能回溯。见 MoveLogger。
+            MoveLogger.Create();
+
             // 后处理防晕：禁用运动模糊/色差/镜头畸变/噪点，压低暗角强度
             var vol = Object.FindFirstObjectByType<Volume>();
             if (vol != null && vol.profile != null)

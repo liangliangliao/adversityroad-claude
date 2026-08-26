@@ -59,6 +59,21 @@ namespace AdversityRoad.Combat
         /// <summary>调试叠层：这一帧每步跨了多远、跟片段自带步幅差多少、有没有打滑。</summary>
         public string DbgStride(float actual) => Mecanim ? _mecanim.DbgStride(actual) : "步幅 —";
 
+        // ===== 结构化诊断（调试日志用；与上面的 HUD 字符串同源）=====
+        public string DbgActionName => Mecanim ? _mecanim.DbgActionName : "";
+        public float DbgActionW => Mecanim ? _mecanim.DbgActionW : 0f;
+        public string DbgSlipClip => Mecanim ? _mecanim.DbgSlipClip : "";
+        public float DbgSlipWant => Mecanim ? _mecanim.DbgSlipWant : 0f;
+        public float DbgSlipGot => Mecanim ? _mecanim.DbgSlipGot : 0f;
+        public float DbgStrideActual(float actual) =>
+            Mecanim ? _mecanim.DbgStrideActual(actual) : 0f;
+        public float DbgStrideWant() => Mecanim ? _mecanim.DbgStrideWant() : 0f;
+        public void DbgTopDirs(out string n1, out float w1, out string n2, out float w2)
+        {
+            if (Mecanim) { _mecanim.DbgTopDirs(out n1, out w1, out n2, out w2); return; }
+            n1 = ""; w1 = 0f; n2 = ""; w2 = 0f;
+        }
+
         /// <summary>诊断用：这个角色走的是不是【动捕】通路。
         /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
         /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，
