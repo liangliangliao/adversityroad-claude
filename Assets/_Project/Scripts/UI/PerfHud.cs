@@ -150,13 +150,22 @@ namespace AdversityRoad.UI
                 if (pc.DbgHitSides) _nWall++;
             }
 
+            // 【上一版这一行会冻住】录屏里连续 12 秒读数一字不差，而背景在动——
+            // 因为 _n<3 时直接沿用旧串却不清账，推杆量偶尔掉到 0.6 以下就再也不更新。
+            // 而且一秒均值本来就抹掉了搓杆这种瞬时动作。
+            // 改为 0.35 秒一档、且无论如何都清账，宁可跳动也不要给出过期的数字。
             if (Time.unscaledTime < _nextRoll) { _spin.text = _line; return; }
-            _nextRoll = Time.unscaledTime + 1f;
-            if (_n < 3) { _spin.text = _line; return; }
+            _nextRoll = Time.unscaledTime + 0.35f;
+            if (_n < 2)
+            {
+                _n = _nLock = _nWall = 0;
+                _sCmd = _sVel = _sAct = _sBody = _sAngle = _sCam = _sNeed = _sG = _sPhase = _sTrust = 0f;
+                _spin.text = _line; return;
+            }
 
             float inv = 1f / _n;
             _line = string.Format(
-                "推杆1秒均值 命令{0:F1}→实际{1:F1}m/s 步频{2:F2} | 身{3:F0}°/s 横向{4:F2}g 半径{5:F1}m | 夹角{6:F0}° 待转{7:F0}° 意图{9:F2} | 撞墙{8:F0}%",
+                "推杆0.35秒 命令{0:F1}→实际{1:F1}m/s 步频{2:F2} | 身{3:F0}°/s 横向{4:F2}g 半径{5:F1}m | 夹角{6:F0}° 待转{7:F0}° 意图{9:F2} | 撞墙{8:F0}%",
                 _sCmd * inv, _sAct * inv, _sPhase * inv,
                 _sBody * inv, _sG * inv,
                 _sBody * inv > 1f

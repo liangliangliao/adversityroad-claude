@@ -231,6 +231,10 @@ namespace AdversityRoad.Combat
         // 每一档一圈，按角度排好序的下标；最后一圈是蹲伏
         readonly List<int>[] _rings = new List<int>[TierCount + 1];
         readonly float[] _tierW = new float[TierCount];
+        /// <summary>每档的代表自然速度（m/s，实测）。档位插值按它分段，
+        /// 而不是把 runSpeed 均分——见 Tick 里的推导。</summary>
+        readonly float[] _tierNat = new float[TierCount];
+        readonly float[] _tierNatFwd = new float[TierCount];
         float[] _dirW;               // 每帧算出来的方向权重
         // 因"同档同方向已有片段"而未接入的候选（CI 诊断打出来，见 Add）
         readonly List<string> _dropped = new List<string>();
@@ -642,6 +646,16 @@ namespace AdversityRoad.Combat
                     _clipIndex[kv.Key] = ci;
 
             for (int r = 0; r < _rings.Length; r++) _rings[r] = new List<int>();
+            // 档位自然速度表要先给出**兜底值并把"最正前"距离置为无穷**，
+            // 否则 fwdness < _tierNatFwd[t] 永远不成立，整张表留在 0——
+            // 而 0 会让下面的插值把所有速度都判给最慢一档，不报任何错。
+            // 兜底值按"走 / 慢跑 / 跑 / 冲刺"的常识梯度给，实测到就覆盖掉。
+            for (int t = 0; t < TierCount; t++)
+            {
+                _tierNatFwd[t] = float.MaxValue;
+                _tierNat[t] = WalkNaturalSpeed *
+                    (t == 0 ? 1f : t == 1 ? 1.45f : t == 2 ? 2.6f : 3.1f);
+            }
             _loco = AnimationMixerPlayable.Create(_graph, DirBase + dirDefs.Count);
             ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1); ConnectLoco(combatIdleUnarmed, 2);
             for (int i = 0; i < dirDefs.Count; i++)
@@ -655,6 +669,17 @@ namespace AdversityRoad.Combat
                     natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length)
                 });
                 _rings[Mathf.Clamp(d.tier, 0, CrouchTier)].Add(i);
+                // 每档的"代表自然速度"取该档【最接近正前方】那条片段的实测值：
+                // 档位插值必须按片段自己的速度来分段（见 Tick 里的说明）。
+                if (d.tier >= 0 && d.tier < TierCount)
+                {
+                    float fwdness = Mathf.Abs(Mathf.DeltaAngle(d.angle, 0f));
+                    if (fwdness < _tierNatFwd[d.tier])
+                    {
+                        _tierNatFwd[d.tier] = fwdness;
+                        _tierNat[d.tier] = Mathf.Max(0.3f, d.natSpeed);
+                    }
+                }
             }
             _dirW = new float[_dirs.Count];
             foreach (var r in _rings) r.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
@@ -1266,21 +1291,56 @@ namespace AdversityRoad.Combat
         {
             if (!Valid) return;
 
-            // 速度 → 档位权重：x∈[0,TierCount]，0=站立，每跨过一个整数就换一档，
-            // 相邻两档之间线性过渡（走→慢跑→跑→冲刺是连续的，不是三次跳变）。
-            float s = _speed01;
+            // ===== 速度 → 档位权重：按【片段实测自然速度】分段 =====
+            //
+            // 原来是把 speed01 均分成 TierCount 段（x = speed01 * 4，跨过一个整数
+            // 换一档）。那个映射与片段毫无关系——speed01 的分母是 runSpeed(5.2)，
+            // 一个纯玩法数值，而四档片段的实测自然速度是 1.75 / 2.52 / 4.65 / 5.53。
+            //
+            // 代入实机读数（实际 3.7m/s）：均分给出 15% 慢跑 + 85% 跑，
+            // 也就是**主要用自然速度 4.65 的片段去表现 3.7 的移动**，
+            // 播放速率 0.8 倍。脚不打滑（步幅同步是对的），但步幅仍是 4.65 那一档的
+            // 步幅——真人降速时会同时缩短步幅与降低步频，我们只降了步频，
+            // 于是"大步慢迈"，读作转一圈步数变少、人在飘。
+            //
+            // 算过一遍（步幅/步）：
+            //     3.3m/s  均分 1.33m   按自然速度 1.22m   真人 ≈1.21m
+            //     3.7m/s  均分 1.57m   按自然速度 1.34m   真人 ≈1.31m
+            //     4.5m/s  均分 1.72m   按自然速度 1.65m   真人 ≈1.52m
+            //     5.2m/s  均分 1.71m   按自然速度 1.72m   真人 ≈1.70m
+            // 中速段超出 20%，而冲刺档正好对得上——这正是"非冲刺移动才有问题"。
+            //
+            // 改为按自然速度找**相邻的两档**线性插值：移速落在哪两条片段之间，
+            // 就用那两条，播放速率因此始终贴近 1.0，步幅与步频一起随速度变化。
             for (int t = 0; t < TierCount; t++) _tierW[t] = 0f;
-            float x = s * TierCount;
-            float idleTot;
-            if (x <= 1f) { idleTot = 1f - x; _tierW[0] = x; }
-            else
+            float vNow = _actualSpeed >= 0f ? _actualSpeed : _speed01 * RunNaturalSpeed;
+            // 【单调性是插值的前提】实测值来自素材，不能假定它天然递增：
+            // 万一某档的正前片段测出来比下一档还快（素材放错/测量失败），
+            // bracket 就会错乱，表现为某个速度段永远选不到正确的片段。
+            // 就地夹一遍，代价只有几次比较。
+            for (int m = 1; m < TierCount; m++)
+                if (_tierNat[m] <= _tierNat[m - 1]) _tierNat[m] = _tierNat[m - 1] * 1.12f;
+            float nat0 = _tierNat[0];
+            // 站立混合：低于最慢一档自然速度的 0.9 倍时按比例淡入待机
+            float idleTot = Mathf.Clamp01(1f - vNow / Mathf.Max(0.05f, nat0 * 0.9f));
+            float moveTot = 1f - idleTot;
+            if (moveTot > 0.0001f)
             {
-                idleTot = 0f;
-                int lo = Mathf.Clamp(Mathf.FloorToInt(x) - 1, 0, TierCount - 1);
-                float f = Mathf.Clamp01(x - Mathf.Floor(x));
-                if (lo >= TierCount - 1) { _tierW[TierCount - 1] = 1f; }
-                else { _tierW[lo] = 1f - f; _tierW[lo + 1] = f; }
+                int hi = -1;
+                for (int b = 1; b < TierCount; b++)
+                    if (vNow <= _tierNat[b]) { hi = b; break; }
+                if (hi < 0) _tierW[TierCount - 1] = moveTot;          // 比最快一档还快
+                else if (vNow <= nat0) _tierW[0] = moveTot;           // 比最慢一档还慢
+                else
+                {
+                    int lo = hi - 1;
+                    float span = Mathf.Max(0.05f, _tierNat[hi] - _tierNat[lo]);
+                    float f = Mathf.Clamp01((vNow - _tierNat[lo]) / span);
+                    _tierW[lo] = moveTot * (1f - f);
+                    _tierW[hi] = moveTot * f;
+                }
             }
+            float s = _speed01;
             _readyW = Mathf.MoveTowards(_readyW, _ready ? 1f : 0f, dt / 0.25f);
             _loco.SetInputWeight(0, idleTot * (1f - _readyW));
             _loco.SetInputWeight(1, idleTot * _readyW * (_armed ? 1f : 0f));
