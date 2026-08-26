@@ -18,6 +18,9 @@ namespace AdversityRoad.Player
         /// <summary>步幅可拉伸的上限倍率：横移封顶 = 该方向片段自然速度 × 它。
         /// 超过这个倍数，播放速率就把步子撑得太开，脚开始打滑。</summary>
         const float StrideRateCap = 1.35f;
+        /// <summary>静止起步时，身体要先转到离目标方向多少度以内才允许迈步。
+        /// 50° 之内人本来就是边转边走的，再严就成了"起步要等一下"。</summary>
+        const float StartAlignDeg = 50f;
         public float runSpeed = 5.2f;
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
@@ -706,6 +709,7 @@ namespace AdversityRoad.Player
             // ===== 顺序：先转向，再决定位移方向，最后位移 =====
             // 原来是先位移后转向，而位移方向直接取摇杆、与朝向无关——那正是
             // "被摇杆拖着走"的结构性来源（见下面两段根因说明）。
+            float yawBefore = transform.eulerAngles.y;
             if (face != null)
             {
                 Vector3 toT = face.position - transform.position; toT.y = 0;
@@ -798,6 +802,31 @@ namespace AdversityRoad.Player
                 }
             }
 
+            // ===== 速度矢量跟着身体一起转（这才是"转向时漂移"的根因）=====
+            //
+            // 位移方向取的是 transform.forward，这一步是对的；错在**速度矢量本身**
+            // 是世界坐标下的 _hVel，而它只通过一阶低通去追新方向：
+            //     _hVel = Lerp(_hVel, forward*speed, 1−e^(−20·dt))   ⇒ τ = 0.05s
+            // 身体以 720°/s 转，0.05 秒就是 **36° 的方向滞后**。
+            // 滞后的那 36° 全部是相对身体的【横向分量】：
+            //     横向速度 = sin36° × v = 0.59v
+            // 也就是说急转的头几帧里，人有近六成的速度是**横着滑出去**的，
+            // 而腿在演的是正前方跑动循环。屏幕上就是"不是一步一个脚印转的，
+            // 而是快速大步漂移"。这跟动画一条都不缺没有关系——是速度矢量在滑。
+            //
+            // 修法不碰速度大小（你要求任何时候都不许快进或放慢，这条我记着）：
+            // 身体这一帧转了多少度，就把 _hVel **刚性地跟着转多少度**。
+            // 于是速度方向恒等于身体正面、横向分量恒为 0，低通只作用在【模长】上
+            // ——加减速依旧平滑，方向不再有滞后。
+            // 这等价于大作里把移动速度存成"沿朝向的标量"而不是世界矢量。
+            // 锁定横移时不适用：那时位移方向本来就该独立于朝向。
+            if (!StrafeActive)
+            {
+                float spun = Mathf.DeltaAngle(yawBefore, transform.eulerAngles.y);
+                if (Mathf.Abs(spun) > 0.0001f)
+                    _hVel = Quaternion.Euler(0f, spun, 0f) * _hVel;
+            }
+
             // ===== 位移方向：永远沿身体正面，速度恒定 =====
             //
             // 实测证明这条是对的：改成 velDir = forward 之后，
@@ -830,6 +859,26 @@ namespace AdversityRoad.Player
             // linear one giving a more organic speed change）。
             // 起步瞬间给足冲量（前几帧就到大半速度＝跟手），末段自然收敛（不突兀）。
             // 用 1-e^(-k·dt) 而非 Lerp(a,b,k·dt)：帧率无关，高低帧手感一致。
+            // ===== 起步对齐闸门：静止起步先转到位，再迈步 =====
+            //
+            // "停下之后朝前起步会先向后漂一段"——这里是它的另一半（前一半是
+            // Start Walking 被当动作播，已撤销）。站定时身体还朝着上一次的方向 A，
+            // 你把杆推向 B；而 velDir 取的是 transform.forward，于是速度是沿着
+            // **A** 建立起来的，身体要 |A−B|/720°/s 才转到 B。
+            // 180° 掉头就是 0.25 秒，accelRate=20 下这 0.25 秒足够跑出半米——
+            // 半米的反向位移，正是你看到的那一段后退。
+            //
+            // 【这不是"降速"，和上一轮翻车的那一层是两回事，必须分清】
+            // 上一轮我按待转角连续地乘一个速度系数，结果与转向上限 ω=a/v 构成
+            // 正反馈（速度越低转得越快、待转角却不减），发散成陀螺。
+            // 这里是【静止时的一次性闸门】：v≈0 时转向上限恒为 turnDegPerSecStill，
+            // **压根不含 v**，没有回路；而且闸门一开就再也不参与。
+            // 最长延迟 180°/720°/s = 0.25s，观感是"先转身再迈步"，
+            // 也就是你要的一步一个脚印，不是变慢。
+            bool standingStart = _hVel.magnitude < walkSpeed * 0.25f;
+            if (standingStart && !StrafeActive && DbgTurnNeed > StartAlignDeg) speed = 0f;
+            DbgStartGate = standingStart && DbgTurnNeed > StartAlignDeg;
+
             Vector3 targetVel = velDir * speed;
             float k = targetVel.sqrMagnitude > _hVel.sqrMagnitude ? accelRate : decelRate;
             _hVel = Vector3.Lerp(_hVel, targetVel, 1f - Mathf.Exp(-k * dt));
@@ -863,6 +912,8 @@ namespace AdversityRoad.Player
         public float DbgTurnNeed { get; private set; }
         /// <summary>诊断：当前转向上限对应的横向加速度（g）。超过 1g 就不像人在跑。</summary>
         public float DbgLateralG { get; private set; }
+        /// <summary>诊断：这一帧起步对齐闸门有没有拦住位移（静止起步先转身）。</summary>
+        public bool DbgStartGate { get; private set; }
         /// <summary>诊断：方向意图置信度（0~1）。搓杆时趋 0，稳定推杆时趋 1。</summary>
         public float DbgDirTrust { get; private set; } = 1f;
 
