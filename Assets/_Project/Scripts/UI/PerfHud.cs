@@ -271,8 +271,9 @@ namespace AdversityRoad.UI
                 if (_slip5 != null)
                 {
                     _slip5.text = hax != null && pcx != null
-                        ? string.Format("{0} ｜ 峰值单帧 {1:F2}m（{2:F0}s前）",
-                            hax.DbgStride(pcx.DbgActual), pcx.DbgMaxStep, pcx.DbgStepAge)
+                        ? string.Format("{0} ｜ 锁脚{1:F2}m ｜ 峰值单帧 {2:F2}m（{3:F0}s前）",
+                            hax.DbgStride(pcx.DbgActual), hax.DbgFootFix,
+                            pcx.DbgMaxStep, pcx.DbgStepAge)
                         : "";
                     // 单帧位移超过 0.4m（≈胶囊半径）就标红：那已经足以穿过一堵薄墙
                     _slip5.color = pcx != null && pcx.DbgMaxStep > 0.4f

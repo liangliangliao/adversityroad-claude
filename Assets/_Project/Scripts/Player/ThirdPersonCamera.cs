@@ -372,6 +372,9 @@ namespace AdversityRoad.Player
         /// 障碍物距离永远是硬上限——墙贴到脸上时正确的表现是画面被迫拉近
         /// （难看但成立），而不是穿过去。取景审美绝不能凌驾于几何之上。</summary>
         const float BoomFloor = 0.12f;
+        /// <summary>视线抬高允许引起的最大仰角（这里存的是它的正切，20°）。
+        /// 吊杆被压短时，固定的抬高偏移会主导方向向量把镜头掀上天，见 lookUp 那里。</summary>
+        const float MaxLookTiltTan = 0.364f;
 
         // ===== 镜头诊断（PerfHud 第六行；不参与任何逻辑）=====
         // 这一路我给了移动和动画一堆读数，却从没量过镜头——而录屏显示
@@ -1946,6 +1949,17 @@ namespace AdversityRoad.Player
                            // 贴墙抬高时视线目标同量抬起：纯垂直平移，俯角不变。
                            // 少了这一项，抬高就变成了"把镜头低头按向后脑勺"。
                            + lift;
+            // ===== 吊杆极短时，固定的抬头偏移会主导整个方向向量 =====
+            // 实机读到「吊杆0.12/2.60m 抬0.55 俯-70° 见自己 否」——镜头翻上了天。
+            // 算一遍就知道不是巧合：视线目标比镜头高 0.38m，而水平距离只剩 0.12m，
+            //     atan(0.38 / 0.12) = 72°
+            //   吊杆 2.60m → 仰 8°   1.20m → 18°   0.45m → 40°   0.12m → 72°
+            // 也就是说吊杆一被墙压短，镜头就自动仰起来看天花板——
+            // 上一轮刚把"穿墙"堵上，失明就从穿墙换成了仰天，症状一样。
+            //
+            // 抬高量必须随水平距离缩：让它引起的仰角**永不超过 MaxLookTilt**。
+            // 远景时 0.38 远小于 d·tan(20°)，这一条完全不生效；只有贴脸时才咬。
+            lookUp = Mathf.Min(lookUp, Mathf.Max(0f, _boomDist) * MaxLookTiltTan);
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
 
             DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);

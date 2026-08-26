@@ -346,6 +346,109 @@ namespace AdversityRoad.Combat
             ankle.rotation = Quaternion.FromToRotation(v, target) * ankle.rotation;
         }
 
+
+        // ==================== 支撑脚锁定（foot lock IK）====================
+        //
+        // 【为什么必须有它——这一条是算出来的，不是感觉】
+        // 转弯时角色绕**自身竖轴**旋转，而脚是根节点的子物体，于是踩住的那只脚
+        // 会跟着一起扫过去。按实测参数（3.8m/s、0.61g、半径 2.41m、每步 1.39m）：
+        //     一步之内身体转过 33°
+        //     支撑脚离根 0.3m ⇒ 被拖 0.17m ；0.5m ⇒ 0.29m ；0.7m ⇒ 0.40m
+        // 一步才 1.39m，横向被拖走 0.17~0.40m —— 这就是"转圈会滑动"。
+        // 它跟播放速率无关（实测步幅比 0.92~1.00 是对的），也不是混合的问题：
+        // 直线跑时步幅同步就足以让脚站住，一旦路径带曲率就必然拖。
+        //
+        // 动作库里没有跑动转弯片段，所以只剩下成熟战斗游戏的通行解：
+        // **踩住的那一刻把脚钉在世界坐标上，让腿去迁就它。**
+        //
+        // 解析二骨 IK（先按余弦定理改膝角，再整条链绕髋对准目标）。
+        // 数学已离线验证：目标在可达范围内时踝误差恒为 0，超出时误差正好等于
+        // 超出量，且大腿/小腿长度一毫不变（绝不拉伸骨骼）。
+        static void TwoBoneIK(Transform hip, Transform knee, Transform ankle, Vector3 target)
+        {
+            if (hip == null || knee == null || ankle == null) return;
+            Vector3 a = hip.position, b = knee.position, c = ankle.position;
+            float lab = (b - a).magnitude, lcb = (c - b).magnitude;
+            if (lab < 1e-4f || lcb < 1e-4f) return;
+            float lat = Mathf.Clamp((target - a).magnitude, 1e-4f, lab + lcb - 1e-4f);
+
+            // ---- ① 弯曲：轴取【肢体自身平面的法线】。
+            // 用外部 hint 当轴是错的——hint 不在 A-B-C 平面里时，转完 B 会离开平面，
+            // 三角形就散了（离线验证时这个写法最坏残差 0.11m，换成平面法线后归零）。
+            Vector3 axis = Vector3.Cross(c - a, b - a);
+            if (axis.sqrMagnitude < 1e-10f) return;
+            axis.Normalize();
+            float ac_ab_0 = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((c - a).normalized, (b - a).normalized), -1f, 1f));
+            float ba_bc_0 = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((a - b).normalized, (c - b).normalized), -1f, 1f));
+            float ac_ab_1 = Mathf.Acos(Mathf.Clamp(
+                (lcb * lcb - lab * lab - lat * lat) / (-2f * lab * lat), -1f, 1f));
+            float ba_bc_1 = Mathf.Acos(Mathf.Clamp(
+                (lat * lat - lab * lab - lcb * lcb) / (-2f * lab * lcb), -1f, 1f));
+            hip.rotation = Quaternion.AngleAxis(
+                (ac_ab_1 - ac_ab_0) * Mathf.Rad2Deg, axis) * hip.rotation;
+            knee.rotation = Quaternion.AngleAxis(
+                (ba_bc_1 - ba_bc_0) * Mathf.Rad2Deg, axis) * knee.rotation;
+
+            // ---- ② 对准：整条链绕髋转，让踝指向目标。
+            Vector3 c2 = ankle.position;
+            Vector3 axis2 = Vector3.Cross(c2 - a, target - a);
+            if (axis2.sqrMagnitude < 1e-10f) return;
+            float aim = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((c2 - a).normalized, (target - a).normalized), -1f, 1f));
+            hip.rotation = Quaternion.AngleAxis(aim * Mathf.Rad2Deg, axis2.normalized) * hip.rotation;
+        }
+
+        /// <summary>一条腿的锁定状态：踩住的世界坐标、权重、以及自校准的最低点。</summary>
+        struct FootLock
+        {
+            public Vector3 pos;      // 踩住那一刻的世界坐标
+            public float w;          // 0~1，进出都做渐变，避免"啪"地钉住
+            public float minH;       // 该脚离地高度的历史最低（自校准踩地阈值）
+            public bool init;
+        }
+        FootLock _lockL, _lockR;
+
+        /// <summary>锁定修正量的封顶（米）。超过它就说明步幅同步本身有问题，
+        /// 这时硬钉只会把腿拉成一字马——宁可让它滑，也不能扭断。</summary>
+        const float FootLockMaxFix = 0.28f;
+        /// <summary>总开关：万一它在实机上表现不对，改这一行就能整块关掉，
+        /// 而不必回滚其它修复。</summary>
+        const bool FootLockOn = true;
+        /// <summary>诊断：这一帧两只脚的锁定修正量（米）与权重。</summary>
+        public float DbgFootFix { get; private set; }
+
+        /// <summary>踩住的脚钉在世界坐标上；腿由二骨 IK 迁就它。</summary>
+        void ApplyFootLock(Transform ankle, ref FootLock st, float dt)
+        {
+            if (ankle == null || visual == null) return;
+            var knee = ankle.parent;
+            var hip = knee != null ? knee.parent : null;
+            if (knee == null || hip == null) return;
+
+            float h = visual.InverseTransformPoint(ankle.position).y - _groundLocalY;
+            if (!st.init) { st.init = true; st.minH = h; }
+            // 历史最低点缓慢上浮（0.4m/s）：既能自校准出"踩地高度"，
+            // 又不会被一次异常的低点永久带偏。
+            st.minH = Mathf.Min(st.minH + 0.4f * dt, h);
+            bool planted = h < st.minH + 0.05f;
+
+            if (planted && st.w <= 0.001f) st.pos = ankle.position;   // 踩下的那一刻记位置
+            st.w = Mathf.MoveTowards(st.w, planted ? 1f : 0f, dt / (planted ? 0.08f : 0.10f));
+            if (st.w <= 0.001f) return;
+
+            // 只锁水平：纵向留给动画自己（起伏、屈膝都该保留）
+            Vector3 cur = ankle.position;
+            Vector3 fix = new Vector3(st.pos.x - cur.x, 0f, st.pos.z - cur.z);
+            float m = fix.magnitude;
+            if (m > FootLockMaxFix) fix *= FootLockMaxFix / m;        // 封顶，绝不拉伸成一字马
+            fix *= st.w;
+            DbgFootFix = Mathf.Max(DbgFootFix, fix.magnitude);
+            if (fix.sqrMagnitude < 1e-6f) return;
+            TwoBoneIK(hip, knee, ankle, cur + fix);
+        }
+
         void LateUpdate()
         {
             // ===== 钉髋绝不能跟着降频一起跳过 =====
@@ -517,6 +620,22 @@ namespace AdversityRoad.Combat
                 mp.y = _modelBaseY + _feetOffset;
                 _mocapModel.localPosition = mp;
             }
+
+            // ===== 支撑脚锁定：必须放在整条 LateUpdate 的最后 =====
+            // 它读的是踝骨的**最终世界坐标**，所以钉髋、倾身、贴地校准全部落定
+            // 之后才能算——任何一个还在后面动，锁定就会追着一个还会变的目标。
+            // 只在贴地的常规移动里做：出招/翻滚/倒地/休息时身体的支撑关系由动作
+            // 自己负责，再去钉脚只会把腿拧坏。
+            DbgFootFix = 0f;
+            if (FootLockOn && _grounded && !_rest &&
+                _pose != PoseState.Knockdown && _pose != PoseState.Death &&
+                _pose != PoseState.Dodge && !_mecanim.ActionPlaying)
+            {
+                float dtl = Mathf.Max(Time.deltaTime, 1e-4f);
+                ApplyFootLock(_ankleL, ref _lockL, dtl);
+                ApplyFootLock(_ankleR, ref _lockR, dtl);
+            }
+            else { _lockL.w = 0f; _lockR.w = 0f; }
         }
 
         /// <summary>某招式对应动捕片段的有效时长（无片段返回 0；翻滚时长匹配用）。</summary>
