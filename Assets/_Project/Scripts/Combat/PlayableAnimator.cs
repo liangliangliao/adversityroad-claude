@@ -1197,6 +1197,7 @@ namespace AdversityRoad.Combat
         void LeadAndPhase(float actual, float dt)
         {
             float wSum = 0f, rateSum = 0f;
+            _slipW = 0f; _slipClip = null;
             for (int i = 0; i < _dirW.Length; i++)
             {
                 float w = _dirW[i];
@@ -1205,7 +1206,13 @@ namespace AdversityRoad.Combat
                 float nat = Mathf.Max(0.3f, d.natSpeed);
                 // 上限 2.0：侧移/后退的自然速度低于前进，真实移速比它快时步频得跟着提。
                 // 再高就成了小碎步快放，不如让它稍微滑一点。
-                float r = Mathf.Clamp(actual / nat, 0.5f, 2.0f);
+                float rWant = actual / nat;
+                float r = Mathf.Clamp(rWant, 0.5f, 2.0f);
+                // 夹到边界＝**这一帧的步频没法跟上地面**，脚必然打滑：
+                // 撞上限（腿转不够快）读作"大步往前飘"，撞下限（腿转太快）读作"太空步"。
+                // 记下来打到屏幕上——"看上去在漂移"就此变成一个可读的数。
+                if (w > _slipW && !Mathf.Approximately(r, rWant))
+                { _slipW = w; _slipClip = d.name; _slipWant = rWant; _slipGot = r; }
                 // 该片段的方向与实际行进方向差 120° 以上 = 这一圈里没有能表达该方向的
                 // 片段（动作库不全时的兜底）：把它倒着播，步态每帧都对，只是时间轴反过来。
                 float sgn = Mathf.Abs(Mathf.DeltaAngle(d.angle, _blendAngle)) > 120f ? -1f : 1f;
@@ -1222,6 +1229,38 @@ namespace AdversityRoad.Combat
 
         /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
         public float DbgPhaseRate { get; private set; }
+
+        float _slipW, _slipWant, _slipGot;
+        string _slipClip;
+
+        /// <summary>
+        /// 诊断：这一帧【每一步实际跨了多远】，以及它跟片段自带步幅差多少。
+        ///
+        /// "一步一个脚印" 是可以算的：
+        ///     每步距离 = 实际速度 ÷ 步频        （步频就是 DbgPhaseRate，周期/秒）
+        ///     片段自带 = 片段自然速度 × 片段时长
+        /// 两者的比值就是脚在地面上滑了多少。1.00 = 脚踩实；1.30 = 每一步比腿
+        /// 能迈的多出三成，屏幕上就是"大步往前飘"；0.80 = 太空步。
+        /// 后面那半句只在播放速率被 [0.5, 2.0] 夹住时才会有内容——夹住即代表
+        /// 步频已经跟不上地面了，那是打滑的**充分条件**，一眼可判。
+        /// </summary>
+        public string DbgStride(float actual)
+        {
+            if (!Valid || DbgPhaseRate <= 0.001f) return "步幅 —";
+            float per = actual / DbgPhaseRate;
+            // 主导片段的自带步幅（自然速度 × 时长）
+            int top = -1;
+            for (int i = 0; i < _dirW.Length; i++)
+                if (top < 0 || _dirW[i] > _dirW[top]) top = i;
+            if (top < 0 || _dirW[top] <= 0.01f) return "步幅 —";
+            var dd = _dirs[top];
+            float natStride = Mathf.Max(0.05f, dd.natSpeed) * Mathf.Max(0.05f, dd.len);
+            string tail = _slipClip != null
+                ? string.Format("  ⚠滑 {0} 需{1:F2}×得{2:F2}×", _slipClip, _slipWant, _slipGot)
+                : "";
+            return string.Format("步幅 {0:F2}m/步（应{1:F2}）×{2:F2}{3}",
+                per, natStride, per / natStride, tail);
+        }
 
         /// <summary>
         /// 调试用：此刻**画面上真正在播的东西**——动作层片段名与权重，

@@ -914,6 +914,11 @@ namespace AdversityRoad.Player
         public float DbgLateralG { get; private set; }
         /// <summary>诊断：这一帧起步对齐闸门有没有拦住位移（静止起步先转身）。</summary>
         public bool DbgStartGate { get; private set; }
+
+        /// <summary>诊断：最近 6 秒内最大的单帧水平位移（米）与它发生在多久之前。
+        /// 正常跑动 60fps 下是 0.09m；读到 0.8m 就是有别的东西在写位置。</summary>
+        public float DbgMaxStep { get; private set; }
+        public float DbgStepAge { get; private set; }
         /// <summary>诊断：方向意图置信度（0~1）。搓杆时趋 0，稳定推杆时趋 1。</summary>
         public float DbgDirTrust { get; private set; } = 1f;
 
@@ -1120,6 +1125,16 @@ namespace AdversityRoad.Player
             float moveAngle = 0f;
             if (planar.sqrMagnitude > 1e-6f)
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+            // ===== 瞬移探测：单帧位移峰值 =====
+            // "魔法般改变位置"这类现象，用平均值永远看不见——它就发生在一帧里。
+            // 记下最近 6 秒内最大的那一帧位移与它发生在多久之前：
+            // 正常跑动一帧最多 5.2m/s ÷ 60fps ≈ 0.09m，掉到 20fps 也就 0.26m。
+            // 屏幕上读到 0.8m 就说明**有别的东西在写位置**，那和加减速无关。
+            float stepLen = planar.magnitude;
+            DbgStepAge += dt;
+            if (stepLen > DbgMaxStep || DbgStepAge > 6f)
+            { DbgMaxStep = stepLen; DbgStepAge = 0f; }
+
             DbgMoveAngle = moveAngle;   // 诊断：喂给动画层的行进夹角
             DbgActual = actual;         // 诊断：由真实位移量出来的地面速度
             _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle, StrafeActive);

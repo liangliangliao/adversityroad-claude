@@ -115,9 +115,29 @@ namespace AdversityRoad.UI
             art.pivot = new Vector2(1f, 1f);
             art.anchoredPosition = new Vector2(-24f, -298f);
             art.sizeDelta = new Vector2(900f, 40f);
+
+            // 第五行：**把"看上去在漂移"变成数字**。
+            //   步幅 X.XXm/步（应 Y.YY）×R   —— R>1 就是每一步比腿能迈的多，脚在往前滑；
+            //   ⚠滑 <片段> 需a×得b×        —— 播放速率被 [0.5,2.0] 夹住了，步频跟不上地面；
+            //   峰值单帧 X.XXm              —— 正常 60fps 跑动是 0.09m，读到 0.8m
+            //                                  就说明有别的东西在写位置（瞬移，不是加减速）。
+            var a5 = new GameObject("SlipText");
+            a5.transform.SetParent(go.transform, false);
+            _slip5 = a5.AddComponent<Text>();
+            _slip5.font = _text.font;
+            _slip5.fontSize = 24;
+            _slip5.alignment = TextAnchor.UpperRight;
+            _slip5.color = new Color(1f, 0.85f, 0.6f);
+            _slip5.raycastTarget = false;
+            _slip5.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var srt5 = _slip5.rectTransform;
+            srt5.anchorMin = srt5.anchorMax = new Vector2(1f, 1f);
+            srt5.pivot = new Vector2(1f, 1f);
+            srt5.anchoredPosition = new Vector2(-24f, -334f);
+            srt5.sizeDelta = new Vector2(900f, 40f);
         }
 
-        Text _anim4;
+        Text _anim4, _slip5;
 
         Text _spin;
         float _prevBodyYaw, _prevCamYaw;
@@ -204,6 +224,7 @@ namespace AdversityRoad.UI
             if (_move != null && _move.enabled != Enabled) _move.enabled = Enabled;
             if (_spin != null && _spin.enabled != Enabled) _spin.enabled = Enabled;
             if (_anim4 != null && _anim4.enabled != Enabled) _anim4.enabled = Enabled;
+            if (_slip5 != null && _slip5.enabled != Enabled) _slip5.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -229,6 +250,16 @@ namespace AdversityRoad.UI
                         hax.DbgPose, pcx.DbgTurnNeed,
                         pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying)
                     : "";
+                if (_slip5 != null)
+                {
+                    _slip5.text = hax != null && pcx != null
+                        ? string.Format("{0} ｜ 峰值单帧 {1:F2}m（{2:F0}s前）",
+                            hax.DbgStride(pcx.DbgActual), pcx.DbgMaxStep, pcx.DbgStepAge)
+                        : "";
+                    // 单帧位移超过 0.4m（≈胶囊半径）就标红：那已经足以穿过一堵薄墙
+                    _slip5.color = pcx != null && pcx.DbgMaxStep > 0.4f
+                        ? new Color(1f, 0.45f, 0.35f) : new Color(1f, 0.85f, 0.6f);
+                }
             }
 
             if (Time.unscaledTime < _nextReport) return;

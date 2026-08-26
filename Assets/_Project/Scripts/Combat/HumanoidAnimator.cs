@@ -56,6 +56,9 @@ namespace AdversityRoad.Combat
         /// 横移封顶按它给，不再手写一张与素材无关的表。</summary>
         public float NaturalSpeedAt(float angle) => Mecanim ? _mecanim.NaturalSpeedAt(angle) : 0f;
 
+        /// <summary>调试叠层：这一帧每步跨了多远、跟片段自带步幅差多少、有没有打滑。</summary>
+        public string DbgStride(float actual) => Mecanim ? _mecanim.DbgStride(actual) : "步幅 —";
+
         /// <summary>诊断用：这个角色走的是不是【动捕】通路。
         /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
         /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，
@@ -336,7 +339,30 @@ namespace AdversityRoad.Combat
 
         void LateUpdate()
         {
-            // 这一帧 Update 没更新姿态，骨骼就没动，钉髋/贴地/前摇也无事可做
+            // ===== 钉髋绝不能跟着降频一起跳过 =====
+            //
+            // 原来这里第一行就是 `if (!_lodDue) return;`，理由写的是"骨骼没动，
+            // 钉髋也无事可做"。那句话是错的：降频跳过的只是 **Tick**（不推进片段
+            // 时间），而 **PlayableGraph 照样每帧求值并把姿态写进骨骼**——写进去的
+            // 髋骨 XZ 带着片段自身的前进位移（本动作库的走跑片段不是原地的）。
+            // 于是降频角色每一帧都在两个位置之间来回跳：
+            //     跳过的帧 → 髋骨停在片段自带位移处（一个步幅可达 1.7m）
+            //     更新的帧 → 被钉回绑定位
+            // 1/2 降频就是每隔一帧摆一次，幅度接近一个身位。这就是"某些角色
+            // 突然漂移到别处又回来"。玩家因为 _lodExempt 不受影响，所以只在
+            // 别的角色身上看得到——但它同样是"动作看起来不同步"的一份来源。
+            //
+            // 钉髋本身只有一次 InverseTransformPoint + TransformPoint，
+            // 比起被它防住的画面撕裂，这点开销可以忽略。降频要省的是下面那些
+            // 三角函数与四元数（分离拧腰、前摇、双脚贴地校准），不是这两行。
+            if (Mecanim && _hipsPin && _hips != null && _mocapModel != null &&
+                _pose != PoseState.Death && _pose != PoseState.Knockdown)
+            {
+                Vector3 pin = _mocapModel.InverseTransformPoint(_hips.position);
+                pin.x = _hipsBindLP.x;
+                pin.z = _hipsBindLP.z;
+                _hips.position = _mocapModel.TransformPoint(pin);
+            }
             if (!_lodDue) return;
             if (!Mecanim)
             {
@@ -349,19 +375,9 @@ namespace AdversityRoad.Combat
             }
             if (!_hipsPin || _hips == null || _mocapModel == null) return;
 
-            // 髋骨 XZ 锚定是为【走跑片段自带水平位移】准备的（把模型钉回胶囊体）。
-            // 但**倒地与死亡本身就是靠髋骨水平移动完成的**——人向前扑倒、侧身躺下，
-            // 髋在水平面上会走出大半个身位。把它钉住，身体就永远倒不下去，
-            // 停在下蹲到一半的姿势上，看着像卡死（实机反馈的"半蹲没彻底躺平"）。
-            // 这两个姿态放行，让动作自己把身体放平。
-            bool freeHips = _pose == PoseState.Death || _pose == PoseState.Knockdown;
-            if (!freeHips)
-            {
-                Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
-                lp.x = _hipsBindLP.x;
-                lp.z = _hipsBindLP.z;
-                _hips.position = _mocapModel.TransformPoint(lp);
-            }
+            // （钉髋已在本方法开头无条件做过——它不能跟着降频跳过，理由见那里。
+            //   倒地/死亡两个姿态放行：那两段动作本来就是靠髋骨水平移动完成的，
+            //   钉住的话人永远倒不下去，会停在下蹲到一半的姿势上。）
 
             // 横移/后撤的上下半身分离（只在贴地常规移动姿态下做——
             // 出招/翻滚/倒地时身体的朝向由动作自己负责，再拧一下只会变形）
