@@ -1794,7 +1794,21 @@ namespace AdversityRoad.Player
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 
-            Vector3 pos = pivot + boomDir * _boomDist;
+            // ===== 贴墙时【抬高】，而不是继续把镜头压向后脑勺 =====
+            //
+            // 录屏里角色占满画面、甚至被裁掉——住所里两三步一堵墙，吊杆被碰撞回缩
+            // 一路压到一米出头。而"能不能看清自己站在哪儿"是操作的前提：
+            // 看不见位置就对不准门口，读起来就是"不受控制"。
+            //
+            // 完整入画所需的距离可以由 FOV 直接反推（角色高 ≈1.8m）：
+            //     d = 0.62·h / tan(fov/2)   →  60° 时约 1.9m
+            // 比这更近就一定装不下整个人。所以短于它的那一截**不再靠缩短来化解**，
+            // 而是把镜头等量抬起来：从斜上方俯看，人仍然完整在画面里，
+            // 而镜头位置更高、也更不容易插进家具和墙里。这是狭窄室内的通行做法。
+            float fovNow = _camComp != null ? _camComp.fieldOfView : fieldOfView;
+            float frameNeed = 0.62f * 1.8f / Mathf.Tan(Mathf.Deg2Rad * fovNow * 0.5f);
+            float shortfall = Mathf.Max(0f, frameNeed - _boomDist);
+            Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * shortfall;
 
             // ---- 受击纵向脉冲（幅度小、衰减快） ----
             if (_kick > 0.001f)
@@ -1824,11 +1838,13 @@ namespace AdversityRoad.Player
 
             // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
             // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
-            var camc = GetComponent<Camera>();
+            var camc = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
             if (camc != null && !Presets[PresetIndex].fp)
                 camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
                     fieldOfView + _shot.fovBias, 12f * dt);
         }
+
+        Camera _camComp;   // 缓存：每帧 GetComponent 没必要
 
         // 脱出检测的重叠缓冲（每帧一次，必须无 GC）
         static readonly Collider[] BoomOverlap = new Collider[8];

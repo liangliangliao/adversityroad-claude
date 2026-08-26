@@ -194,9 +194,14 @@ namespace AdversityRoad.UI
             float worstStep = _worst * 5.2f;
             CountCharacters();
             _text.text = string.Format(
-                "FPS {0:F0} | 最长帧 {1:F0}ms（单帧位移 {2:F2}m）| 角色 {3}（动捕 {4}）| 敌 {5}",
+                "FPS {0:F0} | 最长帧 {1:F0}ms（单帧位移 {2:F2}m）| 角色 {3}（动捕 {4}）| 敌 {5} | 新增{6} {7}",
                 fps, worstMs, worstStep, _charCache, _mocapCache,
-                AdversityRoad.Core.ActorRegistry.Enemies.Length);
+                AdversityRoad.Core.ActorRegistry.Enemies.Length,
+                AdversityRoad.Core.ActorRegistry.SpawnCount,
+                // 最近 6 秒内登记过就把名字亮出来：按下闪的那一下到底生成了什么，
+                // 一眼可见，不必再靠搜代码猜
+                Time.unscaledTime - AdversityRoad.Core.ActorRegistry.LastSpawnAt < 6f
+                    ? "←" + AdversityRoad.Core.ActorRegistry.LastSpawn : "");
             // 最坏帧偏红：一眼能看出这半秒里有没有大顿
             _text.color = worstMs > 60f ? new Color(1f, 0.45f, 0.35f)
                                         : new Color(1f, 0.95f, 0.4f);

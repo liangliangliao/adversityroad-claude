@@ -71,11 +71,22 @@ namespace AdversityRoad.Core
             }
         }
 
+        /// <summary>诊断：最近一次登记的敌人是谁、什么时候、累计登记了几次。
+        /// 「按下闪就多一个打不死的敌人」这类问题，静态搜代码找不到——
+        /// 但**所有**敌人都必须经过 Register 这一个入口，在这里记一笔就跑不掉。</summary>
+        public static string LastSpawn { get; private set; } = "—";
+        public static float LastSpawnAt { get; private set; } = -99f;
+        public static int SpawnCount { get; private set; }
+
         public static void Register(AI.EnemyController e)
         {
             if (e == null || _enemies.Contains(e)) return;
             _enemies.Add(e);
             _dirty = true;
+            SpawnCount++;
+            LastSpawnAt = Time.unscaledTime;
+            LastSpawn = e.profile != null && !string.IsNullOrEmpty(e.profile.displayName)
+                ? e.profile.displayName : e.name;
         }
 
         public static void Unregister(AI.EnemyController e)
