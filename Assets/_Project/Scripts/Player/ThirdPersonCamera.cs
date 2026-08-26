@@ -215,6 +215,10 @@ namespace AdversityRoad.Player
         /// 14°/s 意味着代数环的增益被钉死——搓杆再快，角色被带偏的角速度也就这么多。
         /// </summary>
         const float IndoorOrbitCap = 14f;
+        /// <summary>室内"敌人已经出画"兜底的转速上限（度/秒）。
+        /// 这一条在屋里也必须留一条口子——打着打着对手不知道在哪是更糟的失明——
+        /// 但它同样要被室内几何管住，不能享受露天的 340°/s。</summary>
+        const float IndoorEnemyOrbitCap = 55f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -344,6 +348,9 @@ namespace AdversityRoad.Player
         /// 宁可让吊杆稍微擦进墙面（近裁剪 + 角色头部淡出已能兜住观感），
         /// 也不能把画面缩成一颗后脑勺：看不见位置的镜头，比穿帮的镜头更难操作。</summary>
         const float BoomHardMin = 0.9f;
+        /// <summary>吊杆被墙压短时镜头（连同视线目标）最多抬起多少米。
+        /// 再高就会钻进天花板与吊灯里——室内层高本来就只有三米出头。</summary>
+        const float MaxPinchLift = 0.55f;
         /// <summary>碰撞回缩留出的皮肤厚度（比探测球半径 0.18 稍薄即可）。</summary>
         const float BoomSkin = 0.12f;
 
@@ -1351,7 +1358,17 @@ namespace AdversityRoad.Player
                 //
                 // 交战中（有锁定目标）也不归位：那时取景由战斗分支负责，
                 // 绕着敌人转圈方位角每秒变七十度，归位会变成"镜头一直在追"。
-                bool settleAllowed = !fightingNow && !stickHeld;
+                // 【室内一律不归位】——这是"住所里一转身镜头就自己跟过去、
+                // 人当场失明"的直接来源。归位这一路走的是 SettleEnter(42°) 起、
+                // 目标精度 SettleExit(10°)，而它**完全绕开了下面那道室内限速**
+                //（那道限速挂在"摇杆推着"的分支里，松杆时根本不执行）：
+                // 于是室内 _urgency 恒满 ⇒ esc=4 ⇒ 上限 exploreMaxSpeed(85)×4 = 340°/s，
+                // 站定 1.1 秒后镜头以每秒数百度甩到人背后。屋里两三步一堵墙，
+                // 这一甩就是吊杆扫墙 → 碰撞回缩 → 贴脸 → 什么都看不见。
+                //
+                // 而屋里本来就没有"看清远处的路"这个需求（跟随绕行存在的唯一理由）。
+                // 室内该由玩家自己决定看哪儿，要摆正有【一键回正】（V / 双击转镜区）。
+                bool settleAllowed = !fightingNow && !stickHeld && !IndoorMode;
                 if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
@@ -1472,10 +1489,18 @@ namespace AdversityRoad.Player
                             orbit *= dirTrust;
                             // 室内一律再压到 IndoorOrbitCap 以下：环的增益被钉死在
                             // 每秒十几度，搓杆再快也拖不动角色，更扫不进墙里。
-                            if (IndoorMode) orbit = Mathf.Min(orbit, IndoorOrbitCap);
                             maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
+                    // ===== 室内封顶必须【无条件】落地，不能挂在"摇杆推着"里面 =====
+                    // 上面那一整块的前置条件是 `!enemyNet` 且 `摇杆推着`。于是室内
+                    // 有两条路完全绕开限速：松杆时的归位（已在上面按室内关掉）、
+                    // 以及"敌人出画"的兜底。后者在屋里同样能把镜头以数百度每秒
+                    // 甩过去。限速属于【环境约束】，不属于某一条跟随理由，
+                    // 所以它的位置就该在这里——所有跟随理由算完之后，一次性落地。
+                    if (IndoorMode)
+                        maxSpd = Mathf.Min(maxSpd,
+                            enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap);
 
                     if (err > 45f)
                     {
@@ -1805,10 +1830,27 @@ namespace AdversityRoad.Player
             // 比这更近就一定装不下整个人。所以短于它的那一截**不再靠缩短来化解**，
             // 而是把镜头等量抬起来：从斜上方俯看，人仍然完整在画面里，
             // 而镜头位置更高、也更不容易插进家具和墙里。这是狭窄室内的通行做法。
+            //
+            // 【上一版这里做错了，而且正是"就像失去了眼睛"的来源】
+            // 上一版只把**镜头**抬起来，视线目标仍然钉在取景点上。那等于凭空
+            // 加了一个俯角，而且这个俯角大得离谱：
+            //     吊杆被墙压到 BoomHardMin=0.9m，frameNeed(60°FOV)=1.93m
+            //     ⇒ 抬高 1.03m ⇒ 额外俯角 atan((1.03−0.38)/0.9) = 36°
+            // 而 Unity 的 fieldOfView 是【垂直】视角，60° 的一半只有 30°。
+            // 36° > 30° ⇒ **地平线被整个推出画面**：画面里只剩地板和头顶，
+            // 前方有墙有门有家具全都看不见。屋里两三步一堵墙，这一档几乎常驻。
+            //
+            // 抬高本身没错，错在只抬一头。正确做法是**镜头与视线目标一起抬**：
+            // 那是一次纯粹的垂直平移，俯角一度不变，前方能见度不受任何损失，
+            // 代价只是角色在画面里坐得低一点（脚可能出画）。
+            // 至于"0.9m 装不下 1.8m 高的人"——那是几何事实，抬高解决不了它，
+            // 只能靠贴身景别接受下来（RE4 重制、最后生还者贴墙时都是这么处理的）。
+            // 能见度绝不能拿去换构图。
             float fovNow = _camComp != null ? _camComp.fieldOfView : fieldOfView;
             float frameNeed = 0.62f * 1.8f / Mathf.Tan(Mathf.Deg2Rad * fovNow * 0.5f);
-            float shortfall = Mathf.Max(0f, frameNeed - _boomDist);
-            Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * shortfall;
+            // 抬高量另设上限：即便同抬视线目标，抬太多也会让镜头钻进天花板/吊灯。
+            float lift = Mathf.Min(Mathf.Max(0f, frameNeed - _boomDist), MaxPinchLift);
+            Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * lift;
 
             // ---- 受击纵向脉冲（幅度小、衰减快） ----
             if (_kick > 0.001f)
@@ -1833,7 +1875,10 @@ namespace AdversityRoad.Player
             // 于是特写推近了却仍然对着胸口，"推近"只是变大而没有变成特写。
             float lookUp = 0.38f + 0.12f * _lockBlend
                            + 0.30f * _closeStrength * _ultimateBlend
-                           - 0.10f * Mathf.Clamp01(_shot.heightBias / 0.28f);
+                           - 0.10f * Mathf.Clamp01(_shot.heightBias / 0.28f)
+                           // 贴墙抬高时视线目标同量抬起：纯垂直平移，俯角不变。
+                           // 少了这一项，抬高就变成了"把镜头低头按向后脑勺"。
+                           + lift;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
 
             // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
