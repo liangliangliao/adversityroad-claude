@@ -221,8 +221,14 @@ namespace AdversityRoad.UI
             {
                 var pcx = AdversityRoad.Core.ActorRegistry.Player;
                 var hax = pcx != null ? pcx.GetComponent<Combat.HumanoidAnimator>() : null;
+                // 待转角与起步闸门也放在这一行：它们同样是零点几秒的瞬态，
+                // 放进 0.5 秒一次的汇报行里就永远看不见。
+                // 「闸」亮起 = 静止起步正在先转身（这时不动是对的，不是卡住）。
                 _anim4.text = hax != null
-                    ? "姿态 " + hax.DbgPose + " ｜ " + hax.DbgNowPlaying : "";
+                    ? string.Format("姿态 {0} ｜ 待转{1:F0}° {2}｜ {3}",
+                        hax.DbgPose, pcx.DbgTurnNeed,
+                        pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying)
+                    : "";
             }
 
             if (Time.unscaledTime < _nextReport) return;
