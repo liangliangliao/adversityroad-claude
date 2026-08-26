@@ -1215,7 +1215,19 @@ namespace AdversityRoad.Player
                 if (!_jumpPosePlayed && _vy > 0.5f && _anim.HasPose(PoseState.JumpUp))
                 {
                     _jumpPosePlayed = true;
-                    _anim.SetPose(PoseState.JumpUp);
+                    // ===== 起跳片段的时长必须等于【上升段的物理时长】=====
+                    //
+                    // "跳跃动画非常奇怪、不自然"的根子在这儿：起跳片段是按它自己的
+                    // 节奏播的，而跳跃的上升段是物理算出来的，两者从来没对过表。
+                    //     上升时长 = jumpForce / |gravity| = 7 / 20 = 0.35s
+                    // 而 Jumping Up 裁掉首尾后按 1.2 倍速播是 0.8 秒上下。
+                    // 于是人在 0.35 秒就到了最高点，腿却才演到起跳片段的一半；
+                    // 紧接着过了顶点 _vy<−1，下落循环把它当场切断——
+                    // **起跳动作从头到尾没有一次播完过**，看到的只是个残段。
+                    //
+                    // 交给 SetPose 的 duration 反推播放速度（它就是干这个的），
+                    // 于是片段正好在最高点播完，下落循环接得上，不再互相切断。
+                    _anim.SetPose(PoseState.JumpUp, jumpForce / Mathf.Max(1f, Mathf.Abs(gravity)));
                 }
                 else if (_airT > FallPoseAfter && _vy < -1f &&
                          _anim.CurrentPose != PoseState.FallLoop && _anim.HasPose(PoseState.FallLoop))
@@ -1235,11 +1247,22 @@ namespace AdversityRoad.Player
                 float drop = _fallTopY - transform.position.y;
                 var land = drop > HardLandDrop ? PoseState.LandHard : PoseState.Land;
                 if (!_anim.HasPose(land)) land = PoseState.Land;
-                // 只在真的腾空过一会儿之后才播落地：走下路缘石也播一段缓冲会很碎
-                if (_airT > FallPoseAfter && _anim.HasPose(land))
+                // 只在真的腾空过一会儿之后才播落地：走下路缘石也播一段缓冲会很碎。
+                // 【还要求落地时基本是停下来的】动作层是盖在移动层上面的：跑跳落地
+                // 若播一段"站定缓冲 + 起身"，人还在全速前进、腿却在演原地落地起身，
+                // 又是一次动作与位移打架。大作的处理一样——助跑跳落地直接接跑动循环，
+                // 缓冲只在原地跳/高处落下时才有。
+                float landSpeed01 = Mathf.Clamp01(_hVel.magnitude / Mathf.Max(0.1f, runSpeed));
+                if (_airT > FallPoseAfter && _anim.HasPose(land) &&
+                    (landSpeed01 < 0.35f || land == PoseState.LandHard))
                 {
-                    _anim.SetPose(land);
-                    _moveStateCd = 0.3f;
+                    // 落地缓冲的时长同样按物理给，不由片段自己说了算：
+                    // 普通落地就是一次屈膝吸收（0.25s），重着陆多给一点（0.45s）。
+                    // 片段本身是两秒的"落地 + 慢慢站直"，照它自己的节奏播，
+                    // 移动层要被盖住一秒多——那一秒里人已经在走了。
+                    float landDur = land == PoseState.LandHard ? 0.45f : 0.25f;
+                    _anim.SetPose(land, landDur);
+                    _moveStateCd = landDur;
                 }
                 else if (_anim.CurrentPose == PoseState.FallLoop || _anim.CurrentPose == PoseState.JumpUp)
                 {
