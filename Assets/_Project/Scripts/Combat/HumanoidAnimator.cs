@@ -69,6 +69,15 @@ namespace AdversityRoad.Combat
         // 本动作包的走/跑等片段自带水平位移（实测 Walking +1.8m），Generic 播放
         // 会把模型带离胶囊体。每帧动画求值后把髋骨水平位置钉回绑定位（在模型
         // 根局部空间做，轴向安全），纵向起伏/腾空原样保留；世界位移由控制器负责。
+        /// <summary>倾身取真实倾角的几成（1.0 = 完全按 atan(a/g) 倾，像摩托压弯）。</summary>
+        const float LeanFraction = 0.6f;
+        /// <summary>倾角封顶（度）。</summary>
+        const float MaxLeanDeg = 12f;
+        /// <summary>倾角变化速率上限（度/秒）：转弯起手不允许"啪"地倒过去。</summary>
+        const float LeanSlewDegPerSec = 90f;
+        float _lean, _leanPrevYaw;
+        bool _leanInit;
+
         Transform _mocapModel, _hips;
         Vector3 _hipsBindLP;
         bool _hipsPin;
@@ -379,6 +388,41 @@ namespace AdversityRoad.Combat
             //   倒地/死亡两个姿态放行：那两段动作本来就是靠髋骨水平移动完成的，
             //   钉住的话人永远倒不下去，会停在下蹲到一半的姿势上。）
 
+            // ===== 转向倾身：跑动转弯的向心力靠身体向内倾提供 =====
+            //
+            // 录屏里 13 秒每一帧「夹角 0°、移动 Jog Forward + Running」——
+            // 身体以近 200°/s 在转，腿上却始终是一条直线跑循环，**没有任何
+            // 迹象表明这个人正在转弯**。这就是"不是一步一个脚印转的"。
+            // 动作库里没有跑动转弯片段（对齐表里方向环只有 前/后/左/右/斜），
+            // 而拿侧移片段去凑是错的：转弯时速度相对身体仍然是正前方，
+            // 播侧移会变成"横着挪"，那是另一种失真。
+            //
+            // 真人的做法只有一个自由度：**向内倾**，倾角就是 atan(a_lat / g)。
+            // 这是几何恒等式，不是手感参数——0.6g 的转弯对应 31°。
+            // 取六成、封顶 12°：够看得出在转弯，又不至于像摩托压弯。
+            // 直线跑时 a_lat=0 ⇒ 倾角自然归零，不需要任何额外的收手逻辑。
+            if (_mocapModel != null)
+            {
+                float dtl = Mathf.Max(Time.deltaTime, 1e-4f);
+                float yawNow = transform.eulerAngles.y;
+                if (!_leanInit) { _leanInit = true; _leanPrevYaw = yawNow; }
+                float yawRate = Mathf.DeltaAngle(_leanPrevYaw, yawNow) / dtl;
+                _leanPrevYaw = yawNow;
+                bool leanOk = _grounded && !_rest &&
+                              _pose != PoseState.Knockdown && _pose != PoseState.Death;
+                float aLat = yawRate * Mathf.Deg2Rad * Mathf.Max(0f, _actualSpeed);
+                float want = leanOk
+                    ? Mathf.Clamp(Mathf.Atan2(aLat, 9.81f) * Mathf.Rad2Deg * LeanFraction,
+                                  -MaxLeanDeg, MaxLeanDeg)
+                    : 0f;
+                _lean = Mathf.MoveTowards(_lean, want, LeanSlewDegPerSec * dtl);
+                // 绕模型本地正前轴滚转：+Z 正角把头顶推向 −X（左），
+                // 所以右转（yawRate>0 ⇒ _lean>0）要用负角才是向右倾。
+                _mocapModel.localRotation = Mathf.Abs(_lean) > 0.05f
+                    ? Quaternion.AngleAxis(-_lean, Vector3.forward)
+                    : Quaternion.identity;
+            }
+
             // 横移/后撤的上下半身分离（只在贴地常规移动姿态下做——
             // 出招/翻滚/倒地时身体的朝向由动作自己负责，再拧一下只会变形）
             if (CanStrafe) ApplyStrafeSplit(_hips, _spine, Time.deltaTime);
@@ -446,8 +490,18 @@ namespace AdversityRoad.Combat
                 //
                 // 又一次栽在同一条上（铁律一）：判据写在了"恰好相关的量"(_pose)上，
                 // 而意图是"站定"。意图就在手边——_speed01。
+                //
+                // 【录屏证明：这段校准在实机上一次都没跑过】
+                // 上面那段注释已经把道理写对了——判"站定"要用 _speed01，不要用 _pose——
+                // 我却把 _pose 那一条**留着当额外的 &&**。而录屏里 13 秒每一帧都是
+                // 「姿态 TurnRight」（_pose 卡死，见下面 Update 里的回落修复），
+                // 于是 calibrate 恒为 false：**双脚贴地校准从来没有执行过**，
+                // 模型的 Y 偏移一直停在初始值。脚不在地上，人自然读作
+                // "不是自己在跑，是被拉着腾空"。
+                // 现在只留意图本身：站定 + 贴地 + 身体确实是直立的。
                 bool calibrate = _grounded && _speed01 < 0.05f &&
-                    (_pose == PoseState.Idle || _pose == PoseState.Guard);
+                    _pose != PoseState.Knockdown && _pose != PoseState.Death &&
+                    _pose != PoseState.Dodge && !_rest;
                 if (calibrate)
                 {
                     float minY = float.MaxValue;
@@ -816,6 +870,26 @@ namespace AdversityRoad.Combat
                         _mecanim.PlayAction(_pose, _poseDur);
                     }
                 }
+
+                // ===== 一次性招式播完之后，_pose 必须回落到 Idle =====
+                //
+                // 【录屏证明】13 秒里每一帧都是「姿态 TurnRight ｜ 动作 —」：
+                // 动作层权重早就是 0（片段播完了），_pose 却永远停在 TurnRight。
+                // 因为设招只有两个入口，两个都只在**变化时**触发：
+                //   · MapFromFsm 只在战斗状态机换状态时跑，而移动全程状态不变；
+                //   · PlayerController.UpdateMoveStatePose 只在转场那一帧设招。
+                // 没有任何人负责"招式结束了，回到普通移动"。
+                //
+                // 这不是一个显示问题——**_pose 是被别处当条件读的**：
+                // 贴地校准要求站定姿态、CanStrafe 有一张姿态排除表、
+                // 动作层的接管判断也看它。锁死一个招式姿态等于让这些逻辑
+                // 集体停在错误的分支上（上面的双脚校准就是这么被锁掉的）。
+                //
+                // 保持型姿态（格挡/蓄力/倒地/死亡/蹲伏待机/下落循环）不回落——
+                // 它们本来就该停在那儿等外部收招。
+                if (!_rest && _pose != PoseState.Idle &&
+                    !_mecanim.ActionPlaying && !IsHoldPose(_pose))
+                    _pose = PoseState.Idle;
 
                 // 击飞翻滚：被打飞很远时在视根上做后翻滚（腾空后仰翻转 + 落地），
                 // 让"飞出去"是一段真实的空翻而非僵直漂移
@@ -1354,6 +1428,13 @@ namespace AdversityRoad.Combat
                     break;
             }
         }
+
+        /// <summary>保持型姿态：播到末尾就停住等外部收招，不该自动回落到 Idle。
+        /// 与 PlayableAnimator 的 ActionMap 里 hold=true 的那几条对应。</summary>
+        static bool IsHoldPose(PoseState p) =>
+            p == PoseState.Guard || p == PoseState.Charge || p == PoseState.ChargeLoop ||
+            p == PoseState.Knockdown || p == PoseState.Death ||
+            p == PoseState.CrouchIdle || p == PoseState.FallLoop;
 
         void MapFromFsm()
         {

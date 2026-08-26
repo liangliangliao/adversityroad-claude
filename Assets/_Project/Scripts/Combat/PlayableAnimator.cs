@@ -1248,13 +1248,25 @@ namespace AdversityRoad.Combat
         {
             if (!Valid || DbgPhaseRate <= 0.001f) return "步幅 —";
             float per = actual / DbgPhaseRate;
-            // 主导片段的自带步幅（自然速度 × 时长）
-            int top = -1;
+            // 【上一版这个"应"取的是主导片段一条的步幅，读数是错的】
+            // 录屏里读到 ×1.15，我差点当成"脚滑了 15%"。实际上混合中的脚在局部
+            // 空间里走的是**各片段步幅的加权平均**（算术平均），而 actual/步频
+            // 给出的是调和平均——两条片段步幅差得远时，这两个平均本来就差一截。
+            // 拿其中一条去当基准，等于凭空造出一个不存在的偏差。
+            // 正确的基准是加权平均：Σ wᵢ·(natᵢ×lenᵢ)。
+            // 实测代入（Jog Forward 2.40×0.62 + Running 3.70×0.38 = 2.89
+            // 对 actual/步频 = 2.77）真实打滑只有 4%，不是 15%。
+            float wsum = 0f, natStride = 0f;
             for (int i = 0; i < _dirW.Length; i++)
-                if (top < 0 || _dirW[i] > _dirW[top]) top = i;
-            if (top < 0 || _dirW[top] <= 0.01f) return "步幅 —";
-            var dd = _dirs[top];
-            float natStride = Mathf.Max(0.05f, dd.natSpeed) * Mathf.Max(0.05f, dd.len);
+            {
+                float w = _dirW[i];
+                if (w <= 0.001f) continue;
+                var di = _dirs[i];
+                natStride += w * Mathf.Max(0.05f, di.natSpeed) * Mathf.Max(0.05f, di.len);
+                wsum += w;
+            }
+            if (wsum <= 0.001f) return "步幅 —";
+            natStride = Mathf.Max(0.05f, natStride / wsum);
             string tail = _slipClip != null
                 ? string.Format("  ⚠滑 {0} 需{1:F2}×得{2:F2}×", _slipClip, _slipWant, _slipGot)
                 : "";
