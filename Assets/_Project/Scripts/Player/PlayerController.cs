@@ -679,40 +679,13 @@ namespace AdversityRoad.Player
                 return;
             }
 
-            // ===== 跑动中的转身（急停—插步—起步），成熟动作游戏的第四条规则 =====
-            //
-            // 【资源一直都在，是我把它锁死了】
-            // Left Turn 90 / Right Turn 90 / Quick 180 Turn 早就在动作库里、也映射了
-            // PoseState，但触发条件写的是"站定 0.2 秒以上"（_stillT > 0.2，而 _stillT
-            // 只在 speed01 < 0.06 时累加）。于是**跑动中永远播不到**——而跑动中大角度
-            // 换向正是陀螺现象发生的那一刻。
-            //
-            // 当初这么锁是因为它在跑动中播时"人还在平移、腿却在演原地转身"。
-            // 我那是把功能关掉来消症状，没修真正的不匹配。大作的做法不是"跑动中
-            // 不播转身"，而是**让位移配合转身**：刹住 → 插步转过去 → 重新起步。
-            // 动作与位移一致，观感就成立，这也正是"一步一个脚印"的来源。
-            //
-            // 当初误触发的元凶是搓杆（速度经过零被误判成站定）。现在有了方向意图
-            // 置信度这道闸门，搓杆时 trust≈0 根本进不来，可以安全地对跑动开放。
-            if (_pivotT > 0f)
-            {
-                _pivotT -= dt;
-                // 朝向在片段时长内转到位：转速由"还剩多少角度 / 还剩多少时间"给出，
-                // 于是动作播完的那一刻朝向正好到位，不会出现"人已朝新方向跑、腿还在转"
-                float rem = Mathf.Max(0.02f, _pivotT);
-                float left = Quaternion.Angle(transform.rotation, _pivotTarget);
-                transform.rotation = Quaternion.RotateTowards(
-                    transform.rotation, _pivotTarget, (left / rem) * dt);
-                // 插步：这段片段本身没有前进位移，所以位移也要跟着刹住，
-                // 收尾再放开——这就是"急停—插步—起步"，而不是边平移边原地转。
-                _hVel = Vector3.MoveTowards(_hVel, Vector3.zero, PivotBrake * dt);
-                CarryByPlatform();
-                FallGuard();
-                Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
-                DbgTargetVel = 0f; DbgVel = _hVel.magnitude; DbgFinalSpeed = 0f;
-                DbgHitSides = (_cc.collisionFlags & CollisionFlags.Sides) != 0;
-                return;
-            }
+            // 【跑动转身已移除】上一轮我把 Left/Right Turn 90 / Quick 180 Turn
+            // 接成"跑动中的插步转身"，做法是刹住速度 + 播一段转身**动作**。
+            // 但动作层是**盖在移动层上面**的：那一段里整个方向混合被替换成一段
+            // 站姿转身片段，而位移仍在继续——画面上就是"突然漂移到别处，然后才
+            // 继续朝原方向走"，也就是你说的抑扬顿挫、多个动画在打架。
+            // 移动过渡属于移动状态机内部，不能盖在移动层之上。撤销。
+
             // ===== 顺序：先转向，再决定位移方向，最后位移 =====
             // 原来是先位移后转向，而位移方向直接取摇杆、与朝向无关——那正是
             // "被摇杆拖着走"的结构性来源（见下面两段根因说明）。
@@ -833,30 +806,7 @@ namespace AdversityRoad.Player
                 ? Vector3.SignedAngle(transform.forward, moveDir, Vector3.up) : 0f;
             DbgTurnNeed = Mathf.Abs(needDeg);
 
-            // 触发跑动转身：确实在跑 + 方向意图明确（搓杆进不来）+ 要转的角度够大。
-            // 门槛取 100°：再小的换向靠角速度上限自然带出弧线就够了，
-            // 插一段转身反而会打断连续的跑动。
-            if (!StrafeActive && _anim != null && _cc.isGrounded && _pivotT <= 0f &&
-                _pivotCd <= 0f && _hVel.magnitude > walkSpeed * 0.7f &&
-                DbgDirTrust > 0.75f && DbgTurnNeed > 100f)
-            {
-                var pv = DbgTurnNeed > 150f
-                    ? PoseState.Turn180
-                    : (needDeg > 0f ? PoseState.TurnRight : PoseState.TurnLeft);
-                if (_anim.HasPose(pv))
-                {
-                    float clipLen = _anim.ActionClipLength(pv);
-                    _pivotT = clipLen > 0.1f ? Mathf.Clamp(clipLen * 0.7f, 0.28f, 0.5f) : 0.36f;
-                    _pivotTarget = Quaternion.LookRotation(moveDir);
-                    _pivotCd = _pivotT + 0.25f;     // 防止一段接一段地连播
-                    // 压住移动过渡层：它在 LateUpdate 里跑，起步/急停/原地转身都会
-                    // 调 SetPose，会把这段转身片段当场覆盖掉（铁律二：两处写同一个东西）。
-                    // _moveStateCd 正是它自己的冷却闸门，借用它即可，不必再加一个标志。
-                    _moveStateCd = _pivotT + 0.12f;
-                    _anim.SetPose(pv, _pivotT);
-                }
-            }
-            _pivotCd -= dt;
+
 
             // 加减速曲线：改用【指数逼近】而非线性匀加速——对齐 Unity 官方
             // ThirdPersonController 的做法（其注释原文：curved result rather than a
@@ -903,12 +853,7 @@ namespace AdversityRoad.Player
         float _prevDirYaw;
         bool _dirMeanInit;
 
-        // 跑动转身（急停—插步—起步）的进行中状态
-        float _pivotT, _pivotCd;
-        Quaternion _pivotTarget = Quaternion.identity;
-        /// <summary>插步时把水平速度刹住的减速度（m/s²）。片段本身没有前进位移，
-        /// 位移必须跟着停，否则又变回"人在平移、腿在原地转"。</summary>
-        const float PivotBrake = 26f;
+
         /// <summary>方向向量的滑动平均速率——与 ThirdPersonCamera.DirMeanRate 同值，
         /// 两层对"什么才算一个方向"必须用同一把尺子。</summary>
         const float DirMeanRate = 2.2f;
@@ -1092,6 +1037,20 @@ namespace AdversityRoad.Player
         float _stillT;   // 已经站定多久（秒）——原地转身的前提
 
         /// <summary>算"站定"的速度阈值（相对冲刺速度的比例）。</summary>
+        /// <summary>
+        /// 起步/急停要不要走【动作层】。答案是不要，这里留成常量只为把理由钉在代码里。
+        ///
+        /// PlayableAnimator 是两层：移动层（方向环）与动作层，而动作层**盖在移动层上面**。
+        /// 把"起步(Start Walking)/急停(Run To Stop)"当作动作播，那一段里整个方向混合
+        /// 被替换成一段站姿片段，可位移仍在继续——
+        ///   · 起步：Start Walking 起手有个后撤重心 ⇒ 画面上"先向后漂一段再前进"；
+        ///   · 急停：人已经停了，腿却在演另一段，读作动作不连贯。
+        /// 这正是"多个动作和动画存在冲突"。移动过渡属于移动状态机内部，
+        /// 要做也得做进方向环的混合里（起步/急停片段与移动片段共享步态相位），
+        /// 而不是盖在它上面。在那之前，宁可没有过渡，也不要打架的过渡。
+        /// </summary>
+        const bool MoveTransitionsOnActionLayer = false;
+
         const float StandStillSpeed = 0.06f;
 
         /// <summary>要"站定"多久才允许播原地转身。跑动中急转弯时速度会瞬间掠过零，
@@ -1224,7 +1183,7 @@ namespace AdversityRoad.Player
                 // 起步只在【慢速起步】时给：猛推满杆本来就该直接进跑，
                 // 那时再插一段起步反而拖一拍（这正是"角色不跟手"的常见来源）。
                 if (_prevSpeed01 < 0.02f && speed01 > 0.12f && _stickMag < 0.65f &&
-                    _anim.HasPose(PoseState.StartMove))
+                    MoveTransitionsOnActionLayer && _anim.HasPose(PoseState.StartMove))
                 {
                     _anim.SetPose(PoseState.StartMove);
                     _moveStateCd = 0.4f;
@@ -1234,7 +1193,7 @@ namespace AdversityRoad.Player
                 // 那是换向不是停步——那时插一段刹车动作，人一边刹车一边全速侧移，
                 // 与原地转身是同一类错误。
                 else if (_prevSpeed01 > 0.55f && speed01 < 0.10f && _stickMag < 0.2f &&
-                         _anim.HasPose(PoseState.StopMove))
+                         MoveTransitionsOnActionLayer && _anim.HasPose(PoseState.StopMove))
                 {
                     _anim.SetPose(PoseState.StopMove);
                     _moveStateCd = 0.45f;

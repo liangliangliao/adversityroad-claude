@@ -47,6 +47,10 @@ namespace AdversityRoad.Combat
         /// <summary>诊断：动画层实际用的方向混合角与步频（无动捕时为 0）。</summary>
         public float DbgBlendAngle => Mecanim ? _mecanim.DbgBlendAngle : 0f;
         public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
+        /// <summary>调试叠层：此刻画面上真正在播的动作层片段与移动层片段。</summary>
+        public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
+        /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
+        public string DbgPose => _pose.ToString();
 
         /// <summary>诊断用：这个角色走的是不是【动捕】通路。
         /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），

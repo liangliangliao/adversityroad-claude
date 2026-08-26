@@ -356,6 +356,7 @@ namespace AdversityRoad.Combat
         static float WalkNaturalSpeed => MecanimCharacter.TargetHeight * 0.878f;
         static float RunNaturalSpeed => MecanimCharacter.TargetHeight * 2.098f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
+        string[] _actionName;   // 动作层每个槽位的片段名（只给调试叠层用）
         // 变体池：同一姿态的多条片段 + 轮换游标（见 AP / NextVariant）
         readonly Dictionary<PoseState, List<int>> _actionVariants =
             new Dictionary<PoseState, List<int>>();
@@ -606,6 +607,7 @@ namespace AdversityRoad.Combat
             _actionStart = new float[Mathf.Max(1, _actionCount)];
             _actionEnd = new float[Mathf.Max(1, _actionCount)];
             _actionRawLen = new float[Mathf.Max(1, _actionCount)];
+            _actionName = new string[Mathf.Max(1, _actionCount)];   // 调试叠层用
             var clipToInput = new Dictionary<AnimationClip, int>();
             for (int i = 0; i < _actionCount; i++)
             {
@@ -634,6 +636,7 @@ namespace AdversityRoad.Combat
                 _actionSpeed[i] = speed;
                 _actionHold[i] = hold;
                 _actionRawLen[i] = clip.length;
+                _actionName[i] = clip.name;
             }
 
             for (int u = 0; u < unarmedPose.Count; u++) _unarmedIndex[unarmedPose[u]] = unarmedFrom + u;
@@ -1217,6 +1220,40 @@ namespace AdversityRoad.Combat
 
         /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
         public float DbgPhaseRate { get; private set; }
+
+        /// <summary>
+        /// 调试用：此刻**画面上真正在播的东西**——动作层片段名与权重，
+        /// 以及移动层里权重最高的两条方向片段。
+        ///
+        /// "横移/后退的动画放进去了却看不到效果"这类问题，光看代码永远说不清：
+        /// 片段可能没接上、可能接上了但权重恒为 0、也可能被动作层整个盖住。
+        /// 把这三件事同时打在屏幕上，一眼就能分辨是哪一种。
+        /// </summary>
+        public string DbgNowPlaying()
+        {
+            if (!Valid) return "—";
+            var sb = new System.Text.StringBuilder(96);
+            if (_cur >= 0 && _actionW > 0.01f &&
+                _actionName != null && _cur < _actionName.Length)
+                sb.Append("动作 ").Append(_actionName[_cur])
+                  .Append(' ').Append(_actionW.ToString("F2")).Append("  ");
+            else sb.Append("动作 —  ");
+
+            int a1 = -1, a2 = -1;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (a1 < 0 || _dirW[i] > _dirW[a1]) { a2 = a1; a1 = i; }
+                else if (a2 < 0 || _dirW[i] > _dirW[a2]) a2 = i;
+            }
+            sb.Append("移动 ");
+            if (a1 >= 0 && _dirW[a1] > 0.01f)
+                sb.Append(_dirs[a1].clip.name).Append(' ').Append(_dirW[a1].ToString("F2"));
+            if (a2 >= 0 && _dirW[a2] > 0.01f)
+                sb.Append(" + ").Append(_dirs[a2].clip.name).Append(' ')
+                  .Append(_dirW[a2].ToString("F2"));
+            if (a1 < 0 || _dirW[a1] <= 0.01f) sb.Append("待机");
+            return sb.ToString();
+        }
         /// <summary>诊断：方向混合实际落在的角度（度）。恒 ≈0 就说明方向片段全没用上。</summary>
         public float DbgBlendAngle => _blendAngle;
 

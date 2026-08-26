@@ -96,7 +96,28 @@ namespace AdversityRoad.UI
             srt.pivot = new Vector2(1f, 1f);
             srt.anchoredPosition = new Vector2(-24f, -262f);
             srt.sizeDelta = new Vector2(760f, 40f);
+
+            // 第四行：**此刻画面上真正在播的动画**。
+            // "横移/后退的片段放进去了却看不到效果"这类问题，光看代码说不清——
+            // 片段可能没接上、可能接上了但权重恒为 0、也可能被动作层整个盖住。
+            // 姿态（该播什么）与实际片段（在播什么）并排打出来，一眼分辨是哪一种。
+            var a4 = new GameObject("AnimText");
+            a4.transform.SetParent(go.transform, false);
+            _anim4 = a4.AddComponent<Text>();
+            _anim4.font = _text.font;
+            _anim4.fontSize = 24;
+            _anim4.alignment = TextAnchor.UpperRight;
+            _anim4.color = new Color(0.7f, 1f, 0.7f);
+            _anim4.raycastTarget = false;
+            _anim4.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var art = _anim4.rectTransform;
+            art.anchorMin = art.anchorMax = new Vector2(1f, 1f);
+            art.pivot = new Vector2(1f, 1f);
+            art.anchoredPosition = new Vector2(-24f, -298f);
+            art.sizeDelta = new Vector2(900f, 40f);
         }
+
+        Text _anim4;
 
         Text _spin;
         float _prevBodyYaw, _prevCamYaw;
@@ -182,6 +203,7 @@ namespace AdversityRoad.UI
             if (_text.enabled != Enabled) _text.enabled = Enabled;
             if (_move != null && _move.enabled != Enabled) _move.enabled = Enabled;
             if (_spin != null && _spin.enabled != Enabled) _spin.enabled = Enabled;
+            if (_anim4 != null && _anim4.enabled != Enabled) _anim4.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -192,6 +214,16 @@ namespace AdversityRoad.UI
             if (dt > _worst) _worst = dt;
 
             SampleSpin(dt);   // 搓杆链路要每帧采（角速度是差分出来的，不能只在汇报时算）
+
+            // 动画叠层：每帧直读，**不做任何平滑或节流**——动画冲突就发生在
+            // 零点几秒里，一平均就什么都看不见了（第三行冻住那次就是教训）。
+            if (_anim4 != null)
+            {
+                var pcx = AdversityRoad.Core.ActorRegistry.Player;
+                var hax = pcx != null ? pcx.GetComponent<Combat.HumanoidAnimator>() : null;
+                _anim4.text = hax != null
+                    ? "姿态 " + hax.DbgPose + " ｜ " + hax.DbgNowPlaying : "";
+            }
 
             if (Time.unscaledTime < _nextReport) return;
             _nextReport = Time.unscaledTime + 0.5f;
