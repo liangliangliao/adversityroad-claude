@@ -413,9 +413,15 @@ namespace AdversityRoad.Combat
         /// <summary>锁定修正量的封顶（米）。超过它就说明步幅同步本身有问题，
         /// 这时硬钉只会把腿拉成一字马——宁可让它滑，也不能扭断。</summary>
         const float FootLockMaxFix = 0.28f;
-        /// <summary>总开关：万一它在实机上表现不对，改这一行就能整块关掉，
-        /// 而不必回滚其它修复。</summary>
-        const bool FootLockOn = true;
+        /// <summary>支撑脚锁定总开关。**默认关。**
+        ///
+        /// 上一轮我一次性上了两个全新机制（支撑脚锁定、转向倾身）又把转向速率砍掉
+        /// 六成——三件事一起改，实机一说"更烂了"就根本分不清是哪一个。这是方法错误。
+        /// 现在全部挂到设置面板里，最新最险的这一个默认关着：先确认基线，
+        /// 再一个一个打开。IK 每帧直接改写腿骨旋转，是这几条里唯一能把画面弄难看的。</summary>
+        public static bool FootLockOn;
+        /// <summary>转向倾身总开关（默认开：它只是绕正前轴滚一个角度，风险低）。</summary>
+        public static bool TurnLeanOn = true;
         /// <summary>诊断：这一帧两只脚的锁定修正量（米）与权重。</summary>
         public float DbgFootFix { get; private set; }
 
@@ -511,7 +517,7 @@ namespace AdversityRoad.Combat
                 if (!_leanInit) { _leanInit = true; _leanPrevYaw = yawNow; }
                 float yawRate = Mathf.DeltaAngle(_leanPrevYaw, yawNow) / dtl;
                 _leanPrevYaw = yawNow;
-                bool leanOk = _grounded && !_rest &&
+                bool leanOk = TurnLeanOn && _grounded && !_rest &&
                               _pose != PoseState.Knockdown && _pose != PoseState.Death;
                 float aLat = yawRate * Mathf.Deg2Rad * Mathf.Max(0f, _actualSpeed);
                 float want = leanOk

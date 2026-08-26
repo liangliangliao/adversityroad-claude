@@ -19,6 +19,9 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
+        Button _footLockBtn, _leanBtn;
+        readonly System.Collections.Generic.List<(Button, float)> _turnBtns =
+            new System.Collections.Generic.List<(Button, float)>();
         bool _deleteArmed;
 
         static readonly Color Off = new Color(0.25f, 0.25f, 0.3f, 0.95f);
@@ -36,7 +39,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1040),
+            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1212),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
@@ -104,9 +107,42 @@ namespace AdversityRoad.UI
                     Refresh();
                 }, 22);
 
+            // ===== 移动手感调试开关（本轮新增）=====
+            //
+            // 上一轮我一次性上了两个全新机制（支撑脚锁定、转向倾身）又把转向速率
+            // 砍掉六成——三件事一起改，实机一说"更烂了"就根本分不清是哪一个，
+            // 只能靠再推四个构建去二分。那是方法错误，代价由玩家承担。
+            // 全部挂到这里：一个包就能自己定位，不必等我一轮轮试。
+            for (int ti = 0; ti < 3; ti++)
+            {
+                var lv = ti == 0 ? ("转向轻 12", 12f)
+                       : ti == 1 ? ("转向中 9", 9f)
+                                 : ("转向重 6", 6f);
+                float accel = lv.Item2;
+                var b = UiUtil.MakeButton(_panel.transform, lv.Item1, new Vector2(0.5f, 1f),
+                    new Vector2(-256 + ti * 256, -736), new Vector2(246, 70), Off, () =>
+                    {
+                        PlayerController.TurnAccelOverride = accel;
+                        Refresh();
+                    }, 22);
+                _turnBtns.Add((b, accel));
+            }
+            _footLockBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-195, -822), new Vector2(370, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.FootLockOn = !Combat.HumanoidAnimator.FootLockOn;
+                    Refresh();
+                }, 22);
+            _leanBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(195, -822), new Vector2(370, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.TurnLeanOn = !Combat.HumanoidAnimator.TurnLeanOn;
+                    Refresh();
+                }, 22);
+
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
-                new Vector2(0.5f, 1f), new Vector2(0, -736), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -908), new Vector2(760, 70),
                 new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
                 {
                     var story = StoryManager.Instance;
@@ -122,17 +158,17 @@ namespace AdversityRoad.UI
 
             // 心理安全系统：快速退出战斗——任何时刻一键传送回安全屋（独居小屋）
             UiUtil.MakeButton(_panel.transform, "一键返回安全屋（立刻脱离当前战斗）",
-                new Vector2(0.5f, 1f), new Vector2(0, -822), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -994), new Vector2(760, 70),
                 new Color(0.25f, 0.4f, 0.55f, 0.95f), ReturnToSafeHouse, 24);
 
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -908), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -1080), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -968), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -1140), new Vector2(900, 32));
 
             // 关闭移到右上角：底部空间让给新增的操作偏好行
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -46),
@@ -210,6 +246,23 @@ namespace AdversityRoad.UI
                 _aimAssistBtn.GetComponentInChildren<Text>().text =
                     LockOnSystem.AimAssist ? "攻击吸附：开" : "攻击吸附：关（完全手操）";
                 _aimAssistBtn.GetComponent<Image>().color = LockOnSystem.AimAssist ? On : Off;
+            }
+            foreach (var (btn, val) in _turnBtns)
+                btn.GetComponent<Image>().color =
+                    Mathf.Approximately(PlayerController.TurnAccelOverride, val) ? On : Off;
+            if (_footLockBtn != null)
+            {
+                _footLockBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.FootLockOn ? "支撑脚锁定：开" : "支撑脚锁定：关";
+                _footLockBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.FootLockOn ? On : Off;
+            }
+            if (_leanBtn != null)
+            {
+                _leanBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.TurnLeanOn ? "转向倾身：开" : "转向倾身：关";
+                _leanBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.TurnLeanOn ? On : Off;
             }
         }
 

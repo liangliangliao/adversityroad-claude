@@ -52,6 +52,17 @@ namespace AdversityRoad.Player
         /// 站定推杆照样立刻回身。变慢的只有"高速中途大角度换向"，
         /// 而那本来就该慢——那是重量感的来源。</summary>
         public float maxTurnLateralAccel = 6f;
+
+        /// <summary>转向"重量"的运行时覆盖（m/s²，0=用上面的字段值）。设置面板可切。
+        ///
+        /// 这一档没有唯一正确答案，只能上手感觉，所以做成可切而不是我替你定：
+        ///     12（1.22g）轻 —— 3.8m/s 时 ω181°/s 半径1.20m 一圈  5 步
+        ///      9（0.92g）中 —— 3.8m/s 时 ω136°/s 半径1.60m 一圈  7 步
+        ///      6（0.61g）重 —— 3.8m/s 时 ω 90°/s 半径2.41m 一圈 11 步
+        /// 参考：实机原值是 16（1.63g，半径0.9m、一圈4步），真人慢跑转弯 0.4~0.6g。
+        /// 默认取【中】：既离开了陀螺档，也不像 6 那样掉头要两秒。</summary>
+        public static float TurnAccelOverride = 9f;
+        float TurnAccel => TurnAccelOverride > 0f ? TurnAccelOverride : maxTurnLateralAccel;
         public float jumpForce = 7f;
         public float gravity = -20f;
 
@@ -793,7 +804,7 @@ namespace AdversityRoad.Player
                     // 低速端由 turnDegPerSecStill 封顶，站定原地转身照样干脆。
                     float sp = _hVel.magnitude;
                     float cap = sp > 0.05f
-                        ? Mathf.Min(turnDegPerSecStill, maxTurnLateralAccel / sp * Mathf.Rad2Deg)
+                        ? Mathf.Min(turnDegPerSecStill, TurnAccel / sp * Mathf.Rad2Deg)
                         : turnDegPerSecStill;
 
                     // ===== 方向意图置信度：输入不成向就不转身 =====
