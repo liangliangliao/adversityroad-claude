@@ -90,7 +90,10 @@ namespace AdversityRoad.Combat
         //    做不到，会被下一招切在半路。这是刻意的取舍，理由见 MaxDrivenSpeed。
         static readonly ActionDef[] ActionMap =
         {
-            AP(PoseState.Attack,     1.75f, 0.20f, 0.68f,        "great sword slash", "great sword slash 5"),
+            // 同 idle/walk/run：工程里没有精确的 "Great Sword Slash"，这个键会在
+            // 4 个候选（Slash 3 / Slash 5 / Maria@Slash / Maria@Slash (1)）里
+            // 按字典顺序挑一个——主力轻击靠遍历顺序决定，不可接受。写死实际文件名。
+            AP(PoseState.Attack,     1.75f, 0.20f, 0.68f,        "maria wprop j j ong@great sword slash", "great sword slash 5"),
             A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword attack", "great sword slash 5", "great sword high spin attack"),
             A(PoseState.AttackUp,    1.75f, 0.20f, 0.68f, false, "great sword slash (1)", "great sword high spin attack"),
             A(PoseState.SwordThrust, 1.85f, 0.18f, 0.66f, false, "stabbing", "stab"),
@@ -494,9 +497,30 @@ namespace AdversityRoad.Combat
                 if (byPath != null) byName[fileKey] = byPath;
             }
 
-            var idle = Pick(byName, "idle", "breathing idle", "standing idle");
-            var walk = Pick(byName, "walking", "great sword walk", "walk");
-            var run = Pick(byName, "running", "great sword run", "run");
+            // ===== 基础 idle / walk / run：候选必须能【精确】命中 =====
+            //
+            // 审计发现这三条——整个移动层最基础的三条——在本工程里**没有任何
+            // 精确文件名匹配**，全部落到 Pick 的"包含匹配"兜底，而那一步是在
+            // Dictionary 上遍历取第一个命中的，遍历顺序在 .NET 里并不保证。
+            // 候选池里都有什么：
+            //   "idle" → Crouching Idle / Falling Idle / Great Sword Idle /
+            //            Sleeping Idle / Maria…@Idle
+            //   "walk" → Walking Backwards / Left Strafe Walking / Start Walking / Maria…@Walking
+            //   "run"  → Running Backward / Maria…@Running
+            //
+            // 后果不是"可能选错一条片段"那么轻：walk / run 会被直接当成方向环的
+            // **0°（正前）**槽位。万一 walk 命中 Walking Backwards，实测会把它
+            // 校正到 180°，接着真正的后退片段就被判为同档同向【重复丢弃】——
+            // 走档因此没有正前方片段，而这件事不报任何错。
+            //
+            // 修法：把工程里**实际存在的文件名**放在候选链最前面，让精确匹配
+            // 稳定命中；后面的模糊候选保留，作为换素材时的兼容。
+            var idle = Pick(byName, "maria wprop j j ong@idle",
+                            "breathing idle", "standing idle", "idle");
+            var walk = Pick(byName, "maria wprop j j ong@walking",
+                            "great sword walk", "walking", "walk");
+            var run  = Pick(byName, "maria wprop j j ong@running",
+                            "great sword run", "running", "run");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
             // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
             // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。

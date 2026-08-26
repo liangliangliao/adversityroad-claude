@@ -1699,6 +1699,12 @@ namespace AdversityRoad.Combat
                 else if (blocked)
                 {
                     phys *= 0.2f;
+                    // 【接上格挡受击】PoseState.GuardHit 有专用片段（Great Sword Block Hit）、
+                    // 有枚举、也在 ActionMap 里，却**没有任何玩法代码触发它**——
+                    // 挡下一击时身体毫无抗力反馈，玩家分不清"挡住了"和"没打中"。
+                    // 这是四层审计里 L3→L4 唯一报出来的死姿态。
+                    if (_anim != null && _anim.HasPose(PoseState.GuardHit))
+                        _anim.SetPose(PoseState.GuardHit, 0.22f);
                     // 第八章「不上庭反制」的第二步：举盾接住那一下（章外调用直接被忽略）
                     Shame.ShameComboTracker.Push(Shame.ShameComboTracker.TagBoundaryGuard);
                 }
