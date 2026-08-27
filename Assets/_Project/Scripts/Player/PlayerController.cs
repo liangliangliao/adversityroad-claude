@@ -1317,6 +1317,25 @@ namespace AdversityRoad.Player
                 return;
             }
 
+            // ---------- 一动起来就立刻收掉原地转身 ----------
+            //
+            // 【实机日志抓到的】「动作 Left Turn 90 权重1.00 速度1.8」——
+            // 原地转身的片段在角色**正在位移**时满权重接管了整个移动层。
+            // 动作层是替换移动层的，那一段里腿在演站着转身、人却在往前走，
+            // 画面上就是"抑扬顿挫地漂到别处再继续"。这正是你说的动画打架。
+            //
+            // 触发条件本身没错（要求站定 _stillT 才起播），错在**没有收尾**：
+            // 起播那一刻人是站着的，可玩家紧接着就推杆走了，而这段片段还要播
+            // 0.22~0.5 秒。转身是"站着才成立"的动作，前提一消失就该立刻让位。
+            if (speed01 > StandStillSpeed * 2f && !StrafeActive &&
+                (_anim.CurrentPose == PoseState.TurnLeft ||
+                 _anim.CurrentPose == PoseState.TurnRight ||
+                 _anim.CurrentPose == PoseState.Turn180))
+            {
+                _anim.SetPose(PoseState.Idle);   // 交还移动层
+                _moveStateCd = 0f;
+            }
+
             // ---------- 蹲伏待机 ----------
             bool crouchStill = IsCrouched && speed01 < 0.03f;
             if (crouchStill != _crouchPosed)

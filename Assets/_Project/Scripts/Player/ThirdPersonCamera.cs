@@ -379,6 +379,11 @@ namespace AdversityRoad.Player
         /// 在边界上抖，必须平滑掉——镜头量逐帧二值跳变一定会被看见。</summary>
         const float LiftSlew = 1.2f;
         float _liftSm;
+        /// <summary>吊杆短到这个距离（米）就完全按近第一人称看，长到 NearFpFree 就完全是第三人称。</summary>
+        const float NearFpBoom = 0.30f, NearFpFree = 1.10f;
+        float _tightSm;
+        /// <summary>诊断：贴身程度 0~1。1=已完全按近第一人称在看（吊杆被墙压死）。</summary>
+        public static float DbgTight;
 
         // ===== 镜头诊断（PerfHud 第六行；不参与任何逻辑）=====
         // 这一路我给了移动和动画一堆读数，却从没量过镜头——而录屏显示
@@ -1980,10 +1985,43 @@ namespace AdversityRoad.Player
             // 正确的拆法：镜头抬多少、视线目标就抬多少（那一项精确抵消，俯角不受
             // 影响，这本来就是抬高的定义）；真正需要封顶的只有**取景偏移**那一项，
             // 因为只有它会在水平距离变短时把俯角撬起来。
-            float baseLook = lookUp - lift;
-            baseLook = Mathf.Min(baseLook, Mathf.Max(0f, _boomDist) * MaxLookTiltTan);
-            lookUp = baseLook + lift;
-            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
+            // ===== 封顶必须用【脱出之后】的真实距离，不能用 _boomDist =====
+            //
+            // 上一版按 _boomDist 封顶，可 DepenetrateBoom 会把镜头**再往回收**
+            // （收不出来时一路收到 BoomFloor=0.12），于是 lookUp 是按 0.42 算的、
+            // 镜头却站在 0.12 处。实机日志把这条钉死了——俯角突跳与 camStuck
+            // 从 0 变 1 **精确同帧**：
+            //     t=102.341  吊杆0.508 抬0.139 嵌墙0  俯 -3.35°
+            //     t=102.358  吊杆0.420 抬0.120 嵌墙1  俯 **-63.97°**
+            // 代入：baseLook=min(0.38, 0.42×0.364)=0.153，而镜头实际只在 0.12 处
+            //     俯角 = atan(0.153 / 0.06) = 69°     ← 与实机 -64° 对得上
+            // 也就是说这一条封顶从来没在真正需要它的那一刻生效过。
+            // 现在改用脱出之后的真实水平距离。
+            Vector3 toPivot = pivot - pos;
+            float horiz = new Vector2(toPivot.x, toPivot.z).magnitude;
+            float baseLook = Mathf.Min(lookUp - lift, horiz * MaxLookTiltTan);
+
+            // ===== 吊杆被压死时过渡到【近第一人称】 =====
+            //
+            // 0.12m 的距离下"第三人称取景"这件事本身已经不存在了：镜头就在角色
+            // 身体里，看向取景点只能看到后脑勺或地板。实机这一段有多难受，日志
+            // 里量得出来——75.39→80.26 共 4.86 秒连续盲区，吊杆平均 0.39m，
+            // 玩家全程推满杆（1.00），296 帧里 279 帧撞在墙上，整段只挪了 10 米。
+            //
+            // 成熟做法是过渡到近第一人称：视线改为**沿吊杆方向看出去**
+            //（−boomDir 就是玩家选定的那个朝向），玩家至少能看清前方。
+            // 代价是看不见自己——但"看不见前方"比"看不见自己"致命得多，
+            // 而且贴墙时本来也没有自己可看。
+            float tight = 1f - Mathf.InverseLerp(NearFpBoom, NearFpFree, horiz);
+            _tightSm = Mathf.MoveTowards(_tightSm, tight, dt / 0.25f);   // 别硬切
+            Vector3 aim = Vector3.Slerp((toPivot + Vector3.up * baseLook).normalized,
+                                        -boomDir, _tightSm);
+            if (aim.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(aim);
+            DbgTight = _tightSm;
+            // 近第一人称时把自己的身体藏起来：镜头都在躯干里了，不藏就是满屏
+            // 后脑勺和衣服内面，看前方反而更难。用 ShadowsOnly 而不是关渲染器——
+            // 影子留着，地面上仍然看得出自己站在哪儿。
+            HideSelfWhenTight(_tightSm > 0.55f);
 
             DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
             // 角色胸口在不在画面里：视口内 + 没有被环境挡住。
@@ -2061,6 +2099,29 @@ namespace AdversityRoad.Player
                 pos = pivot + dir * dist;
             }
             return pos;
+        }
+
+        Renderer[] _selfRends;
+        bool _selfHidden;
+
+        /// <summary>贴身到近第一人称时隐藏自己的身体（保留影子）。</summary>
+        void HideSelfWhenTight(bool hide)
+        {
+            if (hide == _selfHidden) return;
+            if (_selfRends == null)
+            {
+                if (player == null) return;
+                _selfRends = player.GetComponentsInChildren<Renderer>(true);
+            }
+            _selfHidden = hide;
+            for (int ri = 0; ri < _selfRends.Length; ri++)
+            {
+                var rd = _selfRends[ri];
+                if (rd == null) continue;
+                rd.shadowCastingMode = hide
+                    ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                    : UnityEngine.Rendering.ShadowCastingMode.On;
+            }
         }
 
         /// <summary>该点是否嵌在【环境】碰撞体里。</summary>

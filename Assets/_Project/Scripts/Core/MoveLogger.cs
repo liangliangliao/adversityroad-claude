@@ -207,7 +207,7 @@ namespace AdversityRoad.Core
                     "pose,combat,hardLock,actionClip,actionW," +
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
-                    "camBoom,camBoomWant,camLift,camStuck,seeSelf," +
+                    "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -370,6 +370,7 @@ namespace AdversityRoad.Core
               .Append(F(ThirdPersonCamera.DbgLift)).Append(',')
               .Append(B(ThirdPersonCamera.DbgStuck)).Append(',')
               .Append(B(ThirdPersonCamera.DbgSeeSelf)).Append(',')
+              .Append(F(ThirdPersonCamera.DbgTight)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");
