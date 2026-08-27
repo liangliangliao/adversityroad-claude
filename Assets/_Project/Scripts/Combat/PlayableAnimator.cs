@@ -379,6 +379,15 @@ namespace AdversityRoad.Combat
         float _fadeDur;    // 本次播放的淡入时长（0=按招式默认。坐下/躺下这类慢动作要长淡入）
 
         int _cur = -1;
+
+        // ---- 动作起播记录：给屏幕提示用（见 Tick 里的跃迁判据）----
+        int _lastNotedAction = -1;
+        /// <summary>最近一次起播的动作片段名（动作层）。没播过是空串。</summary>
+        public string LastActionClip { get; private set; } = "";
+        /// <summary>那一段计划播多久（秒）。</summary>
+        public float LastActionLen { get; private set; }
+        /// <summary>起播时刻（Time.time）。</summary>
+        public float LastActionAt { get; private set; } = -999f;
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
         float _actualSpeed = -1f;   // 真实移速 m/s（<0 = 未提供，按 speed01 折算）
@@ -1513,6 +1522,23 @@ namespace AdversityRoad.Combat
 
             float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
             BlendDirectional(_tierW, actual, dt);
+
+            // ===== 动作起播记录（屏幕提示用）=====
+            // 你要的是"每做出一个动作，屏幕上提示对应的动画"。判据只能是
+            // **动作层的片段索引发生了变化**，而不是姿态枚举变了——同一个姿态
+            // 可能换片段（左右转身），不同姿态也可能共用片段。
+            // 写在这里而不是三个起播点里：起播点有三处（招式 / 休息动作 / 起身倒放），
+            // 挂在调用侧迟早会漏一处，挂在状态跃迁上漏不了。
+            if (_cur != _lastNotedAction)
+            {
+                _lastNotedAction = _cur;
+                if (_cur >= 0 && _actionName != null && _cur < _actionName.Length)
+                {
+                    LastActionClip = _actionName[_cur];
+                    LastActionLen = _playLen;
+                    LastActionAt = Time.time;
+                }
+            }
 
             if (_cur >= 0)
             {

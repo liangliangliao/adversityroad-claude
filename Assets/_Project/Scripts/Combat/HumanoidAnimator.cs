@@ -51,6 +51,12 @@ namespace AdversityRoad.Combat
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
+        /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>
+        public string LastActionClip => Mecanim ? _mecanim.LastActionClip : "";
+        /// <summary>那一段计划播多久（秒）。</summary>
+        public float LastActionLen => Mecanim ? _mecanim.LastActionLen : 0f;
+        /// <summary>起播时刻（Time.time）。</summary>
+        public float LastActionAt => Mecanim ? _mecanim.LastActionAt : -999f;
 
         /// <summary>该行进夹角上最快的方向片段的自然速度（m/s）；0=这个方向没片段。
         /// 横移封顶按它给，不再手写一张与素材无关的表。</summary>

@@ -116,6 +116,35 @@ namespace AdversityRoad.UI
             art.anchoredPosition = new Vector2(-24f, -298f);
             art.sizeDelta = new Vector2(900f, 40f);
 
+            // ===== 动作横幅：每做出一个动作，屏幕中下方打出它用的动画 =====
+            // 右上角那几行是**状态**（此刻在播什么），密、小、一直在变，
+            // 玩的时候没人来得及读。你要的是**事件**：做了一个动作 → 告诉我
+            // 它对应哪条动画。两者用途不同，不能互相替代，所以单开一条。
+            // 放在中下方、字大、带底色，播完 1.6 秒淡出。
+            var bn = new GameObject("ActionBanner");
+            bn.transform.SetParent(go.transform, false);
+            _bannerBg = bn.AddComponent<Image>();
+            _bannerBg.color = new Color(0f, 0f, 0f, 0.55f);
+            _bannerBg.raycastTarget = false;
+            var brt = _bannerBg.rectTransform;
+            brt.anchorMin = brt.anchorMax = new Vector2(0.5f, 0f);
+            brt.pivot = new Vector2(0.5f, 0f);
+            brt.anchoredPosition = new Vector2(0f, 210f);
+            brt.sizeDelta = new Vector2(940f, 52f);
+
+            var bt = new GameObject("ActionBannerText");
+            bt.transform.SetParent(bn.transform, false);
+            _banner = bt.AddComponent<Text>();
+            _banner.font = _text.font;
+            _banner.fontSize = 30;
+            _banner.alignment = TextAnchor.MiddleCenter;
+            _banner.color = new Color(1f, 0.95f, 0.6f);
+            _banner.raycastTarget = false;
+            _banner.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var trt = _banner.rectTransform;
+            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
+            trt.offsetMin = trt.offsetMax = Vector2.zero;
+
             // 第五行：**把"看上去在漂移"变成数字**。
             //   步幅 X.XXm/步（应 Y.YY）×R   —— R>1 就是每一步比腿能迈的多，脚在往前滑；
             //   ⚠滑 <片段> 需a×得b×        —— 播放速率被 [0.5,2.0] 夹住了，步频跟不上地面；
@@ -155,6 +184,10 @@ namespace AdversityRoad.UI
         }
 
         Text _anim4, _slip5, _cam6;
+        Text _banner;           // 动作横幅（事件式，播完淡出）
+        Image _bannerBg;
+        float _bannerUntil;     // 横幅显示到什么时候（unscaledTime）
+        string _bannerSeen = ""; // 已经报过的那一次动作（片段名 + 起播时刻）
 
         Text _spin;
         float _prevBodyYaw, _prevCamYaw;
@@ -243,6 +276,8 @@ namespace AdversityRoad.UI
             if (_anim4 != null && _anim4.enabled != Enabled) _anim4.enabled = Enabled;
             if (_slip5 != null && _slip5.enabled != Enabled) _slip5.enabled = Enabled;
             if (_cam6 != null && _cam6.enabled != Enabled) _cam6.enabled = Enabled;
+            if (_banner != null && _banner.enabled != Enabled) _banner.enabled = Enabled;
+            if (_bannerBg != null && _bannerBg.enabled != Enabled) _bannerBg.enabled = Enabled;
             if (!Enabled) return;
 
             // 用不缩放的真实帧时：顿帧/时缓会把 Time.deltaTime 改掉，
@@ -268,6 +303,25 @@ namespace AdversityRoad.UI
                         hax.DbgPose, pcx.DbgTurnNeed,
                         pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying)
                     : "";
+                // ---- 动作横幅：起播时刻一变，就是"又做了一个动作" ----
+                // 用「片段名 + 起播时刻」当身份：连按同一招时片段名不变，
+                // 只有时刻在变，光比名字会漏报连段的第二下。
+                if (_banner != null && hax != null)
+                {
+                    string clip = hax.LastActionClip;
+                    string id = clip + "@" + hax.LastActionAt.ToString("F3");
+                    if (!string.IsNullOrEmpty(clip) && id != _bannerSeen)
+                    {
+                        _bannerSeen = id;
+                        _banner.text = string.Format("{0} → 动画「{1}」 {2:F2}s",
+                            hax.DbgPose, clip, hax.LastActionLen);
+                        _bannerUntil = Time.unscaledTime + 1.6f;
+                    }
+                    float left = _bannerUntil - Time.unscaledTime;
+                    float a = Mathf.Clamp01(left / 0.4f);        // 末 0.4 秒淡出
+                    _banner.color = new Color(1f, 0.95f, 0.6f, a);
+                    if (_bannerBg != null) _bannerBg.color = new Color(0f, 0f, 0f, 0.55f * a);
+                }
                 if (_slip5 != null)
                 {
                     _slip5.text = hax != null && pcx != null
