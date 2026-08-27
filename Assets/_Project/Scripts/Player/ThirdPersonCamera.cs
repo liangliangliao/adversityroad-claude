@@ -322,11 +322,17 @@ namespace AdversityRoad.Player
         public static bool IndoorMode;
 
         /// <summary>
-        /// 推着摇杆时，是否允许镜头朝"角色朝向"自动跟随。
-        /// 默认 false —— 它与镜头相对的摇杆构成不收敛的正反馈（推导见 gentle 处）。
-        /// 打开只为对照实验：开了就会重现"推着直杆却走弧线、最后撞墙"。
+        /// 推着摇杆时，允许镜头朝"角色朝向"**无限制**跟随。
+        /// 默认 false = 走有界跟随（转角预算，见 gentle 处的推导）。
+        /// 打开＝回到旧行为，用于当场对照：开了就会重现"推着斜杆匀速画圆"。
         /// </summary>
         public static bool HeadingFollowWhileSteering;
+
+        /// <summary>一次转身最多换来多少度的镜头绕行。90° 掉头够把新方向框进画面。</summary>
+        const float FollowBudgetDeg = 100f;
+        /// <summary>回到死区内后预算的补充速度（度/秒）：约 1.4 秒补满。</summary>
+        const float FollowRefillDegPerSec = 70f;
+        float _followBudget = FollowBudgetDeg;
 
         /// <summary>室内吊杆长度：短到墙基本碰不到它。</summary>
         const float IndoorBoom = 2.6f;
@@ -1406,7 +1412,29 @@ namespace AdversityRoad.Player
                 // 关掉之后"跑久了镜头不在背后"由松杆归位与一键回正（V）负责，
                 // 这正是本文件上面那段注释早就写下的设计意图，只是 gentle 一直在
                 // 违反它。留开关是为了能当场 A/B，不是因为拿不准。
-                if (!HeadingFollowWhileSteering) gentle = false;
+                // ===== 有界跟随：给它一个"转角预算"，用完就停 =====
+                //
+                // 上面那段推导只证明了一件事：**误差恒等于摇杆离轴角 θ，与镜头转了
+                // 多少无关**，所以无预算的伺服必然一直转下去 —— 推着一根斜杆就是
+                // 匀速画圆。但由此得出"那就一点都别跟随"是矫枉过正：转完身之后
+                // 镜头还留在原处，人看到的是自己的侧面和一堵墙，**同样是盲区**。
+                // 两个极端我都实测过了，症状一模一样。
+                //
+                // 中间那条路是给跟随一个**转角预算**：
+                //   · 偏差出死区 ⇒ 一边跟随一边扣预算，扣光就停（不再画圆）；
+                //   · 偏差回到死区内（玩家把杆回正/停下）⇒ 预算按时间补满。
+                // 于是"我转了个身"能换来最多 FollowBudgetDeg 的镜头绕行——足够把
+                // 新方向框进画面；而"我一直斜着推"最多也只绕这么多，不会变成
+                // 无限旋转。预算是**角度**不是时间：转得快慢不影响它能绕多少，
+                // 这正是"跟随一次转身"这件事该有的量纲。
+                if (!HeadingFollowWhileSteering)
+                {
+                    if (err <= dz)
+                        _followBudget = Mathf.Min(FollowBudgetDeg,
+                                                  _followBudget + FollowRefillDegPerSec * dt);
+                    if (_followBudget <= 0.5f) gentle = false;
+                }
+                else _followBudget = FollowBudgetDeg;
 
                 // 跟随的【驱动强度】走临界阻尼，而不是布尔开关。
                 // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
@@ -1607,8 +1635,14 @@ namespace AdversityRoad.Player
 
                     // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
                     float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, driveDz);
+                    float yawBeforeFollow = _yaw;
                     _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
+                    // 扣预算：只扣 gentle（朝自身朝向、构成回路的那一路）转出来的角度。
+                    // 敌人相关的跟随目标是世界坐标，不构成回路，不该被预算限制住
+                    // ——否则打着打着镜头就"没预算了"，敌人出画也不追，那是失职。
+                    if (gentle && !_combatReorient && !enemyNet)
+                        _followBudget -= Mathf.Abs(Mathf.DeltaAngle(yawBeforeFollow, _yaw));
                 }
                 else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
             }

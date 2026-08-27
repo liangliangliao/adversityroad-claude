@@ -101,6 +101,7 @@ namespace AdversityRoad.Player
         Vector3 _dodgeDir;
         Vector3 _lastPos;
         Vector3 _hVel;   // 平滑后的水平速度
+        float _lastMoveAngle;   // 上一个**有效**的行进夹角（速度太低时沿用它，见 LateUpdate）
 
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         // ===== 移速减益：按【来源】登记，每帧取最小 =====
@@ -1151,9 +1152,43 @@ namespace AdversityRoad.Player
             // 人的腿【本来就在做侧步/倒步】——真人掉头就是这么走的。让腿演出这一段
             // 是对的，不是瑕疵。当初担心的"闪一下"，根子在方向平滑太快（900°/s
             // 几乎等于不平滑），那是 PlayableAnimator 那边的事，已一并调稳。
-            float moveAngle = 0f;
-            if (planar.sqrMagnitude > 1e-6f)
+            // ===== 行进夹角只有【真的在走】的时候才有意义 =====
+            //
+            // 【这就是"起步先后退"和"多个动画打架"的源头】
+            // 上一版的门槛是 planar.sqrMagnitude > 1e-6，也就是**每帧 1 毫米**——
+            // 60fps 下折合 0.06 m/s。可这个量级根本不是"走"，而是噪声：
+            // CharacterController 的 skinWidth 沉降、贴墙/贴家具的解穿插推挤、
+            // 斜面上的微滑、站在会动的东西上被带一下……每一帧都能轻松超过 1mm，
+            // 而它们的**方向是随机的**，均匀撒在 ±180° 上。
+            //
+            // 于是站定与起步的那零点几秒里，喂给方向环的是一串随机角。方向环里
+            // 有 Walking Backwards / Jog Backward / Left-Right Strafe——腿就真的
+            // 去播了倒步和侧步。屏幕上就是"起步先向后漂一段"、"抑扬顿挫像有好几个
+            // 动画在打架"。动画本身一条都没错，接线也没错，**错在喂进去的参数是噪声**。
+            //
+            // 动画那侧的平滑挡不住它：commit 速率 240°/s，噪声只要持续半秒就能把
+            // 混合角推到 120°，早就进了倒步/侧步的地盘；而它追的目标本身在乱跳，
+            // 平滑只会把随机游走走得慢一点，不会让它回到正前方。
+            //
+            // 门槛改成【地面速度】，并带回差：
+            //   · 进 0.35 m/s（walkSpeed 2.6 的 13%）——低于此一律不更新夹角，
+            //     沿用上一个有效值，噪声再大也进不来；
+            //   · 出 0.21 m/s 以下判定为"停住了"，夹角**主动回到正前方**，
+            //     免得下一次起步从上一次残留的 90° 侧步开始（那正是起步那一下的怪相）。
+            // 撞墙原地不动时 actual≈0 ⇒ 夹角保持不变，腿继续演它原本在演的，
+            // 这也是对的：贴着墙推杆时腿本来就该还在走。
+            const float MoveAngleEnter = 0.35f, MoveAngleExit = 0.21f;
+            float moveAngle = _lastMoveAngle;
+            if (actual > MoveAngleEnter && planar.sqrMagnitude > 1e-6f)
+            {
                 moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+                _lastMoveAngle = moveAngle;
+            }
+            else if (actual < MoveAngleExit)
+            {
+                _lastMoveAngle = Mathf.MoveTowardsAngle(_lastMoveAngle, 0f, 360f * dt);
+                moveAngle = _lastMoveAngle;
+            }
             // ===== 瞬移探测：单帧位移峰值 =====
             // "魔法般改变位置"这类现象，用平均值永远看不见——它就发生在一帧里。
             // 记下最近 6 秒内最大的那一帧位移与它发生在多久之前：
