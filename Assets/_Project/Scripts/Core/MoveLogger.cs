@@ -25,9 +25,16 @@ namespace AdversityRoad.Core
     ///   · E 行（event）—— 按键按下/松开、姿态切换、招式触发、敌人登记等离散事件，
     ///     时间戳与 S 行同轴，可以直接对齐"我按了闪 → 那一帧发生了什么"。
     ///
-    /// 【文件位置】Application.persistentDataPath。安卓上是
-    ///   /storage/emulated/0/Android/data/&lt;包名&gt;/files/
-    /// 文件管理器能直接看到，不需要 root。设置面板里有按钮显示完整路径。
+    /// 【文件位置】写入始终在 Application.persistentDataPath（永远可写、快、不会失败），
+    /// 但安卓上那是 /storage/emulated/0/Android/data/&lt;包名&gt;/files/ ——
+    /// **Android 11 起 scoped storage 把它对文件管理器藏起来了，玩家根本进不去**。
+    /// 我一开始选错了地方。
+    ///
+    /// 所以再加一层【导出】：玩家用系统目录选择器挑任意一个文件夹（下载、文档、
+    /// U 盘、网盘挂载点都行），应用拿到一份**可持久化的写授权**，导出即把日志复制
+    /// 过去。走的是 Storage Access Framework，全程不需要任何运行时权限，
+    /// 也不用改 AndroidManifest（见 LogExport.java）。
+    /// 选一次记住，之后每次退到后台自动导出一份。
     /// </summary>
     public class MoveLogger : MonoBehaviour
     {
@@ -38,6 +45,80 @@ namespace AdversityRoad.Core
         public static string CurrentPath { get; private set; } = "";
         /// <summary>已写入的状态行数（设置面板显示用，确认它真的在跑）。</summary>
         public static int Rows { get; private set; }
+
+        // ===== 导出目标（玩家自选的目录）=====
+        const string PrefTree = "movelog_tree_uri";   // 安卓 SAF 的目录授权 URI
+        const string PrefDir = "movelog_dir";         // 桌面/自填的普通路径
+
+        /// <summary>玩家选定的安卓目录授权（空=没选过）。</summary>
+        public static string TreeUri
+        {
+            get => PlayerPrefs.GetString(PrefTree, "");
+            set { PlayerPrefs.SetString(PrefTree, value ?? ""); PlayerPrefs.Save(); }
+        }
+        /// <summary>玩家自填的普通目录（桌面平台，或安卓上确实可写的路径）。</summary>
+        public static string CustomDir
+        {
+            get => PlayerPrefs.GetString(PrefDir, "");
+            set { PlayerPrefs.SetString(PrefDir, value ?? ""); PlayerPrefs.Save(); }
+        }
+        /// <summary>上一次导出的结果（设置面板显示用）。</summary>
+        public static string LastExport { get; private set; } = "";
+
+        /// <summary>导出目标的可读名字：没选过就返回空。</summary>
+        public static string TargetLabel()
+        {
+            if (!string.IsNullOrEmpty(CustomDir)) return CustomDir;
+            string t = TreeUri;
+            if (string.IsNullOrEmpty(t)) return "";
+            return Platform.LogExport.FolderLabel(t);
+        }
+
+        /// <summary>把当前日志复制到玩家选定的目录。返回是否成功。</summary>
+        public static bool ExportNow()
+        {
+            if (_inst != null) _inst.Flush();
+            if (string.IsNullOrEmpty(CurrentPath) || !File.Exists(CurrentPath))
+            { LastExport = "还没有日志文件"; return false; }
+            string fileName = Path.GetFileName(CurrentPath);
+
+            // ① 自填的普通目录：桌面平台，以及安卓上真的可写的那些路径
+            string dir = CustomDir;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                try
+                {
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    string dst = Path.Combine(dir, fileName);
+                    File.Copy(CurrentPath, dst, true);
+                    LastExport = "已导出：" + dst;
+                    return true;
+                }
+                catch (System.Exception e)
+                {
+                    LastExport = "写不进 " + dir + "：" + e.Message;
+                    // 不 return：还有 SAF 这条路可以试
+                }
+            }
+
+            // ② 安卓 SAF：玩家选过的目录
+            string tree = TreeUri;
+            if (!string.IsNullOrEmpty(tree))
+            {
+                string doc = Platform.LogExport.Export(tree, CurrentPath, fileName, "text/csv");
+                if (!string.IsNullOrEmpty(doc))
+                {
+                    LastExport = "已导出到 " + Platform.LogExport.FolderLabel(tree) +
+                                 "/" + fileName;
+                    return true;
+                }
+                LastExport = "导出失败——授权可能已失效，请重新选目录";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(LastExport)) LastExport = "还没选导出目录";
+            return false;
+        }
 
         static MoveLogger _inst;
 
@@ -328,9 +409,17 @@ namespace AdversityRoad.Core
 
         // 切后台/退出都要落盘：手机上玩家直接切走是常态，
         // 攒在内存里的最后两秒往往正是他想给我看的那两秒。
-        void OnApplicationPause(bool paused) { if (paused) Flush(); }
-        void OnApplicationFocus(bool focus) { if (!focus) Flush(); }
-        void OnApplicationQuit() { Flush(); }
+        void OnApplicationPause(bool paused) { if (paused) { Flush(); AutoExport(); } }
+        void OnApplicationFocus(bool focus) { if (!focus) { Flush(); AutoExport(); } }
+        void OnApplicationQuit() { Flush(); AutoExport(); }
         void OnDestroy() { Flush(); }
+
+        /// <summary>选过目录就在切后台时顺手导出一份——玩家跑完一段直接切走是常态，
+        /// 让他再回来点一次"导出"是多余的一步，而漏掉的那一次往往正是要看的那一次。</summary>
+        static void AutoExport()
+        {
+            if (string.IsNullOrEmpty(TreeUri) && string.IsNullOrEmpty(CustomDir)) return;
+            ExportNow();
+        }
     }
 }

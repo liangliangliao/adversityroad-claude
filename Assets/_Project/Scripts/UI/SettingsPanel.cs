@@ -21,7 +21,7 @@ namespace AdversityRoad.UI
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn;
         Button _logBtn;
-        Text _logPath;
+        Text _logPath, _logTarget;
         readonly System.Collections.Generic.List<(Button, float)> _turnBtns =
             new System.Collections.Generic.List<(Button, float)>();
         bool _deleteArmed;
@@ -41,7 +41,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1384),
+            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1520),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
@@ -159,14 +159,43 @@ namespace AdversityRoad.UI
                     GameEvents.RaiseSubtitle("已新建日志：" + Core.MoveLogger.CurrentPath);
                     Refresh();
                 }, 22);
+            // 日志放哪儿：persistentDataPath 在 Android 11 之后被 scoped storage
+            // 对文件管理器藏了起来，玩家进不去。用系统目录选择器挑一个自己能进的
+            // 文件夹（下载/文档/U 盘都行），拿到可持久化写授权后导出即可。
+            // 选一次记住，之后每次切后台自动导出一份。
+            UiUtil.MakeButton(_panel.transform, "选择日志目录（下载/文档…）",
+                new Vector2(0.5f, 1f), new Vector2(-195, -994), new Vector2(370, 70),
+                new Color(0.3f, 0.45f, 0.3f, 0.95f), () =>
+                {
+                    if (!Platform.LogExport.Supported)
+                    {
+                        GameEvents.RaiseSubtitle("这个平台不支持系统目录选择器——" +
+                            "日志仍在：" + Core.MoveLogger.CurrentPath);
+                        return;
+                    }
+                    Platform.LogExport.PickFolder("选择存放调试日志的文件夹");
+                }, 22);
+            UiUtil.MakeButton(_panel.transform, "导出日志到该目录",
+                new Vector2(0.5f, 1f), new Vector2(195, -994), new Vector2(370, 70),
+                new Color(0.3f, 0.45f, 0.55f, 0.95f), () =>
+                {
+                    Core.MoveLogger.ExportNow();
+                    GameEvents.RaiseSubtitle(Core.MoveLogger.LastExport);
+                    Refresh();
+                }, 22);
+            _logTarget = UiUtil.MakeText(_panel.transform, "LogTarget", "", 18,
+                TextAnchor.MiddleCenter, new Color(0.75f, 1f, 0.75f, 0.75f));
+            UiUtil.SetRect(_logTarget, new Vector2(0.5f, 1f), new Vector2(0, -1054),
+                new Vector2(1000, 34));
+
             _logPath = UiUtil.MakeText(_panel.transform, "LogPath", "", 18,
                 TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.55f));
-            UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -968),
+            UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1094),
                 new Vector2(1000, 34));
 
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
-                new Vector2(0.5f, 1f), new Vector2(0, -1080), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -1216), new Vector2(760, 70),
                 new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
                 {
                     var story = StoryManager.Instance;
@@ -182,17 +211,17 @@ namespace AdversityRoad.UI
 
             // 心理安全系统：快速退出战斗——任何时刻一键传送回安全屋（独居小屋）
             UiUtil.MakeButton(_panel.transform, "一键返回安全屋（立刻脱离当前战斗）",
-                new Vector2(0.5f, 1f), new Vector2(0, -1166), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -1302), new Vector2(760, 70),
                 new Color(0.25f, 0.4f, 0.55f, 0.95f), ReturnToSafeHouse, 24);
 
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -1252), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -1388), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -1312), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -1448), new Vector2(900, 32));
 
             // 关闭移到右上角：底部空间让给新增的操作偏好行
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -46),
@@ -298,6 +327,15 @@ namespace AdversityRoad.UI
                 _logPath.text = string.IsNullOrEmpty(Core.MoveLogger.CurrentPath)
                     ? "日志未启用"
                     : Core.MoveLogger.CurrentPath + "　（已写 " + Core.MoveLogger.Rows + " 行）";
+            if (_logTarget != null)
+            {
+                string tgt = Core.MoveLogger.TargetLabel();
+                _logTarget.text = string.IsNullOrEmpty(tgt)
+                    ? "导出目录：未选择　—— 点左边的按钮挑一个你进得去的文件夹"
+                    : "导出目录：" + tgt +
+                      (string.IsNullOrEmpty(Core.MoveLogger.LastExport)
+                          ? "" : "　｜　" + Core.MoveLogger.LastExport);
+            }
         }
 
         public void Toggle()

@@ -308,6 +308,9 @@ namespace AdversityRoad.Core
             // 只存在于零点几秒里——十来个点大概率整个错过。日志每帧一行，一段测试
             // 就是上千行完整状态，任何一帧都能回溯。见 MoveLogger。
             MoveLogger.Create();
+            // 目录选择结果只能按 GameObject 名字回调（UnitySendMessage 的限制），
+            // 所以要有一个名字固定、常驻不销毁的接收端。
+            Platform.MoveLoggerBridge.Ensure();
 
             // 后处理防晕：禁用运动模糊/色差/镜头畸变/噪点，压低暗角强度
             var vol = Object.FindFirstObjectByType<Volume>();
