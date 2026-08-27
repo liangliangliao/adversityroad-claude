@@ -1194,7 +1194,24 @@ namespace AdversityRoad.Player
             float dt = Mathf.Clamp(Time.deltaTime, 0.0001f, MaxSimStep);
             Vector3 planar = transform.position - _lastPos;
             planar.y = 0;
-            float actual = planar.magnitude / dt;
+            // ===== 换算地面速度时，除数不能是顿帧那个极小的 dt =====
+            //
+            // 命中顿帧把 Time.timeScale 打到 0.07（CombatFeedback），于是
+            // Time.deltaTime 只剩 1 毫秒。而这里是 位移 ÷ dt——分母一小，
+            // 商就炸：实机日志里 actual 读到 57 m/s，最高 1327 m/s。
+            // 全库 23.9% 的帧 timeScale < 0.9，这不是偶发。
+            //
+            // 后果全在动画上：actual 是喂给动画层的"地面速度"，它决定
+            //   · 走/跑/冲刺档的混合权重 —— 直接跳到冲刺档；
+            //   · 每条片段的播放速率（实际速度 ÷ 片段自然速度）—— 顶到 2.0 上限。
+            // 也就是**顿帧的那零点几秒里，腿在以最高速率狂蹬**。
+            // 玩家读到的就是"经常性滑动、像被动画控制"。
+            //
+            // 除数取 1/90 秒作地板：比任何真实帧都短，正常帧不受影响；
+            // 顿帧时它把商压回真实量级（0.035m / 0.011s ≈ 3.1 m/s，
+            // 而不是 0.035 / 0.001 = 35）。
+            const float MinSpeedDt = 1f / 90f;
+            float actual = planar.magnitude / Mathf.Max(dt, MinSpeedDt);
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
             // 动画层据此在方向片段之间混合（前/后/左/右/斜向）。

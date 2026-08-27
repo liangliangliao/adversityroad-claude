@@ -110,7 +110,11 @@ def main():
     # ---- ① 看不见自己：这是所有"撞墙/进不去门/盲区"的共同上游 ----
     # 不设最短时长：0.1 秒的一闪同样是"画面丢了一下"，而且往往成串出现，
     # 用最短时长过滤会把整串一起藏掉（上一版 0.3 秒的门槛就藏掉了十段）。
-    blind = spans(st, lambda r: r.get("seeSelf") == "0", 0.0)
+    # 【近第一人称不算盲】吊杆被墙压扁时会主动切成"沿吊杆方向看出去"，
+    # 那时看不见自己是**设计如此**——玩家看得见前方，正是它存在的目的。
+    # 把这一段算进盲区会得出完全相反的结论：上一份日志里 19.34 秒的"盲区"
+    # camTight 中位数是 1.00，其实全程是近第一人称。缺列（老日志）按 0 处理。
+    blind = spans(st, lambda r: r.get("seeSelf") == "0" and num(r, "camTight") < 0.55, 0.0)
     blind_t = sum(b[1] - b[0] for b in blind)
     report("【① 镜头看不见角色】占比 %.0f%%　—— 它为真的时候，玩家在盲操，"
            "之后所有操作失误都只是后果" % (100.0 * blind_t / max(dur, 1e-6)),
@@ -243,6 +247,25 @@ def main():
           (flips / dur, 100.0 * air / max(1, len(st))))
     print("     纯水平的 Move 会让 CharacterController 判成离地。翻转频繁＝有人绕过"
           "\n     统一位移通道单独挪了人，落地/起跳姿态与踩地校准都会跟着乱。")
+
+    # ---- ⑥e 顿帧 / 时间缩放 ----
+    #
+    # 命中顿帧把 Time.timeScale 打到 0.07，于是 Time.deltaTime 只剩 1 毫秒。
+    # 凡是"位移 ÷ dt"的换算在这一刻都会炸——喂给动画层的地面速度尤其致命，
+    # 它决定走/跑/冲刺档的混合与每条片段的播放速率。分母一小，腿就狂蹬。
+    if st and "dtSim" in st[0]:
+        sc = [(num(r, "dtSim") / max(num(r, "dt"), 1e-6), r) for r in st if num(r, "dt") > 1e-4]
+        low = [x for x in sc if x[0] < 0.9]
+        if sc:
+            print("\n【⑥e 顿帧/时间缩放】timeScale < 0.9 的帧占 %.1f%%，最低 %.3f" %
+                  (100.0 * len(low) / len(sc), min(x[0] for x in sc)))
+            fast = [r for s2, r in low if num(r, "actual") > 12]
+            if fast:
+                print("     其中 actual > 12 m/s 的有 %d 帧（正常冲刺 5.2），峰值 %.0f m/s"
+                      % (len(fast), max(num(r, "actual") for r in fast)))
+                print("     —— 这就是顿帧里腿狂蹬的直接证据：分母是那个 1 毫秒的 dt。")
+            else:
+                print("     顿帧期间 actual 没有异常放大（除数地板生效）。")
 
     # ---- ⑦ 锁脚顶格 ----
     fix = spans(st, lambda r: num(r, "footFix") > FOOTFIX_MAX)

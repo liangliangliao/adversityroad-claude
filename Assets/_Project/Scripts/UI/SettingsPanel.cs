@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
-        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn;
+        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn;
         Button _logBtn;
         Text _logPath, _logTarget;
         readonly System.Collections.Generic.List<(Button, float)> _turnBtns =
@@ -142,11 +142,23 @@ namespace AdversityRoad.UI
                     Refresh();
                 }, 22);
 
+            // ===== 出招磁吸（默认开）=====
+            // 关掉＝出招不再自动贴身、不再自动转向，站位与朝向完全由玩家决定。
+            // 触屏上瞄准本来就难，所以默认留着；但它是"补最后一小段"，
+            // 不该替玩家走位——玩家觉得不听使唤时，这是第一个该关掉试试的东西。
+            _magnetBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-277, -894), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.PlayerCombatController.AttackMagnetOn =
+                        !Combat.PlayerCombatController.AttackMagnetOn;
+                    Refresh();
+                }, 22);
+
             // ===== 跑动中出招只写上半身（默认开）=====
             // 关掉＝回到"招式接管整个身体"的旧行为，用于对照：
             // 关了之后跑动中出招，腿会立刻改演招式，人却还在平移。
             _upperBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -894), new Vector2(560, 70), Off, () =>
+                new Vector2(277, -894), new Vector2(545, 70), Off, () =>
                 {
                     Combat.HumanoidAnimator.UpperBodyAttacksOn =
                         !Combat.HumanoidAnimator.UpperBodyAttacksOn;
@@ -339,12 +351,21 @@ namespace AdversityRoad.UI
                 _leanBtn.GetComponent<Image>().color =
                     Combat.HumanoidAnimator.TurnLeanOn ? On : Off;
             }
+            if (_magnetBtn != null)
+            {
+                _magnetBtn.GetComponentInChildren<Text>().text =
+                    Combat.PlayerCombatController.AttackMagnetOn
+                        ? "出招自动贴身/转向：开"
+                        : "出招自动贴身/转向：关";
+                _magnetBtn.GetComponent<Image>().color =
+                    Combat.PlayerCombatController.AttackMagnetOn ? On : Off;
+            }
             if (_upperBtn != null)
             {
                 _upperBtn.GetComponentInChildren<Text>().text =
                     Combat.HumanoidAnimator.UpperBodyAttacksOn
-                        ? "跑动中出招只动上半身：开"
-                        : "跑动中出招只动上半身：关（整个身体演招式）";
+                        ? "跑动出招·只动上半身：开"
+                        : "跑动出招·只动上半身：关";
                 _upperBtn.GetComponent<Image>().color =
                     Combat.HumanoidAnimator.UpperBodyAttacksOn ? On : Off;
             }

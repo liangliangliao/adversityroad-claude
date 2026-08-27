@@ -1181,7 +1181,7 @@ namespace AdversityRoad.Combat
             {
                 Vector3 to = target.position - transform.position; to.y = 0;
                 float need = to.magnitude - 1.05f;   // 停在贴身出招距离
-                float move = Mathf.Min(Mathf.Max(need, 0f), Mathf.Max(lunge, 0.4f) + 0.9f);
+                float move = Mathf.Min(Mathf.Max(need, 0f), MaxLungeDist(lunge));
                 if (move > 0.04f && to.sqrMagnitude > 0.01f)
                     GlideMove(to.normalized * move, LungeDuration(move));
                 return;
@@ -1193,11 +1193,32 @@ namespace AdversityRoad.Combat
             // **站位由玩家说了算，所见即所中**；只有突进类指令技（lunge≥2）保留大位移。
             float cap = lunge >= 2f ? 0.9f : 0.12f;
             float d = Mathf.Min(lunge * 0.35f, cap);
+            if (d <= 0.01f) return;
             GlideMove(transform.forward * d, LungeDuration(d));
         }
 
         /// <summary>突进封顶速度（m/s）。超过冲刺速度已经读作"瞬移"而不是"一步贴上去"。</summary>
         const float LungeMaxSpeed = 8f;
+
+        /// <summary>出招磁吸总开关（设置面板可关）。关掉＝出招不再自动贴身，站位完全由玩家决定。</summary>
+        public static bool AttackMagnetOn = true;
+
+        /// <summary>诊断：本次测试里磁吸一共把角色挪了多少米。</summary>
+        public static float DbgLungeTotal;
+
+        /// <summary>
+        /// 一次出招最多能磁吸多远。
+        ///
+        /// 【实机数据否掉了上一版的取值】上一版是 max(lunge,0.4)+0.9，普通突刺
+        /// 就能吸 1.9 米。185 秒的日志里磁吸一共把角色挪了 **30.4 米**，50 次，
+        /// 单段最长 3.52 米（连段里一段接一段地叠）。玩家的原话是
+        /// "经常性滑动、更像是被动画控制了"——30 米就是那句话的量。
+        ///
+        /// 磁吸存在的理由只有一个：**触屏上瞄不准，补最后一小段**。补 0.5 米
+        /// 是补，补 1.9 米是替玩家走位。动作游戏里普攻的贴身修正普遍在 0.3~0.6 米，
+        /// 这里取 0.55 米；只有明确的突进类指令技（lunge≥2）保留大位移。
+        /// </summary>
+        static float MaxLungeDist(float lunge) => lunge >= 2f ? lunge * 0.6f : 0.55f;
 
         /// <summary>
         /// 突进用多久：距离固定，**时间随距离伸缩**，使速度不超过 LungeMaxSpeed。
@@ -1247,8 +1268,11 @@ namespace AdversityRoad.Combat
                 SnapFacing(Quaternion.LookRotation(stick));
         }
 
-        /// <summary>一次出招最多能把朝向掰过去多少度。</summary>
-        const float AttackFaceSnapMax = 70f;
+        /// <summary>一次出招最多能把朝向掰过去多少度（玩家没在推杆时）。</summary>
+        const float AttackFaceSnapMax = 30f;
+
+        /// <summary>玩家正在推杆时的上限：更小。推着杆＝他明确在指方向，磁吸只配微调。</summary>
+        const float AttackFaceSnapSteering = 12f;
 
         /// <summary>诊断：**本帧**出招把朝向掰了多少度；本帧没出招就是 0。
         /// 出招是离散事件，若把上一次的值一直留着，日志里会读成"一直在被强制转向"。</summary>
@@ -1272,12 +1296,27 @@ namespace AdversityRoad.Combat
         /// </summary>
         void SnapFacing(Quaternion want)
         {
+            if (!AttackMagnetOn) return;
+            // ===== 上限分两档：推着杆时几乎不许动 =====
+            //
+            // 【实机数据否掉了上一版的 70°】185 秒里出招转向 47 次，其中
+            // **24 次（51%）顶满 70°**——也就是说一半的出招，自动瞄准想转的
+            // 角度比 70° 还大，限幅只是把"完全替玩家决定"改成了"替他决定 70°"。
+            // 玩家说"很难精准控制角色"，一半的出招被掰 70° 就是这句话的量。
+            //
+            // 分档的依据是玩家有没有在表达方向：
+            //   · 推着摇杆 ⇒ 他已经明确指了方向，磁吸只配修 12° 的偏差；
+            //   · 没推杆   ⇒ 他没表达，磁吸可以帮忙对准，但也只到 30°。
+            // 30° 仍在普通斩击的判定张角（±55°）之内，够得着；
+            // 超出的部分本来就该是"你瞄歪了"，而不是"系统替你转过去"。
+            float limit = WorldMoveDir().sqrMagnitude > 0.02f
+                ? AttackFaceSnapSteering : AttackFaceSnapMax;
             float delta = Quaternion.Angle(transform.rotation, want);
-            _faceSnapDeg = Mathf.Min(delta, AttackFaceSnapMax);
+            _faceSnapDeg = Mathf.Min(delta, limit);
             _faceSnapFrame = Time.frameCount;
-            transform.rotation = delta <= AttackFaceSnapMax
+            transform.rotation = delta <= limit
                 ? want
-                : Quaternion.RotateTowards(transform.rotation, want, AttackFaceSnapMax);
+                : Quaternion.RotateTowards(transform.rotation, want, limit);
         }
 
         Player.LockOnSystem _lockOn;
@@ -1339,8 +1378,20 @@ namespace AdversityRoad.Combat
 
         /// <summary>短促滑步位移：突进不再一帧瞬移（瞬移会被跟随镜头复制成"一记一顿"
         /// 的画面抖动），改为 0.1 秒左右的高速滑行——镜头软跟随即可保持稳定。</summary>
+        float _glideUntil;   // 当前这次突进的结束时刻（unscaled，顿帧不该让它变长）
+
         void GlideMove(Vector3 offset, float duration)
         {
+            if (!AttackMagnetOn) return;
+            // ===== 不许链式叠加 =====
+            // 连段里每一段都会调一次 FaceAndLunge，而玩家连点时每 200ms 一次。
+            // 上一版每次都重起一段新的突进，于是一段接一段，实机日志里
+            // 734.51→735.04 这 0.53 秒内连续滑了 3.52 米——单次限速 8 m/s
+            // 完全没拦住，因为问题不在单次的速度，在**次数**。
+            // 一次突进没走完之前不再接受新的：想再贴一次，等这一次走完。
+            if (Time.unscaledTime < _glideUntil) return;
+            _glideUntil = Time.unscaledTime + duration;
+            DbgLungeTotal += offset.magnitude;
             if (_glideRoutine != null) StopCoroutine(_glideRoutine);
             _glideRoutine = StartCoroutine(Glide(offset, duration));
         }
