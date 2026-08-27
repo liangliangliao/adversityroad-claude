@@ -490,6 +490,7 @@ namespace AdversityRoad.OpenWorld
         TextMesh _panel;
         PlayerController _player;
         CharacterController _cc;
+        Player.PlayerController _pcForBelt;
         float _lastHint = -99f;
         float _ranSeconds;
         float _rewardTick;
@@ -621,8 +622,14 @@ namespace AdversityRoad.OpenWorld
 
             if (onBelt && _cc != null && _cc.enabled)
             {
-                // 履带把人往后送：站着不动就会被送下去，想留下就得跑
-                _cc.Move(new Vector3(0, 0, -beltSpeed * dt));
+                // 履带把人往后送：站着不动就会被送下去，想留下就得跑。
+                // 走外部通道而不是自己 Move：裸 Move 会把这一帧的 isGrounded 判成
+                // 离地（纯水平位移），跑步机上于是一直在"落地"，姿态反复被打断。
+                Vector3 belt = new Vector3(0, 0, -beltSpeed * dt);
+                if (_pcForBelt == null && _cc != null)
+                    _pcForBelt = _cc.GetComponent<Player.PlayerController>();
+                if (_pcForBelt != null) _pcForBelt.AddExternalMove(belt, "跑步机");
+                else _cc.Move(belt);
                 _ranSeconds += dt;
                 _rewardTick += dt;
                 if (_rewardTick > 5f)

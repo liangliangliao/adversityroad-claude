@@ -306,14 +306,22 @@ namespace AdversityRoad.Combat
             return _anim != null && _anim.HasPose(p);
         }
 
+        Player.PlayerController _pcForMove;
+
         IEnumerator GlideRoutine(Vector3 offset, float duration)
         {
             float t = 0;
             while (t < duration)
             {
-                float dt = Time.deltaTime;
+                float dt = Mathf.Min(Time.deltaTime, Player.PlayerController.MaxSimStep);
                 t += dt;
-                if (_cc != null) CharacterMotion.StepMove(_cc, offset * Mathf.Min(dt / duration, 1f));
+                // 与出招磁吸同理：能走外部通道就走，让位移与重力在同一次 Move 里落地
+                //（见 PlayerController._extMove）。技能执行器也挂在敌人身上，
+                // 那边没有 PlayerController，退回自己分步位移。
+                Vector3 step = offset * Mathf.Min(dt / duration, 1f);
+                if (_pcForMove == null) _pcForMove = GetComponent<Player.PlayerController>();
+                if (_pcForMove != null) _pcForMove.AddExternalMove(step, "技能突进");
+                else if (_cc != null) CharacterMotion.StepMove(_cc, step);
                 yield return null;
             }
         }

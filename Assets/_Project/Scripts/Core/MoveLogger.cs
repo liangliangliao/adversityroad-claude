@@ -197,7 +197,7 @@ namespace AdversityRoad.Core
         bool _checked;
 
         const string Header =
-                    "kind,t,dt,fps," +
+                    "kind,t,dt,dtSim,fps," +
                     "stickX,stickY,stickMag,stickHeld,stickYaw," +
                     "bodyYaw,camYaw,camPitch,turnNeed,dirTrust,lateralG,turnRadius,bodyYawRate," +
                     "rawSpeed,apMult,slowMult,attackMult,finalSpeed,strafeCap," +
@@ -208,6 +208,7 @@ namespace AdversityRoad.Core
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
+                    "extMove,extSrc,faceSnap," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -325,6 +326,10 @@ namespace AdversityRoad.Core
             var sb = _buf;
             int rowStart = sb.Length;
             sb.Append("S,").Append(F(t)).Append(',').Append(F(dt)).Append(',')
+              // dt 是墙钟时间（unscaled，不受 maximumDeltaTime 钳制），
+              // dtSim 才是这一帧**真正用来推进游戏**的步长。两个都要记：
+              // 上一轮我拿 dt 去判断"单帧步长上限有没有生效"，结论必然是错的。
+              .Append(F(Time.deltaTime)).Append(',')
               .Append(F(1f / dt)).Append(',')
               .Append(F(Mobile.MobileInput.Move.x)).Append(',')
               .Append(F(Mobile.MobileInput.Move.y)).Append(',')
@@ -374,6 +379,15 @@ namespace AdversityRoad.Core
               // 跑动中出招时招式是否只写上半身：⑥ 那一类"腿在演招式、人还在跑"
               // 修没修掉，只能靠这一列判定——光看动作名分不出全身还是半身。
               .Append(B(_anim != null && _anim.ActionUpperBodyOnly)).Append(',')
+              // ===== 谁在推角色 =====
+              // 角色的位置以前有七个写入方，实测速度可以远超指令速度而无从追查。
+              // 现在外部位移统一走 PlayerController 的一条通道，这两列直接回答
+              // "这一帧除了玩家的输入，还有谁在挪人、挪了多少"。
+              .Append(F(_pc != null ? _pc.DbgExtMove : 0f)).Append(',')
+              .Append(Q(_pc != null ? _pc.DbgExtSrc : "")).Append(',')
+              // 出招把朝向掰了多少度：玩家说"很难精准控制、像被动画控制"，
+              // 自动瞄准的强制转向是最直接的一条，必须能量出来。
+              .Append(F(Combat.PlayerCombatController.DbgFaceSnap)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

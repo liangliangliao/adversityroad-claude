@@ -21,6 +21,9 @@ namespace AdversityRoad.Player
         /// <summary>静止起步时，身体要先转到离目标方向多少度以内才允许迈步。
         /// 50° 之内人本来就是边转边走的，再严就成了"起步要等一下"。</summary>
         const float StartAlignDeg = 50f;
+
+        /// <summary>移动积分的单帧步长上限（秒）。见 Update 里的推导。</summary>
+        public const float MaxSimStep = 0.05f;
         public float runSpeed = 5.2f;
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
@@ -102,6 +105,48 @@ namespace AdversityRoad.Player
         Vector3 _lastPos;
         Vector3 _hVel;   // 平滑后的水平速度
         float _lastMoveAngle;   // 上一个**有效**的行进夹角（速度太低时沿用它，见 LateUpdate）
+
+        // ===== 外部位移通道：角色的位置只能有一个写入方 =====
+        //
+        // 【玩家的原话是"更像是被动画控制了"，这就是它的出处】
+        // 在此之前，能移动这个 CharacterController 的地方有七处，各自在自己的
+        // 脚本时序里独立调用 StepMove：
+        //   PlayerController 三处（主移动 / 平台跟随 / 翻滚）、
+        //   PlayerCombatController 两处（出招磁吸突进 / 受击后退）、
+        //   SkillExecutor 一处（技能突进）、HomeComforts 一处（跑步机履带）。
+        // 没有任何一方拥有角色的位置，于是：
+        //   · 同一帧里两次 Move 叠加，实测速度可以远超指令速度——实机日志里
+        //     293 帧（2.4%）出现这种情况，其中 287 帧发生在出招期间；
+        //   · **最后一次 Move 决定 isGrounded**。出招磁吸只挪水平、不带重力，
+        //     于是它一跑，这一帧就判成"离地"——日志里 grounded 每秒翻转 2.0 次、
+        //     20.7% 的帧被判在空中。落地/起跳姿态、下落循环、踩地校准全跟着乱。
+        //
+        // 改成一条通道：外部系统只能"申请"本帧的额外位移，由 PlayerController
+        // 在它自己那一次 StepMove 里**连同重力一起**落地。写入方只剩一个，
+        // 于是位移可加、接地稳定、而且在日志里一眼看得出这一帧是谁在推人。
+        Vector3 _extMove;
+
+        /// <summary>诊断：本帧外部位移的大小（米）。</summary>
+        public float DbgExtMove { get; private set; }
+        /// <summary>诊断：本帧外部位移的来源标签。</summary>
+        public string DbgExtSrc { get; private set; } = "";
+
+        /// <summary>外部系统申请本帧的额外位移（世界坐标）。source 只用于日志。</summary>
+        public void AddExternalMove(Vector3 delta, string source)
+        {
+            _extMove += delta;
+            if (!string.IsNullOrEmpty(source)) DbgExtSrc = source;
+        }
+
+        /// <summary>取走并清空本帧的外部位移。一帧只会被真正消费一次。</summary>
+        Vector3 TakeExternalMove()
+        {
+            var v = _extMove;
+            _extMove = Vector3.zero;
+            DbgExtMove = v.magnitude;
+            if (v.sqrMagnitude < 1e-10f) DbgExtSrc = "";
+            return v;
+        }
 
         /// <summary>拖延泥潭等减速效果的外部倍率（1 = 正常）。</summary>
         // ===== 移速减益：按【来源】登记，每帧取最小 =====
@@ -434,7 +479,7 @@ namespace AdversityRoad.Player
                 const float MaxCarryPerFrame = 0.4f;
                 float d2 = delta.sqrMagnitude;
                 if (d2 > 1e-8f && d2 < MaxCarryPerFrame * MaxCarryPerFrame)
-                    Combat.CharacterMotion.StepMove(_cc, delta);   // 分步，绝不跨墙
+                    AddExternalMove(delta, "平台跟随");   // 与重力同一次落地，接地才稳
             }
             _platform = found;
             if (found != null) _platformLastPos = found.position;
@@ -490,7 +535,19 @@ namespace AdversityRoad.Player
             if (_combat == null) _combat = GetComponent<CombatStateMachine>();
             if (_pcc == null) _pcc = GetComponent<Combat.PlayerCombatController>();
 
-            float dt = Time.deltaTime;
+            // ===== 移动积分的步长必须自己钳，不能指望 Time.maximumDeltaTime =====
+            //
+            // 上一版把 Time.maximumDeltaTime 设成 0.05，指望它去钳 Time.deltaTime。
+            // 实机日志否掉了这个指望：t=320.004 那一帧 hVel=5.20、位移 0.691m，
+            // 0.691 / 5.20 = 0.133s —— 用的就是没被钳过的整帧时间。
+            // 不管那是 Unity 6 的语义（maximumDeltaTime 只管 FixedUpdate 追帧）
+            // 还是别处把它改了回去，结论一样：**这条上限必须由这里自己落地**，
+            // 它就在积分的现场，谁都改不掉。
+            //
+            // 0.05s（20fps）的取法见 GameBootstrap 里的推导：实机 12281 帧里
+            // 超过它的只有 24 帧（0.2%），而最狠的一帧位移由 0.691m 降到 0.260m。
+            // 0.69 米是一步半，出现在一帧里就是"抑扬顿挫突然漂移到别处"。
+            float dt = Mathf.Min(Time.deltaTime, MaxSimStep);
             Stats.TickRegen(dt, _combat != null && _combat.InCombat);
             if (Stats.IsDead) return;
 
@@ -513,7 +570,7 @@ namespace AdversityRoad.Player
             {
                 _dodgeTimer -= dt;
                 Combat.CharacterMotion.StepMove(_cc,
-                    _dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt);
+                    _dodgeDir * _dodgeSpd * dt + Vector3.up * _vy * dt + TakeExternalMove());
                 if (_dodgeTimer <= 0 && _combat != null) _combat.RequestState(CombatState.Locomotion);
                 // 【收势取消】：滚动主体走完（>62%）之后，攻击/跳/再次翻滚可以立刻打断收势。
                 // 此前必须把整段滚翻播完才能做别的事——"闪完还要等一下才打得出来"，
@@ -923,7 +980,8 @@ namespace AdversityRoad.Player
             // 要么是位移被碰撞吃掉了（看 DbgHitSides）。两者的修法完全不同。
             DbgTargetVel = targetVel.magnitude;
             DbgVel = _hVel.magnitude;
-            Combat.CharacterMotion.StepMove(_cc, _hVel * dt + Vector3.up * _vy * dt);
+            Combat.CharacterMotion.StepMove(_cc,
+                _hVel * dt + Vector3.up * _vy * dt + TakeExternalMove());
             DbgHitSides = (_cc.collisionFlags & CollisionFlags.Sides) != 0;
         }
 
@@ -1133,7 +1191,7 @@ namespace AdversityRoad.Player
             // 把实际位移换算成步态参数喂给人形动画
             if (_anim == null) _anim = GetComponent<HumanoidAnimator>();
             if (_anim == null) return;
-            float dt = Mathf.Max(Time.deltaTime, 0.0001f);
+            float dt = Mathf.Clamp(Time.deltaTime, 0.0001f, MaxSimStep);
             Vector3 planar = transform.position - _lastPos;
             planar.y = 0;
             float actual = planar.magnitude / dt;
@@ -1561,7 +1619,10 @@ namespace AdversityRoad.Player
             // 突然窜出一段。
             _hVel = Vector3.zero;
             _vy = _cc.isGrounded ? -1f : _vy + gravity * dt;
-            _cc.Move(Vector3.up * _vy * dt);
+            // 硬锁期间也要把外部位移落地：出招磁吸恰恰发生在蓄力/施法这类硬锁态里，
+            // 漏掉它等于这一帧的突进被吞掉，读作"这一下没打中/位置对不上"。
+            Combat.CharacterMotion.StepMove(_cc,
+                Vector3.up * _vy * dt + TakeExternalMove());
         }
     }
 }

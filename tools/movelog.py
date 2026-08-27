@@ -201,6 +201,49 @@ def main():
                      % (b[0], b[1], b[2].get("actionClip") or "-",
                         num(b[2], "actionW"), num(b[2], "actual")))
 
+    # ---- ⑥b 谁在推角色 ----
+    #
+    # 玩家的原话是"更像是被动画控制了"。这一条把它变成数字：本帧除了玩家的输入，
+    # 还有谁在挪人、挪了多少、当量速度是多少。extMove/extSrc 是这一版新加的列，
+    # 老日志没有——缺列时整条跳过，不要拿 0 去冒充"没有外力"。
+    if "extMove" in (st[0] if st else {}):
+        ext = [r for r in st if num(r, "extMove") > 0.001]
+        by = {}
+        for r in ext:
+            src = (r.get("extSrc") or "?").strip('"')
+            d = num(r, "extMove")
+            sim = max(num(r, "dtSim"), 1e-4)
+            cur = by.setdefault(src, [0, 0.0, 0.0])
+            cur[0] += 1
+            cur[1] += d
+            cur[2] = max(cur[2], d / sim)
+        rows = sorted(by.items(), key=lambda kv: -kv[1][1])
+        report("【⑥b 谁在推角色】外部位移＝不是玩家输入产生的那部分。"
+               "\n     当量速度远超冲刺速度(5.2)就是玩家说的\"魔法般改变位置\"",
+               rows,
+               lambda kv: "%-10s %4d 帧　累计 %6.2fm　峰值当量速度 %6.1f m/s"
+                          % (kv[0], kv[1][0], kv[1][1], kv[1][2]))
+
+        snap = [r for r in st if num(r, "faceSnap") > 0.5]
+        big = [r for r in snap if num(r, "faceSnap") > 30]
+        report("【⑥c 出招强制转向】自动瞄准每按一次攻击就掰一次朝向。"
+               "\n     只列 >30° 的：那已经不是\"修正一点偏差\"，是替玩家决定朝哪打",
+               big[:12],
+               lambda r: "%.2f 秒　掰了 %.0f°　姿态 %s" %
+                         (num(r, "t"), num(r, "faceSnap"), r.get("pose") or "-"))
+        if snap:
+            print("     （出招转向共 %d 次，其中 >30° 的 %d 次，占 %.0f%%）"
+                  % (len(snap), len(big), 100.0 * len(big) / len(snap)))
+
+    # ---- ⑥d 接地抖动 ----
+    flips = sum(1 for i in range(1, len(st)) if st[i].get("grounded") != st[i - 1].get("grounded"))
+    dur = max(num(st[-1], "t") - num(st[0], "t"), 1e-3) if st else 1.0
+    air = sum(1 for r in st if r.get("grounded") == "0")
+    print("\n【⑥d 接地抖动】grounded 每秒翻转 %.1f 次，离地帧占 %.1f%%" %
+          (flips / dur, 100.0 * air / max(1, len(st))))
+    print("     纯水平的 Move 会让 CharacterController 判成离地。翻转频繁＝有人绕过"
+          "\n     统一位移通道单独挪了人，落地/起跳姿态与踩地校准都会跟着乱。")
+
     # ---- ⑦ 锁脚顶格 ----
     fix = spans(st, lambda r: num(r, "footFix") > FOOTFIX_MAX)
     report("【⑦ 锁脚修正顶格】封顶 0.28m。常年顶格说明步幅同步本身有问题，"
