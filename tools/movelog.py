@@ -94,14 +94,23 @@ def main():
         return 1
 
     dur = num(st[-1], "t") - num(st[0], "t")
-    fps = [num(r, "fps") for r in st]
+    # 切后台那一帧的 dt 是"离开到回来"的整段时间（实测见过 15 秒），
+    # 把它算进帧率统计会把"最低 fps"直接压成 0，掩盖掉真正的卡顿。
+    play = [r for r in st if num(r, "dt") < 1.0]
+    fps = [num(r, "fps") for r in play] or [0.0]
+    hitch = [r for r in play if num(r, "dt") > 0.033]
     print("=" * 72)
-    print("%s：%d 帧 / %.1f 秒　平均 %.0f fps（最低 %.0f）" %
+    print("%s：%d 帧 / %.1f 秒　平均 %.0f fps（在场帧最低 %.0f）" %
           (path, len(st), dur, sum(fps) / len(fps), min(fps)))
+    print("卡顿：%d 帧超过 33ms（%.1f%%），最长 %.0fms；切后台 %d 次" %
+          (len(hitch), 100.0 * len(hitch) / max(len(play), 1),
+           max(num(r, "dt") for r in play) * 1000, len(st) - len(play)))
     print("=" * 72)
 
     # ---- ① 看不见自己：这是所有"撞墙/进不去门/盲区"的共同上游 ----
-    blind = spans(st, lambda r: r.get("seeSelf") == "0", STUCK_MIN)
+    # 不设最短时长：0.1 秒的一闪同样是"画面丢了一下"，而且往往成串出现，
+    # 用最短时长过滤会把整串一起藏掉（上一版 0.3 秒的门槛就藏掉了十段）。
+    blind = spans(st, lambda r: r.get("seeSelf") == "0", 0.0)
     blind_t = sum(b[1] - b[0] for b in blind)
     report("【① 镜头看不见角色】占比 %.0f%%　—— 它为真的时候，玩家在盲操，"
            "之后所有操作失误都只是后果" % (100.0 * blind_t / max(dur, 1e-6)),
@@ -167,6 +176,26 @@ def main():
            "锁脚只是在硬拽", fix,
            lambda b: "%.2f→%.2f 秒　修正 %.2fm　速度%.1f" %
                      (b[0], b[1], num(b[2], "footFix"), num(b[2], "actual")))
+
+    # ---- ⑦b 镜头姿态突跳 ----
+    # 【这一条是补上来的：上一轮我漏掉的正是它】
+    # 实机日志里 camLift 在 0.000 与 0.550 之间逐帧横跳，俯角跟着一帧摆 80~95 度，
+    # 而我当时只看"见自己"的占比，没看**镜头姿态本身稳不稳**，于是完全没发现。
+    # 任何镜头量逐帧大幅跳变都是不能接受的，不管角色在不在画面里。
+    jumps = []
+    for i in range(1, len(st)):
+        if num(st[i], "dt") > 0.1:      # 切后台/长卡顿那一帧不算突跳
+            continue
+        dp = abs(num(st[i], "camPitch") - num(st[i - 1], "camPitch"))
+        dl = abs(num(st[i], "camLift") - num(st[i - 1], "camLift"))
+        if dp > 25.0 or dl > 0.25:
+            jumps.append((st[i], dp, dl))
+    report("【⑦b 镜头姿态突跳】俯角一帧变 >25° 或抬高一帧变 >0.25m。"
+           "\n     镜头量逐帧大幅跳变一定会被看见，与角色在不在画面里无关",
+           jumps,
+           lambda j: "%.2f 秒　俯角跳 %.0f°（→%.0f°）　抬高跳 %.2f（→%.2f）　吊杆%.2f"
+                     % (num(j[0], "t"), j[1], num(j[0], "camPitch"), j[2],
+                        num(j[0], "camLift"), num(j[0], "camBoom")))
 
     # ---- ⑧ 方向片段有没有真的用上 ----
     used = {}

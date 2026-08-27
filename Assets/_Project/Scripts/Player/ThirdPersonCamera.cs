@@ -375,6 +375,10 @@ namespace AdversityRoad.Player
         /// <summary>视线抬高允许引起的最大仰角（这里存的是它的正切，20°）。
         /// 吊杆被压短时，固定的抬高偏移会主导方向向量把镜头掀上天，见 lookUp 那里。</summary>
         const float MaxLookTiltTan = 0.364f;
+        /// <summary>贴墙抬高的变化速率上限（米/秒）。"抬不抬得起来"在贴墙时天然
+        /// 在边界上抖，必须平滑掉——镜头量逐帧二值跳变一定会被看见。</summary>
+        const float LiftSlew = 1.2f;
+        float _liftSm;
 
         // ===== 镜头诊断（PerfHud 第六行；不参与任何逻辑）=====
         // 这一路我给了移动和动画一堆读数，却从没量过镜头——而录屏显示
@@ -1914,10 +1918,16 @@ namespace AdversityRoad.Player
             float lift = Mathf.Min(Mathf.Max(0f, frameNeed - _boomDist), MaxPinchLift);
             // 抬高必须自己负责脱出：下面的 DepenetrateBoom 只沿【吊杆方向】收，
             // 抬进天花板/吊灯它一点忙都帮不上（那是垂直方向的嵌入）。
-            // 逐级退让，退到 0 为止——宁可不抬，也不能把镜头塞进楼板。
             while (lift > 0.01f && BoomBlocked(pivot + boomDir * _boomDist + Vector3.up * lift))
                 lift -= 0.12f;
             lift = Mathf.Max(0f, lift);
+            // ===== 但退让的结果必须【平滑】，绝不能逐帧二值横跳 =====
+            // 实机日志把这条钉死了：camLift 在 0.000 与 0.550 之间**一帧一换**
+            //（45.719 → 45.736：0.550 → 0.000；69.793 → 69.810：0.000 → 0.550），
+            // 因为"抬起来会不会嵌墙"在贴墙时本来就在边界上反复横跳。
+            // 任何镜头量逐帧二值跳变都是不能接受的，何况它还参与俯角计算。
+            _liftSm = Mathf.MoveTowards(_liftSm, lift, LiftSlew * dt);
+            lift = _liftSm;
             Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * lift;
 
             // ---- 受击纵向脉冲（幅度小、衰减快） ----
@@ -1957,9 +1967,22 @@ namespace AdversityRoad.Player
             // 也就是说吊杆一被墙压短，镜头就自动仰起来看天花板——
             // 上一轮刚把"穿墙"堵上，失明就从穿墙换成了仰天，症状一样。
             //
-            // 抬高量必须随水平距离缩：让它引起的仰角**永不超过 MaxLookTilt**。
-            // 远景时 0.38 远小于 d·tan(20°)，这一条完全不生效；只有贴脸时才咬。
-            lookUp = Mathf.Min(lookUp, Mathf.Max(0f, _boomDist) * MaxLookTiltTan);
+            // ===== 封顶只能作用在【取景偏移】上，抬高补偿必须原样保留 =====
+            //
+            // 上一版把 lift 加进 lookUp **之后**才封顶，于是贴墙时封顶把补偿一并
+            // 削掉，方向向量的竖直分量变成 (lookUp − lift) 这个**大负数**：
+            //     吊杆 0.122m、lift 0.55 ⇒ 封顶后 lookUp = 0.122×0.364 = 0.044
+            //     竖直分量 = 0.044 − 0.55 = −0.506
+            //     俯角 = atan(0.506 / 0.122) = 76.4°   ← 实机日志读到 +77.9°
+            // 配上上面那个逐帧横跳的 lift，镜头一帧之内在 −70° 与 +78° 之间摆，
+            // 玩家什么都看不清。这是我上一轮"修好穿墙"时亲手引进来的。
+            //
+            // 正确的拆法：镜头抬多少、视线目标就抬多少（那一项精确抵消，俯角不受
+            // 影响，这本来就是抬高的定义）；真正需要封顶的只有**取景偏移**那一项，
+            // 因为只有它会在水平距离变短时把俯角撬起来。
+            float baseLook = lookUp - lift;
+            baseLook = Mathf.Min(baseLook, Mathf.Max(0f, _boomDist) * MaxLookTiltTan);
+            lookUp = baseLook + lift;
             transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
 
             DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
