@@ -207,7 +207,7 @@ namespace AdversityRoad.Core
                     "pose,combat,hardLock,actionClip,actionW," +
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
-                    "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight," +
+                    "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -371,6 +371,9 @@ namespace AdversityRoad.Core
               .Append(B(ThirdPersonCamera.DbgStuck)).Append(',')
               .Append(B(ThirdPersonCamera.DbgSeeSelf)).Append(',')
               .Append(F(ThirdPersonCamera.DbgTight)).Append(',')
+              // 跑动中出招时招式是否只写上半身：⑥ 那一类"腿在演招式、人还在跑"
+              // 修没修掉，只能靠这一列判定——光看动作名分不出全身还是半身。
+              .Append(B(_anim != null && _anim.ActionUpperBodyOnly)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

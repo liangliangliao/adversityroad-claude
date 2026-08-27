@@ -189,7 +189,17 @@ namespace AdversityRoad.Combat
 
         readonly Animator _animator;
         PlayableGraph _graph;
-        AnimationMixerPlayable _top;      // 0=loco 1=action
+        // 分层混合器（不是普通混合器）：普通混合器只能按权重把两路**整体**加权，
+        // 于是招式一到满权重就把整个身体接管，腿也跟着演招式——而人还在跑。
+        // 分层混合器多的那一样东西是【遮罩】：可以只让第 1 层写上半身的骨骼，
+        // 下半身仍由第 0 层的移动混合驱动。这就是格斗/动作游戏里"跑动中出招"
+        // 的通行做法（Unity 侧叫 Avatar Mask + Layer，虚幻侧叫 Slot + Blend Per Bone）。
+        AnimationLayerMixerPlayable _top;   // 层0=loco（基础层） 层1=action
+
+        // 两张遮罩：全身（等于不遮）与仅上半身。切换要调用 SetLayerMaskFromAvatarMask，
+        // 没有"清除遮罩"的 API，所以"不遮"也得用一张全开的遮罩来表达。
+        AvatarMask _maskFull, _maskUpper;
+        bool _upperOnly;                    // 第 1 层当前是否只写上半身
         AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2.. = 方向移动片段
         AnimationMixerPlayable _actions;
 
@@ -700,11 +710,15 @@ namespace AdversityRoad.Combat
             HasDirectionalSet = CountDistinctDirections() >= 3;
             _loco.SetInputWeight(0, 1f);
 
-            _top = AnimationMixerPlayable.Create(_graph, 2);
+            _top = AnimationLayerMixerPlayable.Create(_graph, 2);
             _graph.Connect(_loco, 0, _top, 0);
             _graph.Connect(_actions, 0, _top, 1);
+            // 分层混合器的第 0 层是**基础层**，权重恒为 1；上面的层按自己的权重盖上去。
+            // 这与普通混合器的 (1-w, w) 是两回事，改类型时最容易漏掉这一处。
             _top.SetInputWeight(0, 1f);
             _top.SetInputWeight(1, 0f);
+            BuildMasks();
+            if (_maskFull != null) _top.SetLayerMaskFromAvatarMask(1, _maskFull);
 
             output.SetSourcePlayable(_top);
             Valid = true;
@@ -1298,6 +1312,97 @@ namespace AdversityRoad.Combat
         /// 片段可能没接上、可能接上了但权重恒为 0、也可能被动作层整个盖住。
         /// 把这三件事同时打在屏幕上，一眼就能分辨是哪一种。
         /// </summary>
+        // ===== 上半身遮罩 =====
+
+        /// <summary>下半身骨骼的规范名。第 1 层遮掉它们＝腿归移动层管。</summary>
+        static readonly string[] LowerBones =
+        {
+            "hips",
+            "leftupleg", "leftleg", "leftfoot", "lefttoebase", "lefttoeend",
+            "rightupleg", "rightleg", "rightfoot", "righttoebase", "righttoeend",
+        };
+
+        /// <summary>骨名规范化：只留字母数字、转小写、去 mixamorig 前缀。
+        /// 与 MecanimCharacter.Norm 同一套规则——异源骨架已被它统一改名成参考骨名，
+        /// 这里只需再挡一次前缀与分隔符的写法差异（mixamorig:LeftUpLeg / LeftUpLeg）。</summary>
+        static string NormBone(string n)
+        {
+            var sb = new System.Text.StringBuilder(n.Length);
+            foreach (char c in n) if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            string v = sb.ToString();
+            return v.StartsWith("mixamorig") ? v.Substring(9) : v;
+        }
+
+        /// <summary>
+        /// 建两张 AvatarMask。**必须把每一根骨骼都列进去**：没列进去的骨骼行为
+        /// 未定义（不同 Unity 版本表现不同），只列下半身会得到一张时灵时不灵的遮罩。
+        /// 路径是相对 Animator 所在 GameObject 的层级路径，与 AnimationClip 的
+        /// 绑定路径同一套写法。
+        /// </summary>
+        void BuildMasks()
+        {
+            if (_animator == null) return;
+            var root = _animator.transform;
+            var paths = new List<string>(128);
+            var lower = new List<bool>(128);
+            CollectBones(root, "", false, paths, lower);
+            if (paths.Count == 0) return;
+
+            _maskFull = new AvatarMask { transformCount = paths.Count };
+            _maskUpper = new AvatarMask { transformCount = paths.Count };
+            for (int i = 0; i < paths.Count; i++)
+            {
+                _maskFull.SetTransformPath(i, paths[i]);
+                _maskFull.SetTransformActive(i, true);
+                _maskUpper.SetTransformPath(i, paths[i]);
+                _maskUpper.SetTransformActive(i, !lower[i]);
+            }
+        }
+
+        /// <summary>
+        /// 递归收集骨骼路径，并标出哪些属于下半身。
+        /// 「是不是下半身」沿层级**向下继承**：一旦命中大腿根，它底下的整条腿
+        /// （小腿、脚、脚趾，以及挂在脚上的任何附件）都算下半身。不继承的话遮罩
+        /// 会在小腿处断开，出现"大腿归移动层、小腿在演招式"这种鬼样子。
+        /// hips 是全身的根，标为下半身＝招式不写根骨，人的位置与朝向仍归移动层，
+        /// 这正是"跑动中出招"要的：脚步不乱、位移不被招式接管。
+        /// </summary>
+        static void CollectBones(Transform t, string path, bool parentIsLower,
+                                 List<string> paths, List<bool> lower)
+        {
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var c = t.GetChild(i);
+                string p = path.Length == 0 ? c.name : path + "/" + c.name;
+                bool isLower = parentIsLower;
+                if (!isLower)
+                {
+                    string n = NormBone(c.name);
+                    for (int k = 0; k < LowerBones.Length; k++)
+                        if (n == LowerBones[k]) { isLower = true; break; }
+                }
+                paths.Add(p);
+                lower.Add(isLower);
+                CollectBones(c, p, isLower, paths, lower);
+            }
+        }
+
+        /// <summary>
+        /// 切换第 1 层的遮罩。true = 招式只写上半身，腿继续走移动混合。
+        /// 只在状态真的变化时才调用底层 API：SetLayerMaskFromAvatarMask 会重建
+        /// 层内部的绑定表，每帧调是实打实的开销。
+        /// </summary>
+        public void SetActionUpperBodyOnly(bool upperOnly)
+        {
+            if (!Valid || _maskFull == null || _maskUpper == null) return;
+            if (upperOnly == _upperOnly) return;
+            _upperOnly = upperOnly;
+            _top.SetLayerMaskFromAvatarMask(1, upperOnly ? _maskUpper : _maskFull);
+        }
+
+        /// <summary>诊断：第 1 层当前是否只写上半身。</summary>
+        public bool ActionUpperBodyOnly => _upperOnly;
+
         public string DbgNowPlaying()
         {
             if (!Valid) return "—";
@@ -1569,7 +1674,8 @@ namespace AdversityRoad.Combat
             {
                 _actionW = Mathf.MoveTowards(_actionW, 0f, dt / 0.12f);
             }
-            _top.SetInputWeight(0, 1f - _actionW);
+            // 基础层恒 1（见建图处），只调第 1 层的权重
+            _top.SetInputWeight(0, 1f);
             _top.SetInputWeight(1, _actionW);
 
             if (_graph.IsValid()) _graph.Evaluate(dt);
@@ -1578,6 +1684,10 @@ namespace AdversityRoad.Combat
         public void Destroy()
         {
             if (_graph.IsValid()) _graph.Destroy();
+            // AvatarMask 是运行时 new 出来的 ScriptableObject：不显式销毁就会一直
+            // 留在内存里，每次重建角色（换装/重生/回住所）泄一对。
+            if (_maskFull != null) { Object.Destroy(_maskFull); _maskFull = null; }
+            if (_maskUpper != null) { Object.Destroy(_maskUpper); _maskUpper = null; }
         }
     }
 }

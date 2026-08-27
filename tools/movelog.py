@@ -163,9 +163,40 @@ def main():
                         num(b[2], "finalSpeed"), num(b[2], "actual")))
 
     # ---- ⑥ 动作层盖住移动层 ----
-    over = spans(st, lambda r: num(r, "actionW") > 0.5 and num(r, "actual") > 1.5)
+    #
+    # 【判据要排掉两类"本来就该整个身体一起演"的】否则这一条会一直有几十段，
+    # 而里面绝大多数是正常的，真正的问题反倒被淹掉：
+    #   · 位移型动作：起跳/下落/落地/翻滚/突进斩/跃劈/飞踢——这些招的主体就是
+    #     "人在空中或在冲"，腿当然归招式管；
+    #   · 受击/倒地/死亡：被打就该整个人失控，那是打击感，不是打架。
+    # 剩下的才是真正的"腿在演招式、人却还在跑"。
+    # 另外读 upperOnly 列：为 1 表示上半身遮罩已经生效，那一段腿是归移动层的，
+    # 不算冲突——这一列是这一版新加的，老日志里没有，缺列按 0 处理。
+    WHOLE_BODY_OK = (
+        "Jumping Up", "Falling Idle", "Falling To Landing", "Hard Landing",
+        "Stand To Roll", "Standing Dodge Left", "Dodging Right",
+        "Great Sword Slide Attack", "Great Sword Jump Attack", "Flying Kick",
+        "Great Sword Slash 3",
+        "Great Sword Impact", "Great Sword Impact 2", "Great Sword Impact 4",
+        "Great Sword Block Hit", "Knocked Down", "Stunned",
+    )
+
+    def real_overlay(r):
+        if num(r, "actionW") <= 0.5 or num(r, "actual") <= 1.5:
+            return False
+        if num(r, "upperOnly") > 0.5:
+            return False
+        clip = (r.get("actionClip") or "").strip()
+        for ok in WHOLE_BODY_OK:
+            if ok in clip:
+                return False
+        return True
+
+    over = spans(st, real_overlay)
     report("【⑥ 位移中动作层接管】动作层是**替换**移动层的：这段时间里腿在演招式，"
-           "人却还在跑——这就是\"多个动画在打架\"", over,
+           "人却还在跑——这就是\"多个动画在打架\"。"
+           "\n     已排除位移型动作（跳/落/滚/突进）与受击倒地，也排除已开上半身遮罩的段落",
+           over,
            lambda b: "%.2f→%.2f 秒　动作 %s 权重%.2f　速度%.1f"
                      % (b[0], b[1], b[2].get("actionClip") or "-",
                         num(b[2], "actionW"), num(b[2], "actual")))

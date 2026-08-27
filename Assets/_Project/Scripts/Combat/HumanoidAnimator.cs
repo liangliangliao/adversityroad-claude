@@ -49,6 +49,8 @@ namespace AdversityRoad.Combat
         public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
         /// <summary>调试叠层：此刻画面上真正在播的动作层片段与移动层片段。</summary>
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
+        /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>
+        public bool ActionUpperBodyOnly => Mecanim && _mecanim.ActionUpperBodyOnly;
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
         /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>
@@ -888,6 +890,18 @@ namespace AdversityRoad.Combat
         /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地 /
         /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
+        /// <summary>跑动中出招是否只写上半身（腿继续走移动混合）。关掉＝回到旧行为。</summary>
+        public static bool UpperBodyAttacksOn = true;
+        /// <summary>超过这个地面速度（m/s）才算"在移动"。站着打仍是全身发力。</summary>
+        const float UpperBodySpeed = 1.2f;
+
+        /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。</summary>
+        static bool IsUpperBodyAction(PoseState p) =>
+            p == PoseState.Attack || p == PoseState.HeavyAttack || p == PoseState.AttackUp ||
+            p == PoseState.SwordThrust || p == PoseState.PunchJab || p == PoseState.PunchCross ||
+            p == PoseState.Cast || p == PoseState.CastProjectile ||
+            p == PoseState.Charge || p == PoseState.ChargeLoop || p == PoseState.Guard;
+
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
             float moveAngleDeg = 0f, bool strafing = false)
         {
@@ -995,6 +1009,18 @@ namespace AdversityRoad.Combat
             {
                 _t += dt;
                 _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch, _strafing);
+                // ===== 跑动中出招：招式只写上半身，腿继续走移动混合 =====
+                // 日志里最顽固的一类"多个动画在打架"就是这个：动作层是**替换**
+                // 移动层的，所以只要出招时人还在位移，腿就在演招式、身体却在平移。
+                // 140 秒的实机日志里这样的片段有 33 段。
+                //
+                // 判据两条，缺一不可：
+                //   · 招式本身是【上半身发力】的（挥砍/突刺/直拳/施法/格挡）。
+                //     腿法（踢/扫堂腿/旋身）与位移型招式（跃劈/飞踢/突进斩）不在此列
+                //     ——那些招的主体就是腿，遮掉腿等于把招砍没了。
+                //   · 人确实在移动。站着打就该整个身体一起使劲，遮上半身反而软。
+                _mecanim.SetActionUpperBodyOnly(
+                    UpperBodyAttacksOn && _actualSpeed > UpperBodySpeed && IsUpperBodyAction(_pose));
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
