@@ -2014,9 +2014,9 @@ namespace AdversityRoad.Player
             // 而且贴墙时本来也没有自己可看。
             float tight = 1f - Mathf.InverseLerp(NearFpBoom, NearFpFree, horiz);
             _tightSm = Mathf.MoveTowards(_tightSm, tight, dt / 0.25f);   // 别硬切
-            Vector3 aim = Vector3.Slerp((toPivot + Vector3.up * baseLook).normalized,
-                                        -boomDir, _tightSm);
-            if (aim.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(aim);
+            Vector3 lookDir = Vector3.Slerp((toPivot + Vector3.up * baseLook).normalized,
+                                            -boomDir, _tightSm);
+            if (lookDir.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(lookDir);
             DbgTight = _tightSm;
             // 近第一人称时把自己的身体藏起来：镜头都在躯干里了，不藏就是满屏
             // 后脑勺和衣服内面，看前方反而更难。用 ShadowsOnly 而不是关渲染器——
