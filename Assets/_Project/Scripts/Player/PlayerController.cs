@@ -13,8 +13,34 @@ namespace AdversityRoad.Player
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
-        [Header("移动（速度按真实体感收敛，防晕）")]
-        public float walkSpeed = 2.6f;
+        // ===== 速度必须锚在动画片段自己的自然速度上 =====
+        //
+        // 【这是"经常性滑动、像被动画控制"的总根源，前面几轮我一直在下游修】
+        // 三份实机日志把每条片段的自然速度量出来了（自然速度 = 实测地面速度 ÷
+        // 该帧的播放倍率，日志里两列都有）：
+        //
+        //     片段            自然速度    改前游戏跑到    播放倍率
+        //     Walking         2.05 m/s    1.3~1.7        0.64~0.81×
+        //     Jog Forward     2.77        3.80           1.37×
+        //     Running         3.63        5.20           1.43×
+        //     Right Strafe    3.27        5.19           1.59×
+        //     Fast Run        3.37        8.0~9.0        2.4~2.7×（被 2.0 上限截断）
+        //
+        // 也就是说**每一条跑动片段都在被快放**。步幅同步能让脚在数值上不打滑
+        // （步幅比确实是 0.96），但腿的摆动频率比动捕快 40%，整个人读起来就是
+        // 在冰上滑——这正是"滑动""不自然""像被动画控制"。Fast Run 更是要 2.4 倍
+        // 才跟得上，而速率上限是 2.0，那一档是**真的**在滑。
+        //
+        // 业界经验值：播放倍率在 0.85~1.15 之间看不出来，超过 1.25 就明显是快放。
+        // 所以速度按片段来定，而不是反过来：
+        //     walkSpeed  ← Walking 2.05        → 2.0
+        //     runSpeed   ← Running 3.63 × 1.15 → 4.2
+        //     室内       ← 走路档              → 2.0（见 indoorPaceSpeed）
+        // 代价是角色比以前慢约 20%。这是有意的：3.8 m/s 在自己家里是 13.7 km/h
+        // 的全力奔跑，两三步一堵墙，"很难精准控制"有一大半是这么来的。
+        // 4.2 m/s 的转弯半径（0.6g）是 3.0m，5.2 m/s 是 4.6m——差着一间屋子。
+        [Header("移动（速度锚在动画片段的自然速度上，见上方推导）")]
+        public float walkSpeed = 2.0f;
         /// <summary>步幅可拉伸的上限倍率：横移封顶 = 该方向片段自然速度 × 它。
         /// 超过这个倍数，播放速率就把步子撑得太开，脚开始打滑。</summary>
         const float StrideRateCap = 1.35f;
@@ -24,7 +50,7 @@ namespace AdversityRoad.Player
 
         /// <summary>移动积分的单帧步长上限（秒）。见 Update 里的推导。</summary>
         public const float MaxSimStep = 0.05f;
-        public float runSpeed = 5.2f;
+        public float runSpeed = 4.2f;
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
         // 起步 k=20：0.05s 到 63%、0.15s 到 95%；刹车 k=26 更利落。
@@ -180,11 +206,17 @@ namespace AdversityRoad.Player
         /// </summary>
         public bool IndoorPace { get; set; }
 
-        /// <summary>室内步速上限：仍然"不冲刺"，但不是"减速一半"。
-        /// runSpeed 5.2 本就是冲刺档，拿 walkSpeed 2.6 去封顶等于**整整慢一倍**，
-        /// 而序章整章都在屋里——玩家读到的就是"移动被放慢了"。
-        /// 取小跑档：屋里不冲刺的意图保住了，人也不再像在泥里走。</summary>
-        public float indoorPaceSpeed = 3.8f;
+        /// <summary>
+        /// 室内步速上限：**走路档**，正好等于 Walking 片段的自然速度。
+        ///
+        /// 旧值 3.8 是按"屋里不冲刺但也别像在泥里走"定的，可 3.8 m/s 是
+        /// 13.7 km/h——在自己家里全力奔跑。后果全是玩家反复报的那几条：
+        ///   · 腿被以 1.37 倍速率驱动（Jog Forward 自然速度只有 2.77）⇒ 滑；
+        ///   · 转弯半径 v²/a = 3.8²/5.9 = 2.4m，走廊里根本转不过来 ⇒ 蹭墙；
+        ///   · 一间十米的屋子 2.6 秒穿过 ⇒ 每一次输入都过冲，"很难精准控制"。
+        /// 2.0 m/s 下这三条同时消失：倍率 1.0×、转弯半径 0.68m、穿屋 5 秒。
+        /// </summary>
+        public float indoorPaceSpeed = 2.0f;
 
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier

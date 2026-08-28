@@ -504,6 +504,11 @@ namespace AdversityRoad.Player
         /// 这是三项紧迫度里唯一【转镜头能解决】的一项，因此也是唯一有资格
         /// 授权镜头旋转的一项——另两项转多少度都白转，只换来角色画弧。</summary>
         float _viewBlocked, _viewBlockedVel;
+
+        /// <summary>把速度归一化用的参考速度：跟着玩家的 runSpeed 走。
+        /// 原来是三处硬编码的 5.2——runSpeed 一改（现已按动画自然速度定到 4.2），
+        /// 这三处就会把"全速"判早，运镜的引导量与拉远量都跟着失准。</summary>
+        float RunRef => player != null ? Mathf.Max(0.5f, player.runSpeed) : 4.2f;
         Transform _focusEnemy;                 // 「必须看得见的那个敌人」
         float _focusDist = 99f;                // 到聚焦敌人的水平距离
         Vector3 _focusPos;                     // 低通后的敌人位置（滤位置而不是滤屏幕角）
@@ -1779,13 +1784,13 @@ namespace AdversityRoad.Player
                     // 实测这两样把前视点的屏幕角从 45.5° 压到 23.9°（取景窗 36.8°），
                     // 等价于 21.6° 的"虚拟转镜"，而角色的轨迹一点没被动。
                     _offAxisRun = Mathf.SmoothDamp(_offAxisRun,
-                        offAxis * Mathf.Clamp01(moveSpeed / 5.2f), ref _offAxisVel,
+                        offAxis * Mathf.Clamp01(moveSpeed / RunRef), ref _offAxisVel,
                         Mathf.Lerp(0.45f, 0.22f, _turnBurst), Mathf.Infinity, dt);
                     // 交战中大幅收敛引导留白（2.2m → 0.5m）：留白是为【长距离奔跑】
                     // 看清前方而设的，而近身缠斗的走位是短促往复——每一次侧闪/后撤
                     // 都会让焦点前后甩动最多 2.2m，那是位置侧最大的一处晃动源，
                     // 换来的"看清前方"在两米开外的对峙里根本用不上。
-                    float lead = Mathf.Clamp01(moveSpeed / 5.2f)
+                    float lead = Mathf.Clamp01(moveSpeed / RunRef)
                                  * Mathf.Lerp(0.45f * (1f - 0.5f * _combatBlend),
                                               Mathf.Lerp(2.2f, 0.5f, _combatBlend), _offAxisRun);
                     // ===== 留白必须平滑【向量】，不能只平滑长度（本轮修的抖动源）=====
@@ -1864,7 +1869,7 @@ namespace AdversityRoad.Player
                 // 有更多可见余量——转身/掉头的瞬间正是最需要看清周围的时刻。
                 // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
                 // 不会形成"呼吸式"变焦那种不稳感。
-                float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
+                float runOut = Mathf.Clamp01(moveSpeed / RunRef) * 0.06f;
                 // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 8.1m
                 wantFactor = 1f + runOut + _offAxisRun * 0.12f;
             }

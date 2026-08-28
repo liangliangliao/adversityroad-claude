@@ -806,7 +806,7 @@ namespace AdversityRoad.Core
             body.radius = 0.5f;
 
             var agent = root.AddComponent<NavMeshAgent>();
-            agent.speed = profile.moveSpeed;
+            agent.speed = profile.MoveSpeed;
             agent.stoppingDistance = profile.attackRange * 0.8f;
             // NavMeshAgent 把根节点贴在导航面上，而胶囊体/模型脚底在根节点下方 1 单位
             // （height=2、center=0 → 底部 = root - 1）。抬高 baseOffset = 胶囊半高，让胶囊

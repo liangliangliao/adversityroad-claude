@@ -126,7 +126,7 @@ namespace AdversityRoad.AI
         {
             _hp = profile.maxHealth;
             _posture = profile.posture;
-            _agent.speed = profile.moveSpeed;
+            _agent.speed = profile.MoveSpeed;
             _tauntTimer = Random.Range(4f, 9f);
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
@@ -280,7 +280,7 @@ namespace AdversityRoad.AI
 
             // 部位伤情：腿伤减速、手伤削弱攻势（每帧同步到寻路速度上）
             if (_agent != null)
-                _agent.speed = profile.moveSpeed * (Time.time < _legHurtUntil ? 0.62f : 1f);
+                _agent.speed = profile.MoveSpeed * (Time.time < _legHurtUntil ? 0.62f : 1f);
 
             // 把移动速度喂给人形动画（步行/奔跑步态）。
             // 用【真实每帧位移】而非寻路速度：追击/游走/击退/侧闪，无论位移来自
@@ -293,7 +293,7 @@ namespace AdversityRoad.AI
                 _lastSelfPos = transform.position;
                 float inst = dt > 0.0001f ? planar.magnitude / dt : 0f;
                 _measuredSpeed = Mathf.Lerp(_measuredSpeed, inst, 12f * dt);
-                float refSpeed = Mathf.Max(2.5f, profile.moveSpeed);
+                float refSpeed = Mathf.Max(2.5f, profile.MoveSpeed);
                 // 移动方向相对身体正面的夹角：敌人交战时脸始终对着玩家，
                 // 而脚下在绕圈/后撤/横挪——不把这个角度喂给动画层，播的就永远是
                 // "向前走"，于是横着挪动时脚在原地倒腾＝**漂移**。
@@ -471,7 +471,7 @@ namespace AdversityRoad.AI
                         }
                         Vector3 toP = _player.position - transform.position; toP.y = 0;
                         Vector3 side = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;
-                        _agent.Move(side * profile.moveSpeed * 0.32f * dt);
+                        _agent.Move(side * profile.MoveSpeed * 0.32f * dt);
                     }
                     break;
             }
@@ -522,8 +522,8 @@ namespace AdversityRoad.AI
                 }
                 dir = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;   // 环上绕圈
             }
-            if (AgentReady) _agent.Move(dir * profile.moveSpeed * 0.5f * dt);
-            else transform.position += dir * profile.moveSpeed * 0.5f * dt;
+            if (AgentReady) _agent.Move(dir * profile.MoveSpeed * 0.5f * dt);
+            else transform.position += dir * profile.MoveSpeed * 0.5f * dt;
         }
 
         void MoveTowards(Vector3 target, float dt)
@@ -538,7 +538,7 @@ namespace AdversityRoad.AI
             Vector3 dir = target - transform.position;
             dir.y = 0;
             if (dir.sqrMagnitude < 0.04f) return;
-            transform.position += dir.normalized * profile.moveSpeed * dt;
+            transform.position += dir.normalized * profile.MoveSpeed * dt;
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(dir), 8f * dt);
         }

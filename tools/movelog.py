@@ -140,6 +140,31 @@ def main():
                          (b[2].get("slipClip"), num(b[2], "slipWant"), num(b[2], "slipGot")))
                         if b[2].get("slipClip") else ""))
 
+    # ---- ②b 播放倍率：片段被快放/慢放了多少 ----
+    #
+    # 【这一条才是"滑动"的直接量度，比步幅比更早暴露问题】
+    # 步幅同步会为了让脚不打滑而调播放速率，所以步幅比可以是漂亮的 0.96，
+    # 而腿的摆动频率比动捕快 40%——数值不打滑，看起来照样在冰上滑。
+    # 业界经验：0.85~1.15 之间看不出来，超过 1.25 就是肉眼可见的快放。
+    # 自然速度 = 实测地面速度 ÷ 播放倍率，两列日志里都有，可以直接反推。
+    mv = [r for r in st if num(r, "actual") > 1.0 and num(r, "phaseRate") > 0.05
+          and num(r, "dtSim") > 0.005]
+    if mv:
+        per = {}
+        for r in mv:
+            per.setdefault(r.get("dir1") or "-", []).append(r)
+        rows = []
+        for clip, v in sorted(per.items(), key=lambda kv: -len(kv[1])):
+            v.sort(key=lambda r: num(r, "phaseRate"))
+            rate = num(v[len(v) // 2], "phaseRate")
+            spd = num(v[len(v) // 2], "actual")
+            if rate > 1.25 or rate < 0.8:
+                rows.append((clip, len(v), spd, rate, spd / rate if rate > 0 else 0))
+        report("【②b 片段被快放】播放倍率 >1.25 就是肉眼可见的快放，腿摆得比动捕快那么多。"
+               "\n     只列超标的；自然速度是反推出来的（实测速度 ÷ 倍率）", rows,
+               lambda x: "%-24s %5d帧　实测 %.2f m/s　倍率 %.2f×　片段自然速度 %.2f"
+                         % (x[0], x[1], x[2], x[3], x[4]))
+
     # ---- ③ 转向超出人类极限 ----
     spin = spans(st, lambda r: num(r, "lateralG") > LAT_G_MAX)
     worstg = max(st, key=lambda r: num(r, "lateralG"))
