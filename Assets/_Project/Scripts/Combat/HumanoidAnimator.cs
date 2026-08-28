@@ -49,6 +49,8 @@ namespace AdversityRoad.Combat
         public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
         /// <summary>腿此刻是否真的在演走路（判据见 PlayableAnimator.LegsWalking）。</summary>
         public bool LegsWalking => Mecanim && _mecanim.LegsWalking;
+        /// <summary>诊断：本帧两条方向片段共混的程度（次高权重）。见 PlayableAnimator.DbgBlendMix。</summary>
+        public float DbgBlendMix => Mecanim ? _mecanim.DbgBlendMix : 0f;
         /// <summary>调试叠层：此刻画面上真正在播的动作层片段与移动层片段。</summary>
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
         /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>

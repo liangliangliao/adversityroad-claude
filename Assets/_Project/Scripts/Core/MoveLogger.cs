@@ -208,7 +208,7 @@ namespace AdversityRoad.Core
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
-                    "extMove,extSrc,faceSnap,legsWalking," +
+                    "extMove,extSrc,faceSnap,legsWalking,blendMix," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -397,6 +397,9 @@ namespace AdversityRoad.Core
               //   · 步态相位在推进（相位不动＝腿定格）；
               //   · 动作层没有整体接管（开了上半身遮罩就不算接管，腿仍归移动层）。
               .Append(B(_anim != null && _anim.LegsWalking)).Append(',')
+              // 两条方向片段共混的程度：相位不对齐造成的"腿互相抵消"只在它高时发生。
+              // 转向/转圈/起步变速正是它高的时刻——玩家报的三个场景一一对应。
+              .Append(F(_anim != null ? _anim.DbgBlendMix : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

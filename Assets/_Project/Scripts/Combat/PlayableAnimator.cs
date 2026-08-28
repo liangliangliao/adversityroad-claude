@@ -225,6 +225,8 @@ namespace AdversityRoad.Combat
             public float natSpeed;   // 该片段自身的位移速度（m/s，世界尺度）
             public float len;        // 片段时长
             public string name;      // 片段名（只给屏幕上的调试叠层用）
+            /// <summary>步态相位偏移 [0,1)：见 MeasureGaitPhase。混合两条片段时靠它对齐迈步。</summary>
+            public float phase;
         }
 
         /// <summary>速度档数：0=走 1=慢跑 2=跑 3=冲刺。
@@ -690,7 +692,7 @@ namespace AdversityRoad.Combat
                 {
                     cp = cp, angle = d.angle, tier = d.tier,
                     natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length),
-                    name = d.clip.name
+                    name = d.clip.name, phase = d.phase
                 });
                 _rings[Mathf.Clamp(d.tier, 0, CrouchTier)].Add(i);
                 // 每档的"代表自然速度"取该档【最接近正前方】那条片段的实测值：
@@ -722,9 +724,17 @@ namespace AdversityRoad.Combat
 
             output.SetSourcePlayable(_top);
             Valid = true;
+            // 打一次实测相位：万一某条片段测出来是 0（找不到左脚 / 采样失败），
+            // 它就会成为唯一一条没对齐的，转到它身上时依旧抵消——那种情况只能靠
+            // 这行日志发现，画面上看不出是哪一条。
+            Debug.Log(DbgPhaseTable());
         }
 
-        struct DirDef { public AnimationClip clip; public float angle; public int tier; public float natSpeed; }
+        struct DirDef
+        {
+            public AnimationClip clip; public float angle; public int tier; public float natSpeed;
+            public float phase;      // 步态相位偏移，见 MeasureGaitPhase
+        }
 
         /// <summary>
         /// 方向移动片段的候选表。
@@ -754,8 +764,10 @@ namespace AdversityRoad.Combat
                 float nat = tier == 0 ? WalkNaturalSpeed
                           : tier == CrouchTier ? WalkNaturalSpeed * 0.6f
                           : RunNaturalSpeed;
-                bool measured = MeasureClipMotion(clip, root, hips, out float mA, out float mS);
+                bool measured = MeasureClipMotion(clip, root, hips,
+                                                  out float mA, out float mS, out float mP);
                 if (measured) { angle = mA; nat = mS; }
+                float gaitPhase = measured ? mP : 0f;
                 else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）
                 // 同一档、同一方向已经有片段了就跳过。动作库里难免有等价片段
                 //（Running 与 Run Forward、Jog Backward 与 Slow Jog Backwards），
@@ -771,7 +783,8 @@ namespace AdversityRoad.Combat
                             clip.name, TierName(tier), angle, d.clip.name));
                         return;
                     }
-                list.Add(new DirDef { clip = clip, angle = angle, tier = tier, natSpeed = nat });
+                list.Add(new DirDef { clip = clip, angle = angle, tier = tier,
+                                      natSpeed = nat, phase = gaitPhase });
             }
 
             // 档 0「走」：前 / 后 / 左 / 右
@@ -835,14 +848,19 @@ namespace AdversityRoad.Combat
         // 与是哪个角色在用无关。不缓存的话，每生成一个敌人就要把整套移动片段
         // 重新采样一遍（每次两帧 × 十来个片段），群战刷怪时会看到明显的卡顿。
         // 只有世界尺度要按角色的缩放另算，所以缓存里存的是**局部空间**的位移。
-        struct ClipMotion { public bool ok; public float angle; public float localDist; public float dur; }
+        struct ClipMotion
+        {
+            public bool ok; public float angle; public float localDist; public float dur;
+            /// <summary>该片段的步态相位偏移 [0,1)：左脚抬到最高（摆动中点）发生在片段的哪个归一化时刻。</summary>
+            public float phase;
+        }
         static readonly Dictionary<AnimationClip, ClipMotion> _motionCache =
             new Dictionary<AnimationClip, ClipMotion>();
 
         static bool MeasureClipMotion(AnimationClip clip, Transform root, Transform hips,
-            out float angleDeg, out float natSpeed)
+            out float angleDeg, out float natSpeed, out float gaitPhase)
         {
-            angleDeg = 0f; natSpeed = 0f;
+            angleDeg = 0f; natSpeed = 0f; gaitPhase = 0f;
             if (clip == null || root == null || hips == null || clip.length < 0.1f) return false;
 
             if (!_motionCache.TryGetValue(clip, out var m))
@@ -862,6 +880,7 @@ namespace AdversityRoad.Combat
                     // 局部位移 0.2 以下当作"原地片段"：Mixamo 的 in-place 版本位移就是零，
                     // 拿噪声去定方向只会把片段摆到一个随机角度上。
                     m.ok = m.localDist > 0.2f;
+                    m.phase = m.ok ? MeasureGaitPhase(clip, root, hips) : 0f;
                 }
                 catch (System.Exception e)
                 {
@@ -876,6 +895,7 @@ namespace AdversityRoad.Combat
             float scale = Mathf.Abs(root.lossyScale.x);
             if (scale < 1e-4f) scale = 1f;
             angleDeg = m.angle;
+            gaitPhase = m.phase;
             natSpeed = m.localDist * scale / Mathf.Max(0.01f, m.dur);
             // 合理性校验：位移量是在**模型局部空间**里量的，而各家 FBX 的单位口径
             // 不一定是米（有的一单位等于一厘米）。量出个每秒几十米的"走路"，
@@ -884,6 +904,60 @@ namespace AdversityRoad.Combat
             // 人快速移动而脚在慢慢挪，滑得比不做同步还厉害。
             if (natSpeed < 0.3f || natSpeed > 12f) { natSpeed = 0f; return false; }
             return true;
+        }
+
+        /// <summary>
+        /// 测出片段的步态相位偏移：**左脚抬到最高的那一刻**在片段里的归一化位置。
+        ///
+        /// 【为什么需要它——这是"转向/转圈/起步时漂移"的根因】
+        /// 方向环与档位环都是把两条片段按权重混起来的。而 Mixamo 每条片段的起始
+        /// 步态相位是随意的：Walking 可能从左脚在前开始，Right Strafe Walking
+        /// 从并步开始，Jog Forward 又是另一个点。此前所有片段共用一个归一化相位、
+        /// **不做任何逐片段补偿**，于是两条片段各占 50% 时，一条的左腿在前、
+        /// 另一条的左腿在后，加权平均下来两条腿都回到中位——**腿看上去停住了**，
+        /// 而人还在位移。这正是玩家说的"直接从 a 漂移到 b、没有脚步动画"。
+        ///
+        /// 只在这三个时刻会发生，与玩家报的场景完全吻合：
+        ///   · 转向 / 转圈 —— 行进夹角扫过两条方向片段之间；
+        ///   · 起步 / 变速 —— 速度跨过档位边界，走档与慢跑档各占一半；
+        ///   · 直线匀速时只有一条片段主导，所以看着正常。
+        ///
+        /// 参照事件选"左脚最高点"（摆动中点）而不是"脚着地"：抬脚是任何步态
+        /// 都有的相位事件，前进、后退、横移一律适用；而"着地"在横移片段里
+        /// 不好判（两脚都贴地滑）。
+        /// </summary>
+        static float MeasureGaitPhase(AnimationClip clip, Transform root, Transform hips)
+        {
+            var foot = FindLeftFoot(root);
+            if (foot == null || clip.length < 0.05f) return 0f;
+            const int Samples = 24;          // 一个周期采 24 个点，够定位到 1/24 周期
+            float best = float.NegativeInfinity, bestT = 0f;
+            for (int i = 0; i < Samples; i++)
+            {
+                float t01 = i / (float)Samples;
+                clip.SampleAnimation(root.gameObject, t01 * clip.length);
+                // 相对髋部的高度：直接用世界 Y 会被片段自带的整体升降带偏
+                float h = root.InverseTransformPoint(foot.position).y
+                        - root.InverseTransformPoint(hips.position).y;
+                if (h > best) { best = h; bestT = t01; }
+            }
+            return bestT;
+        }
+
+        /// <summary>找左脚踝。命名规则与 BodyPartHurtboxes 一致（去前缀、只留字母数字）。</summary>
+        static Transform FindLeftFoot(Transform root)
+        {
+            if (root == null) return null;
+            Transform best = null; int bestLen = int.MaxValue;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                string n = Norm(t.name);
+                // 要 leftfoot，不要 lefttoebase / lefttoeend：取最短的那个名字
+                if (!n.Contains("leftfoot") || n.Length >= bestLen) continue;
+                bestLen = n.Length; best = t;
+            }
+            return best;
         }
 
         static Transform FindHips(Transform root)
@@ -1261,6 +1335,38 @@ namespace AdversityRoad.Combat
         public float DbgPhaseRate { get; private set; }
 
         /// <summary>
+        /// 诊断：本帧"两条片段共混"的程度 = 次高权重。
+        /// 0 表示只有一条片段在演（直线匀速），0.5 表示两条各占一半。
+        /// 相位不对齐造成的"腿互相抵消"只会在这个值高的时候发生——转向、转圈、
+        /// 起步变速正是它高的时刻，与玩家报的三个场景一一对应。
+        /// </summary>
+        public float DbgBlendMix
+        {
+            get
+            {
+                if (!Valid || _dirW == null) return 0f;
+                float a = 0f, b = 0f;
+                for (int i = 0; i < _dirW.Length; i++)
+                {
+                    if (_dirW[i] > a) { b = a; a = _dirW[i]; }
+                    else if (_dirW[i] > b) b = _dirW[i];
+                }
+                return b;
+            }
+        }
+
+        /// <summary>诊断：各方向片段实测出来的步态相位偏移，一行一条。启动时打一次即可。</summary>
+        public string DbgPhaseTable()
+        {
+            if (!Valid) return "";
+            var sb = new System.Text.StringBuilder(256);
+            sb.Append("[步态相位实测] ");
+            for (int i = 0; i < _dirs.Count; i++)
+                sb.Append(_dirs[i].name).Append('=').Append(_dirs[i].phase.ToString("F2")).Append("  ");
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// 腿此刻是否真的在演走路。玩家反复报的"直接从 a 漂移到 b、没有脚步动画"
         /// 就是它为 false 的那些帧——而**步幅比看不出这件事**：腿整个定住不动时，
         /// 步幅比要么是上一帧的残值，要么根本不参与计算。
@@ -1530,7 +1636,10 @@ namespace AdversityRoad.Combat
                 if (!d.cp.IsValid()) continue;
                 _loco.SetInputWeight(DirBase + i, _dirW[i]);
                 // 共享归一化相位：每个片段都停在自己周期里的同一个百分比上
-                if (_dirW[i] > 0.001f) d.cp.SetTime(_phase01 * d.len);
+                // 加上该片段自己的相位偏移：所有片段的"左脚最高"因此落在同一个
+                // 全局相位上，两条片段各占一半时腿不会互相抵消（见 MeasureGaitPhase）。
+                if (_dirW[i] > 0.001f)
+                    d.cp.SetTime(Mathf.Repeat(_phase01 + d.phase, 1f) * d.len);
             }
         }
 
