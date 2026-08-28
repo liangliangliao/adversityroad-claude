@@ -140,6 +140,39 @@ def main():
                          (b[2].get("slipClip"), num(b[2], "slipWant"), num(b[2], "slipGot")))
                         if b[2].get("slipClip") else ""))
 
+    # ---- ②a 在移动，腿却没在演走路 ----
+    #
+    # 【玩家原话】"偶尔突然出现一会脚不在地上走路的动画，而是直接从 a 漂移到 b，
+    #  这段过程没有脚步移动动画"。这是**独立于脚打滑**的一类问题，而我前面几轮
+    #  一直只在量脚打滑（步幅比），所以一直报"无"——腿整个定住时，步幅比要么是
+    #  上一帧的残值，要么根本不参与计算，那条判据看不见这件事。
+    #
+    # 判据（legsWalking 列是运行时直接算好的；老日志没有这一列，用三列现场重算）：
+    #   · 方向环里有片段真的拿到权重；
+    #   · 步态相位在推进；
+    #   · 动作层没有整体接管（开了上半身遮罩不算接管，腿仍归移动层）。
+    def legs_walking(r):
+        if "legsWalking" in r and (r.get("legsWalking") or "") != "":
+            return (r.get("legsWalking") or "0") == "1"
+        if num(r, "phaseRate") <= 0.001:
+            return False
+        if num(r, "actionW") > 0.90 and r.get("upperOnly") != "1":
+            return False
+        return num(r, "dir1W") + num(r, "dir2W") > 0.10
+
+    walking = [r for r in st if num(r, "actual") > 0.8]
+    glide = spans(walking, lambda r: not legs_walking(r), 0.10)
+    frozen_n = sum(1 for r in walking if not legs_walking(r))
+    report("【②a 在移动，腿却没在演走路】人从 a 平移到 b，而腿定在一帧上——"
+           "\n     占在走帧数的 %.1f%%。这**不是**脚打滑，步幅比看不见它" %
+           (100.0 * frozen_n / max(1, len(walking))),
+           glide,
+           lambda b: "%.2f→%.2f 秒（%.2fs）　速度%.1f　姿态 %s　动作 %s 权重%.2f%s"
+                     % (b[0], b[1], b[1] - b[0], num(b[2], "actual"),
+                        b[2].get("pose") or "-", b[2].get("actionClip") or "-",
+                        num(b[2], "actionW"),
+                        "　[上半身遮罩已开]" if b[2].get("upperOnly") == "1" else ""))
+
     # ---- ②b 播放倍率：片段被快放/慢放了多少 ----
     #
     # 【这一条才是"滑动"的直接量度，比步幅比更早暴露问题】

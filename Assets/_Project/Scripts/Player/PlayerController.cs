@@ -152,6 +152,10 @@ namespace AdversityRoad.Player
         // 于是位移可加、接地稳定、而且在日志里一眼看得出这一帧是谁在推人。
         Vector3 _extMove;
 
+        /// <summary>带迟滞的接地判定：isGrounded 抖动时仍算在地面上（复用土狼时间）。
+        /// 动画与姿态一律用它，别直接读 _cc.isGrounded。</summary>
+        public bool GroundedStable => _cc != null && (_cc.isGrounded || _coyoteT > 0f);
+
         /// <summary>诊断：本帧外部位移的大小（米）。</summary>
         public float DbgExtMove { get; private set; }
         /// <summary>诊断：本帧外部位移的来源标签。</summary>
@@ -737,8 +741,17 @@ namespace AdversityRoad.Player
             // 从全速骤降到 10%、收招again骤升回全速，配合已提速的加减速就是一顿一顿的
             // 抽搐感。改为对倍率本身做时间常数 ≈0.07s 的平滑过渡，并把下限抬到 0.3：
             // 既保留定步的分量感，又让"边推杆边连打"是一条连续的速度曲线。
+            // 【0.3 这个下限只对"能只动上半身"的招成立】
+            // 挥砍/突刺/直拳这类上半身发力的招，腿归移动层，人边走边打是对的。
+            // 但腿法、旋身横扫、跃劈这些**腿本身就是招式主体**的招，遮罩帮不上忙：
+            // 腿在演旋身，人却以 1.26 m/s 平移，就是玩家说的"没有脚步动画的漂移"。
+            // 这类招必须真定步——脚踩在哪儿，人就停在哪儿。
+            // 0.06 而不是 0：留一点点让"边打边微调站位"仍有反馈，但已经看不出滑。
+            bool wholeBody = attacking && _anim != null &&
+                             !Combat.HumanoidAnimator.IsUpperBodyAction(_anim.CurrentPose);
+            float attackFloor = wholeBody ? 0.06f : 0.3f;
             _attackSpeedFactor = Mathf.MoveTowards(_attackSpeedFactor,
-                attacking ? 0.3f : 1f, dt / 0.07f);
+                attacking ? attackFloor : 1f, dt / 0.07f);
             speed *= _attackSpeedFactor;
             DbgAttackFactor = _attackSpeedFactor;
             DbgFinalSpeed = speed;
@@ -1308,7 +1321,12 @@ namespace AdversityRoad.Player
 
             DbgMoveAngle = moveAngle;   // 诊断：喂给动画层的行进夹角
             DbgActual = actual;         // 诊断：由真实位移量出来的地面速度
-            _anim.SetLocomotion(speed01, IsCrouched, _cc.isGrounded, actual, moveAngle, StrafeActive);
+            // 接地信号给动画层时要**带迟滞**：CharacterController.isGrounded 本身就抖
+            //（实测每秒翻转两次），而它一抖，动画层就走"腾空"分支——下落循环是保持型
+            // 姿态，会以满权重定在一帧上，人却还在地面上走。那正是"没有脚步动画的漂移"
+            // 的另一个来源。土狼时间本来就是为这件事算的，直接复用：
+            // 只有连土狼时间都耗尽了，才算真的离地。
+            _anim.SetLocomotion(speed01, IsCrouched, GroundedStable, actual, moveAngle, StrafeActive);
             UpdateMoveStatePose(speed01, dt);
             // 临战架势：只有敌人【逼近到近身范围(≈6m)】或正在交战时才摆格斗预备架势；
             // 敌人在远处/无敌人时用普通待机（不再一有敌人在场就一直端着架势）
@@ -1383,14 +1401,17 @@ namespace AdversityRoad.Player
             {
                 // 战斗动作期间不插手，但地面/速度的"上一帧"要照常记，
                 // 否则动作一结束就会因为"上一帧还在天上"而误播一次落地
-                _wasGrounded = _cc.isGrounded;
+                _wasGrounded = GroundedStable;   // 与下面的判据同源，否则一进一出就误报落地
                 _prevSpeed01 = speed01;
                 _stillT = 0f;   // 战斗动作结束的那一刻不算"站了很久"
                 return;
             }
 
             _moveStateCd -= dt;
-            bool grounded = _cc.isGrounded;
+            // 同上：姿态决策也用带迟滞的接地信号。isGrounded 一抖就走"腾空"分支，
+            // 而那条分支会 return，把后面的蹲伏/转身/起步收尾全部跳过——
+            // 姿态因此可能卡在一个保持型片段上，人却在地面上移动。
+            bool grounded = GroundedStable;
 
             // ---------- 腾空：起跳 → 下落循环 ----------
             if (!grounded)

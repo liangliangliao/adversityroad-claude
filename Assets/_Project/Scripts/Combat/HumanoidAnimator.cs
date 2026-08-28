@@ -47,6 +47,8 @@ namespace AdversityRoad.Combat
         /// <summary>诊断：动画层实际用的方向混合角与步频（无动捕时为 0）。</summary>
         public float DbgBlendAngle => Mecanim ? _mecanim.DbgBlendAngle : 0f;
         public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
+        /// <summary>腿此刻是否真的在演走路（判据见 PlayableAnimator.LegsWalking）。</summary>
+        public bool LegsWalking => Mecanim && _mecanim.LegsWalking;
         /// <summary>调试叠层：此刻画面上真正在播的动作层片段与移动层片段。</summary>
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
         /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>
@@ -892,11 +894,25 @@ namespace AdversityRoad.Combat
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
         /// <summary>跑动中出招是否只写上半身（腿继续走移动混合）。关掉＝回到旧行为。</summary>
         public static bool UpperBodyAttacksOn = true;
-        /// <summary>超过这个地面速度（m/s）才算"在移动"。站着打仍是全身发力。</summary>
-        const float UpperBodySpeed = 1.2f;
+        /// <summary>
+        /// 超过这个地面速度（m/s）才算"在移动"，才需要把腿还给移动层。
+        ///
+        /// 【1.2 是错的，它把所有真正发生的情况都挡在门外】
+        /// 出招期间速度被 _attackSpeedFactor 压到 0.3 倍，实机就是 1.2~1.56 m/s——
+        /// 正好压在这个门槛上下。于是遮罩在**最需要它的那一刻从不生效**：
+        /// 日志里 `Great Sword Slash 5 权重1.00 速度1.2` 连续 5.63 秒，
+        /// 2.4 秒里人挪了 3.81 米，全程没有一帧走路动画。
+        /// 玩家的原话是"直接从 a 漂移到 b，这段过程没有脚步移动动画"。
+        ///
+        /// 门槛该问的是"看得出来在移动吗"，不是"跑起来了吗"。0.25 m/s 下
+        /// 一秒挪 0.25 米，已经是肉眼可见的位移，腿就该跟着走。
+        /// </summary>
+        const float UpperBodySpeed = 0.25f;
 
-        /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。</summary>
-        static bool IsUpperBodyAction(PoseState p) =>
+        /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。
+        /// 公开是为了让 PlayerController 判断"这一招能不能只动上半身"：
+        /// 不能的（腿法/旋身/位移型）必须靠**定步**让腿与地面一致，见那边的 attackFloor。</summary>
+        public static bool IsUpperBodyAction(PoseState p) =>
             p == PoseState.Attack || p == PoseState.HeavyAttack || p == PoseState.AttackUp ||
             p == PoseState.SwordThrust || p == PoseState.PunchJab || p == PoseState.PunchCross ||
             p == PoseState.Cast || p == PoseState.CastProjectile ||

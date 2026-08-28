@@ -298,11 +298,19 @@ namespace AdversityRoad.UI
                 // 待转角与起步闸门也放在这一行：它们同样是零点几秒的瞬态，
                 // 放进 0.5 秒一次的汇报行里就永远看不见。
                 // 「闸」亮起 = 静止起步正在先转身（这时不动是对的，不是卡住）。
+                // 「腿：定住」是玩家反复报的那个现象的**实时指示灯**——
+                // 人在移动、腿却定在一帧上（从 a 漂移到 b，没有脚步动画）。
+                // 只在真的移动时才判：站着不动腿本来就不该走。
+                bool moving = pcx != null && pcx.DbgActual > 0.8f;
+                bool legsDead = hax != null && moving && !hax.LegsWalking;
                 _anim4.text = hax != null
-                    ? string.Format("姿态 {0} ｜ 待转{1:F0}° {2}｜ {3}",
+                    ? string.Format("姿态 {0} ｜ 待转{1:F0}° {2}｜ {3}{4}",
                         hax.DbgPose, pcx.DbgTurnNeed,
-                        pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying)
+                        pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying,
+                        legsDead ? "  ⚠腿:定住" : "")
                     : "";
+                _anim4.color = legsDead ? new Color(1f, 0.35f, 0.3f)
+                                        : new Color(0.7f, 1f, 0.7f);
                 // ---- 动作横幅：起播时刻一变，就是"又做了一个动作" ----
                 // 用「片段名 + 起播时刻」当身份：连按同一招时片段名不变，
                 // 只有时刻在变，光比名字会漏报连段的第二下。

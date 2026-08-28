@@ -208,7 +208,7 @@ namespace AdversityRoad.Core
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
-                    "extMove,extSrc,faceSnap," +
+                    "extMove,extSrc,faceSnap,legsWalking," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -388,6 +388,15 @@ namespace AdversityRoad.Core
               // 出招把朝向掰了多少度：玩家说"很难精准控制、像被动画控制"，
               // 自动瞄准的强制转向是最直接的一条，必须能量出来。
               .Append(F(Combat.PlayerCombatController.DbgFaceSnap)).Append(',')
+              // ===== 腿到底有没有在演走路 =====
+              // 玩家的原话："偶尔突然出现一会脚不在地上走路的动画，而是直接从 a
+              // 漂移到 b"。前面几轮我一直在量"脚打不打滑"（步幅比），那是另一回事
+              // ——步幅比漂亮的同时，腿可以整个定住不动。
+              // 这一列直接回答：本帧移动层有没有真的在驱动腿。三个条件缺一不可：
+              //   · 有方向片段拿到权重（不然移动层等于没输出）；
+              //   · 步态相位在推进（相位不动＝腿定格）；
+              //   · 动作层没有整体接管（开了上半身遮罩就不算接管，腿仍归移动层）。
+              .Append(B(_anim != null && _anim.LegsWalking)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

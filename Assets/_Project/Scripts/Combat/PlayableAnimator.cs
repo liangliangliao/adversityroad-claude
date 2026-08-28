@@ -1260,6 +1260,28 @@ namespace AdversityRoad.Combat
         /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
         public float DbgPhaseRate { get; private set; }
 
+        /// <summary>
+        /// 腿此刻是否真的在演走路。玩家反复报的"直接从 a 漂移到 b、没有脚步动画"
+        /// 就是它为 false 的那些帧——而**步幅比看不出这件事**：腿整个定住不动时，
+        /// 步幅比要么是上一帧的残值，要么根本不参与计算。
+        /// 三个条件缺一不可：
+        ///   ① 方向环里有片段真的拿到了权重（否则移动层等于没输出）；
+        ///   ② 步态相位在推进（相位不动 = 腿定格在一帧上）；
+        ///   ③ 动作层没有整体接管——开了上半身遮罩不算接管，那时腿仍归移动层。
+        /// </summary>
+        public bool LegsWalking
+        {
+            get
+            {
+                if (!Valid || _dirW == null) return false;
+                if (DbgPhaseRate <= 0.001f) return false;
+                if (_actionW > 0.90f && !_upperOnly) return false;
+                float sum = 0f;
+                for (int i = 0; i < _dirW.Length; i++) sum += _dirW[i];
+                return sum > 0.10f;
+            }
+        }
+
         float _slipW, _slipWant, _slipGot;
         string _slipClip;
 
