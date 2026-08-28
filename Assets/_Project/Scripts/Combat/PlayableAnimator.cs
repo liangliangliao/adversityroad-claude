@@ -1622,8 +1622,21 @@ namespace AdversityRoad.Combat
             for (int m = 1; m < TierCount; m++)
                 if (_tierNat[m] <= _tierNat[m - 1]) _tierNat[m] = _tierNat[m - 1] * 1.12f;
             float nat0 = _tierNat[0];
-            // 站立混合：低于最慢一档自然速度的 0.9 倍时按比例淡入待机
-            float idleTot = Mathf.Clamp01(1f - vNow / Mathf.Max(0.05f, nat0 * 0.9f));
+            // ===== 站立混合的过渡带必须窄 =====
+            //
+            // 旧写法把待机混合摊在 0 ~ nat0×0.9（实测 1.85 m/s）这么宽的一段上，
+            // 于是**整个慢速区都是半个待机**。实机日志：
+            //     0.5 m/s ⇒ 待机占 75%，步频 0.22 周期/秒（4.5 秒迈一步）
+            //     1.0 m/s ⇒ 待机占 44%，步频 0.49
+            // 人在走，身上却盖着大半个"站着不动"——玩家读作"像鬼一样漂移"。
+            //
+            // 待机混合的本意只是**停下来的那一瞬**别硬切，不是"慢速时半站着"。
+            // 收到 IdleBlendTop(0.55 m/s) 以内：低于它人基本已经停了，混待机是对的；
+            // 高于它就该是实打实的走路片段。
+            // 配合 PlayerController 那边的最低移动速度（1.3 m/s），正常行走
+            // 根本不会落进这一段，只有起步/刹停的零点几秒会经过。
+            const float IdleBlendTop = 0.55f;
+            float idleTot = Mathf.Clamp01(1f - vNow / IdleBlendTop);
             float moveTot = 1f - idleTot;
             if (moveTot > 0.0001f)
             {

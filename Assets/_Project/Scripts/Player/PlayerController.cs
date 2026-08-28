@@ -50,6 +50,16 @@ namespace AdversityRoad.Player
 
         /// <summary>移动积分的单帧步长上限（秒）。见 Update 里的推导。</summary>
         public const float MaxSimStep = 0.05f;
+
+        /// <summary>摇杆死区：低于它一律判为没推。</summary>
+        const float StickDeadZone = 0.06f;
+
+        /// <summary>
+        /// 只要在动，地面速度就不低于这个值（m/s）。
+        /// 取 Walking 实测自然速度 2.05 的 0.63 倍——再慢腿就开始"停下来"了。
+        /// 推导见 Update 里那段注释（"像鬼一样漂移"的根因）。
+        /// </summary>
+        const float MinLocomotionSpeed = 1.3f;
         public float runSpeed = 4.2f;
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
@@ -679,20 +689,59 @@ namespace AdversityRoad.Player
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
             float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
+            // 本帧的速度天花板（不含摇杆量）：下面的下限不能把它顶穿——
+            // 室内封顶 2.0 时，下限 1.3 仍在其内；万一有更狠的减速 debuff
+            // 把天花板压到 1.0，下限就得跟着降到 1.0，否则 debuff 等于失效。
+            float speedCap = runSpeed * MoveSpeedMultiplier * apMult;
             // 诊断用：速度是好几层倍率连乘出来的（行动力、减速 debuff、锁定封顶、
             // 出招定步），"移动变慢"到底慢在哪一层，只看结果分不出来。
             DbgApMult = apMult;
             DbgInputMag = inputMag;
             DbgRawSpeed = speed;
             if (!Application.isMobilePlatform && Input.GetKey(KeyCode.LeftAlt))
+            {
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
+                speedCap = Mathf.Min(speedCap, walkSpeed * MoveSpeedMultiplier);
+            }
             // 室内只走不跑：在自己家里冲刺既不合情理，也是"转一圈就晕"的一部分——
             // 屋里两三步一堵墙，全速跑动时镜头与碰撞都来不及跟上。
             // 唯一的例外由 IndoorZone.SetRunPass 开出来：健身房的跑步机就是用来跑的，
             // 走速正好等于履带速度，不许跑等于那台机器是坏的。
-            if (WalkOnly) speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
-            if (IndoorPace) speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
-            if (IsCrouched) speed *= crouchSpeedMult;
+            if (WalkOnly)
+            {
+                speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
+                speedCap = Mathf.Min(speedCap, walkSpeed * MoveSpeedMultiplier);
+            }
+            if (IndoorPace)
+            {
+                speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
+                speedCap = Mathf.Min(speedCap, indoorPaceSpeed * MoveSpeedMultiplier);
+            }
+            if (IsCrouched) { speed *= crouchSpeedMult; speedCap *= crouchSpeedMult; }
+
+            // ===== 速度不许落进"任何片段都演不出来"的那一段 =====
+            //
+            // 【玩家的原话："偶尔突然出现一会脚不在地上走路的动画，完全一动不动，
+            //   像鬼一样漂移起来"。这就是它。】
+            // 实机日志把它量清楚了：19 段、累计 4.5 秒、最长 0.60 秒，
+            // **全部发生在摇杆轻推（0.10~0.30）的时候**：
+            //     摇杆 0.12 ⇒ 速度 0.36 m/s ⇒ 移动层权重 0.20（80% 在播站立待机）
+            //                ⇒ 步频 0.17 周期/秒，也就是**六秒才迈一步**
+            // 人在滑，腿基本不动——正是"像鬼一样漂移"。
+            //
+            // 根因不是权重算错，是**库里根本没有这么慢的片段**：最慢的
+            // Walking 实测自然速度 2.05 m/s。低于它只能靠两件事凑：往待机混，
+            // 以及把片段放慢。两件事都在把腿"停下来"，凑得越多越像鬼。
+            //
+            // 所以摇杆的映射要避开这一段：推得动就至少给 MinLocomotionSpeed，
+            // 推不动就干脆不动（下面那条死区）。1.3 m/s 是 Walking 的 0.63 倍速，
+            // 腿仍然在实打实地迈步，读作"慢慢走"，而不是"站着滑过去"。
+            // 代价是没有 0.3 m/s 那档微调——但那一档本来就是不可用的：
+            // 它在画面上不是"走得很慢"，是"没在走"。
+            if (inputMag > StickDeadZone)
+                speed = Mathf.Max(speed, Mathf.Min(MinLocomotionSpeed * MoveSpeedMultiplier,
+                                                   speedCap));
+            else speed = 0f;
             // ===== 锁定期间是【步法】，不是冲刺 =====
             //
             // 锁定时角色横穿画面而不是走向画面深处，同样的米每秒在观感上要快出一截；
@@ -1172,9 +1221,36 @@ namespace AdversityRoad.Player
         Transform _softFace;
         float _softFaceScan;
 
+        /// <summary>附近（SoftFaceEnter 内）有没有正在交战的敌人——
+        /// "交战"用与镜头侧一致的判据：状态不是待机、也不是巡逻。</summary>
+        bool EnemyEngagedNearby()
+        {
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                if (e.State == AI.EnemyState.Idle || e.State == AI.EnemyState.Patrol) continue;
+                Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                if (d.sqrMagnitude < SoftFaceEnter * SoftFaceEnter) return true;
+            }
+            return false;
+        }
+
         Transform SoftFaceTarget()
         {
-            if (_combat == null || !_combat.InCombat) { _softFace = null; return null; }
+            // ===== 判据放宽：不再要求"四秒内出过招" =====
+            //
+            // 横移/后退这几条片段你已经问过四次"为什么没效果"。片段没问题、
+            // 接线没问题（对齐表 15 条全在库），卡在这道闸门上：
+            // 旧判据是 _combat.InCombat——**必须四秒内真的出过招**。于是
+            // "走近敌人、绕着它找角度"这段最需要横移的时间里，闸门是关的；
+            // 等你出了招，人又已经贴上去了。最近这份日志里 strafe 为 1 的帧是 0。
+            //
+            // 改成【敌人真的在打你】：附近有处于交战状态（非待机/巡逻）的敌人即可，
+            // 不必等玩家先动手。这与镜头侧判"是否交战"用的是同一条判据
+            // （见 ThirdPersonCamera 的 engaged），两边口径一致。
+            // 出过招仍然算数（InCombat），只是不再是**必要**条件。
+            if (_combat == null) { _softFace = null; return null; }
+            if (!_combat.InCombat && !EnemyEngagedNearby()) { _softFace = null; return null; }
 
             // 已有软锁：先判脱离，再判回差
             if (_softFace != null)
