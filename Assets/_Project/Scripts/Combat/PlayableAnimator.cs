@@ -767,8 +767,9 @@ namespace AdversityRoad.Combat
                 bool measured = MeasureClipMotion(clip, root, hips,
                                                   out float mA, out float mS, out float mP);
                 if (measured) { angle = mA; nat = mS; }
-                float gaitPhase = measured ? mP : 0f;
                 else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）
+                // 相位取值放在 if/else 链**之后**：夹在中间会把 else 与 if 拆开（CS8641）。
+                float gaitPhase = measured ? mP : 0f;
                 // 同一档、同一方向已经有片段了就跳过。动作库里难免有等价片段
                 //（Running 与 Run Forward、Jog Backward 与 Slow Jog Backwards），
                 // 两条都塞进同一圈会让 Bracket 拿到跨度为 0 的相邻对，插值出 NaN 权重。
