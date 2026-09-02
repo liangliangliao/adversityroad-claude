@@ -300,6 +300,7 @@ namespace AdversityRoad.UI
             if (cc != null) cc.enabled = false;
             player.transform.position = new Vector3(0, 1.1f, -5);   // 独居小屋出生点
             if (cc != null) cc.enabled = true;
+            player.NotifyTeleported();   // 同上：跨场景传送后必须清掉旧的安全点
             player.MoveSpeedMultiplier = 1f;
             World.ZoneBuilder.CurrentZoneId = "home";
             Hide();

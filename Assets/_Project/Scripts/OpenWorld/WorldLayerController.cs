@@ -171,6 +171,10 @@ namespace AdversityRoad.OpenWorld
                 if (cc != null) cc.enabled = false;
                 player.transform.position = _returnPoint;
                 if (cc != null) cc.enabled = true;
+                // 传送必须通知控制器：它会清掉速度、土狼时间和最近的站稳点。
+                // 少了这一句，嵌墙兜底会拿上一张地图的安全点当参照。
+                // Portal / SiteGate / ShameLine / LevelSelect 四处早就这么做了，这里漏了。
+                player.NotifyTeleported();
             }
             if (OpenWorldBuilder.CityZoneIndex >= 0)
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
@@ -257,6 +261,7 @@ namespace AdversityRoad.OpenWorld
             if (cc != null) cc.enabled = false;
             _player.transform.position = ZoneBuilder.PlayerSpawnOf(targetZoneIndex);
             if (cc != null) cc.enabled = true;
+            _player.NotifyTeleported();   // 同上：跨场景传送后必须清掉旧的安全点
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(targetZoneIndex);
             GameEvents.RaiseSubtitle("—— 进入内心世界 · " + ZoneBuilder.ZoneNameOf(targetZoneIndex) +
                 " ——（完成后会回到你出发的那条街）");

@@ -489,6 +489,9 @@ namespace AdversityRoad.Player
             _safeStamp = 0f;
             _vy = 0f;
             _hVel = Vector3.zero;
+            // 嵌墙兜底的安全点同样作废：它是"上一帧确认没嵌进环境的位置"，
+            // 传送之后那个坐标属于另一张地图，拿它回滚就是把人拽回上一个场景。
+            _hasSafePos = false;
 
             // 传送 = 离开了此前所有触发体，所以在册的减速一律作废。
             //
