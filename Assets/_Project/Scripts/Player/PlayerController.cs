@@ -54,6 +54,16 @@ namespace AdversityRoad.Player
         /// <summary>摇杆死区：低于它一律判为没推。</summary>
         const float StickDeadZone = 0.06f;
 
+        /// <summary>算转向上限时速度的下限（m/s）。低于它上限不再随速度继续升，
+        /// 这是"减速转弯"不会发散成陀螺的关键——推导见转向那一段。</summary>
+        const float TurnCapSpeedFloor = 1.6f;
+        /// <summary>待转角超过它才开始减速转弯（度）。以内的小修正顺势就转了。</summary>
+        const float SharpTurnDeg = 45f;
+        /// <summary>待转角到这个值就完全压到转身速度（度）。</summary>
+        const float HardTurnDeg = 110f;
+        /// <summary>转急弯时的速度（m/s）。取 Walking 自然速度 2.05 的 0.8 倍，腿仍在迈步。</summary>
+        const float PivotSpeed = 1.6f;
+
         /// <summary>
         /// 只要在动，地面速度就不低于这个值（m/s）。
         /// 取 Walking 实测自然速度 2.05 的 0.63 倍——再慢腿就开始"停下来"了。
@@ -957,10 +967,16 @@ namespace AdversityRoad.Player
                     //     v=1.0 → 917°/s (r 0.06m)    v=3.8 → 241°/s (r 0.90m)
                     //     v=2.6 → 353°/s (r 0.42m)    v=5.2 → 176°/s (r 1.69m)
                     // 低速端由 turnDegPerSecStill 封顶，站定原地转身照样干脆。
+                    // 【分母要有地板】ω = a/v 这条关系本身是对的，但它有个副作用：
+                    // 速度一降，上限就升。上一轮我因此撤掉了"大转向减速"那一层——
+                    // 减速 → 上限升 → 转更快 → 待转角不减，发散成陀螺。
+                    //
+                    // 断开这个回路不需要放弃减速，只需要**让分母停在某个速度以下不再变小**：
+                    // 低于 TurnCapSpeedFloor 之后上限恒为一个常数，减速再多也不会让它继续升。
+                    // 于是"大转向先减速"这条真人的转法可以放心用回来（见下面的 turnEase）。
                     float sp = _hVel.magnitude;
-                    float cap = sp > 0.05f
-                        ? Mathf.Min(turnDegPerSecStill, TurnAccel / sp * Mathf.Rad2Deg)
-                        : turnDegPerSecStill;
+                    float capV = Mathf.Max(sp, TurnCapSpeedFloor);
+                    float cap = Mathf.Min(turnDegPerSecStill, TurnAccel / capV * Mathf.Rad2Deg);
 
                     // ===== 方向意图置信度：输入不成向就不转身 =====
                     //
@@ -975,8 +991,13 @@ namespace AdversityRoad.Player
                     //
                     // 判据与镜头侧完全一致（方向向量的滑动平均，相反方向互相抵消）：
                     // 稳定推一个方向 ⇒ 模长→1 ⇒ 满速转向；搓杆 ⇒ 模长→0 ⇒ 几乎不转。
-                    // 留 0.15 的地板：始终保留一点跟随，绝不会完全不听摇杆。
-                    cap *= Mathf.Lerp(0.15f, 1f, DirTrust(moveDir, dt));
+                    // 地板 0.15 → 0.35：0.15 意味着置信度低时转速只剩 15%，而
+                    // **推杆换向的那一刻恰恰是置信度最低的时候**（滑动平均还没追上
+                    // 新方向）——等于在最需要转的一瞬间把转速砍到七分之一。
+                    // 玩家 HUD 里读到的「身66°/s 意图0.45 待转126°」就是这么来的。
+                    // 防搓杆的职责由平均本身承担（搓杆时模长趋零、置信度趋零），
+                    // 地板只决定"最坏情况下还剩多少"，0.35 仍然远低于满速跟随。
+                    cap *= Mathf.Lerp(0.35f, 1f, DirTrust(moveDir, dt));
                     DbgLateralG = sp * cap * Mathf.Deg2Rad / 9.81f;
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
@@ -1032,6 +1053,31 @@ namespace AdversityRoad.Player
             float needDeg = moveDir.sqrMagnitude > 0.01f
                 ? Vector3.SignedAngle(transform.forward, moveDir, Vector3.up) : 0f;
             DbgTurnNeed = Mathf.Abs(needDeg);
+
+            // ===== 转急弯要先减速——这是"推杆转向就漂移"的直接成因 =====
+            //
+            // 【玩家截图里的 HUD 就是证据】
+            //     待转126°   身66°/s   半径3.6m   夹角0°   命令4.1→实际4.2m/s
+            // 待转 126° 而身体只以 66°/s 转，126÷66 ≈ **1.9 秒**：推杆之后角色
+            // 还要沿**旧方向**全速走将近两秒，同时画一个 3.6 米半径的弧才转过来。
+            // 夹角 0° 说明腿一直在演"正前方走"——腿没错，是人根本没往你指的方向去。
+            // 玩家读到的就是"推杆转向、360 转圈时漂移"。
+            //
+            // 半径 r = v²/a 是死的：速度不降，弧就小不了。真人转急弯的做法是
+            // **先减速、拧身、再加速出弯**，也就是玩家第一条反馈里的原话
+            // "一步一个脚印转"。所以按待转角把速度压向一个"转身速度"：
+            //     45° 以内   不减速（顺势的小修正）
+            //     110° 以上  压到 PivotSpeed，半径 v/ω ≈ 0.3m，就地拧过去
+            // 中间连续过渡，没有换挡感。
+            //
+            // 上一轮撤掉这层是因为它与 ω=a/v 构成正反馈；那个回路已经在上面用
+            // 分母地板断开了（TurnCapSpeedFloor），这里可以放心减速。
+            if (DbgTurnNeed > SharpTurnDeg && !StrafeActive)
+            {
+                float turnEase = Mathf.InverseLerp(SharpTurnDeg, HardTurnDeg, DbgTurnNeed);
+                speed = Mathf.Lerp(speed, Mathf.Min(speed, PivotSpeed * MoveSpeedMultiplier),
+                                   turnEase);
+            }
 
 
 
