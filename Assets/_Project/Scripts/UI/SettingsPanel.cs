@@ -250,6 +250,17 @@ namespace AdversityRoad.UI
             UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1266),
                 new Vector2(1000, 34));
 
+            // 漂移自检：不用再"玩一局导出 CSV"，点一下、看屏幕上的四个数就行。
+            // 脚本化的摇杆保证每次输入完全一样，两次结果才有可比性。
+            UiUtil.MakeButton(_panel.transform, "漂移自检（约 18 秒，全程别碰摇杆）",
+                new Vector2(0.5f, 1f), new Vector2(0, -1320), new Vector2(760, 70),
+                new Color(0.5f, 0.3f, 0.45f, 0.95f), () =>
+                {
+                    Hide();                       // 面板挡着看不到角色，也看不到结论
+                    Core.MoveLogger.Enabled = true;
+                    Core.DriftProbe.Run();
+                }, 22);
+
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
                 new Vector2(0.5f, 1f), new Vector2(0, -1388), new Vector2(760, 70),

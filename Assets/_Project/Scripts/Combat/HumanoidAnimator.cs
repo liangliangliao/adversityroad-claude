@@ -518,6 +518,10 @@ namespace AdversityRoad.Combat
         //               对不上的那部分就是漂移本体。
         public float DbgHipLeak { get; private set; }
         public float DbgVisStep { get; private set; }
+        /// <summary>本帧采样到的身体世界坐标（髋骨）。给漂移自检算矢量差用——
+        /// 标量的 visStep 减 stepLen 会把方向不同的两段位移当成同一件事。</summary>
+        public Vector3 DbgVisPos { get; private set; }
+        public bool DbgVisValid { get; private set; }
         Vector3 _visPrev; bool _visHas;
 
         /// <summary>在整条后处理跑完之后采样：这时的骨骼就是这一帧渲染出去的骨骼。</summary>
@@ -527,11 +531,16 @@ namespace AdversityRoad.Combat
             // 片段自带位移全在髋骨上，量根节点等于什么都没量。
             Transform m = _hips != null ? _hips
                         : _mocapModel != null ? _mocapModel : visual;
-            if (m == null) { _visHas = false; DbgVisStep = 0f; DbgHipLeak = 0f; return; }
+            if (m == null)
+            {
+                _visHas = false; DbgVisValid = false;
+                DbgVisStep = 0f; DbgHipLeak = 0f; return;
+            }
             Vector3 w = m.position;
             DbgVisStep = _visHas
                 ? new Vector2(w.x - _visPrev.x, w.z - _visPrev.z).magnitude : 0f;
             _visPrev = w; _visHas = true;
+            DbgVisPos = w; DbgVisValid = true;
             if (_hipsPin && _hips != null && _mocapModel != null)
             {
                 Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
