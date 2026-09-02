@@ -1352,6 +1352,18 @@ namespace AdversityRoad.Combat
             else DbgPhaseRate = 0f;
         }
 
+        /// <summary>
+        /// 某一档正前方片段的**实测**自然速度（m/s）。
+        ///
+        /// 移速必须由它来定，而不是反过来——这份文件开头那段推导就是这个意思：
+        /// 播放倍率超过 1.25 倍，脚就开始打滑。所以 PlayerController 的
+        /// 冲刺速度直接取档 3（Fast Run）的实测值，而不是拍一个数。
+        /// 拍数的后果实机验证过：速度封顶 4.2 而档 3 要 5 以上才拿得到权重，
+        /// 于是冲刺档**永远选不到**，玩家的原话是"连冲刺的那个动画都没有出现"。
+        /// </summary>
+        public float TierNaturalSpeed(int tier) =>
+            Valid && tier >= 0 && tier < TierCount ? _tierNat[tier] : 0f;
+
         /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
         public float DbgPhaseRate { get; private set; }
 

@@ -80,6 +80,11 @@ namespace AdversityRoad.Combat
         public float DbgStrideActual(float actual) =>
             Mecanim ? _mecanim.DbgStrideActual(actual) : 0f;
         public float DbgStrideWant() => Mecanim ? _mecanim.DbgStrideWant() : 0f;
+
+        /// <summary>某一档正前方片段的实测自然速度（m/s）；没有 Mecanim 时返回 0。
+        /// 移速锚在它上面，见 PlayableAnimator.TierNaturalSpeed。</summary>
+        public float TierNaturalSpeed(int tier) =>
+            Mecanim ? _mecanim.TierNaturalSpeed(tier) : 0f;
         public void DbgTopDirs(out string n1, out float w1, out string n2, out float w2)
         {
             if (Mecanim) { _mecanim.DbgTopDirs(out n1, out w1, out n2, out w2); return; }

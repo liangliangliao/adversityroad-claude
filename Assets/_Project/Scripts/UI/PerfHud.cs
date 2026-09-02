@@ -399,11 +399,15 @@ namespace AdversityRoad.UI
                 ? string.Format("锁定封顶{0:F1}", _pc.DbgStrafeCap)
                 : _pc.WalkOnly ? "冲刺锁"
                 : _pc.IndoorPace ? "室内步速" : "无封顶";
+            // 档位摆在最前面：玩家报的是"三档推不出来、冲刺跟跑一样快"，
+            // 那就得让他一眼看到手指现在推出来的到底是哪一档。
+            string tier = _pc.DbgSpeedTier == 2 ? "冲刺"
+                        : _pc.DbgSpeedTier == 1 ? "跑" : "走";
             _move.text = string.Format(
-                "杆{0:F2} 目标{1:F1}/{2:F1}m/s | 行动力×{3:F2} 减速×{4:F2} 出招×{5:F2} | {6} | {7}",
+                "[{8}] 杆{0:F2} 目标{1:F1}/{2:F1}m/s | 行动力×{3:F2} 减速×{4:F2} 出招×{5:F2} | {6} | {7}",
                 _pc.DbgInputMag, want, _pc.DbgRawSpeed,
                 _pc.DbgApMult, _pc.MoveSpeedMultiplier, _pc.DbgAttackFactor,
-                cap, _pc.StrafeActive ? "锁定中" : "自由");
+                cap, _pc.StrafeActive ? "锁定中" : "自由", tier);
             // 任何一层把速度压到七成以下就标红——那就是"变慢"的那一层
             bool slowed = _pc.DbgApMult < 0.95f || _pc.MoveSpeedMultiplier < 0.95f ||
                           _pc.DbgAttackFactor < 0.95f;

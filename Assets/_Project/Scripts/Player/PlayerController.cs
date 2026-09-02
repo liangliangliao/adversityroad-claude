@@ -75,6 +75,73 @@ namespace AdversityRoad.Player
         /// </summary>
         const float MinLocomotionSpeed = 1.3f;
         public float runSpeed = 4.2f;
+
+        // ===== 三档移速：走 / 跑 / 冲刺 =====
+        //
+        // 【原来这里只有一条直线，所以"三档"一档都不存在】
+        //     speed = runSpeed * inputMag
+        // 摇杆推多少就是多少，0 到 4.2 连续。后果玩家全说中了：
+        //   * "冲刺跟跑起来速度是一样的，没有任何变化" —— 因为满推就是 runSpeed，
+        //     上面再没有东西了，冲刺这一档根本没有被实现过；
+        //   * "连冲刺的那个动画都没有出现" —— 动画档 3（Fast Run）要移速超过
+        //     跑档实测自然速度才拿得到权重，而速度封顶 4.2 永远够不着；
+        //   * "想慢慢走的时候很难操作" —— 要走 2.0 得把摇杆精确停在 0.48，
+        //     触屏上做不到，手指稍微多推一点人就跑起来了。
+        //
+        // 改成**带平台的分档映射**：每一档占住摇杆行程的一整段，手指落在段内
+        // 任意位置速度都一样，于是三档都能稳稳推出来。
+        //     死区 ~ WalkTop     → 走（平台）
+        //     WalkTop ~ RunTop   → 走→跑 过渡
+        //     RunTop 以上        → 跑；满推持续 SprintHold 秒后升到冲刺
+        // 冲刺做成"满推续按"而不是新按钮：虚拟摇杆上多一个键要占屏幕、还要换手，
+        // 而"想跑快就一直往前顶"本来就是玩家的直觉动作。
+        public float sprintSpeed = 6.0f;
+        /// <summary>摇杆推到这里为止都算"走"。占住三成行程，手指很容易停在里面。</summary>
+        const float WalkTop = 0.45f;
+        /// <summary>超过它算"跑"；到满推之间是走→跑的过渡带。</summary>
+        const float RunTop = 0.85f;
+        /// <summary>满推持续多久升到冲刺（秒）。太短会让"想跑却冲出去"，
+        /// 太长则"想冲刺却冲不起来"——0.35 秒约等于一次有意识的"顶住"。</summary>
+        const float SprintHold = 0.35f;
+        /// <summary>冲刺只在大致朝正前方走时成立：档 3 只有正前方片段，
+        /// 横着冲刺没有动作可演，硬冲就是脚打滑。锁定横移时同理不冲刺。</summary>
+        const float SprintMaxMoveAngle = 40f;
+        float _sprintT;
+        /// <summary>诊断：本帧处在哪一档（0 走 / 1 跑 / 2 冲刺）。</summary>
+        public int DbgSpeedTier { get; private set; }
+        /// <summary>诊断：本帧是否在冲刺。</summary>
+        public bool Sprinting { get; private set; }
+
+        /// <summary>
+        /// 冲刺速度必须够得着动画档 3，否则冲刺动画永远选不到——这正是玩家报的
+        /// "连冲刺的动画都没有出现"。所以取 Fast Run 的**实测**自然速度，
+        /// 而不是拍一个数；测不到（还没装配好）才退回序列化值。
+        /// 上浮 5%：档权重按 vNow 与档速的插值算，正好等于档速时只能勉强够到，
+        /// 略微超出才能让冲刺片段真正占满。
+        /// </summary>
+        float SprintSpeedNow()
+        {
+            float nat = _anim != null ? _anim.TierNaturalSpeed(3) : 0f;
+            return nat > 0.5f ? nat * 1.05f : sprintSpeed;
+        }
+
+        /// <summary>摇杆量 → 目标速度（未乘各种倍率）。三档平台映射，见字段处推导。</summary>
+        float TierSpeedFromStick(float m, float moveAngle, bool canSprint, float dt)
+        {
+            if (m <= StickDeadZone) { _sprintT = 0f; DbgSpeedTier = 0; Sprinting = false; return 0f; }
+            // 满推续按才累积冲刺；一松开就清零，不做衰减——"我松手了还在冲"
+            // 比"冲不起来"更难受。
+            bool full = m > RunTop && canSprint &&
+                        Mathf.Abs(Mathf.DeltaAngle(moveAngle, 0f)) <= SprintMaxMoveAngle;
+            _sprintT = full ? _sprintT + dt : 0f;
+            Sprinting = _sprintT >= SprintHold;
+            if (Sprinting) { DbgSpeedTier = 2; return SprintSpeedNow(); }
+            if (m <= WalkTop) { DbgSpeedTier = 0; return walkSpeed; }
+            DbgSpeedTier = 1;
+            if (m >= RunTop) return runSpeed;
+            return Mathf.Lerp(walkSpeed, runSpeed,
+                              Mathf.InverseLerp(WalkTop, RunTop, m));
+        }
         // 起步/刹车响应（指数逼近速率，1/秒）：对齐 Unity 官方 ThirdPersonController
         // 的 SpeedChangeRate=10 思路，但按动作游戏上调——
         // 起步 k=20：0.05s 到 63%、0.15s 到 95%；刹车 k=26 更利落。
@@ -703,18 +770,23 @@ namespace AdversityRoad.Player
             Vector3 moveDir = stickDir;
 
             // 锁定面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
-            Transform face = FacingTarget();
+            Transform face = FacingTarget(dt);
             StrafeActive = face != null;
             DbgStrafeCap = 0f;
 
             // 模拟量速度：摇杆半推=走路，全推=奔跑；桌面按住 Alt 慢走
             // 行动力过低时脚步沉重（拖延的具象体感）：35 以下开始线性减速，最低 ×0.65
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
-            float speed = runSpeed * MoveSpeedMultiplier * apMult * inputMag;
+            // 冲刺的前提：站在地上、没蹲、不在只许走的区域、也没在锁定横移。
+            // 锁定时角色是横着走位（步法），不是冲刺——档 3 也没有横向片段。
+            bool canSprint = GroundedStable && !IsCrouched && !WalkOnly && !IndoorPace &&
+                             !StrafeActive;
+            float speed = TierSpeedFromStick(inputMag, DbgMoveAngle, canSprint, dt) *
+                          MoveSpeedMultiplier * apMult;
             // 本帧的速度天花板（不含摇杆量）：下面的下限不能把它顶穿——
             // 室内封顶 2.0 时，下限 1.3 仍在其内；万一有更狠的减速 debuff
             // 把天花板压到 1.0，下限就得跟着降到 1.0，否则 debuff 等于失效。
-            float speedCap = runSpeed * MoveSpeedMultiplier * apMult;
+            float speedCap = Mathf.Max(runSpeed, SprintSpeedNow()) * MoveSpeedMultiplier * apMult;
             // 诊断用：速度是好几层倍率连乘出来的（行动力、减速 debuff、锁定封顶、
             // 出招定步），"移动变慢"到底慢在哪一层，只看结果分不出来。
             DbgApMult = apMult;
@@ -1280,12 +1352,12 @@ namespace AdversityRoad.Player
         /// 按锁定键才锁，再按一次解除。这也是这类游戏的通行做法。
         /// 想要自动锁的人，设置面板里本来就有「自动锁定」开关（LockOnSystem.AutoAcquire）。
         /// </summary>
-        Transform FacingTarget()
+        Transform FacingTarget(float dt)
         {
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
             var hard = _lockOn != null ? _lockOn.CurrentTarget : null;
             if (hard != null) { _softFace = null; return hard; }
-            return SoftFaceTarget();
+            return SoftFaceTarget(dt);
         }
 
         // ===== 软锁面向：这才是"横移/后退动画放进去了却永远看不到"的原因 =====
@@ -1310,8 +1382,12 @@ namespace AdversityRoad.Player
         //   · **背身全速跑＝脱离**：朝着背离目标 120° 以上且跑起来了就立刻放开，
         //     否则想撤退会变成倒着跑（锁定类系统最经典的手感事故）。
         const float SoftFaceEnter = 6f, SoftFaceExit = 8.5f;
+        /// <summary>持续全速背离多久才判为"脱战"（秒）。见 SoftFaceTarget 里的推导：
+        /// 一帧就放开，等于战斗中每次后撤都会把横移/后退动画掐掉。</summary>
+        const float SoftFaceBreak = 0.35f;
         Transform _softFace;
         float _softFaceScan;
+        float _softBreakT;
 
         /// <summary>附近（SoftFaceEnter 内）有没有正在交战的敌人——
         /// "交战"用与镜头侧一致的判据：状态不是待机、也不是巡逻。</summary>
@@ -1327,7 +1403,7 @@ namespace AdversityRoad.Player
             return false;
         }
 
-        Transform SoftFaceTarget()
+        Transform SoftFaceTarget(float dt)
         {
             // ===== 判据放宽：不再要求"四秒内出过招" =====
             //
@@ -1352,9 +1428,25 @@ namespace AdversityRoad.Player
                 if (keep == null || keep.State == AI.EnemyState.Dead ||
                     to.magnitude > SoftFaceExit)
                     _softFace = null;
-                else if (_hVel.magnitude > runSpeed * 0.5f && to.sqrMagnitude > 1e-4f &&
-                         Vector3.Angle(_hVel.normalized, to.normalized) > 120f)
-                    _softFace = null;   // 背身全速跑＝我要走，不是要打
+                // ===== 脱离判据：这一条就是"横移后退只在限速区看得到"的原因 =====
+                //
+                // 旧判据是"速度 > runSpeed*0.5（=2.1m/s）且背离 120°"，一帧成立
+                // 就放开软锁。2.1 m/s 只是快步走——战斗里往后拉开距离、绕侧找角度，
+                // 随手就超过它。于是软锁被放开、身体转向行进方向、moveAngle 归零，
+                // 后退和横移片段一帧都轮不到。
+                // 而室内/限速区速度封顶 2.0，**永远达不到这个阈值**，软锁一直在，
+                // 横移后退就正常——玩家看到的"有些地区有效、大部分地区无效"，
+                // 分界线正好是这个 2.1。
+                //
+                // 改成"真的在撤"才放开：速度要到跑档九成（3.8m/s，快步走够不着），
+                // 而且要**持续** SoftFaceBreak 秒。战斗里的后撤、拉扯、绕背都是
+                // 短促的，不会连续 0.35 秒保持全速背离；真想跑路的人则一定会。
+                float away = to.sqrMagnitude > 1e-4f && _hVel.sqrMagnitude > 1e-4f
+                           ? Vector3.Angle(_hVel.normalized, to.normalized) : 0f;
+                if (_hVel.magnitude > runSpeed * 0.9f && away > 120f)
+                    _softBreakT += dt;
+                else _softBreakT = 0f;
+                if (_softBreakT >= SoftFaceBreak) { _softBreakT = 0f; _softFace = null; }
                 else return _softFace;
             }
 

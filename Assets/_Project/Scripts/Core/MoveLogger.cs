@@ -200,7 +200,7 @@ namespace AdversityRoad.Core
                     "kind,t,dt,dtSim,fps," +
                     "stickX,stickY,stickMag,stickHeld,stickYaw," +
                     "bodyYaw,camYaw,camPitch,turnNeed,dirTrust,lateralG,turnRadius,bodyYawRate," +
-                    "rawSpeed,apMult,slowMult,attackMult,finalSpeed,strafeCap," +
+                    "rawSpeed,apMult,slowMult,attackMult,finalSpeed,strafeCap,tier,sprint," +
                     "targetVel,hVel,actual,speed01,moveAngle," +
                     "grounded,hitSides,vy,startGate,strafe,crouch,indoorPace,walkOnly," +
                     "posX,posY,posZ,stepLen,maxStep,stepAge," +
@@ -344,6 +344,9 @@ namespace AdversityRoad.Core
               .Append(F(_pc.DbgRawSpeed)).Append(',').Append(F(_pc.DbgApMult)).Append(',')
               .Append(F(_pc.MoveSpeedMultiplier)).Append(',').Append(F(_pc.DbgAttackFactor)).Append(',')
               .Append(F(_pc.DbgFinalSpeed)).Append(',').Append(F(_pc.DbgStrafeCap)).Append(',')
+              // 三档移速：tier 0 走 / 1 跑 / 2 冲刺。玩家报"三档推不出来、冲刺
+              // 跟跑一样快"，这两列直接看得到本帧到底落在哪一档。
+              .Append(_pc.DbgSpeedTier).Append(',').Append(B(_pc.Sprinting)).Append(',')
               .Append(F(_pc.DbgTargetVel)).Append(',').Append(F(_pc.DbgVel)).Append(',')
               .Append(F(actual)).Append(',')
               .Append(F(Mathf.Clamp01(actual / Mathf.Max(0.1f, _pc.runSpeed)))).Append(',')
