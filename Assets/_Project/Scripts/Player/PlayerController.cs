@@ -64,6 +64,10 @@ namespace AdversityRoad.Player
         /// <summary>转急弯时的速度（m/s）。取 Walking 自然速度 2.05 的 0.8 倍，腿仍在迈步。</summary>
         const float PivotSpeed = 1.6f;
 
+        /// <summary>转向上限每秒最多升高多少（度/秒²）。防的是"憋一下然后猛甩"。</summary>
+        const float TurnCapRise = 400f;
+        float _turnCapSm;
+
         /// <summary>
         /// 只要在动，地面速度就不低于这个值（m/s）。
         /// 取 Walking 实测自然速度 2.05 的 0.63 倍——再慢腿就开始"停下来"了。
@@ -997,7 +1001,28 @@ namespace AdversityRoad.Player
                     // 玩家 HUD 里读到的「身66°/s 意图0.45 待转126°」就是这么来的。
                     // 防搓杆的职责由平均本身承担（搓杆时模长趋零、置信度趋零），
                     // 地板只决定"最坏情况下还剩多少"，0.35 仍然远低于满速跟随。
-                    cap *= Mathf.Lerp(0.35f, 1f, DirTrust(moveDir, dt));
+                    float trust = DirTrust(moveDir, dt);
+                    cap *= Mathf.Lerp(0.35f, 1f, trust);
+
+                    // ===== 上限只许缓慢上升，可以立刻下降 =====
+                    //
+                    // 【实机逐帧抓到的那一下】玩家用拇指画圈（stickYaw 1.4 秒转了
+                    // 320°，而 camYaw 只动了 3°——是手在转，不是镜头）：
+                    //     69.87~70.20  意图0.00  身113°/s  待转 118→158°
+                    //     70.33~70.60  意图0.60→1.00  身238→322°/s
+                    // 防搓杆滤波先把画圈判成"无意图"、转速砍到 113°/s，角色落后
+                    // 158°；接着滤波在 **0.27 秒内**从 0.00 恢复到 0.97，转速
+                    // 猛甩到 322°/s——角加速度约 700°/s²。那一甩配 1.6m/s 的速度，
+                    // 转弯半径只有 0.28m：人在原地自转，而腿一直在演正前方走。
+                    // 玩家说的"原地漂移、脚步没有转身动作"就是这一下。
+                    //
+                    // 修的不是上限的**值**，是它的**变化率**：升要慢（<=400°/s²，
+                    // 低于镜头那边用的 600°/s² 舒适上限），降可以立刻。
+                    // 减速从来不会被读成甩，只有加速会。
+                    if (cap > _turnCapSm)
+                        _turnCapSm = Mathf.Min(cap, _turnCapSm + TurnCapRise * dt);
+                    else _turnCapSm = cap;
+                    cap = _turnCapSm;
                     DbgLateralG = sp * cap * Mathf.Deg2Rad / 9.81f;
                     transform.rotation = Quaternion.RotateTowards(transform.rotation,
                         target, cap * dt);
@@ -1072,9 +1097,16 @@ namespace AdversityRoad.Player
             //
             // 上一轮撤掉这层是因为它与 ω=a/v 构成正反馈；那个回路已经在上面用
             // 分母地板断开了（TurnCapSpeedFloor），这里可以放心减速。
+            // 【只对"换个方向"减速，不对"一直在转"减速】
+            // 上一版我漏了这个区分，结果画圈时角色既减速又被上面那一甩带着转，
+            // 弧线被压成原地自转——正是玩家报的"360 转圈就漂移"，是我改坏的。
+            //   · 推向一个新方向然后稳住（意图→1）⇒ 真的要转弯 ⇒ 减速拧过去；
+            //   · 拇指一直在画圈（意图→0）      ⇒ 他要的是跑一个圈 ⇒ 保持速度，
+            //     让半径 v²/a 自然张开，而不是缩到 0.3m 原地转。
             if (DbgTurnNeed > SharpTurnDeg && !StrafeActive)
             {
-                float turnEase = Mathf.InverseLerp(SharpTurnDeg, HardTurnDeg, DbgTurnNeed);
+                float turnEase = Mathf.InverseLerp(SharpTurnDeg, HardTurnDeg, DbgTurnNeed)
+                                 * DbgDirTrust;
                 speed = Mathf.Lerp(speed, Mathf.Min(speed, PivotSpeed * MoveSpeedMultiplier),
                                    turnEase);
             }
