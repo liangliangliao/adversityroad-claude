@@ -158,10 +158,17 @@ namespace AdversityRoad.Combat
             // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
             A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "great sword blocking", "blocking", "block", "fighting idle"),
             A(PoseState.Stagger,     0.55f, 0.10f, 1f,    false, "stunned", "dizzy", "stagger", "hit reaction"),
-            // 言语攻击的微反应：**首选** Hit Reaction（小幅一颤），而不是 Stagger
-            // 首选的 Stunned（大幅踉跄，读作"倒地"）。时长也短一截：
-            // 玩家要的是"能感受到确实有反应"，不是"被打断了一下"。
-            A(PoseState.Flinch,      0.42f, 0.08f, 1f,    false, "hit reaction", "stunned", "dizzy"),
+            // 言语攻击的微反应。
+            //
+            // 【上一版这一行我把参数用错了】签名是 A(pose, **速度**, start, end, hold)，
+            // 我却按"时长"填了 0.42——那是把整段反应**放慢到 0.42 倍速**播放，
+            // 于是它比原来更大、更拖沓。玩家反馈"反应太大"，是我亲手放大的。
+            //
+            // 微反应要的是**快而短**：1.7 倍速播，并且只取片段的前 32%——
+            // 一段受击反应的前三分之一就是"身子一颤"，后面那大半是站稳、
+            // 回位、缓冲，那部分才是"大反应"的来源，直接截掉。
+            // 首选 Hit Reaction 而不是 Stagger 首选的 Stunned（大幅踉跄＝"倒地"）。
+            A(PoseState.Flinch,      1.7f,  0.02f, 0.32f, false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),

@@ -1787,7 +1787,9 @@ namespace AdversityRoad.Combat
                         // 平时挨骂在画面上什么都不发生。玩家要的是"确实有反应，
                         // 让他能感受到"——所以微反应对每一次没被完全化解的言语攻击都给。
                         var poser = GetComponent<HumanoidAnimator>();
-                        if (poser != null) poser.SetPose(PoseState.Flinch, 0.42f);
+                        // 时长交给片段自己（表里已经截到前 32% 且 1.7 倍速），
+                        // 这里再传一个 duration 只会和片段长度打架。
+                        if (poser != null) poser.SetPose(PoseState.Flinch);
 
                         // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
                         if (staggered)

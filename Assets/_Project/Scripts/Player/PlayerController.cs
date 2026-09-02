@@ -852,7 +852,25 @@ namespace AdversityRoad.Player
             //     正后 180°   → 2.08m/s：后退走片段  1.12 ⇒ 速率 1.86
             // 想全速跑就按锁定键解除锁定——那是玩家自己的决定，不该由系统替他做。
             // 将来补上跑动版横移（Left/Right Strafe）后，侧向这一档可以同步放开。
-            if (face != null && moveDir.sqrMagnitude > 0.01f)
+            // ===== 限速只属于【玩家自己按下的硬锁】，软锁一律不限速 =====
+            //
+            // 玩家第三次报同一件事了："路过敌人旁边会被它吸住，移动受限制，
+            // 不能继续朝目标方向移动"。前两次我都在调脱离**阈值**——先是速度门槛，
+            // 再是角度门槛——但阈值调不出他要的东西：他要的是
+            // "任何距离玩家角色都应该能够自主自由移动"。
+            //
+            // 真正的约束不在阈值上，在这里：软锁一旦成立就把速度压到步法档
+            //（正前最高 3.77、横向更低）。而软锁是**系统替玩家决定**的——
+            // 他没按任何键，只是走过一个敌人旁边。于是"路过"变成了"被拖住"。
+            //
+            // 分开处理：
+            //   · 硬锁（玩家按了锁定键）＝ 他自己选择了打这一场，限速是步法的一部分；
+            //   · 软锁（系统判他在交战附近）＝ 只负责**朝向与动画**（横移/后退片段
+            //     照样播），绝不碰速度。
+            // 这样"战斗中有横移后退动画"和"任何时候都能自由移动"同时成立，
+            // 两者本来就不矛盾——是我把它们绑在一个开关上了。
+            bool hardLocked = _lockOn != null && _lockOn.CurrentTarget != null;
+            if (hardLocked && face != null && moveDir.sqrMagnitude > 0.01f)
             {
                 float sideAng = Mathf.Abs(
                     Vector3.SignedAngle(transform.forward, moveDir, Vector3.up));
@@ -1489,7 +1507,11 @@ namespace AdversityRoad.Player
                 // 在这里就是这么落实的。
                 float away = to.sqrMagnitude > 1e-4f && intent.sqrMagnitude > 1e-4f
                            ? Vector3.Angle(intent.normalized, to.normalized) : 0f;
-                if (away > 120f) _softBreakT += dt;
+                // 120° 太严了：**路过**一个敌人时摇杆大约是 90°，永远够不到 120，
+                // 于是软锁一直不放——玩家报的"路过时被吸住"就是这一档。
+                // 收到 85°：朝着敌人（<85°）才算在打它，其余一律算"我要去别处"。
+                // 绕背找角度本来就是朝着它绕，仍在 85° 以内，横移片段不受影响。
+                if (away > 85f) _softBreakT += dt;
                 else _softBreakT = 0f;
                 if (_softBreakT >= SoftFaceBreak) { _softBreakT = 0f; _softFace = null; }
                 else return _softFace;

@@ -14,6 +14,72 @@ namespace AdversityRoad.EditorTools
     /// </summary>
     public static class CIDiagnostics
     {
+        /// <summary>
+        /// 角色材质与贴图的真实状态。
+        ///
+        /// 玩家反复反馈"模型放进游戏就失真、颜色变质"，而我两轮修的都是**导入参数**
+        /// （sRGB / 法线类型 / 压缩），两轮都"几乎没效果"。继续拍脑袋没有意义：
+        /// 角色模型是直接从 FBX 实例化的，材质全程没有被代码碰过，所以真相只在
+        /// 三个地方——用的什么 shader、哪几个贴图槽真的被赋值了、贴图进来之后
+        /// 是什么格式/尺寸/色彩空间。把这三样打进 CI 日志，一次就能定死。
+        ///
+        /// 尤其要看 _BumpMap：如果它压根是空的，那我把法线图改成 NormalMap 类型
+        /// 当然"没效果"——因为那张图根本没被材质用上，问题在 FBX 的材质描述里。
+        /// </summary>
+        static void DiagCharacterMaterials(StringBuilder sb)
+        {
+            sb.Append("\n----- [CIDIAG][材质] 角色模型的材质与贴图 -----\n");
+            foreach (var name in new[] { "PlayerModel", "EnemyModel" })
+            {
+                var prefab = Resources.Load<GameObject>("Characters/" + name);
+                if (prefab == null)
+                {
+                    sb.Append("[CIDIAG][材质] 没有 Characters/").Append(name).Append('\n');
+                    continue;
+                }
+                sb.Append("[CIDIAG][材质] === ").Append(name).Append(" ===\n");
+                foreach (var r in prefab.GetComponentsInChildren<Renderer>(true))
+                {
+                    foreach (var m in r.sharedMaterials)
+                    {
+                        if (m == null) { sb.Append("  渲染器 ").Append(r.name).Append(" 有空材质\n"); continue; }
+                        sb.Append("  材质 ").Append(m.name)
+                          .Append("  shader=").Append(m.shader != null ? m.shader.name : "null").Append('\n');
+                        foreach (var prop in new[] { "_BaseMap", "_MainTex", "_BumpMap",
+                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap" })
+                        {
+                            if (!m.HasProperty(prop)) continue;
+                            var t = m.GetTexture(prop) as Texture2D;
+                            sb.Append("    ").Append(prop).Append(" = ")
+                              .Append(t == null ? "（空）" : t.name);
+                            if (t != null)
+                                sb.Append("  ").Append(t.width).Append('x').Append(t.height)
+                                  .Append("  格式=").Append(t.format)
+                                  .Append("  mip=").Append(t.mipmapCount);
+                            sb.Append('\n');
+                        }
+                        if (m.HasProperty("_BaseColor"))
+                            sb.Append("    _BaseColor = ").Append(m.GetColor("_BaseColor")).Append('\n');
+                    }
+                }
+            }
+            // 贴图自身的导入结果（.meta 提交之后应当与我们写进去的一致）
+            sb.Append("[CIDIAG][材质] --- 贴图导入结果 ---\n");
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project/Resources/Characters" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var ti = AssetImporter.GetAtPath(path) as TextureImporter;
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (ti == null || tex == null) continue;
+                sb.Append("  ").Append(System.IO.Path.GetFileName(path))
+                  .Append("  类型=").Append(ti.textureType)
+                  .Append("  sRGB=").Append(ti.sRGBTexture ? "是" : "否")
+                  .Append("  上限=").Append(ti.maxTextureSize)
+                  .Append("  实际=").Append(tex.width).Append('x').Append(tex.height)
+                  .Append("  格式=").Append(tex.format).Append('\n');
+            }
+        }
+
         public static void Run()
         {
             var sb = new StringBuilder("\n===== [CIDIAG] 资产运行时诊断开始 =====\n");
@@ -23,6 +89,7 @@ namespace AdversityRoad.EditorTools
                 DiagWeapon(sb, "scene");
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
+                DiagCharacterMaterials(sb);
             }
             catch (System.Exception e)
             {
