@@ -252,6 +252,9 @@ namespace AdversityRoad.Combat
         // 因"同档同方向已有片段"而未接入的候选（CI 诊断打出来，见 Add）
         readonly List<string> _dropped = new List<string>();
         float _phase01;              // 共享步态相位 [0,1)
+
+        /// <summary>【二分定位开关】只播权重最高的一条方向片段，不做任何跨片段混合。</summary>
+        public static bool SingleClipLoco;
         float _moveAngle;            // 行进方向相对角色正面（度）
 
         /// <summary>动作库里有没有成套的方向移动片段（≥3 个不同方向）。
@@ -1294,6 +1297,23 @@ namespace AdversityRoad.Combat
         /// </summary>
         void LeadAndPhase(float actual, float dt)
         {
+            // 【二分定位开关】单片段模式：只留权重最高的那一条，其余清零。
+            // 前两轮我把"漂移"归因于混合（相位不对齐、两条片段互相抵消）。
+            // 这个开关直接把混合这件事整个去掉——开了还漂，就证明与混合无关，
+            // 那两轮的结论都要推翻，不必再在权重和相位上打转。
+            if (SingleClipLoco)
+            {
+                int top = -1;
+                for (int i = 0; i < _dirW.Length; i++)
+                    if (top < 0 || _dirW[i] > _dirW[top]) top = i;
+                if (top >= 0)
+                {
+                    float keep = 0f;
+                    for (int i = 0; i < _dirW.Length; i++) { keep += _dirW[i]; _dirW[i] = 0f; }
+                    _dirW[top] = keep;      // 权重总量不变，全给主导片段
+                }
+            }
+
             float wSum = 0f, rateSum = 0f;
             _slipW = 0f; _slipClip = null;
             for (int i = 0; i < _dirW.Length; i++)

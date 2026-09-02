@@ -20,6 +20,7 @@ namespace AdversityRoad.UI
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn;
+        Button _postFxBtn, _singleClipBtn;
         Button _logBtn;
         Text _logPath, _logTarget;
         readonly System.Collections.Generic.List<(Button, float)> _turnBtns =
@@ -139,6 +140,28 @@ namespace AdversityRoad.UI
                 new Vector2(195, -822), new Vector2(370, 70), Off, () =>
                 {
                     Combat.HumanoidAnimator.TurnLeanOn = !Combat.HumanoidAnimator.TurnLeanOn;
+                    Refresh();
+                }, 22);
+
+            // ===== 二分定位：两个开关把"漂移"锁进一半 =====
+            // 找了八轮都是"找到一个机制→修掉→照旧"，再猜第九个没有意义。
+            // 这两个开关各切掉一整条链路，玩家半分钟就能告诉我在哪一半：
+            //   · 关「骨骼后处理」不漂 ⇒ 原因在动画图**下游**（钉髋/倾身/拧腰/
+            //     前摇/贴地校准/锁脚）；
+            //   · 开「单片段」不漂     ⇒ 原因在**混合**（相位、跨片段权重）；
+            //   · 两个都试了还漂       ⇒ 与动画无关，去查角色位置与镜头。
+            _postFxBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-277, -564), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.BonePostFxOn =
+                        !Combat.HumanoidAnimator.BonePostFxOn;
+                    Refresh();
+                }, 22);
+            _singleClipBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(277, -564), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.PlayableAnimator.SingleClipLoco =
+                        !Combat.PlayableAnimator.SingleClipLoco;
                     Refresh();
                 }, 22);
 
@@ -350,6 +373,24 @@ namespace AdversityRoad.UI
                     Combat.HumanoidAnimator.TurnLeanOn ? "转向倾身：开" : "转向倾身：关";
                 _leanBtn.GetComponent<Image>().color =
                     Combat.HumanoidAnimator.TurnLeanOn ? On : Off;
+            }
+            if (_postFxBtn != null)
+            {
+                _postFxBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.BonePostFxOn
+                        ? "骨骼后处理：开（正常）"
+                        : "骨骼后处理：关（诊断·会与碰撞体分家）";
+                _postFxBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.BonePostFxOn ? On : Off;
+            }
+            if (_singleClipBtn != null)
+            {
+                _singleClipBtn.GetComponentInChildren<Text>().text =
+                    Combat.PlayableAnimator.SingleClipLoco
+                        ? "单片段模式：开（诊断·不混合）"
+                        : "单片段模式：关（正常）";
+                _singleClipBtn.GetComponent<Image>().color =
+                    Combat.PlayableAnimator.SingleClipLoco ? On : Off;
             }
             if (_magnetBtn != null)
             {
