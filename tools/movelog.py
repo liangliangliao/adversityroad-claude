@@ -16,6 +16,7 @@
 每一条判据旁边都注明【为什么这个阈值】——阈值不是拍的，是从这个项目的实测
 参数推出来的。
 """
+import math
 import csv
 import io
 import sys
@@ -416,32 +417,81 @@ def main():
     # ---- ⑩ 画面上的身体 vs 胶囊 ----
     # 这是唯一一条直接量"玩家眼睛看到什么"的检查。此前所有指标都长在胶囊上，
     # 而胶囊已被日志证明是干净的，所以漂移只可能藏在身体相对胶囊的这一段里。
-    #   slide = |visStep - stepLen|：身体这一帧相对胶囊滑了多远。
-    #   hipLeak：钉髋之后髋骨仍偏离绑定位多少，正常恒为 0。
+    #
+    # 【别拿 stepLen 当胶囊位移】stepLen 是 DbgVel*dt，是**打算**走多远；
+    # 撞墙时它照样不为 0 而人根本没动，那样算出来的"滑动"全是假的。
+    # 真正的胶囊位移只能从 posX/posZ 的帧间差来。
     print("\n【⑩ 画面上的身体 vs 胶囊】漂移只能藏在这里")
     if "visStep" not in (st[0] if st else {}):
         print("  （这份日志没有 visStep 列——旧版本录的，重录一份再看）")
     else:
-        slide = [(num(r, "t"), abs(num(r, "visStep") - num(r, "stepLen")), r) for r in st]
-        leak = [num(r, "hipLeak") for r in st]
-        sl = sorted(v for _t, v, _r in slide)
-        pk = lambda p: sl[min(len(sl) - 1, int(len(sl) * p))]
-        print("  身体相对胶囊单帧滑动  中位 %.4f  p95 %.4f  p99 %.4f  最大 %.3f m"
-              % (pk(.5), pk(.95), pk(.99), sl[-1]))
-        print("  钉髋残留 hipLeak      中位 %.4f  p99 %.4f  最大 %.3f m"
-              % (sorted(leak)[len(leak) // 2],
-                 sorted(leak)[min(len(leak) - 1, int(len(leak) * .99))],
-                 max(leak) if leak else 0.0))
-        if max(leak) if leak else 0.0 > 0.02:
-            print("  ！hipLeak 不为 0：片段自带位移漏进画面，身体会往前爬再弹回去")
-        worst = sorted(slide, key=lambda x: -x[1])[:15]
-        print("  —— 滑动最大的 15 帧 ——")
-        print("     %8s %8s %8s %8s %7s %7s %-10s %s"
-              % ("t", "slide", "visStep", "stepLen", "yawRate", "actual", "pose", "dir1"))
-        for t0, v, r in worst:
-            print("     %8.2f %8.4f %8.4f %8.4f %7.0f %7.2f %-10s %s"
-                  % (t0, v, num(r, "visStep"), num(r, "stepLen"), num(r, "bodyYawRate"),
-                     num(r, "actual"), (r.get("pose") or "")[:10], (r.get("dir1") or "")[:20]))
+        rec = []
+        for i in range(1, len(st)):
+            a0, b0 = st[i - 1], st[i]
+            dtf = num(b0, "t") - num(a0, "t")
+            if dtf <= 0 or dtf > 0.3:
+                continue
+            cap = math.hypot(num(b0, "posX") - num(a0, "posX"),
+                             num(b0, "posZ") - num(a0, "posZ"))
+            vis = num(b0, "visStep")
+            if cap > 5 or vis > 5:      # 切场传送，不是漂移
+                continue
+            rec.append((abs(vis - cap), cap, vis, b0))
+        if not rec:
+            print("  （可用帧不足）")
+        else:
+            def dist(rows, p):
+                v = sorted(rows)
+                return v[min(len(v) - 1, int(len(v) * p))]
+            allv = [x[0] for x in rec]
+            loco = [x for x in rec if num(x[3], "actionW") < 0.05]
+            print("  全部 %5d 帧  滑动 中位 %.4f  p95 %.4f  p99 %.4f  最大 %.4f m"
+                  % (len(rec), dist(allv, .5), dist(allv, .95),
+                     dist(allv, .99), max(allv)))
+            if loco:
+                lv = [x[0] for x in loco]
+                print("  移动 %5d 帧  滑动 中位 %.4f  p95 %.4f  p99 %.4f  最大 %.4f m"
+                      % (len(loco), dist(lv, .5), dist(lv, .95),
+                         dist(lv, .99), max(lv)))
+            has_new = "bodyLX" in st[0]
+            if has_new:
+                raw = [num(r, "hipRaw") for r in st]
+                off = sum(1 for r in st if (r.get("pinOn") or "").strip() in ("0", "False", "false"))
+                print("  钉髋前的偏离 hipRaw  中位 %.4f  p99 %.4f  最大 %.4f m"
+                      % (dist(raw, .5), dist(raw, .99), max(raw) if raw else 0.0))
+                print("  没钉髋的帧           %d（%.1f%%）"
+                      % (off, 100.0 * off / max(1, len(st))))
+            else:
+                print("  （没有 hipRaw/pinOn/bodyLX 列——旧版本录的。"
+                      "注意旧的 hipLeak 是钉之后量的，恒为 0，不能当证据）")
+            print("  —— 滑动最大的 15 帧（移动中，排除出招）——")
+            print("     %8s %8s %8s %8s %7s %7s %8s %8s %s"
+                  % ("t", "slide", "capStep", "visStep", "yawRt", "actual",
+                     "bodyLX", "bodyLZ", "dir1"))
+            for sl, cap, vis, r in sorted(loco or rec, key=lambda x: -x[0])[:15]:
+                print("     %8.2f %8.4f %8.4f %8.4f %7.0f %7.2f %8.4f %8.4f %s"
+                      % (num(r, "t"), sl, cap, vis, num(r, "bodyYawRate"),
+                         num(r, "actual"), num(r, "bodyLX"), num(r, "bodyLZ"),
+                         (r.get("dir1") or "")[:18]))
+            # bodyLX/LZ 的帧间跳变 = 身体在角色自身坐标系里被挪动了，
+            # 这是"漂移"最干净的定义：跟胶囊平移和转身都无关。
+            if has_new:
+                jumps = []
+                for i in range(1, len(st)):
+                    d = math.hypot(num(st[i], "bodyLX") - num(st[i - 1], "bodyLX"),
+                                   num(st[i], "bodyLZ") - num(st[i - 1], "bodyLZ"))
+                    if d < 5:
+                        jumps.append((d, st[i]))
+                jv = [d for d, _ in jumps]
+                if jv:
+                    print("  身体在自身坐标系里的帧间跳变  中位 %.4f  p99 %.4f  最大 %.4f m"
+                          % (dist(jv, .5), dist(jv, .99), max(jv)))
+                    print("     %8s %8s %8s %8s %-12s %s"
+                          % ("t", "跳变", "bodyLX", "bodyLZ", "pose", "actionClip"))
+                    for d, r in sorted(jumps, key=lambda x: -x[0])[:10]:
+                        print("     %8.2f %8.4f %8.4f %8.4f %-12s %s"
+                              % (num(r, "t"), d, num(r, "bodyLX"), num(r, "bodyLZ"),
+                                 (r.get("pose") or "")[:12], (r.get("actionClip") or "")[:16]))
 
     # ---- 事件时间轴 ----
     print("\n【事件时间轴】")

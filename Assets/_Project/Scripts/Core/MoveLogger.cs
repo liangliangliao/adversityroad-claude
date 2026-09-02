@@ -209,7 +209,7 @@ namespace AdversityRoad.Core
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
-                    "visStep,hipLeak," +
+                    "visStep,hipLeak,hipRaw,pinOn,bodyLX,bodyLZ," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -417,6 +417,18 @@ namespace AdversityRoad.Core
               //             就说明片段自带位移漏进了画面，人会往前爬再弹回去。
               .Append(F(_anim != null ? _anim.DbgVisStep : 0f)).Append(',')
               .Append(F(_anim != null ? _anim.DbgHipLeak : 0f)).Append(',')
+              // hipLeak 是钉**之后**量的，钉髋干的就是把它清零，所以它恒为 0，
+              // 而且 _hipsPin 为 false（根本没钉）时同样是 0——两种情况读数一样，
+              // 拿它当"没漏"的证据等于什么都没证明。下面三列才是能分辨的：
+              //   hipRaw = 钉**之前**的偏离量，片段这一帧想要的根位移；
+              //   pinOn  = 这一帧到底钉没钉；
+              //   bodyLX/LZ = 髋骨在角色自身坐标系里的水平位置。身体相对胶囊
+              //               有没有滑、往哪滑，只有它说了算——世界位移里混着
+              //               胶囊平移和转身，拆不开。它一跳，就是漂移那一帧。
+              .Append(F(_anim != null ? _anim.DbgHipRaw : 0f)).Append(',')
+              .Append(B(_anim != null && _anim.DbgPinOn)).Append(',')
+              .Append(F(_anim != null ? _anim.DbgBodyLocal.x : 0f)).Append(',')
+              .Append(F(_anim != null ? _anim.DbgBodyLocal.y : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

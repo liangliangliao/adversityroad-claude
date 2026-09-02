@@ -522,6 +522,14 @@ namespace AdversityRoad.Combat
         /// 标量的 visStep 减 stepLen 会把方向不同的两段位移当成同一件事。</summary>
         public Vector3 DbgVisPos { get; private set; }
         public bool DbgVisValid { get; private set; }
+        /// <summary>钉髋**之前**髋骨偏离绑定位多少（米）——片段这一帧想要的根位移。</summary>
+        public float DbgHipRaw { get; private set; }
+        /// <summary>本帧到底钉没钉髋。没钉时 DbgHipLeak 也是 0，光看它分不出来。</summary>
+        public bool DbgPinOn { get; private set; }
+        /// <summary>髋骨在**角色自身坐标系**里的水平位置。
+        /// 身体相对胶囊到底有没有滑、往哪个方向滑，只有它说了算：
+        /// 世界坐标里的位移混着胶囊平移和转身，分不开。</summary>
+        public Vector2 DbgBodyLocal { get; private set; }
         Vector3 _visPrev; bool _visHas;
 
         /// <summary>在整条后处理跑完之后采样：这时的骨骼就是这一帧渲染出去的骨骼。</summary>
@@ -541,6 +549,8 @@ namespace AdversityRoad.Combat
                 ? new Vector2(w.x - _visPrev.x, w.z - _visPrev.z).magnitude : 0f;
             _visPrev = w; _visHas = true;
             DbgVisPos = w; DbgVisValid = true;
+            Vector3 bodyLp = transform.InverseTransformPoint(w);
+            DbgBodyLocal = new Vector2(bodyLp.x, bodyLp.z);
             if (_hipsPin && _hips != null && _mocapModel != null)
             {
                 Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
@@ -578,14 +588,23 @@ namespace AdversityRoad.Combat
             // 钉髋本身只有一次 InverseTransformPoint + TransformPoint，
             // 比起被它防住的画面撕裂，这点开销可以忽略。降频要省的是下面那些
             // 三角函数与四元数（分离拧腰、前摇、双脚贴地校准），不是这两行。
-            if (Mecanim && _hipsPin && _hips != null && _mocapModel != null &&
-                _pose != PoseState.Death && _pose != PoseState.Knockdown)
+            DbgPinOn = Mecanim && _hipsPin && _hips != null && _mocapModel != null &&
+                       _pose != PoseState.Death && _pose != PoseState.Knockdown;
+            if (DbgPinOn)
             {
                 Vector3 pin = _mocapModel.InverseTransformPoint(_hips.position);
+                // 钉之前先记一笔：这才是片段这一帧**想要**的根位移。
+                // 钉完再量必然是 0（钉髋干的就是把它清零），拿钉后的值当"漏没漏"
+                // 的证据等于什么都没证明——上一版的 hipLeak 就栽在这里，
+                // 而且 _hipsPin 为 false 时它同样是 0，"钉得好"和"根本没钉"
+                // 读数一模一样。strideRatio 我犯过一次同样的错，这次记在代码里。
+                DbgHipRaw = new Vector2(pin.x - _hipsBindLP.x, pin.z - _hipsBindLP.z).magnitude
+                            * Mathf.Abs(_mocapModel.lossyScale.x);
                 pin.x = _hipsBindLP.x;
                 pin.z = _hipsBindLP.z;
                 _hips.position = _mocapModel.TransformPoint(pin);
             }
+            else DbgHipRaw = 0f;
             if (!_lodDue) return;
             if (!Mecanim)
             {
