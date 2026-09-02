@@ -499,7 +499,58 @@ namespace AdversityRoad.Combat
         /// </summary>
         public static bool BonePostFxOn = true;
 
+        // ===== 诊断：画面上的身体到底跑到哪去了 =====
+        //
+        // 玩家报的"漂移"一直定位不到，是因为之前所有的度量都长在**胶囊**上：
+        // 位移、速度、步幅、相位……而实机日志已经证明胶囊本身是干净的
+        // （逐帧全覆盖，除入座滑行与切场传送外，单帧位移从没超过 0.13m）。
+        // 那么玩家看见的漂移只可能发生在**渲染出来的身体相对胶囊**这一段上——
+        // 而这一段，我一次都没有量过。
+        //
+        // 走跑片段不是原地的（位移在髋骨上），钉髋负责把它抵消掉。抵消一旦
+        // 不完全或不连续，身体就会相对胶囊往前爬、再在循环点弹回去——那正是
+        // "从 a 漂移到 b，中间没有脚步"和"不断重复回到原来位置"。
+        //
+        //   hipLeak = 髋骨在模型局部空间里偏离绑定位的水平距离
+        //             ——钉髋漏掉了多少片段自带位移（应恒为 0）
+        //   visStep = 渲染身体这一帧在世界里走了多远
+        //             ——玩家眼睛看到的位移。它和胶囊的 stepLen 一旦对不上，
+        //               对不上的那部分就是漂移本体。
+        public float DbgHipLeak { get; private set; }
+        public float DbgVisStep { get; private set; }
+        Vector3 _visPrev; bool _visHas;
+
+        /// <summary>在整条后处理跑完之后采样：这时的骨骼就是这一帧渲染出去的骨骼。</summary>
+        void SampleVisualDrift()
+        {
+            // 量身体的**髋骨**而不是模型根：模型根的水平位置就是胶囊的位置，
+            // 片段自带位移全在髋骨上，量根节点等于什么都没量。
+            Transform m = _hips != null ? _hips
+                        : _mocapModel != null ? _mocapModel : visual;
+            if (m == null) { _visHas = false; DbgVisStep = 0f; DbgHipLeak = 0f; return; }
+            Vector3 w = m.position;
+            DbgVisStep = _visHas
+                ? new Vector2(w.x - _visPrev.x, w.z - _visPrev.z).magnitude : 0f;
+            _visPrev = w; _visHas = true;
+            if (_hipsPin && _hips != null && _mocapModel != null)
+            {
+                Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
+                DbgHipLeak = new Vector2(lp.x - _hipsBindLP.x, lp.z - _hipsBindLP.z).magnitude
+                             * Mathf.Abs(_mocapModel.lossyScale.x);
+            }
+            else DbgHipLeak = 0f;
+        }
+
+        // LateUpdate 里有好几处提前 return（降频、非 Mecanim、没钉髋），采样必须
+        // 跑在所有分支之后，否则恰恰是"后处理没跑完"的那些帧量不到——而那正是
+        // 最可疑的一批帧。所以本体挪进 LateUpdateBody，采样统一在这里收口。
         void LateUpdate()
+        {
+            LateUpdateBody();
+            SampleVisualDrift();
+        }
+
+        void LateUpdateBody()
         {
             if (!BonePostFxOn) return;
             // ===== 钉髋绝不能跟着降频一起跳过 =====

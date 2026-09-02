@@ -413,6 +413,36 @@ def main():
             peak = max([num(r, "deep") for r in st if a <= num(r, "t") <= b] or [0.0])
             print("    %6.2f→%6.2f  持续 %.2f 秒，最深 %.3f m" % (a, b, b - a, peak))
 
+    # ---- ⑩ 画面上的身体 vs 胶囊 ----
+    # 这是唯一一条直接量"玩家眼睛看到什么"的检查。此前所有指标都长在胶囊上，
+    # 而胶囊已被日志证明是干净的，所以漂移只可能藏在身体相对胶囊的这一段里。
+    #   slide = |visStep - stepLen|：身体这一帧相对胶囊滑了多远。
+    #   hipLeak：钉髋之后髋骨仍偏离绑定位多少，正常恒为 0。
+    print("\n【⑩ 画面上的身体 vs 胶囊】漂移只能藏在这里")
+    if "visStep" not in (st[0] if st else {}):
+        print("  （这份日志没有 visStep 列——旧版本录的，重录一份再看）")
+    else:
+        slide = [(num(r, "t"), abs(num(r, "visStep") - num(r, "stepLen")), r) for r in st]
+        leak = [num(r, "hipLeak") for r in st]
+        sl = sorted(v for _t, v, _r in slide)
+        pk = lambda p: sl[min(len(sl) - 1, int(len(sl) * p))]
+        print("  身体相对胶囊单帧滑动  中位 %.4f  p95 %.4f  p99 %.4f  最大 %.3f m"
+              % (pk(.5), pk(.95), pk(.99), sl[-1]))
+        print("  钉髋残留 hipLeak      中位 %.4f  p99 %.4f  最大 %.3f m"
+              % (sorted(leak)[len(leak) // 2],
+                 sorted(leak)[min(len(leak) - 1, int(len(leak) * .99))],
+                 max(leak) if leak else 0.0))
+        if max(leak) if leak else 0.0 > 0.02:
+            print("  ！hipLeak 不为 0：片段自带位移漏进画面，身体会往前爬再弹回去")
+        worst = sorted(slide, key=lambda x: -x[1])[:15]
+        print("  —— 滑动最大的 15 帧 ——")
+        print("     %8s %8s %8s %8s %7s %7s %-10s %s"
+              % ("t", "slide", "visStep", "stepLen", "yawRate", "actual", "pose", "dir1"))
+        for t0, v, r in worst:
+            print("     %8.2f %8.4f %8.4f %8.4f %7.0f %7.2f %-10s %s"
+                  % (t0, v, num(r, "visStep"), num(r, "stepLen"), num(r, "bodyYawRate"),
+                     num(r, "actual"), (r.get("pose") or "")[:10], (r.get("dir1") or "")[:20]))
+
     # ---- 事件时间轴 ----
     print("\n【事件时间轴】")
     if ev:

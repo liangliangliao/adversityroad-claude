@@ -209,6 +209,7 @@ namespace AdversityRoad.Core
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
+                    "visStep,hipLeak," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -407,6 +408,15 @@ namespace AdversityRoad.Core
               .Append(F(Combat.CharacterMotion.DbgDepenetrate)).Append(',')
               .Append(F(Combat.CharacterMotion.DbgDeepest)).Append(',')
               .Append(Combat.CharacterMotion.DbgRollbacks).Append(',')
+              // ===== 画面上的身体，而不是胶囊 =====
+              // 之前所有列量的都是胶囊，而胶囊已被证明是干净的（逐帧全覆盖，
+              // 单帧位移从没超过 0.13m），所以玩家看见的漂移只能在这两列里：
+              //   visStep = 渲染出来的髋骨这一帧在世界里走了多远。它减去 stepLen
+              //             就是身体相对胶囊的滑动量——漂移本体。
+              //   hipLeak = 钉髋之后髋骨仍偏离绑定位多少（应恒为 0）。不为 0
+              //             就说明片段自带位移漏进了画面，人会往前爬再弹回去。
+              .Append(F(_anim != null ? _anim.DbgVisStep : 0f)).Append(',')
+              .Append(F(_anim != null ? _anim.DbgHipLeak : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");
