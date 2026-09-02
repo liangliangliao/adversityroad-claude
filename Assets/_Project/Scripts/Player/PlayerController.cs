@@ -987,7 +987,25 @@ namespace AdversityRoad.Player
             // 原来是先位移后转向，而位移方向直接取摇杆、与朝向无关——那正是
             // "被摇杆拖着走"的结构性来源（见下面两段根因说明）。
             float yawBefore = transform.eulerAngles.y;
-            if (face != null)
+            // ===== 放「术」期间：身体归技能管，直接对准目标 =====
+            //
+            // 上一版我在 SkillExecutor 里写了一句 transform.rotation = LookRotation(...)，
+            // 玩家反馈"没效果"——因为**下面这几行每帧都会把朝向重新写一遍**，
+            // 在技能那句之后执行，等于当场覆盖掉。
+            // 而既有的出招磁吸 SnapFacing 又是**限幅 30°** 的（当初为了治
+            // "更像是被动画控制了"的手感），侧面的敌人一次转不过去。
+            //
+            // 点技能是一次明确的"打它"，不是需要克制的自动磁吸，所以给它一条
+            // 独立的短时通道：施法期间直接对准并跟住目标，其余转向逻辑让路。
+            // 时长由技能的施法锁时间给（上限 0.6 秒），到点自动交还给玩家——
+            // 绝不做成长期接管，否则又变成"被系统操纵"。
+            if (_forceFace != null && Time.time < _forceFaceUntil)
+            {
+                Vector3 toF = _forceFace.position - transform.position; toF.y = 0f;
+                if (toF.sqrMagnitude > 0.04f)
+                    transform.rotation = Quaternion.LookRotation(toF.normalized);
+            }
+            else if (face != null)
             {
                 Vector3 toT = face.position - transform.position; toT.y = 0;
                 if (toT.sqrMagnitude > 0.04f)
@@ -1243,6 +1261,22 @@ namespace AdversityRoad.Player
             // 嵌得比半径还深就回滚到上一个确认安全的位置。见 ResolvePenetration。
             _safePos = Combat.CharacterMotion.ResolvePenetration(_cc, _safePos, _hasSafePos);
             _hasSafePos = true;
+        }
+
+        // 放技能时由 SkillExecutor 设定：施法期间强制对准目标（见转向那一段）。
+        Transform _forceFace;
+        float _forceFaceUntil;
+
+        /// <summary>
+        /// 施法期间强制对准某个目标。给「术」用：玩家点技能就是"打它"，
+        /// 身体必须真的转过去，而不是被下一帧的转向逻辑覆盖掉。
+        /// 时长封顶 0.6 秒——短时接管可以，长期接管就成了"被系统操纵"。
+        /// </summary>
+        public void ForceFace(Transform t, float seconds)
+        {
+            if (t == null) return;
+            _forceFace = t;
+            _forceFaceUntil = Time.time + Mathf.Clamp(seconds, 0.05f, 0.6f);
         }
 
         /// <summary>诊断：这一帧的目标速度矢量模长（m/s）。</summary>

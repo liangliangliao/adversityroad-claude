@@ -158,6 +158,10 @@ namespace AdversityRoad.Combat
             // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
             A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "great sword blocking", "blocking", "block", "fighting idle"),
             A(PoseState.Stagger,     0.55f, 0.10f, 1f,    false, "stunned", "dizzy", "stagger", "hit reaction"),
+            // 言语攻击的微反应：**首选** Hit Reaction（小幅一颤），而不是 Stagger
+            // 首选的 Stunned（大幅踉跄，读作"倒地"）。时长也短一截：
+            // 玩家要的是"能感受到确实有反应"，不是"被打断了一下"。
+            A(PoseState.Flinch,      0.42f, 0.08f, 1f,    false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),

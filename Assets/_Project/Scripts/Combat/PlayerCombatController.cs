@@ -1761,22 +1761,41 @@ namespace AdversityRoad.Combat
                     float res = _player.Stats.MentalResilience(mental);
                     mental *= 1f - res * 0.9f;
                     bool staggered = _player.Stats.TakeMentalDamage(dmg.mentalAxis, mental);
-                    if (staggered && res < 0.75f)
-                    {
-                        if (res >= 0.40f)
-                        {
-                            // 稳得住：只给一下可见的身体反应，动作与锁定都不丢
-                            _fsm.RequestState(CombatState.MentalStagger, 0.35f);
-                        }
-                        else if (Adversity.StressStateMachine.Instance != null)
-                            Adversity.StressStateMachine.Instance.TriggerBreakdown();
-                        else _fsm.TriggerMentalStagger();
-                    }
-                    else if (staggered)
+
+                    if (res >= 0.75f)
                     {
                         // 心已定：一个字都不耽误，只让玩家知道"我感觉到了，但不为所动"
                         CombatFeedback.DamageNumber(transform.position, "不为所动",
                             new Color(0.7f, 0.9f, 1f), 1f);
+                    }
+                    else
+                    {
+                        // ===== 微反应：不动状态机，只写上半身 =====
+                        //
+                        // 上一版我把它做成 RequestState(MentalStagger, 0.35f)，玩家说
+                        // "修复结果不明显"。两个原因：
+                        //   ① MentalStagger 落到 PoseState.Stagger，而 Stagger 的**首选
+                        //      片段是 Stunned**——那是一段大幅度踉跄，正是他说的"倒地"。
+                        //      换首选片段解决不了，因为 Stagger 在真·失守时还得大幅度。
+                        //      所以新开 PoseState.Flinch，首选 Hit Reaction（小幅一颤）。
+                        //   ② 走状态机就必然有动作锁，哪怕只有 0.35 秒也是在"耽误时机"。
+                        //      微反应压根不该占用状态机：直接给动作层一个短片段，
+                        //      并且只写上半身（见 IsUpperBodyAction），走着走着挨一句
+                        //      是身子一颤，脚步一步都不停。
+                        //
+                        // 还有一条更要紧的：原来只有**资源见底**（staggered）才有反应，
+                        // 平时挨骂在画面上什么都不发生。玩家要的是"确实有反应，
+                        // 让他能感受到"——所以微反应对每一次没被完全化解的言语攻击都给。
+                        var poser = GetComponent<HumanoidAnimator>();
+                        if (poser != null) poser.SetPose(PoseState.Flinch, 0.42f);
+
+                        // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
+                        if (staggered)
+                        {
+                            if (Adversity.StressStateMachine.Instance != null)
+                                Adversity.StressStateMachine.Instance.TriggerBreakdown();
+                            else _fsm.TriggerMentalStagger();
+                        }
                     }
                 }
             }

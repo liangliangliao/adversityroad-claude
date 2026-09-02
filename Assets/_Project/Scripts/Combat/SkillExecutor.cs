@@ -88,7 +88,7 @@ namespace AdversityRoad.Combat
         }
 
         /// <summary>放技能前锁定并对准目标：近战技能才打得中，弹道技能才飞得对。</summary>
-        void AimAtTargetForSkill()
+        void AimAtTargetForSkill(float castSeconds)
         {
             var lockOn = GetComponent<Player.LockOnSystem>();
             Transform t = lockOn != null ? lockOn.AcquireNow() : null;
@@ -96,9 +96,12 @@ namespace AdversityRoad.Combat
             Vector3 to = t.position - transform.position;
             to.y = 0f;
             if (to.sqrMagnitude < 1e-4f) return;
-            // 直接转到位而不是慢慢转：技能的判定窗口只有零点几秒，
-            // 转一半就开判等于没瞄准。玩家按下的那一刻就是"对准它"。
-            transform.rotation = Quaternion.LookRotation(to.normalized);
+            // 【不能在这里直接写 transform.rotation】PlayerController 每帧都会
+            // 重写一遍朝向，而它在本组件之后执行——上一版就是这么被覆盖掉的，
+            // 玩家反馈"没效果"。改为请它代劳：施法期间由它强制对准并跟住目标。
+            var pc = GetComponent<Player.PlayerController>();
+            if (pc != null) pc.ForceFace(t, castSeconds);
+            else transform.rotation = Quaternion.LookRotation(to.normalized);
         }
 
         public bool TryCast(Data.SkillDefinition skill)
@@ -164,7 +167,7 @@ namespace AdversityRoad.Combat
             //
             // 放在所有资源门槛**之后**：门槛没过时技能并没有放出去，
             // 那时候把人转过去、把锁定加上，都是玩家没要求过的副作用。
-            AimAtTargetForSkill();
+            AimAtTargetForSkill(Mathf.Max(0.25f, skill.castLockTime));
 
             // 技能同样是连招元素：成功施展即入融合链，于是「术→剑」「跃→术→剑」
             // 这类跨系统串法能接成融招（术后追斩 / 踏云术斩）。

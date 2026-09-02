@@ -1067,7 +1067,10 @@ namespace AdversityRoad.Combat
             p == PoseState.Attack || p == PoseState.HeavyAttack || p == PoseState.AttackUp ||
             p == PoseState.SwordThrust || p == PoseState.PunchJab || p == PoseState.PunchCross ||
             p == PoseState.Cast || p == PoseState.CastProjectile ||
-            p == PoseState.Charge || p == PoseState.ChargeLoop || p == PoseState.Guard;
+            p == PoseState.Charge || p == PoseState.ChargeLoop || p == PoseState.Guard ||
+            // 言语攻击的微反应只写上半身：走着走着被说一句，是身子一颤，
+            // 不是停下脚步。这样它既看得见，又一步都不耽误。
+            p == PoseState.Flinch;
 
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
             float moveAngleDeg = 0f, bool strafing = false)

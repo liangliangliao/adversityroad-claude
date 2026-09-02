@@ -5,6 +5,10 @@ namespace AdversityRoad.Combat
     public enum PoseState
     {
         Idle, Attack, HeavyAttack, Dodge, Guard, Hit, Stagger, Knockdown, Cast, Death,
+        // 言语攻击的微反应：只是"我听见了、身体动了一下"，不是踉跄更不是倒地。
+        // 与 Stagger 分开是因为 Stagger 的首选片段是 Stunned——那是一段大幅度
+        // 踉跄，玩家读作"倒地"，而且会把最好的攻防时机整个吃掉。
+        Flinch,
         // 武术连段（参考黑神话悟空轻棍五段：横扫→上挑→蹬踢→旋身扫→跃劈）
         AttackUp,       // 上挑
         AttackKick,     // 蹬踢（腿法）
