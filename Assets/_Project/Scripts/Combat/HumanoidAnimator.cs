@@ -163,7 +163,47 @@ namespace AdversityRoad.Combat
             _mocapModel = model;
             _hips = hips;
             _hipsPin = model != null && hips != null;
-            if (_hipsPin) _hipsBindLP = model.InverseTransformPoint(hips.position);
+            if (_hipsPin)
+            {
+                _hipsBindLP = model.InverseTransformPoint(hips.position);
+                // ===== 这一行是"漂移"的根：锚点抓的是**当时那一帧的姿势**，不是绑定姿势 =====
+                //
+                // 钉髋的职责是"身体的水平位置跟着胶囊走"，锚点必须是绑定姿势下
+                // 髋骨的水平位置——对正常骨架就是模型原点附近（几厘米内）。
+                // 可是这里抓的是 SetMocapRoot 被调用那一瞬 hips.position 的**实际**值。
+                // 本动作库的走跑片段不是原地的（位移全在髋骨上），如果那一刻图已经
+                // 求值过一帧，抓到的就是片段把髋骨甩出去之后的位置。
+                //
+                // 实机日志（21695 帧）把后果量得清清楚楚：
+                //     bodyLX（髋骨在角色自身坐标系里的横向位置）从第 2 帧起
+                //     恒等于 1.338 米，中位数 1.111，只有 1 帧小于 0.2 米；
+                //     bodyLZ 恒为 0；hipRaw 恒等于 1.337。
+                // 也就是说：**渲染出来的身体常年站在自己碰撞胶囊右侧 1.34 米处**，
+                // 而且钉髋不是没拦住它，是钉髋自己每帧把它按在那里。
+                // 它和转向倾身无关（相关系数 0.04）、和速度无关（0.01）、
+                // 和步态无关（−0.27）——就是一个恒定偏置。
+                //
+                // 这同时解释了我一直复现不了的那条："360 度转圈推杆还是会穿墙"。
+                // 我查了好几轮胶囊嵌墙，一次都没查到（这份日志里 deep 也全是 0）——
+                // 因为穿墙的根本不是胶囊，是那个偏出去 1.34 米的身体：原地转一圈，
+                // 它就绕着胶囊扫出一个半径 1.34 米的圆，扫过旁边的墙。
+                //
+                // 修法不是去猜"什么时候抓才对"，而是让它抓不坏：绑定姿势下髋骨
+                // 横向偏移不可能有这么大，超过阈值就判定抓到的是动画帧，退回原点。
+                // 正常骨架那几厘米的真实偏移仍然保留。
+                float sc = Mathf.Abs(model.lossyScale.x) > 1e-4f
+                         ? Mathf.Abs(model.lossyScale.x) : 1f;
+                float offM = new Vector2(_hipsBindLP.x, _hipsBindLP.z).magnitude * sc;
+                if (offM > MaxHipBindOffset)
+                {
+                    Debug.LogWarning("[HumanoidAnimator] 髋骨锚点偏移 " + offM.ToString("F2") +
+                        "m，明显不是绑定姿势（多半抓到了动画帧），已退回模型原点。");
+                    _hipsBindLP.x = 0f;
+                    _hipsBindLP.z = 0f;
+                }
+                DbgHipBind = new Vector2(_hipsBindLP.x, _hipsBindLP.z) * sc;
+            }
+            else DbgHipBind = Vector2.zero;
             _footL = footL;
             _footR = footR;
             _ankleL = ankleL;
@@ -530,6 +570,13 @@ namespace AdversityRoad.Combat
         /// 身体相对胶囊到底有没有滑、往哪个方向滑，只有它说了算：
         /// 世界坐标里的位移混着胶囊平移和转身，分不开。</summary>
         public Vector2 DbgBodyLocal { get; private set; }
+        /// <summary>钉髋锚点在模型空间里的水平偏移（米）。正常应接近 0；
+        /// 它一大，身体就被钉在离胶囊那么远的地方。</summary>
+        public Vector2 DbgHipBind { get; private set; }
+
+        /// <summary>锚点横向偏移的合理上限（米）。超过就不可能是绑定姿势。
+        /// 人的髋骨在绑定姿势下本来就该在模型中轴上，留 0.25m 已经很宽松。</summary>
+        const float MaxHipBindOffset = 0.25f;
         Vector3 _visPrev; bool _visHas;
 
         /// <summary>在整条后处理跑完之后采样：这时的骨骼就是这一帧渲染出去的骨骼。</summary>

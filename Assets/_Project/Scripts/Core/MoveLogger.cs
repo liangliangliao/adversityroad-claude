@@ -209,7 +209,7 @@ namespace AdversityRoad.Core
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
-                    "visStep,hipLeak,hipRaw,pinOn,bodyLX,bodyLZ," +
+                    "visStep,hipLeak,hipRaw,pinOn,bodyLX,bodyLZ,bindX,bindZ," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -429,6 +429,10 @@ namespace AdversityRoad.Core
               .Append(B(_anim != null && _anim.DbgPinOn)).Append(',')
               .Append(F(_anim != null ? _anim.DbgBodyLocal.x : 0f)).Append(',')
               .Append(F(_anim != null ? _anim.DbgBodyLocal.y : 0f)).Append(',')
+              // 钉髋锚点本身（米）。bodyLX 一直是 1.34 而 bindX 也是 1.34，
+              // 就说明身体不是"没被拦住"，而是被钉髋按在了错的地方。
+              .Append(F(_anim != null ? _anim.DbgHipBind.x : 0f)).Append(',')
+              .Append(F(_anim != null ? _anim.DbgHipBind.y : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");
