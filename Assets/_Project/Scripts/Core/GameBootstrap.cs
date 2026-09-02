@@ -542,9 +542,23 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大（受击判定罩全身）
-            hurtCol.center = new Vector3(0, 0.9f, 0);
-            hurtCol.radius = 0.55f;
+            // ===== 全身受击框按【真实身高】，不再拍一个两倍大的罩子 =====
+            //
+            // 原来是 height=4.0、center.y=0.9、radius=0.55，而角色标准身高
+            // MecanimCharacter.TargetHeight 就是 2.0——**整整放大了一倍**，
+            // 而且向下探到地面以下 1.1 米、向上到 2.9 米。
+            // 敌人的攻击盒前沿在 z≈1.6，再加上这 0.55 的半径，
+            // 中心到中心 2.2 米开外就算命中；体型大的 Boss 还要再乘一次缩放。
+            // 这就是玩家说的"几米开外发动攻击都能伤害到，有点搞笑"。
+            //
+            // 成熟动作游戏的做法是受击体≈躯干：高度取身高、半径取身高的 ~0.17
+            //（2.0m 的人 ≈ 0.34m，正好是一个人肩宽的一半）。
+            // 于是有效命中距离落回 1.6+0.34+pad ≈ 2.0 米——一个 2 米高的人
+            // 挥剑能够到的地方，和 AI 用来决定"该不该出手"的 attackRange(1.8~2.2)
+            // 也终于对得上了。
+            hurtCol.height = MecanimCharacter.TargetHeight;
+            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 部位受击框：头/胸/腰腹/双臂/双腿各挂在对应骨骼下，跟着动画走。
             // 兜底框保留——部位框覆盖不到的缝隙照样打得中，同一次挥击由 Hitbox 择优结算。
@@ -807,7 +821,7 @@ namespace AdversityRoad.Core
 
             var agent = root.AddComponent<NavMeshAgent>();
             agent.speed = profile.MoveSpeed;
-            agent.stoppingDistance = profile.attackRange * 0.8f;
+            agent.stoppingDistance = profile.AttackRange * 0.8f;
             // NavMeshAgent 把根节点贴在导航面上，而胶囊体/模型脚底在根节点下方 1 单位
             // （height=2、center=0 → 底部 = root - 1）。抬高 baseOffset = 胶囊半高，让胶囊
             // 底部正好落在导航面，模型脚底再由 MecanimCharacter 对齐到胶囊底部。
@@ -838,9 +852,12 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大
-            hurtCol.center = new Vector3(0, 0.9f, 0);
-            hurtCol.radius = 0.65f;
+            // 同玩家侧：受击框按真实身高，不再是两倍大的罩子。
+            // 敌人这边尤其要紧——它决定的是**玩家的攻击能从多远打中**，
+            // 原来的 0.65 半径等于白送玩家 0.65 米的够不着也能打中。
+            hurtCol.height = MecanimCharacter.TargetHeight;
+            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 敌人同样拆部位：打头会心、打腿削韧且减速、打手削弱它的攻势（见 BodyPartTable）
             BodyPartHurtboxes.Attach(root.transform, MecanimCharacter.TargetHeight * scale);

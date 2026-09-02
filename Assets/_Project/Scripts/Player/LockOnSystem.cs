@@ -39,6 +39,25 @@ namespace AdversityRoad.Player
         /// <summary>解除锁定（短暂失守 / 战略撤退 / 拒绝被低价值目标拖入时调用）。</summary>
         public void Release() => CurrentTarget = null;
 
+        /// <summary>
+        /// 立刻取得一个锁定目标（已有则沿用），取不到返回 null。
+        ///
+        /// 给「术」用：玩家点技能时的意图毫无疑问是"打那个敌人"，不该还要求他
+        /// 先手动按一次锁定键——尤其 AutoAcquire 默认是关的，不按锁定键就永远
+        /// 没有目标，技能只能朝着身体当前朝向放出去。
+        /// </summary>
+        public Transform AcquireNow()
+        {
+            if (CurrentTarget != null)
+            {
+                var cur = CurrentTarget.GetComponentInParent<AI.EnemyController>();
+                if (cur != null && cur.State != AI.EnemyState.Dead) return CurrentTarget;
+                CurrentTarget = null;
+            }
+            CurrentTarget = FindNearestEnemy();
+            return CurrentTarget;
+        }
+
         PlayerController _player;
         float _nextScan;
         bool _wasLocked;

@@ -418,7 +418,7 @@ namespace AdversityRoad.AI
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
-                    float standoff = profile.attackRange + 1.8f;
+                    float standoff = profile.AttackRange + 1.8f;
                     if (dist > standoff)
                     {
                         MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
@@ -426,7 +426,7 @@ namespace AdversityRoad.AI
                     else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
                     {
                         MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
-                        if (dist <= profile.attackRange) State = EnemyState.Attack;
+                        if (dist <= profile.AttackRange) State = EnemyState.Attack;
                     }
                     else
                     {
@@ -448,7 +448,7 @@ namespace AdversityRoad.AI
                     UpdateEmotion("狰狞");
                     StopMoving();
                     FaceTarget();
-                    if (dist > profile.attackRange * 1.2f)
+                    if (dist > profile.AttackRange * 1.2f)
                     {
                         Combat.CombatDirector.Release(this);   // 脱离攻击态：归还攻击令牌
                         State = EnemyState.Chase; break;
@@ -677,7 +677,7 @@ namespace AdversityRoad.AI
         {
             if (_player == null) yield break;
             Vector3 to = _player.position - transform.position; to.y = 0;
-            float gap = to.magnitude - profile.attackRange * 0.75f;
+            float gap = to.magnitude - profile.AttackRange * 0.75f;
             if (gap <= 0.05f || dur <= 0.01f) yield break;
             Vector3 dir = to.normalized;
             float total = Mathf.Min(gap, 0.9f);   // 封顶 0.9m：踏一步，不是冲刺
@@ -726,7 +726,7 @@ namespace AdversityRoad.AI
             if (attackHitbox != null) attackHitbox.DisableHitbox();
             // 连击追加段：紧凑衔接下一招（间隔短，读作一套连招）
             if (_comboLeft > 0 && State == EnemyState.Attack && _player != null &&
-                Vector3.Distance(transform.position, _player.position) < profile.attackRange * 1.6f)
+                Vector3.Distance(transform.position, _player.position) < profile.AttackRange * 1.6f)
             {
                 _comboLeft--;
                 var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;

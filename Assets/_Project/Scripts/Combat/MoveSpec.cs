@@ -152,7 +152,13 @@ namespace AdversityRoad.Combat
             { PoseState.AttackKick,  M("正踢",   HitTrajectory.Line,  0.9f, 1.2f, 1.8f, new Vector3(0, 0.00f, 1.05f), 0.95f, 18f, 2.5f) },
 
             // ---- 精英招（EliteMoves）：更大范围、更强击退，但前摇更长（读招窗口）----
-            { PoseState.HeavyAttack, M("重砸",   HitTrajectory.Plane, 2.8f, 3.0f, 2.8f, new Vector3(0, 0.35f, 1.35f), 1.50f, 24f, 4.5f) },
+            // 重砸原来是 center.z=1.35 + reach=2.8 ⇒ 判定前沿 2.75m，
+            // 加上受击体半径就是 3.3 米开外也能砸到——玩家说的"几米开外发动攻击
+            // 都能伤害到，有点搞笑"，最大的一份就出在这一招。
+            // 收到前沿 2.30m（有效 ≈2.7m）：仍然是一记罩住一片的重砸，
+            // 但要真的走到跟前才砸得着。这也符合本表开头写明的原则——
+            // 玩家的大招付蓄力与意势的代价，敌人不付，范围就不该照抄。
+            { PoseState.HeavyAttack, M("重砸",   HitTrajectory.Plane, 2.6f, 3.0f, 2.3f, new Vector3(0, 0.35f, 1.15f), 1.50f, 24f, 4.5f) },
             { PoseState.AttackSpin,  M("回旋斩", HitTrajectory.Circle,3.0f, 1.4f, 3.0f, new Vector3(0, 0.15f, 0.15f), 1.30f, 24f, 3.5f) },
             { PoseState.SpinKick,    M("旋踢",   HitTrajectory.ArcH,  2.5f, 1.6f, 2.2f, new Vector3(0, 0.20f, 0.55f), 1.25f, 28f, 4.0f) },
             { PoseState.SideKick,    M("侧踹",   HitTrajectory.Line,  1.0f, 1.1f, 1.9f, new Vector3(0, 0.10f, 1.10f), 1.00f, 22f, 3.5f) },

@@ -1744,13 +1744,39 @@ namespace AdversityRoad.Combat
                 else
                 {
                     if (IsGuarding) mental *= (1f - guardMentalReduction);
+
+                    // ===== 言语攻击的身体反应按【心理韧性】分三档 =====
+                    //
+                    // 玩家的原话：受到语言攻击时出现倒地动画，"耽误了最好的攻击或
+                    // 防御时机"，他要的是"一个微小的反应就够了，不需要倒地"，
+                    // 而且"随着自己越来越强，反应越来越弱，最后没有任何反应"。
+                    //
+                    // 韧性怎么算见 PlayerStats.MentalResilience（心气 + 进度 + 这一下多重）。
+                    //   ≥0.75 心已定：不打断，只飘一行字。能量也几乎不掉。
+                    //   ≥0.40 稳得住：0.35 秒的短促一顿，**不解除锁定**——
+                    //                 掉锁定才是真正"耽误时机"的那一下。
+                    //   < 0.40 撑不住：维持原来的短暂失守（跪一下、掉锁定）。
+                    // 能量同样按韧性削（最多削九成），于是"越强越不掉"和
+                    // "越强越没反应"是同一条曲线，不会出现动作没反应而能量哗哗掉。
+                    float res = _player.Stats.MentalResilience(mental);
+                    mental *= 1f - res * 0.9f;
                     bool staggered = _player.Stats.TakeMentalDamage(dmg.mentalAxis, mental);
-                    if (staggered)
+                    if (staggered && res < 0.75f)
                     {
-                        // 心理硬直 = 压力状态机里的「短暂失守」：跪一下、掉锁定，但只有几秒
-                        if (Adversity.StressStateMachine.Instance != null)
+                        if (res >= 0.40f)
+                        {
+                            // 稳得住：只给一下可见的身体反应，动作与锁定都不丢
+                            _fsm.RequestState(CombatState.MentalStagger, 0.35f);
+                        }
+                        else if (Adversity.StressStateMachine.Instance != null)
                             Adversity.StressStateMachine.Instance.TriggerBreakdown();
                         else _fsm.TriggerMentalStagger();
+                    }
+                    else if (staggered)
+                    {
+                        // 心已定：一个字都不耽误，只让玩家知道"我感觉到了，但不为所动"
+                        CombatFeedback.DamageNumber(transform.position, "不为所动",
+                            new Color(0.7f, 0.9f, 1f), 1f);
                     }
                 }
             }

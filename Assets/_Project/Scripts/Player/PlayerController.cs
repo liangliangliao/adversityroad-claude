@@ -770,7 +770,9 @@ namespace AdversityRoad.Player
             Vector3 moveDir = stickDir;
 
             // 锁定面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
-            Transform face = FacingTarget(dt);
+            // 传摇杆方向而不是速度：脱离软锁的依据必须是玩家的意图，
+            // 而锁定期间速度是被本状态自己封顶的（见 SoftFaceTarget 里的推导）。
+            Transform face = FacingTarget(dt, moveDir);
             StrafeActive = face != null;
             DbgStrafeCap = 0f;
 
@@ -1352,12 +1354,12 @@ namespace AdversityRoad.Player
         /// 按锁定键才锁，再按一次解除。这也是这类游戏的通行做法。
         /// 想要自动锁的人，设置面板里本来就有「自动锁定」开关（LockOnSystem.AutoAcquire）。
         /// </summary>
-        Transform FacingTarget(float dt)
+        Transform FacingTarget(float dt, Vector3 intent)
         {
             if (_lockOn == null) _lockOn = GetComponent<LockOnSystem>();
             var hard = _lockOn != null ? _lockOn.CurrentTarget : null;
             if (hard != null) { _softFace = null; return hard; }
-            return SoftFaceTarget(dt);
+            return SoftFaceTarget(dt, intent);
         }
 
         // ===== 软锁面向：这才是"横移/后退动画放进去了却永远看不到"的原因 =====
@@ -1403,7 +1405,7 @@ namespace AdversityRoad.Player
             return false;
         }
 
-        Transform SoftFaceTarget(float dt)
+        Transform SoftFaceTarget(float dt, Vector3 intent)
         {
             // ===== 判据放宽：不再要求"四秒内出过招" =====
             //
@@ -1428,23 +1430,32 @@ namespace AdversityRoad.Player
                 if (keep == null || keep.State == AI.EnemyState.Dead ||
                     to.magnitude > SoftFaceExit)
                     _softFace = null;
-                // ===== 脱离判据：这一条就是"横移后退只在限速区看得到"的原因 =====
+                // ===== 脱离判据必须看【玩家的意图】，不能看【实际速度】 =====
                 //
-                // 旧判据是"速度 > runSpeed*0.5（=2.1m/s）且背离 120°"，一帧成立
-                // 就放开软锁。2.1 m/s 只是快步走——战斗里往后拉开距离、绕侧找角度，
-                // 随手就超过它。于是软锁被放开、身体转向行进方向、moveAngle 归零，
-                // 后退和横移片段一帧都轮不到。
-                // 而室内/限速区速度封顶 2.0，**永远达不到这个阈值**，软锁一直在，
-                // 横移后退就正常——玩家看到的"有些地区有效、大部分地区无效"，
-                // 分界线正好是这个 2.1。
+                // 这条判据我改坏过两次，两次都是因为拿速度当依据：
                 //
-                // 改成"真的在撤"才放开：速度要到跑档九成（3.8m/s，快步走够不着），
-                // 而且要**持续** SoftFaceBreak 秒。战斗里的后撤、拉扯、绕背都是
-                // 短促的，不会连续 0.35 秒保持全速背离；真想跑路的人则一定会。
-                float away = to.sqrMagnitude > 1e-4f && _hVel.sqrMagnitude > 1e-4f
-                           ? Vector3.Angle(_hVel.normalized, to.normalized) : 0f;
-                if (_hVel.magnitude > runSpeed * 0.9f && away > 120f)
-                    _softBreakT += dt;
+                //   第一版：速度 > runSpeed*0.5（2.1m/s）且背离 120°，一帧就放开。
+                //     2.1 m/s 只是快步走，战斗里往后拉距离随手就超过——软锁被放开、
+                //     身体转向行进方向、moveAngle 归零，后退与横移片段一帧都轮不到。
+                //     只有室内限速区（封顶 2.0）够不着这个阈值，软锁才留得住，
+                //     于是"横移后退只在某些地区有效"。
+                //
+                //   第二版（我上一版）：改成 3.8m/s 且持续 0.35 秒。可是**锁定期间
+                //     速度本来就被封顶了**（见下面那段：按方向片段的自然速度反推，
+                //     正前最高 3.77，背身撤退更低），3.8 这个阈值永远达不到。
+                //     结果软锁再也解不开：人被按在敌人跟前、速度封在撤退档、
+                //     身体强制朝着敌人——玩家的原话是"想跑跑不了，被别人给抓住"。
+                //     这是拿一个**被本状态自己压住的量**去做本状态的退出条件，
+                //     必然死锁。
+                //
+                // 所以判据换成摇杆方向：摇杆是玩家的意图，它不受任何封顶影响。
+                // 朝着背离目标 120° 以上**持续** SoftFaceBreak 秒 ⇒ 我要走。
+                // 战斗里的后撤、拉扯、绕背都是短促的，不会连续 0.35 秒保持背离；
+                // 真想脱战的人一定会。玩家那条"任何时候都必须按玩家意图运动"，
+                // 在这里就是这么落实的。
+                float away = to.sqrMagnitude > 1e-4f && intent.sqrMagnitude > 1e-4f
+                           ? Vector3.Angle(intent.normalized, to.normalized) : 0f;
+                if (away > 120f) _softBreakT += dt;
                 else _softBreakT = 0f;
                 if (_softBreakT >= SoftFaceBreak) { _softBreakT = 0f; _softFace = null; }
                 else return _softFace;

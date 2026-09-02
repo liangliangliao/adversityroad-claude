@@ -87,6 +87,20 @@ namespace AdversityRoad.Combat
             }
         }
 
+        /// <summary>放技能前锁定并对准目标：近战技能才打得中，弹道技能才飞得对。</summary>
+        void AimAtTargetForSkill()
+        {
+            var lockOn = GetComponent<Player.LockOnSystem>();
+            Transform t = lockOn != null ? lockOn.AcquireNow() : null;
+            if (t == null) return;
+            Vector3 to = t.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f) return;
+            // 直接转到位而不是慢慢转：技能的判定窗口只有零点几秒，
+            // 转一半就开判等于没瞄准。玩家按下的那一刻就是"对准它"。
+            transform.rotation = Quaternion.LookRotation(to.normalized);
+        }
+
         public bool TryCast(Data.SkillDefinition skill)
         {
             if (skill == null) return false;
@@ -140,6 +154,17 @@ namespace AdversityRoad.Combat
                 return false;
             }
             if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
+
+            // ===== 放「术」＝我要打那个敌人：自动锁定并转身对准 =====
+            //
+            // 此前技能是照着身体**当前朝向**放出去的，而锁定要玩家先手动按一次
+            // 锁定键（LockOnSystem.AutoAcquire 默认关）。于是点了技能却打空、
+            // 或者朝着侧面放出去，是常态。玩家点技能这个动作本身已经表达了
+            // "打它"，不该再要求他先做一次瞄准。
+            //
+            // 放在所有资源门槛**之后**：门槛没过时技能并没有放出去，
+            // 那时候把人转过去、把锁定加上，都是玩家没要求过的副作用。
+            AimAtTargetForSkill();
 
             // 技能同样是连招元素：成功施展即入融合链，于是「术→剑」「跃→术→剑」
             // 这类跨系统串法能接成融招（术后追斩 / 踏云术斩）。

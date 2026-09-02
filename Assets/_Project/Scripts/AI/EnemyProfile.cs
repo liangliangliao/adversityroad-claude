@@ -41,6 +41,30 @@ namespace AdversityRoad.AI
         /// <summary>实际生效的移动速度（目录值封顶后的结果）。</summary>
         public float MoveSpeed => Mathf.Min(moveSpeed, MoveSpeedCap);
         public float attackRange = 1.8f;
+
+        /// <summary>
+        /// 出手距离上限（米）。玩家的原话："敌人在很远的地方发动攻击都能伤害到，
+        /// 有点搞笑，有点不真实"。
+        ///
+        /// 这个数不能拍，得跟判定几何对齐。链路是：
+        ///     敌人在 dist ≤ attackRange 时决定出手（EnemyController）
+        ///     → 判定盒前沿 = spec.center.z + spec.reach/2（EnemyMoveTable）
+        ///     → 命中还要玩家受击体的半径（GameBootstrap，现在是身高×0.17≈0.34）
+        ///     → 再加 Hitbox.pad 容差
+        /// 基础招最短的一条（横斩/撩斩）前沿在 1.85，于是能打到的极限是
+        ///     1.85 + 0.34 + 0.04 ≈ 2.23 米
+        /// attackRange 超过它，敌人就会在够不着的地方挥空；低太多则永远贴脸。
+        /// 取 2.1：留一点余量，且比原目录里最大的 2.3 收了一档。
+        ///
+        /// 【为什么受击体一改，这里就必须跟着改】原来的受击体半径是 0.55，
+        /// 极限是 2.44，目录里 2.3 的重甲敌人正好卡在里面。受击体收到 0.34 之后
+        /// 极限降到 2.23，2.3 就变成"进入攻击距离却打不到人"——不封这个顶，
+        /// 修受击体反而会制造一批挥空的敌人。
+        /// </summary>
+        public const float AttackRangeCap = 2.1f;
+
+        /// <summary>实际生效的出手距离（目录值封顶后的结果）。</summary>
+        public float AttackRange => Mathf.Min(attackRange, AttackRangeCap);
         public float detectRange = 12f;
         public bool rangedAttack = false;     // 中距离发射心念弹（远程攻击）
         public List<string> skillIds = new List<string>();
