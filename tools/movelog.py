@@ -388,6 +388,31 @@ def main():
     else:
         print("  （一条都没有——移动层完全没工作）")
 
+    # ---- ⑨ 嵌墙兜底 ----
+    # deep 是每帧最深的横向嵌入量。这一列才是"到底有没有嵌进墙"的直接证据：
+    # 一直是 0 说明穿墙不是"慢慢挤进去"造成的，得往别的方向查（比如某段代码
+    # 绕过了 CharacterController 直接写 transform）。
+    deep = [num(r, "deep") for r in st]
+    depen = [num(r, "depen") for r in st]
+    rb = [num(r, "rollback") for r in st]
+    ndeep = sum(1 for v in deep if v > 0.001)
+    npush = sum(1 for v in depen if v > 0.001)
+    print("\n【⑨ 嵌墙兜底】解穿插推出/嵌入深度/回滚")
+    if not any(("deep" in r) for r in st[:1]):
+        print("  （这份日志没有 deep 列——旧版本录的，重录一份再看）")
+    else:
+        print("  嵌入过的帧      %5d（%.1f%%），最深 %.3f m" %
+              (ndeep, 100.0 * ndeep / max(1, len(st)), max(deep) if deep else 0.0))
+        print("  被推出过的帧    %5d（%.1f%%），单帧最大 %.3f m" %
+              (npush, 100.0 * npush / max(1, len(st)), max(depen) if depen else 0.0))
+        print("  回滚累计        %5d 次" % int(max(rb) if rb else 0))
+        if rb and max(rb) > 0:
+            # 回滚本身是一次瞬移，多了就是这张网在制造玩家报的"漂移"
+            print("  ！回滚会把人拽回上一帧的位置，次数多说明兜底网自己成了漂移源")
+        for a, b, _row in spans(st, lambda r: num(r, "deep") > 0.05):
+            peak = max([num(r, "deep") for r in st if a <= num(r, "t") <= b] or [0.0])
+            print("    %6.2f→%6.2f  持续 %.2f 秒，最深 %.3f m" % (a, b, b - a, peak))
+
     # ---- 事件时间轴 ----
     print("\n【事件时间轴】")
     if ev:

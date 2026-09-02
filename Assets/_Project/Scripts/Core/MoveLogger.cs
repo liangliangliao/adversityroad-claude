@@ -208,7 +208,7 @@ namespace AdversityRoad.Core
                     "dir1,dir1W,dir2,dir2W,phaseRate,blendAngle," +
                     "strideActual,strideWant,strideRatio,slipClip,slipWant,slipGot,footFix," +
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
-                    "extMove,extSrc,faceSnap,legsWalking,blendMix," +
+                    "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
                     "enemies,spawnCount,held,event\n";
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
@@ -400,6 +400,13 @@ namespace AdversityRoad.Core
               // 两条方向片段共混的程度：相位不对齐造成的"腿互相抵消"只在它高时发生。
               // 转向/转圈/起步变速正是它高的时刻——玩家报的三个场景一一对应。
               .Append(F(_anim != null ? _anim.DbgBlendMix : 0f)).Append(',')
+              // 嵌墙兜底：depen = 本帧被推出来多少米；deep = 本帧最深的横向嵌入量；
+              // rollback = 累计判定"已经在墙里"而回滚的次数。
+              // 玩家报的"360 转圈会穿墙"修没修掉、以及这张网自己有没有变成新的
+              // 瞬移源，都看这三列：deep 一直是 0 说明根本没嵌进去，问题在别处。
+              .Append(F(Combat.CharacterMotion.DbgDepenetrate)).Append(',')
+              .Append(F(Combat.CharacterMotion.DbgDeepest)).Append(',')
+              .Append(Combat.CharacterMotion.DbgRollbacks).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
               .Append(Q(held2.ToString())).Append(",\n");

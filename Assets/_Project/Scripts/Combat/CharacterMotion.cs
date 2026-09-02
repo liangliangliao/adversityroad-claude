@@ -51,5 +51,127 @@ namespace AdversityRoad.Combat
             Vector3 part = delta / steps;
             for (int i = 0; i < steps; i++) cc.Move(part);
         }
+
+        // ===== 嵌墙兜底：分步扫掠防不住的那一类 =====
+        //
+        // 【为什么还需要它】分步位移解决的是"一帧跨过一堵墙"。但玩家报的是
+        // **原地画圈时穿墙**——那一档单帧位移只有几厘米，分步根本没被触发。
+        // 实机日志佐证：单帧位移最大值这一版一次都没超阈值，而"推着杆贴墙"
+        // 的时长从 6.0 秒涨到 24.0 秒（最长 3.35 秒）。
+        //
+        // 贴着墙持续推、同时身体高速转向，是 CharacterController 最容易出问题的
+        // 工况：每帧 Move 都在做解穿插，方向又一直在变，在墙角/接缝处解算方向
+        // 可能指向墙的另一侧，几帧下来人就到外面去了。追这个触发条件试了很多轮
+        // 都没收敛，所以这里不再猜，直接补一张网：
+        //   ① 每帧检查胶囊有没有和**静态环境**重叠，重叠就按最小平移量推出去；
+        //   ② 推不动、且嵌得比半径还深，判定为**已经在墙里了**，回滚到上一个
+        //      确认没重叠的位置。
+        //
+        // 【这张网自己不能变成新的漂移源】玩家这一路报的正是"人被瞬移"，所以
+        // 三条硬约束：
+        //   * 只认静态环境。敌人身上挂的是普通 CapsuleCollider（没有 Rigidbody，
+        //     靠 NavMeshAgent 走），按"非运动学刚体"过滤根本滤不掉它们——那样
+        //     每次贴身战斗都会被推开，甚至因为"嵌得深"触发回滚，等于我亲手造出
+        //     一次瞬移。凡是父链上带 NavMeshAgent / CharacterController 的，一律跳过。
+        //   * 推出量按帧封顶。一次推半米以上，在玩家眼里和穿墙没有区别。
+        //   * 回滚距离封顶。safePos 正常只落后一帧（几厘米）；一旦因为连续回滚
+        //     而拉开很远，回滚本身就比它要修的 bug 更像瞬移，这时宁可不回滚。
+        //
+        // 每帧一次 OverlapCapsule + 几次 ComputePenetration，只给玩家用，开销可忽略。
+
+        const float MaxPushPerFrame = 0.35f;   // 单帧最大推出量（米）
+        const float MaxRollbackDist = 2f;      // 回滚距离上限（米），超了就不回滚
+
+        static readonly Collider[] _overlap = new Collider[12];
+
+        /// <summary>诊断：本帧解穿插推出的距离（米）。</summary>
+        public static float DbgDepenetrate { get; private set; }
+        /// <summary>诊断：本帧最深的横向嵌入量（米）。</summary>
+        public static float DbgDeepest { get; private set; }
+        /// <summary>诊断：累计回滚次数（判定为"已经在墙里"）。</summary>
+        public static int DbgRollbacks { get; private set; }
+
+        static bool IsEnvironment(Collider col, Transform self)
+        {
+            if (col == null) return false;
+            var ct = col.transform;
+            if (ct == self || ct.IsChildOf(self)) return false;
+            // 会自己动的东西一律不参与解穿插：推它们只会互相顶，
+            // 真正要防的是静态环境。
+            var rb = col.attachedRigidbody;
+            if (rb != null && !rb.isKinematic) return false;
+            if (col.GetComponentInParent<CharacterController>() != null) return false;
+            if (col.GetComponentInParent<UnityEngine.AI.NavMeshAgent>() != null) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// 把角色从静态环境里推出来；嵌得太深则回滚到 safePos。
+        /// 返回本帧确认安全的位置，调用方应把它存下来作为下一帧的 safePos。
+        /// </summary>
+        public static Vector3 ResolvePenetration(CharacterController cc, Vector3 safePos,
+                                                 bool hasSafe)
+        {
+            DbgDepenetrate = 0f;
+            DbgDeepest = 0f;
+            if (cc == null || !cc.enabled) return cc != null ? cc.transform.position : safePos;
+            var t = cc.transform;
+            float r = Mathf.Max(0.05f, cc.radius);
+            float half = Mathf.Max(r, cc.height * 0.5f) - r;
+            Vector3 c = t.TransformPoint(cc.center);
+            Vector3 axis = t.up * half;
+            int n = Physics.OverlapCapsuleNonAlloc(c - axis, c + axis, r, _overlap,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+
+            Vector3 push = Vector3.zero;
+            float deepest = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                var col = _overlap[i];
+                if (!IsEnvironment(col, t)) continue;
+                if (!Physics.ComputePenetration(cc, t.position, t.rotation,
+                                                col, col.transform.position, col.transform.rotation,
+                                                out Vector3 dir, out float dist))
+                    continue;
+                // 只取水平分量，竖直方向交给重力/台阶，免得把人顶上天。
+                // 注意这里是**投影**（dir.x/dir.z 直接乘 dist），不是把水平分量
+                // 归一化后再乘 dist：法线越接近竖直（斜坡、台阶边缘），横向该推的
+                // 就越少；归一化会把一次几乎纯竖直的微小穿插放大成整段横向推力，
+                // 人会莫名其妙被斜坡"甩"出去。
+                Vector3 h = new Vector3(dir.x, 0f, dir.z) * dist;
+                float hm = h.magnitude;
+                if (hm < 1e-4f) continue;
+                push += h;
+                if (hm > deepest) deepest = hm;
+            }
+
+            DbgDeepest = deepest;
+
+            float pm = push.magnitude;
+            if (pm > 1e-4f)
+            {
+                if (pm > MaxPushPerFrame) push *= MaxPushPerFrame / pm;
+                DbgDepenetrate = push.magnitude;
+                cc.Move(push);                      // 走 Move，接地判定才不会乱
+            }
+
+            // 推完还嵌得比半径深 = 已经进到墙体内部了，扫掠救不回来，只能回滚。
+            // 但回滚超过 MaxRollbackDist 就是另一种瞬移，那时宁可留在原地。
+            if (hasSafe && deepest > r)
+            {
+                Vector3 back = safePos - t.position;
+                back.y = 0f;
+                if (back.sqrMagnitude <= MaxRollbackDist * MaxRollbackDist)
+                {
+                    DbgRollbacks++;
+                    bool was = cc.enabled;
+                    cc.enabled = false;
+                    t.position = safePos;
+                    cc.enabled = was;
+                    return safePos;
+                }
+            }
+            return t.position;
+        }
     }
 }

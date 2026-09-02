@@ -176,6 +176,10 @@ namespace AdversityRoad.Player
         // 于是位移可加、接地稳定、而且在日志里一眼看得出这一帧是谁在推人。
         Vector3 _extMove;
 
+        // 嵌墙兜底用：上一个确认没有嵌进环境的位置
+        Vector3 _safePos;
+        bool _hasSafePos;
+
         /// <summary>带迟滞的接地判定：isGrounded 抖动时仍算在地面上（复用土狼时间）。
         /// 动画与姿态一律用它，别直接读 _cc.isGrounded。</summary>
         public bool GroundedStable => _cc != null && (_cc.isGrounded || _coyoteT > 0f);
@@ -448,6 +452,7 @@ namespace AdversityRoad.Player
             _cc.enabled = true;
             _vy = 0f;
             _hVel = Vector3.zero;
+            _hasSafePos = false;   // 传送后旧的安全点作废，否则回滚会把人拽回上一个场景
         }
 
         static string V(Vector3 p) =>
@@ -1155,6 +1160,12 @@ namespace AdversityRoad.Player
             Combat.CharacterMotion.StepMove(_cc,
                 _hVel * dt + Vector3.up * _vy * dt + TakeExternalMove());
             DbgHitSides = (_cc.collisionFlags & CollisionFlags.Sides) != 0;
+
+            // 嵌墙兜底：贴着墙推+高速转向那一档，分步扫掠防不住（那时单帧位移
+            // 只有几厘米，分步根本不触发）。每帧把嵌进环境的部分推出来，
+            // 嵌得比半径还深就回滚到上一个确认安全的位置。见 ResolvePenetration。
+            _safePos = Combat.CharacterMotion.ResolvePenetration(_cc, _safePos, _hasSafePos);
+            _hasSafePos = true;
         }
 
         /// <summary>诊断：这一帧的目标速度矢量模长（m/s）。</summary>
