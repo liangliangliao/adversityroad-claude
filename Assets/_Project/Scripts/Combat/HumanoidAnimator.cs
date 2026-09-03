@@ -1691,15 +1691,17 @@ namespace AdversityRoad.Combat
         void UpdateWeaponTrail(bool swinging)
         {
             if (weaponTrail == null) return;
-            if (weaponTrail.emitting != swinging)
-            {
-                weaponTrail.emitting = swinging;
-                // 收招就把已有的刀光抹掉，不指望它自己淡出（见上面 timeScale 的坑）
-                if (!swinging) weaponTrail.Clear();
-            }
-            // 时间停住时也不留残迹：面板/顿帧那一帧可能正好停在挥砍中间
-            if (!swinging && Time.timeScale < 0.01f && weaponTrail.positionCount > 0)
-                weaponTrail.Clear();
+            // 告诉拖尾"我还管着你"：不盖这个时间戳，它会自己判定成孤儿关掉。
+            // 这正是收刀后白带子挂在身上的那条路径的兜底（见 WeaponTrailGuard）。
+            var guard = weaponTrail.GetComponent<WeaponTrailGuard>();
+            if (guard != null) guard.KeepDriven();
+
+            if (weaponTrail.emitting != swinging) weaponTrail.emitting = swinging;
+            // 不挥砍就**每帧**清一次，而不是只在状态切换的那一帧清。
+            // Clear 对空拖尾是空操作，开销可以忽略；而"只在切换时清"挡不住
+            // 任何一条绕过切换的路径（换父节点、被别处直接改 emitting、
+            // timeScale 归零导致的点位不老化）。修过两轮都漏，这次不再挑时机。
+            if (!swinging && weaponTrail.positionCount > 0) weaponTrail.Clear();
         }
 
         /// <summary>攻击类姿态（用更高的关节跟随系数，保证爆发相位脆快有力）。</summary>

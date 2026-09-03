@@ -29,12 +29,18 @@ namespace AdversityRoad.EditorTools
         static void DiagCharacterMaterials(StringBuilder sb)
         {
             sb.Append("\n----- [CIDIAG][材质] 角色模型的材质与贴图 -----\n");
-            foreach (var name in new[] { "PlayerModel", "EnemyModel" })
+            // 【必须把 PlayerModel2 一起打出来】角色·贰是 Avaturn 导出的 .glb，
+            // 材质由 glTFast 生成、贴图**内嵌在文件里**——和 maria/Paladin 那套
+            // "FBX + 独立 PNG" 完全是两条导入路径。我前几轮修的 sRGB / 法线类型 /
+            // ASTC / 高光接线全都作用在后者上，一条都碰不到 .glb，
+            // 而玩家拿来对比原图的正是角色·贰。诊断漏了它，就等于一直在看错对象。
+            foreach (var name in new[] { "PlayerModel", "PlayerModel2", "EnemyModel" })
             {
                 var prefab = Resources.Load<GameObject>("Characters/" + name);
                 if (prefab == null)
                 {
-                    sb.Append("[CIDIAG][材质] 没有 Characters/").Append(name).Append('\n');
+                    sb.Append("[CIDIAG][材质] 没有 Characters/").Append(name)
+                      .Append("（.glb 若没被 glTFast 接管，这里就是 null，角色会回退到壹）\n");
                     continue;
                 }
                 sb.Append("[CIDIAG][材质] === ").Append(name).Append(" ===\n");
@@ -67,7 +73,7 @@ namespace AdversityRoad.EditorTools
             // 把结果打出来。这样"高光图有没有真的接上"在**构建阶段**就能确认，
             // 不必再让玩家装包看一眼再回来告诉我——这一条我已经空跑两轮了。
             sb.Append("[CIDIAG][材质] --- 运行时接线后（WireSpecularMaps）---\n");
-            foreach (var name in new[] { "PlayerModel", "EnemyModel" })
+            foreach (var name in new[] { "PlayerModel", "PlayerModel2", "EnemyModel" })
             {
                 var prefab = Resources.Load<GameObject>("Characters/" + name);
                 if (prefab == null) continue;

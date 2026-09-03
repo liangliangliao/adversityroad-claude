@@ -115,9 +115,21 @@ namespace AdversityRoad.World
                 transform.rotation = Quaternion.RotateTowards(
                     transform.rotation, Quaternion.LookRotation(to.normalized), 120f * Time.deltaTime);
 
-            // 站着看：给动画层一个"临战架势"的信号，人会站得稍微前倾/收紧，
-            // 不至于像木桩（HumanoidAnimator 的 ready 就是干这个的）。
-            if (_anim != null) _anim.SetCombatReady(watching);
+            // ===== 必须每帧驱动动画层，否则人是**冻住的** =====
+            //
+            // 玩家问"围观 NPC 没有相应动作反应呢？"——因为我只给了朝向和台词，
+            // 没有人驱动 HumanoidAnimator。行人靠 PedestrianWanderer 每帧调
+            // SetLocomotion 才动得起来；围观者没有那个组件，动画层从头到尾
+            // 收不到任何输入，骨架就停在绑定姿势上，看起来像一排木桩。
+            //
+            // 速度传 0：他们本来就站着不动，要的是**站立待机**那一档动画
+            //（呼吸、重心微调），而不是走路。ready 打开则让站姿从松垮待机
+            // 变成看戏时的收紧前倾——这两样合起来才是"站在那儿看"。
+            if (_anim != null)
+            {
+                _anim.SetLocomotion(0f, false, true, 0f);
+                _anim.SetCombatReady(watching);
+            }
 
             if (Time.time >= _nextTalk)
             {
@@ -129,6 +141,9 @@ namespace AdversityRoad.World
                 _last = line;
                 _tm.text = line;
                 _hideAt = Time.time + (cheer ? 1.6f : 2.4f);
+                // 叫好要有身体反应，不能只有一行字：给一个短促的上半身抖动
+                //（Flinch 就是那一颤，0.1 秒左右，只写上半身，不影响站姿）。
+                if (cheer && _anim != null) _anim.SetPose(Combat.PoseState.Flinch);
                 // 打起来时议论更密；闲时稀疏，免得广场变成菜市场
                 float gap = cheer ? 1.2f : watching ? 4.5f : 11f;
                 _nextTalk = Time.time + gap + (float)_rng.NextDouble() * gap;
