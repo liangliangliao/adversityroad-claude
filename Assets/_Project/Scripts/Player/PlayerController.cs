@@ -329,6 +329,48 @@ namespace AdversityRoad.Player
         const float LeaveIntentTime = 0.4f;
         float _leaveIntentT;
 
+        // ===== 有敌人盯上你时，"屋里只走不跑"必须让路 =====
+        //
+        // 玩家的要求："即使惊动了敌人也能够快速逃离，而不是被吸住不得不和敌人战斗。"
+        // 这条在室内是**算术上不可能**的：
+        //     室内步速上限 indoorPaceSpeed = 2.0 m/s
+        //     敌人移速上限 EnemyProfile.MoveSpeedCap = 3.9 m/s
+        // 敌人快到接近两倍，而脱战判据是"拉开到侦测距离的 1.5 倍"——距离只会
+        // 越缩越小，永远脱不掉。序章独居小屋、羞耻线的走廊/教室、病房回廊、
+        // 图书馆……这些关卡全在室内，所以"被磁铁吸住不得不打"在那里是必然的，
+        // 与镜头、锁定、减速都无关，纯粹是速度上限的问题。
+        //
+        // "屋里不狂奔"是氛围规则（也是防晕的一环），不是战斗规则。有人正在追你的
+        // 时候，它必须让路——现实里也没有人被追着还在自己家里慢慢走。
+        // 威胁一走就自动收回，屋里照旧只走。
+        const float ThreatPoll = 0.25f;      // 秒：不必每帧遍历敌人表
+        const float ThreatRadius = 20f;      // 米：这个范围内有敌人在追/在打就算被盯上
+        float _nextThreatPoll;
+        bool _threatNear;
+
+        /// <summary>诊断：附近有没有正在追击/交战的敌人（室内步速让路的判据）。</summary>
+        public bool ThreatNear => _threatNear;
+
+        void UpdateThreatNear()
+        {
+            if (Time.time < _nextThreatPoll) return;
+            _nextThreatPoll = Time.time + ThreatPoll;
+            bool near = false;
+            var foes = AdversityRoad.Core.ActorRegistry.Enemies;
+            if (foes != null)
+                foreach (var e in foes)
+                {
+                    if (e == null) continue;
+                    // 只认"已经动起来"的：待机/巡逻的敌人还没盯上你，
+                    // 不该因为屋里站着一个人就解掉室内步速。
+                    if (e.State == AI.EnemyState.Idle || e.State == AI.EnemyState.Patrol ||
+                        e.State == AI.EnemyState.Dead) continue;
+                    Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                    if (d.sqrMagnitude < ThreatRadius * ThreatRadius) { near = true; break; }
+                }
+            _threatNear = near;
+        }
+
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier
         {
@@ -805,6 +847,7 @@ namespace AdversityRoad.Player
             // 与软锁脱离用的是同一个信号——摇杆方向，不受任何封顶影响。
             // 它同时解开减速下限（见 MoveSpeedMultiplier），于是"想走就一定走得掉"。
             UpdateLeaveIntent(moveDir, dt);
+            UpdateThreatNear();
 
             // 传摇杆方向而不是速度：脱离软锁的依据必须是玩家的意图，
             // 而锁定期间速度是被本状态自己封顶的（见 SoftFaceTarget 里的推导）。
@@ -817,7 +860,10 @@ namespace AdversityRoad.Player
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
             // 冲刺的前提：站在地上、没蹲、不在只许走的区域、也没在锁定横移。
             // 锁定时角色是横着走位（步法），不是冲刺——档 3 也没有横向片段。
-            bool canSprint = GroundedStable && !IsCrouched && !WalkOnly && !IndoorPace &&
+            // 室内步速在"被敌人盯上"时让路（见 UpdateThreatNear 的推导）：
+            // 屋里 2.0 m/s 对敌人 3.9 m/s，不解掉这条就永远逃不掉。
+            bool indoorCap = IndoorPace && !_threatNear;
+            bool canSprint = GroundedStable && !IsCrouched && !WalkOnly && !indoorCap &&
                              !StrafeActive;
             float speed = TierSpeedFromStick(inputMag, DbgMoveAngle, canSprint, dt) *
                           MoveSpeedMultiplier * apMult;
@@ -844,7 +890,7 @@ namespace AdversityRoad.Player
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
                 speedCap = Mathf.Min(speedCap, walkSpeed * MoveSpeedMultiplier);
             }
-            if (IndoorPace)
+            if (indoorCap)
             {
                 speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
                 speedCap = Mathf.Min(speedCap, indoorPaceSpeed * MoveSpeedMultiplier);

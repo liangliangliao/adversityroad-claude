@@ -59,6 +59,20 @@ namespace AdversityRoad.World
 
         void Update()
         {
+            // 【模型本色对照】中性白环境光、无主光、无补光、无雾。
+            // 角色身上剩下的就是底色贴图本身（再乘模型自带的 AO），
+            // 用来判定"颜色不对"到底是资产的问题还是打光/分级的问题。
+            // 见 Core.PostGrading.NeutralLight。
+            if (Core.PostGrading.NeutralLight)
+            {
+                RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                RenderSettings.ambientLight = Color.white;
+                if (sun != null) sun.intensity = 0f;
+                if (cameraFill != null) cameraFill.intensity = 0f;
+                RenderSettings.fog = false;
+                return;
+            }
+
             time01 = Mathf.Repeat(time01 + Time.deltaTime / dayLength, 1f);
             float dayFactor = Mathf.Clamp01(Mathf.Sin(time01 * Mathf.PI * 2f)); // 白天 1 → 夜晚 0
 

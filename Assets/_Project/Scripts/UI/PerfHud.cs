@@ -398,7 +398,8 @@ namespace AdversityRoad.UI
             string cap = _pc.DbgStrafeCap > 0.01f
                 ? string.Format("锁定封顶{0:F1}", _pc.DbgStrafeCap)
                 : _pc.WalkOnly ? "冲刺锁"
-                : _pc.IndoorPace ? "室内步速" : "无封顶";
+                : _pc.IndoorPace ? (_pc.ThreatNear ? "室内步速(被追·已解)" : "室内步速")
+                : "无封顶";
             // 档位摆在最前面：玩家报的是"三档推不出来、冲刺跟跑一样快"，
             // 那就得让他一眼看到手指现在推出来的到底是哪一档。
             string tier = _pc.DbgSpeedTier == 2 ? "冲刺"

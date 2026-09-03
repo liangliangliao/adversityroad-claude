@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
-        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn;
+        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
         Button _logBtn;
         Text _logPath, _logTarget;
@@ -262,6 +262,16 @@ namespace AdversityRoad.UI
                     Refresh();
                 }, 22);
 
+            // 模型本色对照（中性白光）：主光/补光/雾/分级全关，角色身上剩下的
+            // 就是底色贴图本身。这不是画面模式，是一次判定——见 PostGrading.NeutralLight。
+            _neutralBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -1396), new Vector2(760, 70),
+                new Color(0.42f, 0.42f, 0.3f, 0.95f), () =>
+                {
+                    Core.PostGrading.NeutralLight = !Core.PostGrading.NeutralLight;
+                    Refresh();
+                }, 22);
+
             // 漂移自检：不用再"玩一局导出 CSV"，点一下、看屏幕上的四个数就行。
             // 脚本化的摇杆保证每次输入完全一样，两次结果才有可比性。
             UiUtil.MakeButton(_panel.transform, "漂移自检（约 18 秒，全程别碰摇杆）",
@@ -406,6 +416,15 @@ namespace AdversityRoad.UI
                         : "画面色彩分级：关（模型本色）";
                 _gradingBtn.GetComponent<Image>().color =
                     Core.PostGrading.Enabled ? On : Off;
+            }
+            if (_neutralBtn != null)
+            {
+                _neutralBtn.GetComponentInChildren<Text>().text =
+                    Core.PostGrading.NeutralLight
+                        ? "模型本色对照：开（中性白光·用来比原图）"
+                        : "模型本色对照：关（正常打光）";
+                _neutralBtn.GetComponent<Image>().color =
+                    Core.PostGrading.NeutralLight ? On : Off;
             }
             if (_postFxBtn != null)
             {

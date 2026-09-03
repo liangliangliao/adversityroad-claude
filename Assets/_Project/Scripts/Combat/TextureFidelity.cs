@@ -65,7 +65,14 @@ namespace AdversityRoad.Combat
                         var src = m.GetTexture(prop) as Texture2D;
                         if (src == null || src.mipmapCount > 1) continue;
                         if (src.width < MinSize || src.height < MinSize) continue;
-                        var better = WithMips(src);
+                        // 底色图不压缩（见 WithMips）：源贴图是无压缩 RGB24，
+                        // 压成 DXT/ETC 会在皮肤这种平滑渐变上压出块状色斑——
+                        // 那是拿"还原度"去换显存，方向正好反了。
+                        string lower = prop.ToLowerInvariant();
+                        bool isBaseColor = lower.Contains("basecolor") || lower.Contains("basemap")
+                                        || lower.Contains("maintex") || lower.Contains("albedo")
+                                        || lower.Contains("diffuse");
+                        var better = WithMips(src, !isBaseColor);
                         if (better != null && better != src)
                         {
                             m.SetTexture(prop, better);
@@ -77,7 +84,7 @@ namespace AdversityRoad.Combat
             }
         }
 
-        static Texture2D WithMips(Texture2D src)
+        static Texture2D WithMips(Texture2D src, bool allowCompress)
         {
             if (_done.TryGetValue(src, out var cached)) return cached;
             Texture2D dst = null;
@@ -95,7 +102,13 @@ namespace AdversityRoad.Combat
                     srgb ? RenderTextureReadWrite.sRGB : RenderTextureReadWrite.Linear);
                 Graphics.Blit(src, rt);
                 RenderTexture.active = rt;
-                dst = new Texture2D(src.width, src.height, TextureFormat.RGBA32,
+                // 通道数照抄源贴图：源是 RGB24（无 alpha），就别平白多存一个 alpha。
+                bool hasAlpha = src.format != TextureFormat.RGB24 &&
+                                src.format != TextureFormat.RGB565 &&
+                                src.format != TextureFormat.DXT1 &&
+                                src.format != TextureFormat.ETC_RGB4;
+                dst = new Texture2D(src.width, src.height,
+                                    hasAlpha ? TextureFormat.RGBA32 : TextureFormat.RGB24,
                                     true /* mipChain */, !srgb /* linear */);
                 dst.name = src.name + "_mip";
                 dst.ReadPixels(new Rect(0, 0, src.width, src.height), 0, 0, false);
@@ -103,10 +116,22 @@ namespace AdversityRoad.Combat
                 dst.filterMode = FilterMode.Trilinear;   // 有了 mip 才谈得上三线性
                 dst.anisoLevel = 4;                      // 掠射角（地面、衣褶）显著变清楚
                 dst.Apply(true, false);                  // 生成整条 mip 链
-                // 压回 GPU 格式：1024² RGBA32 带 mip 约 5.6MB，五张就是 28MB，
-                // 手机上不能这么放。压完约 1/6。
-                dst.Compress(true);
-                dst.Apply(false, true);                  // 上传后释放 CPU 端副本
+                // 【只压数据图，不压底色图】
+                // 上一版无差别 Compress，把源本来是**无压缩 RGB24** 的底色图压成了
+                // DXT5——皮肤这种大面积平滑渐变最怕块压缩，压出来是一片一片的色斑。
+                // 补 mip 是为了还原，结果顺手把还原度赔进去了，方向反了。
+                // 法线/粗糙度/AO 这类数据图经过光照之后看不出块状，压掉省显存；
+                // 底色图保持无压缩，1024² RGB24 带 mip 约 4.2MB，三张 12.6MB，
+                // 为主角脸上的皮肤花这点显存是值的。
+                if (allowCompress)
+                {
+                    dst.Compress(true);
+                    dst.Apply(false, true);              // 上传后释放 CPU 端副本
+                }
+                else
+                {
+                    dst.Apply(false, true);
+                }
             }
             catch (System.Exception e)
             {
