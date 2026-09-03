@@ -13,11 +13,19 @@ namespace AdversityRoad.Player
     public class CharacterCloseFade : MonoBehaviour
     {
         public Transform player;
-        // 收紧触发距离：镜头碰撞回缩下限≈1.35m，之前 2.1m 起淡→靠近建筑镜头一回缩
-        // 角色就被淡成半透明("整个人变虚不清晰")。收到 1.1m 才起淡、且保留更高保底
-        // 不透明度：贴墙近观角色依然清晰，只有镜头真要钻进身体时才淡开留出视野。
-        [Tooltip("开始淡出的镜头距离")] public float startDist = 1.35f;
-        [Tooltip("最透时的镜头距离")] public float minDist = 0.75f;
+        // 【再收一档：1.35 → 0.80】
+        // 玩家报"在住所出入房门时角色皮肤失真、发虚"，截图 HUD 上写着吊杆 1.06m——
+        // 门框把镜头挤到 1 米，代入 InverseLerp(0.75, 1.35, 1.0) ≈ 0.42，
+        // 角色被**真的画成 42% 不透明度**。那不是观感问题，是它按设计在淡出，
+        // 只是触发距离定得太宽：1 米外镜头离躯干还有大半个身位，人完全看得清，
+        // 根本不需要让开。
+        //
+        // 这条淡出存在的唯一理由是"镜头要钻进身体了"。角色胶囊半径约 0.34m，
+        // 所以真正需要让开的是 0.4m 以内；0.8m 起淡、0.4m 全透，
+        // 既保住原本的职责，又不会在门口、贴墙、家具旁这些吊杆本来就短的地方
+        // 把人淡掉——而住所里到处都是这种地方。
+        [Tooltip("开始淡出的镜头距离")] public float startDist = 0.80f;
+        [Tooltip("最透时的镜头距离")] public float minDist = 0.40f;
         /// <summary>最透时的不透明度。
         /// 【为什么必须是 0】室内镜头被家具挡住时会一路回缩到 0.5 米（那是对的，
         /// 否则镜头会卡在柜子里）。停在 0.32 的半透明上，画面就是**一张占满屏幕的
@@ -109,6 +117,18 @@ namespace AdversityRoad.Player
             }
         }
 
+        /// <summary>把 alpha 写进材质——URP/Lit 与 glTFast 两套属性名都试。</summary>
+        static void SetAlpha(Material m, float a)
+        {
+            foreach (var prop in new[] { "_BaseColor", "_Color", "baseColorFactor" })
+            {
+                if (!m.HasProperty(prop)) continue;
+                Color c = m.GetColor(prop);
+                c.a = a;
+                m.SetColor(prop, c);
+            }
+        }
+
         static void Apply(Entry e)
         {
             bool opaque = e.alpha >= 0.999f;
@@ -122,10 +142,11 @@ namespace AdversityRoad.Player
                     continue;
                 }
                 CameraOcclusionFade.SetTransparent(m);
-                Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
-                c.a = e.alpha;
-                m.color = c;
-                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                // 【属性名必须两套都写】角色·贰是 glTFast 的 Shader Graph，
+                // 它的底色属性叫 baseColorTexture/baseColorFactor 这一套，
+                // 没有 _BaseColor 也没有 _Color。只写 URP/Lit 的名字，
+                // 在它身上就是半套生效：渲染队列被挪到透明层了，alpha 却没写进去。
+                SetAlpha(m, e.alpha);
             }
         }
     }

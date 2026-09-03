@@ -221,6 +221,17 @@ namespace AdversityRoad.Player
         /// 这一条在屋里也必须留一条口子——打着打着对手不知道在哪是更糟的失明——
         /// 但它同样要被室内几何管住，不能享受露天的 340°/s。</summary>
         const float IndoorEnemyOrbitCap = 55f;
+        /// <summary>室内【松杆归位】的转速上限（度/秒）。
+        ///
+        /// 和 IndoorOrbitCap(14°/s) 分开定，因为两者约束的根本不是同一件事：
+        ///   · 绕行封顶管的是"镜头转会不会把玩家的行进方向掰弯"（H = C + θ），
+        ///     所以推着杆时必须压到几乎不动；
+        ///   · 归位只在**松杆**时发生，人不动，没有任何输入会被掰弯，
+        ///     唯一的顾虑只是吊杆别扫墙——而那有碰撞回缩兜底。
+        /// 14°/s 套到归位上，掉一次头要 13 秒，等于没有跟随（玩家报的
+        /// "住所里转向或掉头，镜头没有及时跟随"就是这个数）。90°/s 下
+        /// 180° 掉头约 2 秒，是"稳稳地转过去"而不是"甩过去"。</summary>
+        const float IndoorSettleCap = 90f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -1538,7 +1549,13 @@ namespace AdversityRoad.Player
                 //
                 // 而屋里本来就没有"看清远处的路"这个需求（跟随绕行存在的唯一理由）。
                 // 室内该由玩家自己决定看哪儿，要摆正有【一键回正】（V / 双击转镜区）。
-                bool settleAllowed = !fightingNow && !stickHeld && !IndoorMode;
+                // 【室内不再一律禁止归位】上面那段注释写的理由是"归位完全绕开了
+                // 下面那道室内限速"——那是当时的实现事实，但限速后来已经移到
+                // "所有跟随理由算完之后一次性落地"（见下面的 IndoorMode 封顶），
+                // 归位现在同样被它管着。禁用这一条的前提已经不存在了，
+                // 留着它的唯一效果就是玩家在住所里转身/掉头之后镜头永远不跟。
+                // 改为：室内照常归位，但走一条专门的、更稳的限速（IndoorSettleCap）。
+                bool settleAllowed = !fightingNow && !stickHeld;
                 if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
@@ -1669,8 +1686,14 @@ namespace AdversityRoad.Player
                     // 甩过去。限速属于【环境约束】，不属于某一条跟随理由，
                     // 所以它的位置就该在这里——所有跟随理由算完之后，一次性落地。
                     if (IndoorMode)
+                    {
+                        // 归位（松杆、人不动）与绕行（推着杆、会掰弯行进方向）
+                        // 是两件事，室内封顶必须分开：见 IndoorSettleCap 的推导。
+                        bool settling = _settleLatch && !gentle && !_combatReorient;
                         maxSpd = Mathf.Min(maxSpd,
-                            enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap);
+                            settling ? IndoorSettleCap
+                                     : (enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap));
+                    }
 
                     if (err > 45f)
                     {
