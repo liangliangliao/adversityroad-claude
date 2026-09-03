@@ -51,8 +51,17 @@ namespace AdversityRoad.EditorTools
                         if (m == null) { sb.Append("  渲染器 ").Append(r.name).Append(" 有空材质\n"); continue; }
                         sb.Append("  材质 ").Append(m.name)
                           .Append("  shader=").Append(m.shader != null ? m.shader.name : "null").Append('\n');
+                        // 【属性名必须两套都探】上一版只探 URP/Lit 的 _BaseMap/_BumpMap…，
+                        // 于是角色·贰（Avaturn 的 .glb，走 glTFast 的
+                        // Shader Graphs/glTF-pbrMetallicRoughness）一个槽都没打印出来——
+                        // 不是槽是空的，是**属性名压根对不上**，HasProperty 全 false。
+                        // 这同时说明我前几轮针对 URP/Lit 属性名做的材质改动
+                        //（高光接线等）在角色·贰身上是彻底的空操作。
                         foreach (var prop in new[] { "_BaseMap", "_MainTex", "_BumpMap",
-                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap" })
+                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap",
+                                                     "baseColorTexture", "normalTexture",
+                                                     "metallicRoughnessTexture", "occlusionTexture",
+                                                     "emissiveTexture" })
                         {
                             if (!m.HasProperty(prop)) continue;
                             var t = m.GetTexture(prop) as Texture2D;
@@ -64,8 +73,14 @@ namespace AdversityRoad.EditorTools
                                   .Append("  mip=").Append(t.mipmapCount);
                             sb.Append('\n');
                         }
-                        if (m.HasProperty("_BaseColor"))
-                            sb.Append("    _BaseColor = ").Append(m.GetColor("_BaseColor")).Append('\n');
+                        foreach (var c in new[] { "_BaseColor", "baseColorFactor" })
+                            if (m.HasProperty(c))
+                                sb.Append("    ").Append(c).Append(" = ").Append(m.GetColor(c)).Append('\n');
+                        foreach (var f in new[] { "_Metallic", "_Smoothness",
+                                                  "metallicFactor", "roughnessFactor" })
+                            if (m.HasProperty(f))
+                                sb.Append("    ").Append(f).Append(" = ")
+                                  .Append(m.GetFloat(f).ToString("F2")).Append('\n');
                     }
                 }
             }
