@@ -48,6 +48,7 @@ namespace AdversityRoad.World
         Combat.HumanoidAnimator _anim;
         Transform _player;
         float _nextTalk, _hideAt, _cheerUntil;
+        float _phase;                 // 各人各自的动作相位，避免一圈人同手同脚
         string _last = "";
         System.Random _rng;
         // 每人一个不同的随机种子。不能用 GetInstanceID()（Unity 6000.5 起废弃），
@@ -57,6 +58,7 @@ namespace AdversityRoad.World
         void Start()
         {
             _rng = new System.Random(++_seq * 7919);
+            _phase = (float)(_rng.NextDouble() * 10.0);
             _anim = GetComponent<Combat.HumanoidAnimator>();
             var p = ActorRegistry.Player;
             if (p != null) _player = p.transform;
@@ -123,12 +125,19 @@ namespace AdversityRoad.World
             // 收不到任何输入，骨架就停在绑定姿势上，看起来像一排木桩。
             //
             // 速度传 0：他们本来就站着不动，要的是**站立待机**那一档动画
-            //（呼吸、重心微调），而不是走路。ready 打开则让站姿从松垮待机
-            // 变成看戏时的收紧前倾——这两样合起来才是"站在那儿看"。
+            //（呼吸、重心微调），而不是走路。
+            //
+            // 【上一轮为什么还是没反应】我用的是 SetCombatReady + PoseState.Flinch：
+            //   · SetCombatReady 摆的是**格斗预备架势**——一圈看热闹的人全站成
+            //     准备开打的桩子，这不是围观；
+            //   · Flinch 在程序骨架（HumanoidRig）的招式 switch 里**根本没有分支**，
+            //     等于一条空指令，叫好的时候身体一动不动。
+            // 现在走 SetSpectate：观望=探身抱臂换脚、欢呼=举臂击掌踮跳，两档都
+            // 真的画在程序骨架上。相位按人错开，一圈人不会同手同脚。
             if (_anim != null)
             {
                 _anim.SetLocomotion(0f, false, true, 0f);
-                _anim.SetCombatReady(watching);
+                _anim.SetSpectate(Time.time < _cheerUntil ? 2 : watching ? 1 : 0, _phase);
             }
 
             if (Time.time >= _nextTalk)
@@ -141,9 +150,6 @@ namespace AdversityRoad.World
                 _last = line;
                 _tm.text = line;
                 _hideAt = Time.time + (cheer ? 1.6f : 2.4f);
-                // 叫好要有身体反应，不能只有一行字：给一个短促的上半身抖动
-                //（Flinch 就是那一颤，0.1 秒左右，只写上半身，不影响站姿）。
-                if (cheer && _anim != null) _anim.SetPose(Combat.PoseState.Flinch);
                 // 打起来时议论更密；闲时稀疏，免得广场变成菜市场
                 float gap = cheer ? 1.2f : watching ? 4.5f : 11f;
                 _nextTalk = Time.time + gap + (float)_rng.NextDouble() * gap;
@@ -187,6 +193,39 @@ namespace AdversityRoad.World
                 var sp = go.AddComponent<Spectator>();
                 sp.arenaCenter = center;
             }
+        }
+
+        /// <summary>
+        /// 沿一条走廊贴墙站两排。
+        ///
+        /// 走廊关（欠条长廊只有 9 米宽）不能用 Ring：一圈人有一半会站在走道正中，
+        /// 而围观者是关掉寻路、带碰撞体的——那就成了一堵挡住玩家的人墙。
+        /// 这里只在轴线两侧各让开 sideOffset 米，走道始终是空的。
+        /// </summary>
+        public static void Line(WorldContext ctx, Vector3 from, Vector3 to,
+                                float sideOffset, int perSide, int seed)
+        {
+            var rng = new System.Random(seed);
+            Vector3 axis = to - from; axis.y = 0f;
+            if (axis.sqrMagnitude < 0.01f) return;
+            Vector3 side = Vector3.Cross(Vector3.up, axis.normalized);
+            Vector3 mid = (from + to) * 0.5f;
+            for (int i = 0; i < perSide; i++)
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    float t = perSide == 1 ? 0.5f
+                            : i / (float)(perSide - 1) * 0.86f + 0.07f;
+                    Vector3 at = from + axis * t
+                               + side * (s * (sideOffset + (float)(rng.NextDouble() * 0.4 - 0.2)));
+                    if (!UnityEngine.AI.NavMesh.SamplePosition(at, out UnityEngine.AI.NavMeshHit hit,
+                            2f, UnityEngine.AI.NavMesh.AllAreas))
+                        continue;
+                    var go = ZoneBuilder.MakeHumanoidNpc(ctx, "Spectator", hit.position, rng);
+                    var agent = go.GetComponent<UnityEngine.AI.NavMeshAgent>();
+                    if (agent != null) agent.enabled = false;
+                    var sp = go.AddComponent<Spectator>();
+                    sp.arenaCenter = mid;
+                }
         }
     }
 }
