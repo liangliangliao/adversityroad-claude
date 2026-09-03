@@ -34,7 +34,11 @@ namespace AdversityRoad.Player
         // 业界经验值：播放倍率在 0.85~1.15 之间看不出来，超过 1.25 就明显是快放。
         // 所以速度按片段来定，而不是反过来：
         //     walkSpeed  ← Walking 2.05        → 2.0
-        //     runSpeed   ← Running 3.63 × 1.15 → 4.2
+        //     runSpeed   ← Running 实测 4.65 → 4.6（片段原速，播放倍率≈1.0）
+        //       【这一行原来写的是 "Running 3.63 × 1.15 → 4.2"，3.63 是个错数】
+        //       CI 实测：[CIDIAG][移动] 跑 角度=0° 自然速度=4.65m/s。
+        //       按错数推出来的 4.2 比片段原速还慢一成——玩家说的"跑起来偏慢"
+        //       有这一份。回到 4.6，播放倍率≈1.0，既不慢也不打滑。
         //     室内       ← 走路档              → 2.0（见 indoorPaceSpeed）
         // 代价是角色比以前慢约 20%。这是有意的：3.8 m/s 在自己家里是 13.7 km/h
         // 的全力奔跑，两三步一堵墙，"很难精准控制"有一大半是这么来的。
@@ -74,7 +78,7 @@ namespace AdversityRoad.Player
         /// 推导见 Update 里那段注释（"像鬼一样漂移"的根因）。
         /// </summary>
         const float MinLocomotionSpeed = 1.3f;
-        public float runSpeed = 4.2f;
+        public float runSpeed = 4.6f;
 
         // ===== 三档移速：走 / 跑 / 冲刺 =====
         //

@@ -2669,6 +2669,33 @@ namespace AdversityRoad.World
 
         // ================= 动态生命（NavMesh 烘焙后调用） =================
 
+        /// <summary>
+        /// 布置围观群众（NavMesh 烘焙后调用，与 SpawnLife 同一时机）。
+        ///
+        /// 玩家要的是"广场这类场景打起来时有一圈人在看、会议论、会喝彩"，
+        /// 而不是现有行人那样只会来回走。围观者站着不动、身体朝向战斗、
+        /// 按现场发生的事说话（见 Spectator）。
+        ///
+        /// 放在哪几处是**明确点名**的，不做全图撒点——观众席只在"有观众才合理"
+        /// 的地方成立：城市广场与街心小广场是公共场合，眼神审判走廊与债务车影
+        /// 是羞耻线上"被看着"本身就是机制的两关，围观正是那两关的主题。
+        /// 半径都取在战斗圈之外，免得群众被兵器判定扫到变成"群众参战"。
+        /// </summary>
+        public static void SpawnSpectators(WorldContext ctx)
+        {
+            if (ctx == null || ctx.zoneOrigins == null) return;
+            Place(4,  new Vector3(0, 0, 0),  22f, 14, 101);   // 城市广场（决战地）
+            Place(2,  new Vector3(0, 0, 9),  14f,  8, 102);   // 噪声街区·街心小广场
+            Place(11, new Vector3(0, 0, 0),  12f, 10, 103);   // 眼神审判走廊（羞耻线）
+            Place(10, new Vector3(0, 0, 18), 15f, 10, 104);   // 债务车影（羞耻线）
+
+            void Place(int zone, Vector3 localCenter, float radius, int count, int seed)
+            {
+                if (zone < 0 || zone >= ctx.zoneOrigins.Length) return;
+                Spectator.Ring(ctx, ctx.zoneOrigins[zone] + localCenter, radius, count, seed);
+            }
+        }
+
         public static void SpawnLife(WorldContext ctx)
         {
             var rng = new System.Random(11);

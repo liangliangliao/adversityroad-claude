@@ -999,10 +999,23 @@ namespace AdversityRoad.Player
                 // 脱战撤离：持续朝【背离这个敌人】的方向全速跑。这时玩家的意图是"走"，
                 // 不是"打"——兜底若照旧生效，镜头会扭回去盯着你正在逃离的那个敌人，
                 // 你就变成对着屏幕底部往里跑，完全违背意图。
+                // 【判据必须是意图，不能是速度——这是同一个坑的第三次】
+                //
+                // 原来是 moveSpeed > runSpeed*0.5 且背离 115°。玩家贴着 Boss 时
+                // 正被拴绳/束缚/泥潭压着速度，根本达不到这个门槛，于是"脱战"永远
+                // 不成立：镜头持续扭回去盯着 Boss，而移动是**相对镜头**的，
+                // 玩家往前推杆就一直被掰向 Boss——他的原话是"像被磁铁吸住，
+                // 无法开脱"。拿一个正被压制的量去判断"他想不想走"，必然如此。
+                //
+                // 软锁脱离、减速豁免我都已经改用摇杆方向；这里是同一条信号的
+                // 第三个用处，直接复用 PlayerController.LeaveIntent
+                //（朝背离最近敌人 100° 以上持续 0.4 秒）。摇杆不受任何封顶影响。
+                // 保留原来的速度判据作为并联条件：全速背离跑本来也该算脱战。
                 float runRef0 = player != null ? player.runSpeed : 5.2f;
-                disengaging = moveSpeed > runRef0 * 0.5f && _focusDist > 0.2f &&
-                              Vector3.Angle(Quaternion.Euler(0f, _headingAvg, 0f) * Vector3.forward,
-                                            toFoe.normalized) > 115f;
+                bool awayFast = moveSpeed > runRef0 * 0.5f && _focusDist > 0.2f &&
+                                Vector3.Angle(Quaternion.Euler(0f, _headingAvg, 0f) * Vector3.forward,
+                                              toFoe.normalized) > 115f;
+                disengaging = awayFast || (player != null && player.LeaveIntent);
                 if (Mathf.Abs(_focusScreenAng) > enemyWindow) _focusFrameT += dt;
                 else _focusFrameT = 0f;
             }

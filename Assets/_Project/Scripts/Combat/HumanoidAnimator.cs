@@ -1276,21 +1276,8 @@ namespace AdversityRoad.Combat
                 {
                     float swingLen = _poseDur > 0.02f ? _poseDur : _mecanim.ActionLength(_pose);
                     if (swingLen <= 0.01f) swingLen = 0.45f;
-                    bool sw = IsActionPose(_pose) && _pose != PoseState.Hit &&
-                              _pose != PoseState.HitHeavy && _t < swingLen;
-                    if (weaponTrail.emitting != sw)
-                    {
-                        weaponTrail.emitting = sw;
-                        // 【收招就把刀光抹掉】TrailRenderer 按【缩放时间】老化，
-                        // 而言语攻防面板、暂停、顿帧都会把 timeScale 打到 0——
-                        // 那一刻拖尾就**永远不再消失**，白色的剑痕挂在人身上不走
-                        //（玩家截图里那两片白翅膀）。停止发射时直接清点，
-                        // 不依赖它自己慢慢淡出。
-                        if (!sw) weaponTrail.Clear();
-                    }
-                    // 时间停住时也不留残迹（面板打开的那一帧可能正好在挥砍中）
-                    if (!sw && Time.timeScale < 0.01f && weaponTrail.positionCount > 0)
-                        weaponTrail.Clear();
+                    UpdateWeaponTrail(IsActionPose(_pose) && _pose != PoseState.Hit &&
+                                      _pose != PoseState.HitHeavy && _t < swingLen);
                 }
                 _mecanim.Tick(dt);
                 return;
@@ -1686,8 +1673,33 @@ namespace AdversityRoad.Combat
 
             ApplyWeaponFlourish();
 
-            if (weaponTrail != null && weaponTrail.emitting != swinging)
+            UpdateWeaponTrail(swinging);
+        }
+
+        /// <summary>
+        /// 刀光的开关与清点。
+        ///
+        /// 【为什么单独抽出来】这段逻辑此前只写在 Mecanim 那条路径上，
+        /// 程序化骨骼这条只有一句 `weaponTrail.emitting = swinging`——**没有 Clear()**。
+        /// 于是角色贰（走程序化骨骼那条）收招之后，已经吐出去的拖尾点还挂在身上：
+        /// TrailRenderer 按**缩放时间**老化，而言语攻防面板、暂停、顿帧都会把
+        /// timeScale 打到 0，那一刻拖尾就永远不再消失——玩家截图里挂在人身上的
+        /// 那两片白色带子就是它。
+        ///
+        /// 两条路径共用同一份逻辑，以后再加第三种骨骼也不会漏。
+        /// </summary>
+        void UpdateWeaponTrail(bool swinging)
+        {
+            if (weaponTrail == null) return;
+            if (weaponTrail.emitting != swinging)
+            {
                 weaponTrail.emitting = swinging;
+                // 收招就把已有的刀光抹掉，不指望它自己淡出（见上面 timeScale 的坑）
+                if (!swinging) weaponTrail.Clear();
+            }
+            // 时间停住时也不留残迹：面板/顿帧那一帧可能正好停在挥砍中间
+            if (!swinging && Time.timeScale < 0.01f && weaponTrail.positionCount > 0)
+                weaponTrail.Clear();
         }
 
         /// <summary>攻击类姿态（用更高的关节跟随系数，保证爆发相位脆快有力）。</summary>
@@ -1801,7 +1813,13 @@ namespace AdversityRoad.Combat
                 // 于是"人已经能动了，画面还在滚"——读作闪避迟钝。
                 case CombatState.Dodge: SetPose(DodgePose, DodgeDuration); break;
                 case CombatState.HitReaction: SetPose(HitPose); break;
-                case CombatState.MentalStagger: SetPose(PoseState.Stagger); break;
+                // 【心理失守用"稳住自己"，不用踉跄】
+                // 高反刍会把专注抽干，专注归零即触发短暂失守，而它原来落到
+                // PoseState.Stagger——首选片段是 Stunned，那是一段大幅度踉跄，
+                // 玩家读作"倒地"，而且"太明显"。
+                // 心理上的失守不是身体被打倒，是**撑住**：换成防御姿态，
+                // 人架起来稳一下，既看得出"这一下受了影响"，又不是被打趴。
+                case CombatState.MentalStagger: SetPose(PoseState.Guard); break;
                 case CombatState.Knockdown: SetPose(PoseState.Knockdown); break;
                 case CombatState.InnerPowerCast: SetPose(PoseState.Cast); break;
                 case CombatState.Death: SetPose(PoseState.Death); break;

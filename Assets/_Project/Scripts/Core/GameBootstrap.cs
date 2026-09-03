@@ -79,6 +79,9 @@ namespace AdversityRoad.Core
             SpawnChapterEnemy();
             SpawnZoneMinions();
             ZoneBuilder.SpawnLife(_world);
+            // 围观群众：与行人同一时机（都要等 NavMesh 烘焙完），但两者是两回事——
+            // 行人到处走，围观者站着看戏。见 ZoneBuilder.SpawnSpectators。
+            ZoneBuilder.SpawnSpectators(_world);
             OpenWorldBuilder.SpawnCityNpcs(_world);   // 有日程的市民：城市先是有人住的地方
             SpawnShadowGuardianIfEarned();
             EnsureV2Systems();
