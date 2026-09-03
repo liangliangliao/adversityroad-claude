@@ -25,7 +25,7 @@ jobs:
       - name: C# 静态检查
         run: |
           set -e
-          for t in cslint csquote csident csobsolete csmember csshadow; do
+          for t in cslint csquote csident csobsolete csmember csshadow uioverlap; do
             echo "===== $t ====="
             python3 tools/$t.py
           done

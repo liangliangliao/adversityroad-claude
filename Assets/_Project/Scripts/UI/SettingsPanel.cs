@@ -90,7 +90,10 @@ namespace AdversityRoad.UI
                 if (cam != null) cam.autoFollow = !cam.autoFollow;
                 Refresh();
             });
-            _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -560, () =>
+            // 【-560 这一行本来是三个控件叠在一起】骨骼后处理/单片段两颗 545 宽的
+            // 按钮在 -564，把这颗 760 宽的整个盖住了——"调试模式"一直点不到。
+            // 挪到 -650 与 -822 之间那段空档里。
+            _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -736, () =>
             {
                 GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
                 Refresh();
@@ -242,20 +245,27 @@ namespace AdversityRoad.UI
                 }, 22);
             _logTarget = UiUtil.MakeText(_panel.transform, "LogTarget", "", 18,
                 TextAnchor.MiddleCenter, new Color(0.75f, 1f, 0.75f, 0.75f));
-            UiUtil.SetRect(_logTarget, new Vector2(0.5f, 1f), new Vector2(0, -1226),
+            // 【挪到面板最底下】这两行日志说明本来压在色彩分级那一行的按钮底下
+            //（截图里按钮背后那串灰色的 /storage/… 就是它），互相盖着都看不清。
+            UiUtil.SetRect(_logTarget, new Vector2(0.5f, 1f), new Vector2(0, -1662),
                 new Vector2(1000, 34));
 
             _logPath = UiUtil.MakeText(_panel.transform, "LogPath", "", 18,
                 TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.55f));
-            UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1266),
+            UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1698),
                 new Vector2(1000, 34));
 
             // 真实色彩：关掉"改颜色"的那一层分级，看模型的本色。
             // 玩家说"模型放进游戏颜色跟原来不一样"——查下来贴图全对，
             // 改颜色的是全局 + 分区两层 ColorAdjustments（见 PostGrading）。
             // 这是美术设计，不该我替他删，给开关让他自己比。
+            // 【并排一行，不要另起一行】面板高 1720，底部到"删除全部数据"只剩
+            // 84 像素余量；再往下加一行放不下，硬加就会像上一版那样：
+            // 本色对照放在 -1396，而"跳过当前子章"在 -1388，两个 70 高的按钮
+            // 只差 8 像素完全重叠，而且它比我后创建，直接把我这颗盖没了——
+            // 玩家找不到开关，不是没加，是压在别人底下。
             _gradingBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -1244), new Vector2(760, 70),
+                new Vector2(-195, -1244), new Vector2(370, 70),
                 new Color(0.3f, 0.4f, 0.5f, 0.95f), () =>
                 {
                     Core.PostGrading.Enabled = !Core.PostGrading.Enabled;
@@ -265,7 +275,7 @@ namespace AdversityRoad.UI
             // 模型本色对照（中性白光）：主光/补光/雾/分级全关，角色身上剩下的
             // 就是底色贴图本身。这不是画面模式，是一次判定——见 PostGrading.NeutralLight。
             _neutralBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -1396), new Vector2(760, 70),
+                new Vector2(195, -1244), new Vector2(370, 70),
                 new Color(0.42f, 0.42f, 0.3f, 0.95f), () =>
                 {
                     Core.PostGrading.NeutralLight = !Core.PostGrading.NeutralLight;
@@ -285,7 +295,7 @@ namespace AdversityRoad.UI
 
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
-                new Vector2(0.5f, 1f), new Vector2(0, -1388), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -1396), new Vector2(760, 70),
                 new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
                 {
                     var story = StoryManager.Instance;
@@ -411,18 +421,14 @@ namespace AdversityRoad.UI
             if (_gradingBtn != null)
             {
                 _gradingBtn.GetComponentInChildren<Text>().text =
-                    Core.PostGrading.Enabled
-                        ? "画面色彩分级：开（分区氛围）"
-                        : "画面色彩分级：关（模型本色）";
+                    Core.PostGrading.Enabled ? "色彩分级：开（氛围）" : "色彩分级：关";
                 _gradingBtn.GetComponent<Image>().color =
                     Core.PostGrading.Enabled ? On : Off;
             }
             if (_neutralBtn != null)
             {
                 _neutralBtn.GetComponentInChildren<Text>().text =
-                    Core.PostGrading.NeutralLight
-                        ? "模型本色对照：开（中性白光·用来比原图）"
-                        : "模型本色对照：关（正常打光）";
+                    Core.PostGrading.NeutralLight ? "本色对照：开（中性光）" : "本色对照：关";
                 _neutralBtn.GetComponent<Image>().color =
                     Core.PostGrading.NeutralLight ? On : Off;
             }
