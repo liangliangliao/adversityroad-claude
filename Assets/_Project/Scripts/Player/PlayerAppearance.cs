@@ -416,6 +416,7 @@ namespace AdversityRoad.Player
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
                 FixWeaponMaterials(w);   // 接回武器贴图（修白模）
+                Combat.TextureFidelity.EnsureMipmaps(w);   // 补 mip 链（外部模型通用）
 
                 // 带剑鞘的成套武器（如 scene 剑）：默认收刀挂左手、按拔刀键出鞘到右手。
                 // 剑鞘识别：先按名(scabbard/sheath/鞘)——但导入器可能不保留节点名
@@ -946,6 +947,7 @@ namespace AdversityRoad.Player
             var bp = Object.Instantiate(prefab, holder, false);
             bp.name = "Model";
             FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 有贴图才接线
+            Combat.TextureFidelity.EnsureMipmaps(bp);          // 补 mip 链（外部模型通用）
             // 不做任何染色：保持模型本色（本背包原型即白色，按用户要求恢复本色）
             FitBackpack(holder, back, model);
             DisableSelfShadow();

@@ -70,6 +70,10 @@ namespace AdversityRoad.EditorTools
                             if (t != null)
                                 sb.Append("  ").Append(t.width).Append('x').Append(t.height)
                                   .Append("  格式=").Append(t.format)
+                                  // graphicsFormat 才看得出色彩空间（…_SRGB 结尾＝sRGB）。
+                                  // 法线/粗糙度/AO 若是 sRGB 就是错的——但那要先看清楚，
+                                  // 不能顺手改：改错色彩空间比缺 mip 更毁颜色。
+                                  .Append("  GPU格式=").Append(t.graphicsFormat)
                                   .Append("  mip=").Append(t.mipmapCount);
                             sb.Append('\n');
                         }
@@ -112,6 +116,38 @@ namespace AdversityRoad.EditorTools
             }
 
             // 贴图自身的导入结果（.meta 提交之后应当与我们写进去的一致）
+            // mip 链补完之后是什么样：这一项直接回答玩家的"分辨率被降低了"。
+            // 角色·贰进来时 mip=1（诊断已证），缩小采样必然糊；补完应当是 mip=11。
+            sb.Append("[CIDIAG][材质] --- 补 mip 链之后（TextureFidelity）---\n");
+            foreach (var name in new[] { "PlayerModel2" })
+            {
+                var prefab = Resources.Load<GameObject>("Characters/" + name);
+                if (prefab == null) continue;
+                var inst = Object.Instantiate(prefab);
+                try
+                {
+                    Combat.TextureFidelity.EnsureMipmaps(inst);
+                    foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null || m.shader == null) continue;
+                            int pc = m.shader.GetPropertyCount();
+                            for (int i = 0; i < pc; i++)
+                            {
+                                if (m.shader.GetPropertyType(i) !=
+                                    UnityEngine.Rendering.ShaderPropertyType.Texture) continue;
+                                var t = m.GetTexture(m.shader.GetPropertyName(i)) as Texture2D;
+                                if (t == null) continue;
+                                sb.Append("  ").Append(m.name).Append('/')
+                                  .Append(m.shader.GetPropertyName(i)).Append(" = ")
+                                  .Append(t.name).Append("  mip=").Append(t.mipmapCount)
+                                  .Append("  格式=").Append(t.format).Append('\n');
+                            }
+                        }
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+
             sb.Append("[CIDIAG][材质] --- 贴图导入结果 ---\n");
             foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project/Resources/Characters" }))
             {
