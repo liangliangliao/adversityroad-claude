@@ -1424,6 +1424,10 @@ namespace AdversityRoad.Player
         /// 也就是说本文件下面所有的移动代码一行都不执行。</summary>
         public string DbgCombatState => _combat != null ? _combat.Current.ToString() : "无";
         public bool DbgHardLocked => _combat != null && _combat.IsHardLocked;
+
+        /// <summary>水平位移这一帧是不是完全不归摇杆管（硬锁招式期间）。
+        /// 镜头用它判断"现在转镜头会不会把玩家带偏"——不会，就可以放心取景。</summary>
+        public bool MotionLocked => _combat != null && _combat.IsHardLocked;
         /// <summary>诊断：摇杆方向与身体正面的夹角（度），也就是"还要转多少"。</summary>
         public float DbgTurnNeed { get; private set; }
         /// <summary>诊断：当前转向上限对应的横向加速度（g）。超过 1g 就不像人在跑。</summary>

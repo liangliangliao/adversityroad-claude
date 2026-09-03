@@ -114,6 +114,8 @@ namespace AdversityRoad.Player
         // 开阔度仍比原来高一档。角色占屏与视野开阔是直接对立的两个量，
         // 40% 是这条曲线上的折中点，不是"两者都要"的解。
         public float fieldOfView = 62f;
+        /// <summary>交战满档时视野角加宽多少度（只开视野，不转镜头）。</summary>
+        const float CombatFovBoost = 10f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -1043,7 +1045,20 @@ namespace AdversityRoad.Player
             // 想让镜头盯着敌人，有明确的入口——锁定（lockTarget，走上面的战斗机位
             // 分支）。那是玩家自己按的，不是系统替他决定的。
             // 松杆之后这条兜底照旧生效，"打着打着敌人不知道在哪"仍然不会发生。
-            bool freeSteering = stickHeld && lockTarget == null;
+            // 【安全窗口的判据是"镜头转动会不会改变玩家的移动方向"，不是"在不在打"】
+            // 上一版我一刀切成"摇杆在手就不许转"，结果打起来镜头彻底不跟，
+            // 敌人整场在画面外——方向没错，手段太钝。
+            //
+            // 从 H = C + θ 直接推：镜头偏航只在【玩家正用摇杆驱动水平位移】时
+            // 才会把人带偏。那么另外三种情况下自动取景是完全安全的：
+            //   · 松杆（本来就不在走）；
+            //   · 锁定中（走的是战斗机位那一支，且移动语义本身已变成绕步）；
+            //   · 硬锁招式期间（技能/绝招/重击：移动方法在开头就 return，
+            //     水平位移归零，这时镜头爱怎么转都改不了玩家的轨迹）。
+            // 战斗中出招是高频事件，第三条等于把大量取景机会还了回来，
+            // 而且是在"玩家本来就停下来了"的那些帧上转——观感上最自然。
+            bool freeSteering = stickHeld && lockTarget == null &&
+                                !(player != null && player.MotionLocked);
             bool enemyLost = _focusEnemy != null && !manualLook && !disengaging &&
                 !freeSteering &&
                 _focusDist < CombatFollowRange &&
@@ -2161,8 +2176,14 @@ namespace AdversityRoad.Player
             // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
             var camc = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
             if (camc != null && !Presets[PresetIndex].fp)
+                // 交战时加宽视野：想让敌人留在画面里，除了转镜头，还有一个
+                // **完全没有副作用**的办法——把视野角开大。62°→72° 水平可视
+                // 范围多出约 20%，贴身缠斗时对手横移出画的概率明显下降，
+                // 而镜头一度都没转，所以不可能像自动取景那样把玩家带偏。
+                // （写在这一处：这里本来就是每帧唯一的 FOV 写者，
+                //   另起一个写者会和运镜特写抢同一个字段。）
                 camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
-                    fieldOfView + _shot.fovBias, 12f * dt);
+                    fieldOfView + _shot.fovBias + CombatFovBoost * _combatBlend, 12f * dt);
         }
 
         Camera _camComp;   // 缓存：每帧 GetComponent 没必要

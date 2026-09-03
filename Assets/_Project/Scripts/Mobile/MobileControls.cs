@@ -92,6 +92,9 @@ namespace AdversityRoad.Mobile
             AddButtonLeft("Crouch", "蹲", new Vector2(500, 170), 100, new Color(0.55f, 0.6f, 0.4f, 0.75f));
             // 锁定切换 / 拔刀收刀：右侧边缘竖排，远离连打区，避免打斗中误触
             AddButtonEdge("Lock", "锁", new Vector2(-92, -300), 84, new Color(0.75f, 0.35f, 0.55f, 0.62f));
+            // 有敌人在追你、又不在画面里、你还没锁定——这颗键自己亮起来（见 LockButtonHint）
+            var lockBtn = transform.Find("Btn_Lock");
+            if (lockBtn != null) lockBtn.gameObject.AddComponent<LockButtonHint>();
             AddButtonEdge("Sheathe", "拔刀", new Vector2(-92, -404), 84, new Color(0.55f, 0.55f, 0.62f, 0.62f));
 
             // 「术」生效时把六个核心键的字面换成实际装备的技能名（可发现性）
