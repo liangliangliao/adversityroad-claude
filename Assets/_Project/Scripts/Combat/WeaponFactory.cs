@@ -141,13 +141,15 @@ namespace AdversityRoad.Combat
             tipGo.transform.localPosition = localPos;
             var trail = tipGo.AddComponent<TrailRenderer>();
             trail.time = 0.32f;
-            trail.startWidth = 0.28f;   // 加宽刀光：剑花轨迹清晰可见
+            trail.startWidth = 0.18f;   // 刀光宽度：看得见轨迹，又不至于糊成一条带子
             trail.endWidth = 0f;
             trail.minVertexDistance = 0.03f;
             trail.emitting = false;
-            // 刀光走【加色半透明】能量材质而不是不透明 Lit：不透明会画成一条实心
-            // 白蓝色带子（像贴了张纸），加色才读作"刃划过空气留下的光"。
-            trail.material = CombatFeedback.EnergyMaterial(color, 0.75f);
+            // 刀光材质见 CombatFeedback.TrailMaterial：无光照 + 顺顶点色 + 普通 alpha。
+            // 【上一版为什么是白的】用的是 EnergyMaterial —— URP/Lit 改成加色混合。
+            // URP/Lit 不读顶点色（尾端淡出画不出来），又受光照，加色叠在白天场景上
+            // 直接饱和成纯白。所有兵器都走这一条，所以玩家说"都会出现白痕"。
+            trail.material = CombatFeedback.TrailMaterial(color, 0.6f);
             // 自管兜底：没人驱动就自己关掉并清点，换父节点造成的瞬移也自己清。
             // 见 WeaponTrailGuard——白色剑痕修过两轮都还有漏网路径，
             // 根因是拖尾的生命周期不归驱动方管。

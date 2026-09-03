@@ -135,6 +135,7 @@ namespace AdversityRoad.EditorTools
             try
             {
                 DiagWeapon(sb, "scene");
+                DiagTrail(sb);
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
@@ -192,6 +193,24 @@ namespace AdversityRoad.EditorTools
         }
 
         // ---------- 武器（带鞘套件） ----------
+        /// <summary>刀光拖尾用的是哪条着色器、什么混合方式。
+        /// 玩家报的"所有兵器都有白痕"根因就在这里：Lit + 加色 + 受光照，
+        /// 白天场景一叠就饱和成纯白，而且 Lit 不读顶点色、尾端根本不淡出。
+        /// 换成无光照 + 顶点色 + 普通 alpha 之后，这一行要能证明真的换过来了。</summary>
+        static void DiagTrail(StringBuilder sb)
+        {
+            var m = Combat.CombatFeedback.TrailMaterial(new Color(0.8f, 0.9f, 1f), 0.6f);
+            sb.Append("[CIDIAG][刀光] 着色器=")
+              .Append(m != null && m.shader != null ? m.shader.name : "null")
+              .Append("  受光照=")
+              .Append(m != null && m.shader != null && m.shader.name.Contains("Lit") &&
+                      !m.shader.name.Contains("Unlit") ? "是（不对）" : "否")
+              .Append("  颜色=").Append(m != null ? m.color.ToString() : "-")
+              .Append("  渲染队列=").Append(m != null ? m.renderQueue : -1)
+              .Append('\n');
+            if (m != null) Object.DestroyImmediate(m);
+        }
+
         static void DiagWeapon(StringBuilder sb, string name)
         {
             GameObject prefab = null;

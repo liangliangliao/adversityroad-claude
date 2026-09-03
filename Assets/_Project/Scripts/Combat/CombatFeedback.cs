@@ -46,6 +46,43 @@ namespace AdversityRoad.Combat
         /// <summary>对外提供能量光材质（半透明加色）：护体屏障等可视化不再用实心色块。</summary>
         public static Material EnergyMaterial(Color c, float alpha) => MatFX(c, alpha);
 
+        /// <summary>拖尾（刀光）走的着色器名，供 CI 诊断核对——挑到哪一条不该靠猜。</summary>
+        public static string TrailShaderName { get; private set; } = "（尚未创建）";
+
+        /// <summary>
+        /// 刀光拖尾专用材质。
+        ///
+        /// 【为什么不能沿用 EnergyMaterial】那条路是 URP/Lit 改混合模式：
+        ///   1) URP/Lit **不读顶点色**。而 TrailRenderer 的"越靠尾端越透明"
+        ///      正是写在顶点色里的——用 Lit 画出来的是一条**通体等亮**的实心带子，
+        ///      根本不会淡出。
+        ///   2) 它是加色混合（SrcAlpha + One）且**受光照**。白天场景本来就亮，
+        ///      一条 0.28 米宽、0.75 不透明度的加色带叠上去直接饱和到纯白——
+        ///      这就是玩家在截图里看到的"剑上明显的白色痕迹"，
+        ///      而且每把兵器都走这一条，所以**所有武器都有**。
+        ///
+        /// 改用 Sprites/Default 一类的**无光照 + 顺顶点色 + 普通 alpha 混合**着色器：
+        /// 不受光照就不会被照亮到过曝，普通 alpha 混合数学上不可能叠出白，
+        /// 顶点色生效之后刃尖到尾端的淡出才真的画得出来。
+        /// 这几条着色器都在"始终包含"清单里（GraphicsSettings），不会被打包裁掉。
+        /// </summary>
+        public static Material TrailMaterial(Color c, float alpha)
+        {
+            Shader sh = Shader.Find("Sprites/Default")
+                     ?? Shader.Find("UI/Default")
+                     ?? Shader.Find("Universal Render Pipeline/Particles/Unlit")
+                     ?? Shader.Find("Universal Render Pipeline/Unlit");
+            if (sh == null) return MatFX(c, alpha * 0.5f);   // 兜底：至少把亮度砍一半
+            TrailShaderName = sh.name;
+            var m = new Material(sh);
+            Color cc = c; cc.a = alpha;
+            m.color = cc;
+            if (m.HasProperty("_Color")) m.SetColor("_Color", cc);
+            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", cc);
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            return m;
+        }
+
         /// <summary>特效材质：半透明加色（发光感），用于刀光/冲击环等——避免实心大色块。</summary>
         static Material MatFX(Color c, float alpha)
         {
