@@ -146,6 +146,11 @@ namespace AdversityRoad.EditorTools
             }
             sb.Append("===== [CIDIAG] 诊断结束 =====\n");
             Debug.Log(sb.ToString());
+            // 【也写一份文件】Unity 的 stdout 里混着几万行资产导入流水，
+            // 想从 CI 日志里翻出这段报告要拉几 MB 日志。落成一个纯文本文件，
+            // 工作流里 cat 一下即可——同一份内容，读起来是几十行而不是几万行。
+            try { System.IO.File.WriteAllText("cidiag.txt", sb.ToString()); }
+            catch (System.Exception e) { Debug.LogWarning("[CIDIAG] 报告落盘失败：" + e.Message); }
             EditorApplication.Exit(exit);
         }
 
