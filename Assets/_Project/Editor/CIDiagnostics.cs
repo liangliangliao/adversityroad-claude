@@ -63,6 +63,33 @@ namespace AdversityRoad.EditorTools
                     }
                 }
             }
+            // 接线之后是什么样：在 CI 里实例化一份、跑一遍运行时的 WireSpecularMaps，
+            // 把结果打出来。这样"高光图有没有真的接上"在**构建阶段**就能确认，
+            // 不必再让玩家装包看一眼再回来告诉我——这一条我已经空跑两轮了。
+            sb.Append("[CIDIAG][材质] --- 运行时接线后（WireSpecularMaps）---\n");
+            foreach (var name in new[] { "PlayerModel", "EnemyModel" })
+            {
+                var prefab = Resources.Load<GameObject>("Characters/" + name);
+                if (prefab == null) continue;
+                var inst = Object.Instantiate(prefab);
+                try
+                {
+                    Combat.MecanimCharacter.WireSpecularMaps(inst);
+                    foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null || !m.HasProperty("_SpecGlossMap")) continue;
+                            var t = m.GetTexture("_SpecGlossMap");
+                            sb.Append("  ").Append(name).Append('/').Append(m.name)
+                              .Append("  _SpecGlossMap=").Append(t == null ? "（仍为空）" : t.name)
+                              .Append("  高光工作流=")
+                              .Append(m.IsKeywordEnabled("_SPECULAR_SETUP") ? "开" : "关")
+                              .Append('\n');
+                        }
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+
             // 贴图自身的导入结果（.meta 提交之后应当与我们写进去的一致）
             sb.Append("[CIDIAG][材质] --- 贴图导入结果 ---\n");
             foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project/Resources/Characters" }))

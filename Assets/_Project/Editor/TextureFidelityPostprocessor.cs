@@ -38,9 +38,12 @@ namespace AdversityRoad.EditorTools
 
         static readonly string[] NormalKeys =
             { "normal", "_nrm", "_norm", "normalmap", "_n." };
-        // 线性数据（不是颜色）：按 sRGB 解码就会算错光照
+        // 线性数据（不是颜色）：按 sRGB 解码就会算错光照。
+        // 【specular 不在这里】URP 的**高光工作流**里 _SpecGlossMap 的 RGB 是
+        // 高光**颜色**，该走 sRGB；只有金属度工作流的 metallic/roughness 遮罩
+        // 才是纯线性数据。我一开始按后者的习惯把 specular 归成线性，是错的。
         static readonly string[] LinearKeys =
-            { "specular", "metallic", "metalness", "roughness", "gloss",
+            { "metallic", "metalness", "roughness", "gloss",
               "_ao", "occlusion", "height", "displacement", "mask", "_orm" };
 
         static bool Has(string path, string[] keys)
