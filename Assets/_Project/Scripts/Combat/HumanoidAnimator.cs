@@ -37,6 +37,14 @@ namespace AdversityRoad.Combat
         bool _crouch;
         bool _grounded = true;
         bool _ready;   // 临战：站立时进入格斗预备架势（而非松垮的垂手待机）
+        // 围观姿态（只对程序骨架的路人/围观者有意义）：0=不围观 1=观望 2=欢呼。
+        // 【为什么不复用 PoseState】围观者用的是 HumanoidRig 程序骨架，招式姿态
+        // switch 里没有 Flinch 这一档——上一轮给"叫好"派了 PoseState.Flinch，
+        // 在程序骨架上就是一条**空指令**，人一动不动，玩家看到的正是这个。
+        // 而 SetCombatReady 会把他们摆成格斗架势：一圈看热闹的人全摆开打架的
+        // 桩子，比不动还怪。围观是站姿的一种，就写在站姿这一层。
+        int _spectate;
+        float _spectPhase;
         float _phase;
 
         // 动捕模式（Playables 驱动 Mixamo 人形）：有资源时接管，无则走下方程序化骨骼
@@ -133,6 +141,14 @@ namespace AdversityRoad.Combat
 
         /// <summary>临战状态：为真时静立会摆出格斗架势（持械/抱拳、沉桩、踮步微动）。</summary>
         public void SetCombatReady(bool ready) => _ready = ready;
+
+        /// <summary>围观站姿：mode 0=普通待机 1=观望（前倾抱臂、重心换脚、头随战场）
+        /// 2=欢呼（举臂击掌、踮跳）。phase 是每个人各自的相位偏移，一圈人不能同手同脚。</summary>
+        public void SetSpectate(int mode, float phase)
+        {
+            _spectate = mode;
+            _spectPhase = phase;
+        }
 
         /// <summary>兵器在不在手上：收刀后临战架势、蹲伏、踢击、死亡都换空手版本。</summary>
         public void SetArmed(bool armed)
@@ -1329,6 +1345,38 @@ namespace AdversityRoad.Combat
                 shRr += step * 4f * _speed01;
                 elL += Mathf.Max(0f, step) * 18f * _speed01;
                 elR += Mathf.Max(0f, -step) * 18f * _speed01;
+            }
+            else if (_spectate != 0 && _pose == PoseState.Idle && _grounded)
+            {
+                // ---------- 围观 ----------
+                float ts = Time.time + _spectPhase;
+                if (_spectate == 2)
+                {
+                    // 欢呼：双臂举过头顶，随节拍向中间合拢击掌，脚下小幅踮跳、仰头。
+                    float clap = Mathf.Abs(Mathf.Sin(ts * 7.5f));
+                    shLp = 150f + clap * 16f;  shRp = 150f + clap * 16f;
+                    shLr = 26f - clap * 20f;   shRr = -26f + clap * 20f;   // 合拢=击掌
+                    elL = elR = 28f + clap * 26f;
+                    torsoP = -6f;  headP = -9f;                            // 仰头看
+                    float hop = Mathf.Max(0f, Mathf.Sin(ts * 7.5f));
+                    pelvisY += hop * 0.06f;
+                    kneeLp = 12f + (1f - hop) * 16f;  kneeRp = kneeLp;
+                }
+                else
+                {
+                    // 观望：探身前倾、双臂抱在胸前、重心左右换脚、头缓慢扫视战场。
+                    float sway  = Mathf.Sin(ts * 0.9f);
+                    float shift = Mathf.Sin(ts * 0.55f);
+                    torsoP += 10f;
+                    headP = -6f + Mathf.Sin(ts * 1.3f) * 3f;
+                    headY = sway * 9f;
+                    shLp = 26f;  shRp = 26f;
+                    shLr = 34f;  shRr = -34f;
+                    elL = elR = 118f;                                      // 抱臂
+                    pelvisX = shift * 0.05f;
+                    hipLp = 6f + shift * 4f;   hipRp = 6f - shift * 4f;
+                    kneeLp = 14f - shift * 6f; kneeRp = 14f + shift * 6f;
+                }
             }
             else if (_ready && _pose == PoseState.Idle)
             {

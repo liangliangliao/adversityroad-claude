@@ -2684,15 +2684,31 @@ namespace AdversityRoad.World
         public static void SpawnSpectators(WorldContext ctx)
         {
             if (ctx == null || ctx.zoneOrigins == null) return;
-            Place(4,  new Vector3(0, 0, 0),  22f, 14, 101);   // 城市广场（决战地）
-            Place(2,  new Vector3(0, 0, 9),  14f,  8, 102);   // 噪声街区·街心小广场
-            Place(11, new Vector3(0, 0, 0),  12f, 10, 103);   // 眼神审判走廊（羞耻线）
-            Place(10, new Vector3(0, 0, 18), 15f, 10, 104);   // 债务车影（羞耻线）
+            // ---- 所有广场 ----
+            Place(4,  new Vector3(0, 0, 0),   22f, 14, 101);   // 城市广场（决战地）
+            Place(2,  new Vector3(0, 0, 9),   14f,  8, 102);   // 噪声街区·街心小广场
+            Place(23, new Vector3(0, 0, -14), 15f, 10, 105);   // 意志塔·塔底广场
+            // ---- 第八章 羞耻与污名线的两关（见 LegacyChapterCatalog：zone 25 / 26）----
+            // 【上一轮点错了关】我把围观摆在了 10 债务车影 / 11 眼神审判走廊，
+            // 但"羞耻章节"在剧情表里是明确的两条 arc：25 欠条长廊·未播出的广播室
+            // 与 26 二十元回声教室。玩家说的"羞耻章节的 2 个关卡"就是这两关。
+            // 长廊只有 9 米宽，一圈人会堵死走道——那一关走贴墙两排（Line）。
+            LineIn(25, new Vector3(0, 0, -2), new Vector3(0, 0, 16), 3.6f, 5, 106);
+            Place(26, new Vector3(0, 0, 2),   11f, 10, 107);   // 二十元回声教室（后排低语者）
+            // 眼神审判走廊本就是"被一群人盯着"的那一关，一并保留。
+            Place(11, new Vector3(0, 0, 0),   12f, 10, 103);
 
             void Place(int zone, Vector3 localCenter, float radius, int count, int seed)
             {
                 if (zone < 0 || zone >= ctx.zoneOrigins.Length) return;
                 Spectator.Ring(ctx, ctx.zoneOrigins[zone] + localCenter, radius, count, seed);
+            }
+
+            void LineIn(int zone, Vector3 from, Vector3 to, float side, int perSide, int seed)
+            {
+                if (zone < 0 || zone >= ctx.zoneOrigins.Length) return;
+                Spectator.Line(ctx, ctx.zoneOrigins[zone] + from,
+                               ctx.zoneOrigins[zone] + to, side, perSide, seed);
             }
         }
 

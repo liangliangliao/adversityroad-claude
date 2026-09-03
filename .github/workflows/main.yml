@@ -74,6 +74,12 @@ jobs:
           targetPlatform: StandaloneLinux64
           buildMethod: AdversityRoad.EditorTools.CIDiagnostics.Run
 
+      # 诊断报告单独打一遍：上一步的输出里混着几万行资产导入流水，
+      # 这里把 CIDiagnostics 落盘的那份纯文本原样打出来（几十行）。
+      - name: 诊断报告
+        if: always()
+        run: cat cidiag.txt || echo "（没有 cidiag.txt：诊断在写文件之前就退出了）"
+
   buildAndroid:
     runs-on: ubuntu-latest
 

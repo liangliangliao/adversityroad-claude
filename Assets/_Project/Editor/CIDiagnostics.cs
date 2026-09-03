@@ -51,8 +51,17 @@ namespace AdversityRoad.EditorTools
                         if (m == null) { sb.Append("  渲染器 ").Append(r.name).Append(" 有空材质\n"); continue; }
                         sb.Append("  材质 ").Append(m.name)
                           .Append("  shader=").Append(m.shader != null ? m.shader.name : "null").Append('\n');
+                        // 【属性名必须两套都探】上一版只探 URP/Lit 的 _BaseMap/_BumpMap…，
+                        // 于是角色·贰（Avaturn 的 .glb，走 glTFast 的
+                        // Shader Graphs/glTF-pbrMetallicRoughness）一个槽都没打印出来——
+                        // 不是槽是空的，是**属性名压根对不上**，HasProperty 全 false。
+                        // 这同时说明我前几轮针对 URP/Lit 属性名做的材质改动
+                        //（高光接线等）在角色·贰身上是彻底的空操作。
                         foreach (var prop in new[] { "_BaseMap", "_MainTex", "_BumpMap",
-                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap" })
+                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap",
+                                                     "baseColorTexture", "normalTexture",
+                                                     "metallicRoughnessTexture", "occlusionTexture",
+                                                     "emissiveTexture" })
                         {
                             if (!m.HasProperty(prop)) continue;
                             var t = m.GetTexture(prop) as Texture2D;
@@ -64,8 +73,14 @@ namespace AdversityRoad.EditorTools
                                   .Append("  mip=").Append(t.mipmapCount);
                             sb.Append('\n');
                         }
-                        if (m.HasProperty("_BaseColor"))
-                            sb.Append("    _BaseColor = ").Append(m.GetColor("_BaseColor")).Append('\n');
+                        foreach (var c in new[] { "_BaseColor", "baseColorFactor" })
+                            if (m.HasProperty(c))
+                                sb.Append("    ").Append(c).Append(" = ").Append(m.GetColor(c)).Append('\n');
+                        foreach (var f in new[] { "_Metallic", "_Smoothness",
+                                                  "metallicFactor", "roughnessFactor" })
+                            if (m.HasProperty(f))
+                                sb.Append("    ").Append(f).Append(" = ")
+                                  .Append(m.GetFloat(f).ToString("F2")).Append('\n');
                     }
                 }
             }
@@ -120,6 +135,7 @@ namespace AdversityRoad.EditorTools
             try
             {
                 DiagWeapon(sb, "scene");
+                DiagTrail(sb);
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
@@ -131,6 +147,11 @@ namespace AdversityRoad.EditorTools
             }
             sb.Append("===== [CIDIAG] 诊断结束 =====\n");
             Debug.Log(sb.ToString());
+            // 【也写一份文件】Unity 的 stdout 里混着几万行资产导入流水，
+            // 想从 CI 日志里翻出这段报告要拉几 MB 日志。落成一个纯文本文件，
+            // 工作流里 cat 一下即可——同一份内容，读起来是几十行而不是几万行。
+            try { System.IO.File.WriteAllText("cidiag.txt", sb.ToString()); }
+            catch (System.Exception e) { Debug.LogWarning("[CIDIAG] 报告落盘失败：" + e.Message); }
             EditorApplication.Exit(exit);
         }
 
@@ -172,6 +193,24 @@ namespace AdversityRoad.EditorTools
         }
 
         // ---------- 武器（带鞘套件） ----------
+        /// <summary>刀光拖尾用的是哪条着色器、什么混合方式。
+        /// 玩家报的"所有兵器都有白痕"根因就在这里：Lit + 加色 + 受光照，
+        /// 白天场景一叠就饱和成纯白，而且 Lit 不读顶点色、尾端根本不淡出。
+        /// 换成无光照 + 顶点色 + 普通 alpha 之后，这一行要能证明真的换过来了。</summary>
+        static void DiagTrail(StringBuilder sb)
+        {
+            var m = Combat.CombatFeedback.TrailMaterial(new Color(0.8f, 0.9f, 1f), 0.6f);
+            sb.Append("[CIDIAG][刀光] 着色器=")
+              .Append(m != null && m.shader != null ? m.shader.name : "null")
+              .Append("  受光照=")
+              .Append(m != null && m.shader != null && m.shader.name.Contains("Lit") &&
+                      !m.shader.name.Contains("Unlit") ? "是（不对）" : "否")
+              .Append("  颜色=").Append(m != null ? m.color.ToString() : "-")
+              .Append("  渲染队列=").Append(m != null ? m.renderQueue : -1)
+              .Append('\n');
+            if (m != null) Object.DestroyImmediate(m);
+        }
+
         static void DiagWeapon(StringBuilder sb, string name)
         {
             GameObject prefab = null;
