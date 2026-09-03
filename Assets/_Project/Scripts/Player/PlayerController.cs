@@ -317,6 +317,14 @@ namespace AdversityRoad.Player
         /// </summary>
         public float indoorPaceSpeed = 2.0f;
 
+        /// <summary>减速的下限：任何机制叠加后都不许低于它。见 MoveSpeedMultiplier。</summary>
+        const float SlowFloor = 0.6f;
+        /// <summary>玩家明确表达"我要离开"时的减速下限——比常规下限更宽。</summary>
+        const float SlowFloorLeaving = 0.85f;
+        /// <summary>背离威胁推杆多久算"我要离开"（秒）。</summary>
+        const float LeaveIntentTime = 0.4f;
+        float _leaveIntentT;
+
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier
         {
@@ -330,7 +338,26 @@ namespace AdversityRoad.Player
                     if (kv.Value < m) m = kv.Value;
                 }
                 foreach (var d in _slowDead) _slowSources.Remove(d);
-                return Mathf.Clamp(m, 0.05f, 1f);
+                // ===== 减速有下限：任何机制都不许把玩家钉在原地 =====
+                //
+                // 玩家两次报同一件事："某些关卡会被大 Boss 强制吸住参战"、
+                // "应该可以有自主选择权是否和敌人战斗，不能强制"。
+                // 逐个去删关卡机制不对——那些拴绳、束缚、泥潭都是设计内容；
+                // 错的是它们**没有共同的下限**：追问者拴绳 0.55、法庭束缚、
+                // 泥潭减速……单看每一条都还能走，叠在一起就是走不动，
+                // 而且个别机制的释放条件一旦没触发，人就一直被拴着。
+                //
+                // 下限放在这个汇总口，一次覆盖现有和将来所有减速来源：
+                // 减速仍然是明确的代价（跑不快、拉不开距离），但**永远走得动**，
+                // 是否留下来打这一场，始终是玩家自己的选择。
+                // 0.6：走档 2.0 m/s 仍有 1.2 m/s，比原来 0.55 的 1.1 快不了太多，
+                // 但配合下面那条"想走就一定能走"的豁免，人一定拉得开距离。
+                m = Mathf.Max(m, SlowFloor);
+                // 【想走就一定能走】朝着背离最近威胁的方向持续推杆时，减速再减半档：
+                // 这一条才是"自主选择权"的落点——玩家表达了"我要走"，
+                // 系统就不该再用减速把他按住。
+                if (_leaveIntentT >= LeaveIntentTime) m = Mathf.Max(m, SlowFloorLeaving);
+                return Mathf.Clamp(m, SlowFloor, 1f);
             }
             // 兼容旧写法：写 1 视为"清空我造成的减速"，写小于 1 视为一条匿名减益。
             // 新代码请直接用 SetSlow / ClearSlow，把来源说清楚。
@@ -770,6 +797,11 @@ namespace AdversityRoad.Player
             Vector3 moveDir = stickDir;
 
             // 锁定面向的目标（决定本帧是"横移"还是"朝哪走朝哪转"）
+            // "我要离开"的意图：朝着背离最近敌人的方向持续推杆。
+            // 与软锁脱离用的是同一个信号——摇杆方向，不受任何封顶影响。
+            // 它同时解开减速下限（见 MoveSpeedMultiplier），于是"想走就一定走得掉"。
+            UpdateLeaveIntent(moveDir, dt);
+
             // 传摇杆方向而不是速度：脱离软锁的依据必须是玩家的意图，
             // 而锁定期间速度是被本状态自己封顶的（见 SoftFaceTarget 里的推导）。
             Transform face = FacingTarget(dt, moveDir);
@@ -1296,6 +1328,40 @@ namespace AdversityRoad.Player
             _forceFace = t;
             _forceFaceUntil = Time.time + Mathf.Clamp(seconds, 0.05f, 0.6f);
         }
+
+        /// <summary>
+        /// 判定玩家是不是在表达"我要离开这场战斗"。
+        ///
+        /// 玩家的原话："应该可以有自主选择权是否和敌人战斗，不能强制"。
+        /// 那就需要一个能代表"选择"的信号，而它只能是**摇杆方向**：
+        /// 速度会被拴绳、束缚、泥潭压住，用速度判等于让压住他的机制自己决定
+        /// 他有没有想走（我在软锁那条上已经踩过一次这个坑，造成了死锁）。
+        ///
+        /// 判据：朝着背离最近敌人 100° 以上，持续 LeaveIntentTime 秒。
+        /// 战斗里的后撤、绕背都是短促的，不会连续 0.4 秒保持背离。
+        /// </summary>
+        void UpdateLeaveIntent(Vector3 intent, float dt)
+        {
+            if (intent.sqrMagnitude <= 0.01f) { _leaveIntentT = 0f; return; }
+            Transform near = null;
+            float best = float.MaxValue;
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+            {
+                if (e == null || e.State == AI.EnemyState.Dead) continue;
+                Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                float sq = d.sqrMagnitude;
+                if (sq < best) { best = sq; near = e.transform; }
+            }
+            if (near == null) { _leaveIntentT = 0f; return; }
+            Vector3 to = near.position - transform.position; to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f) { _leaveIntentT = 0f; return; }
+            float away = Vector3.Angle(intent.normalized, to.normalized);
+            if (away > 100f) _leaveIntentT += dt;
+            else _leaveIntentT = 0f;
+        }
+
+        /// <summary>诊断：玩家是否正在表达"我要离开"（减速下限已放宽）。</summary>
+        public bool LeaveIntent => _leaveIntentT >= LeaveIntentTime;
 
         /// <summary>诊断：这一帧的目标速度矢量模长（m/s）。</summary>
         public float DbgTargetVel { get; private set; }

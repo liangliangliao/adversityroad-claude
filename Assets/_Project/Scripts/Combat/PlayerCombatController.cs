@@ -1268,6 +1268,11 @@ namespace AdversityRoad.Combat
                 SnapFacing(Quaternion.LookRotation(stick));
         }
 
+        /// <summary>两次言语微反应之间的最小间隔（秒）。言语攻击是连珠炮式的，
+        /// 不节流就会一句一颤，单次再短也读作"一直在被打断"。</summary>
+        const float FlinchCooldown = 1.6f;
+        float _nextFlinch;
+
         /// <summary>一次出招最多能把朝向掰过去多少度（玩家没在推杆时）。</summary>
         const float AttackFaceSnapMax = 30f;
 
@@ -1787,9 +1792,20 @@ namespace AdversityRoad.Combat
                         // 平时挨骂在画面上什么都不发生。玩家要的是"确实有反应，
                         // 让他能感受到"——所以微反应对每一次没被完全化解的言语攻击都给。
                         var poser = GetComponent<HumanoidAnimator>();
-                        // 时长交给片段自己（表里已经截到前 32% 且 1.7 倍速），
-                        // 这里再传一个 duration 只会和片段长度打架。
-                        if (poser != null) poser.SetPose(PoseState.Flinch);
+                        // ===== 微反应还要更小、而且不能连着来 =====
+                        //
+                        // 玩家第三次说"反应太大"。前两次我调的是片段本身
+                        //（先是把倍速当时长填错、放慢了它，再是 1.7 倍速截前 32%）。
+                        // 这次连**频率**一起收：言语攻击是连珠炮式的，一句接一句，
+                        // 每句都颤一下，累积起来就还是"一直在被打断"，
+                        // 哪怕单次已经很短。
+                        // 片段这一版再收到 2.1 倍速、只取前 20%（约 0.1 秒的一颤），
+                        // 并加 FlinchCooldown 的节流：一段话里只颤第一下。
+                        if (poser != null && Time.time >= _nextFlinch)
+                        {
+                            _nextFlinch = Time.time + FlinchCooldown;
+                            poser.SetPose(PoseState.Flinch);
+                        }
 
                         // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
                         if (staggered)

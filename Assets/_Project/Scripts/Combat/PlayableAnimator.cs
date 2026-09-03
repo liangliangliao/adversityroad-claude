@@ -168,7 +168,7 @@ namespace AdversityRoad.Combat
             // 一段受击反应的前三分之一就是"身子一颤"，后面那大半是站稳、
             // 回位、缓冲，那部分才是"大反应"的来源，直接截掉。
             // 首选 Hit Reaction 而不是 Stagger 首选的 Stunned（大幅踉跄＝"倒地"）。
-            A(PoseState.Flinch,      1.7f,  0.02f, 0.32f, false, "hit reaction", "stunned", "dizzy"),
+            A(PoseState.Flinch,      2.1f,  0.02f, 0.20f, false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),

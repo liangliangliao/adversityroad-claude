@@ -489,6 +489,10 @@ namespace AdversityRoad.Core
             var vignette = profile.Add<Vignette>(true);
             vignette.intensity.Override(0.22f);                            // 极淡暗角聚焦（低于防晕上限）
             vignette.smoothness.Override(0.4f);
+
+            // 玩家可以整体关掉"改颜色"的那一层（见 PostGrading 的推导）：
+            // 关掉后模型呈现的是未分级的本色，用来和原始模型对比。
+            PostGrading.Apply();
         }
 
         void BakeNavMesh()

@@ -2662,6 +2662,9 @@ namespace AdversityRoad.World
                 vg.intensity.Override(m.vig);
                 vg.smoothness.Override(0.45f);
             }
+            // 分区 Volume 是建关时才生成的，生成完要把玩家的分级开关重新套一遍，
+            // 否则关掉分级的玩家一进新区又被重新上色。
+            Core.PostGrading.Apply();
         }
 
         // ================= 动态生命（NavMesh 烘焙后调用） =================

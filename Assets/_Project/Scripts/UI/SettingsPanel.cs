@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
-        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn;
+        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn;
         Button _postFxBtn, _singleClipBtn;
         Button _logBtn;
         Text _logPath, _logTarget;
@@ -250,6 +250,18 @@ namespace AdversityRoad.UI
             UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1266),
                 new Vector2(1000, 34));
 
+            // 真实色彩：关掉"改颜色"的那一层分级，看模型的本色。
+            // 玩家说"模型放进游戏颜色跟原来不一样"——查下来贴图全对，
+            // 改颜色的是全局 + 分区两层 ColorAdjustments（见 PostGrading）。
+            // 这是美术设计，不该我替他删，给开关让他自己比。
+            _gradingBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -1244), new Vector2(760, 70),
+                new Color(0.3f, 0.4f, 0.5f, 0.95f), () =>
+                {
+                    Core.PostGrading.Enabled = !Core.PostGrading.Enabled;
+                    Refresh();
+                }, 22);
+
             // 漂移自检：不用再"玩一局导出 CSV"，点一下、看屏幕上的四个数就行。
             // 脚本化的摇杆保证每次输入完全一样，两次结果才有可比性。
             UiUtil.MakeButton(_panel.transform, "漂移自检（约 18 秒，全程别碰摇杆）",
@@ -385,6 +397,15 @@ namespace AdversityRoad.UI
                     Combat.HumanoidAnimator.TurnLeanOn ? "转向倾身：开" : "转向倾身：关";
                 _leanBtn.GetComponent<Image>().color =
                     Combat.HumanoidAnimator.TurnLeanOn ? On : Off;
+            }
+            if (_gradingBtn != null)
+            {
+                _gradingBtn.GetComponentInChildren<Text>().text =
+                    Core.PostGrading.Enabled
+                        ? "画面色彩分级：开（分区氛围）"
+                        : "画面色彩分级：关（模型本色）";
+                _gradingBtn.GetComponent<Image>().color =
+                    Core.PostGrading.Enabled ? On : Off;
             }
             if (_postFxBtn != null)
             {
