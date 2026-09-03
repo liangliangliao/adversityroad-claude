@@ -148,6 +148,10 @@ namespace AdversityRoad.Combat
             // 刀光走【加色半透明】能量材质而不是不透明 Lit：不透明会画成一条实心
             // 白蓝色带子（像贴了张纸），加色才读作"刃划过空气留下的光"。
             trail.material = CombatFeedback.EnergyMaterial(color, 0.75f);
+            // 自管兜底：没人驱动就自己关掉并清点，换父节点造成的瞬移也自己清。
+            // 见 WeaponTrailGuard——白色剑痕修过两轮都还有漏网路径，
+            // 根因是拖尾的生命周期不归驱动方管。
+            tipGo.AddComponent<WeaponTrailGuard>();
             trail.startColor = color;
             trail.endColor = new Color(color.r, color.g, color.b, 0f);
             return trail;

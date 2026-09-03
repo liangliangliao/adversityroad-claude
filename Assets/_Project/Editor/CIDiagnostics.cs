@@ -14,6 +14,105 @@ namespace AdversityRoad.EditorTools
     /// </summary>
     public static class CIDiagnostics
     {
+        /// <summary>
+        /// 角色材质与贴图的真实状态。
+        ///
+        /// 玩家反复反馈"模型放进游戏就失真、颜色变质"，而我两轮修的都是**导入参数**
+        /// （sRGB / 法线类型 / 压缩），两轮都"几乎没效果"。继续拍脑袋没有意义：
+        /// 角色模型是直接从 FBX 实例化的，材质全程没有被代码碰过，所以真相只在
+        /// 三个地方——用的什么 shader、哪几个贴图槽真的被赋值了、贴图进来之后
+        /// 是什么格式/尺寸/色彩空间。把这三样打进 CI 日志，一次就能定死。
+        ///
+        /// 尤其要看 _BumpMap：如果它压根是空的，那我把法线图改成 NormalMap 类型
+        /// 当然"没效果"——因为那张图根本没被材质用上，问题在 FBX 的材质描述里。
+        /// </summary>
+        static void DiagCharacterMaterials(StringBuilder sb)
+        {
+            sb.Append("\n----- [CIDIAG][材质] 角色模型的材质与贴图 -----\n");
+            // 【必须把 PlayerModel2 一起打出来】角色·贰是 Avaturn 导出的 .glb，
+            // 材质由 glTFast 生成、贴图**内嵌在文件里**——和 maria/Paladin 那套
+            // "FBX + 独立 PNG" 完全是两条导入路径。我前几轮修的 sRGB / 法线类型 /
+            // ASTC / 高光接线全都作用在后者上，一条都碰不到 .glb，
+            // 而玩家拿来对比原图的正是角色·贰。诊断漏了它，就等于一直在看错对象。
+            foreach (var name in new[] { "PlayerModel", "PlayerModel2", "EnemyModel" })
+            {
+                var prefab = Resources.Load<GameObject>("Characters/" + name);
+                if (prefab == null)
+                {
+                    sb.Append("[CIDIAG][材质] 没有 Characters/").Append(name)
+                      .Append("（.glb 若没被 glTFast 接管，这里就是 null，角色会回退到壹）\n");
+                    continue;
+                }
+                sb.Append("[CIDIAG][材质] === ").Append(name).Append(" ===\n");
+                foreach (var r in prefab.GetComponentsInChildren<Renderer>(true))
+                {
+                    foreach (var m in r.sharedMaterials)
+                    {
+                        if (m == null) { sb.Append("  渲染器 ").Append(r.name).Append(" 有空材质\n"); continue; }
+                        sb.Append("  材质 ").Append(m.name)
+                          .Append("  shader=").Append(m.shader != null ? m.shader.name : "null").Append('\n');
+                        foreach (var prop in new[] { "_BaseMap", "_MainTex", "_BumpMap",
+                                                     "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap" })
+                        {
+                            if (!m.HasProperty(prop)) continue;
+                            var t = m.GetTexture(prop) as Texture2D;
+                            sb.Append("    ").Append(prop).Append(" = ")
+                              .Append(t == null ? "（空）" : t.name);
+                            if (t != null)
+                                sb.Append("  ").Append(t.width).Append('x').Append(t.height)
+                                  .Append("  格式=").Append(t.format)
+                                  .Append("  mip=").Append(t.mipmapCount);
+                            sb.Append('\n');
+                        }
+                        if (m.HasProperty("_BaseColor"))
+                            sb.Append("    _BaseColor = ").Append(m.GetColor("_BaseColor")).Append('\n');
+                    }
+                }
+            }
+            // 接线之后是什么样：在 CI 里实例化一份、跑一遍运行时的 WireSpecularMaps，
+            // 把结果打出来。这样"高光图有没有真的接上"在**构建阶段**就能确认，
+            // 不必再让玩家装包看一眼再回来告诉我——这一条我已经空跑两轮了。
+            sb.Append("[CIDIAG][材质] --- 运行时接线后（WireSpecularMaps）---\n");
+            foreach (var name in new[] { "PlayerModel", "PlayerModel2", "EnemyModel" })
+            {
+                var prefab = Resources.Load<GameObject>("Characters/" + name);
+                if (prefab == null) continue;
+                var inst = Object.Instantiate(prefab);
+                try
+                {
+                    Combat.MecanimCharacter.WireSpecularMaps(inst);
+                    foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+                        foreach (var m in r.sharedMaterials)
+                        {
+                            if (m == null || !m.HasProperty("_SpecGlossMap")) continue;
+                            var t = m.GetTexture("_SpecGlossMap");
+                            sb.Append("  ").Append(name).Append('/').Append(m.name)
+                              .Append("  _SpecGlossMap=").Append(t == null ? "（仍为空）" : t.name)
+                              .Append("  高光工作流=")
+                              .Append(m.IsKeywordEnabled("_SPECULAR_SETUP") ? "开" : "关")
+                              .Append('\n');
+                        }
+                }
+                finally { Object.DestroyImmediate(inst); }
+            }
+
+            // 贴图自身的导入结果（.meta 提交之后应当与我们写进去的一致）
+            sb.Append("[CIDIAG][材质] --- 贴图导入结果 ---\n");
+            foreach (var guid in AssetDatabase.FindAssets("t:Texture2D", new[] { "Assets/_Project/Resources/Characters" }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var ti = AssetImporter.GetAtPath(path) as TextureImporter;
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (ti == null || tex == null) continue;
+                sb.Append("  ").Append(System.IO.Path.GetFileName(path))
+                  .Append("  类型=").Append(ti.textureType)
+                  .Append("  sRGB=").Append(ti.sRGBTexture ? "是" : "否")
+                  .Append("  上限=").Append(ti.maxTextureSize)
+                  .Append("  实际=").Append(tex.width).Append('x').Append(tex.height)
+                  .Append("  格式=").Append(tex.format).Append('\n');
+            }
+        }
+
         public static void Run()
         {
             var sb = new StringBuilder("\n===== [CIDIAG] 资产运行时诊断开始 =====\n");
@@ -23,6 +122,7 @@ namespace AdversityRoad.EditorTools
                 DiagWeapon(sb, "scene");
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
+                DiagCharacterMaterials(sb);
             }
             catch (System.Exception e)
             {

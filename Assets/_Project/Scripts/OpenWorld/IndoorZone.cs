@@ -77,7 +77,7 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         static void Evaluate()
         {
-            if (_pc == null) _pc = FindFirstObjectByType<PlayerController>();
+            if (_pc == null) _pc = AdversityRoad.Core.ActorRegistry.Player;
 
             bool inside = false;
             if (_pc != null)
@@ -94,7 +94,9 @@ namespace AdversityRoad.OpenWorld
             bool changed = inside != _inside;
             _inside = inside;
             ThirdPersonCamera.IndoorMode = inside;
-            if (_pc != null) _pc.WalkOnly = inside && _runPasses <= 0;
+            // 只写 IndoorPace，不碰 WalkOnly：WalkOnly 属于身份钉的冲刺锁，
+            // 两个功能共用一个字段时，后跑的那个会把前一个的效果抹掉。
+            if (_pc != null) _pc.IndoorPace = inside && _runPasses <= 0;
 
             if (!changed) return;
             if (inside)
@@ -126,8 +128,8 @@ namespace AdversityRoad.OpenWorld
             _frame = -1;
             ThirdPersonCamera.IndoorMode = false;
             SitController.ForceStand();   // 绝不能带着"坐着"的状态离开住处
-            _pc = FindFirstObjectByType<PlayerController>();
-            if (_pc != null) _pc.WalkOnly = false;
+            _pc = AdversityRoad.Core.ActorRegistry.Player;
+            if (_pc != null) _pc.IndoorPace = false;
         }
     }
 }

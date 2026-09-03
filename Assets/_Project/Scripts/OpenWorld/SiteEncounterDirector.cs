@@ -62,7 +62,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                var pc = FindObjectOfType<PlayerController>();
+                var pc = AdversityRoad.Core.ActorRegistry.Player;
                 if (pc == null) return;
                 _player = pc.transform;
             }

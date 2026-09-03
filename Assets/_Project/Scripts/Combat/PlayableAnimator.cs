@@ -90,7 +90,10 @@ namespace AdversityRoad.Combat
         //    做不到，会被下一招切在半路。这是刻意的取舍，理由见 MaxDrivenSpeed。
         static readonly ActionDef[] ActionMap =
         {
-            AP(PoseState.Attack,     1.75f, 0.20f, 0.68f,        "great sword slash", "great sword slash 5"),
+            // 同 idle/walk/run：工程里没有精确的 "Great Sword Slash"，这个键会在
+            // 4 个候选（Slash 3 / Slash 5 / Maria@Slash / Maria@Slash (1)）里
+            // 按字典顺序挑一个——主力轻击靠遍历顺序决定，不可接受。写死实际文件名。
+            AP(PoseState.Attack,     1.75f, 0.20f, 0.68f,        "maria wprop j j ong@great sword slash", "great sword slash 5"),
             A(PoseState.HeavyAttack, 1.5f,  0.12f, 0.78f, false, "great sword attack", "great sword slash 5", "great sword high spin attack"),
             A(PoseState.AttackUp,    1.75f, 0.20f, 0.68f, false, "great sword slash (1)", "great sword high spin attack"),
             A(PoseState.SwordThrust, 1.85f, 0.18f, 0.66f, false, "stabbing", "stab"),
@@ -155,6 +158,17 @@ namespace AdversityRoad.Combat
             // 扫堂腿=Leg Sweep（替代=空翻踢低位）。
             A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "great sword blocking", "blocking", "block", "fighting idle"),
             A(PoseState.Stagger,     0.55f, 0.10f, 1f,    false, "stunned", "dizzy", "stagger", "hit reaction"),
+            // 言语攻击的微反应。
+            //
+            // 【上一版这一行我把参数用错了】签名是 A(pose, **速度**, start, end, hold)，
+            // 我却按"时长"填了 0.42——那是把整段反应**放慢到 0.42 倍速**播放，
+            // 于是它比原来更大、更拖沓。玩家反馈"反应太大"，是我亲手放大的。
+            //
+            // 微反应要的是**快而短**：1.7 倍速播，并且只取片段的前 32%——
+            // 一段受击反应的前三分之一就是"身子一颤"，后面那大半是站稳、
+            // 回位、缓冲，那部分才是"大反应"的来源，直接截掉。
+            // 首选 Hit Reaction 而不是 Stagger 首选的 Stunned（大幅踉跄＝"倒地"）。
+            A(PoseState.Flinch,      2.1f,  0.02f, 0.20f, false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
@@ -186,7 +200,17 @@ namespace AdversityRoad.Combat
 
         readonly Animator _animator;
         PlayableGraph _graph;
-        AnimationMixerPlayable _top;      // 0=loco 1=action
+        // 分层混合器（不是普通混合器）：普通混合器只能按权重把两路**整体**加权，
+        // 于是招式一到满权重就把整个身体接管，腿也跟着演招式——而人还在跑。
+        // 分层混合器多的那一样东西是【遮罩】：可以只让第 1 层写上半身的骨骼，
+        // 下半身仍由第 0 层的移动混合驱动。这就是格斗/动作游戏里"跑动中出招"
+        // 的通行做法（Unity 侧叫 Avatar Mask + Layer，虚幻侧叫 Slot + Blend Per Bone）。
+        AnimationLayerMixerPlayable _top;   // 层0=loco（基础层） 层1=action
+
+        // 两张遮罩：全身（等于不遮）与仅上半身。切换要调用 SetLayerMaskFromAvatarMask，
+        // 没有"清除遮罩"的 API，所以"不遮"也得用一张全开的遮罩来表达。
+        AvatarMask _maskFull, _maskUpper;
+        bool _upperOnly;                    // 第 1 层当前是否只写上半身
         AnimationMixerPlayable _loco;     // 0=idle 1=combatIdle 2.. = 方向移动片段
         AnimationMixerPlayable _actions;
 
@@ -211,6 +235,9 @@ namespace AdversityRoad.Combat
             public int tier;         // 0=走档 1=跑档
             public float natSpeed;   // 该片段自身的位移速度（m/s，世界尺度）
             public float len;        // 片段时长
+            public string name;      // 片段名（只给屏幕上的调试叠层用）
+            /// <summary>步态相位偏移 [0,1)：见 MeasureGaitPhase。混合两条片段时靠它对齐迈步。</summary>
+            public float phase;
         }
 
         /// <summary>速度档数：0=走 1=慢跑 2=跑 3=冲刺。
@@ -228,10 +255,17 @@ namespace AdversityRoad.Combat
         // 每一档一圈，按角度排好序的下标；最后一圈是蹲伏
         readonly List<int>[] _rings = new List<int>[TierCount + 1];
         readonly float[] _tierW = new float[TierCount];
+        /// <summary>每档的代表自然速度（m/s，实测）。档位插值按它分段，
+        /// 而不是把 runSpeed 均分——见 Tick 里的推导。</summary>
+        readonly float[] _tierNat = new float[TierCount];
+        readonly float[] _tierNatFwd = new float[TierCount];
         float[] _dirW;               // 每帧算出来的方向权重
         // 因"同档同方向已有片段"而未接入的候选（CI 诊断打出来，见 Add）
         readonly List<string> _dropped = new List<string>();
         float _phase01;              // 共享步态相位 [0,1)
+
+        /// <summary>【二分定位开关】只播权重最高的一条方向片段，不做任何跨片段混合。</summary>
+        public static bool SingleClipLoco;
         float _moveAngle;            // 行进方向相对角色正面（度）
 
         /// <summary>动作库里有没有成套的方向移动片段（≥3 个不同方向）。
@@ -291,7 +325,10 @@ namespace AdversityRoad.Combat
         {
             var sb = new System.Text.StringBuilder();
             sb.Append("招式片段 ").Append(_actionIndex.Count).Append(" 个姿态有片段，动作层共 ")
-              .Append(_actionCount).Append(" 条").Append(NL);
+              .Append(_actionCount).Append(" 条；移动层 ").Append(_dirs.Count + DirBase)
+              .Append(" 条；本角色 AnimationClipPlayable 合计 ")
+              .Append(_actionCount + _dirs.Count + DirBase)
+              .Append("（每帧都要过一遍，场上每个角色各一份）").Append(NL);
             foreach (var kv in _actionIndex)
             {
                 sb.Append("    ").Append(kv.Key.ToString().PadRight(16));
@@ -346,6 +383,7 @@ namespace AdversityRoad.Combat
         static float WalkNaturalSpeed => MecanimCharacter.TargetHeight * 0.878f;
         static float RunNaturalSpeed => MecanimCharacter.TargetHeight * 2.098f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
+        string[] _actionName;   // 动作层每个槽位的片段名（只给调试叠层用）
         // 变体池：同一姿态的多条片段 + 轮换游标（见 AP / NextVariant）
         readonly Dictionary<PoseState, List<int>> _actionVariants =
             new Dictionary<PoseState, List<int>>();
@@ -367,6 +405,15 @@ namespace AdversityRoad.Combat
         float _fadeDur;    // 本次播放的淡入时长（0=按招式默认。坐下/躺下这类慢动作要长淡入）
 
         int _cur = -1;
+
+        // ---- 动作起播记录：给屏幕提示用（见 Tick 里的跃迁判据）----
+        int _lastNotedAction = -1;
+        /// <summary>最近一次起播的动作片段名（动作层）。没播过是空串。</summary>
+        public string LastActionClip { get; private set; } = "";
+        /// <summary>那一段计划播多久（秒）。</summary>
+        public float LastActionLen { get; private set; }
+        /// <summary>起播时刻（Time.time）。</summary>
+        public float LastActionAt { get; private set; } = -999f;
         float _actionT, _actionW, _fadeFrom;
         float _speed01;
         float _actualSpeed = -1f;   // 真实移速 m/s（<0 = 未提供，按 speed01 折算）
@@ -491,9 +538,30 @@ namespace AdversityRoad.Combat
                 if (byPath != null) byName[fileKey] = byPath;
             }
 
-            var idle = Pick(byName, "idle", "breathing idle", "standing idle");
-            var walk = Pick(byName, "walking", "great sword walk", "walk");
-            var run = Pick(byName, "running", "great sword run", "run");
+            // ===== 基础 idle / walk / run：候选必须能【精确】命中 =====
+            //
+            // 审计发现这三条——整个移动层最基础的三条——在本工程里**没有任何
+            // 精确文件名匹配**，全部落到 Pick 的"包含匹配"兜底，而那一步是在
+            // Dictionary 上遍历取第一个命中的，遍历顺序在 .NET 里并不保证。
+            // 候选池里都有什么：
+            //   "idle" → Crouching Idle / Falling Idle / Great Sword Idle /
+            //            Sleeping Idle / Maria…@Idle
+            //   "walk" → Walking Backwards / Left Strafe Walking / Start Walking / Maria…@Walking
+            //   "run"  → Running Backward / Maria…@Running
+            //
+            // 后果不是"可能选错一条片段"那么轻：walk / run 会被直接当成方向环的
+            // **0°（正前）**槽位。万一 walk 命中 Walking Backwards，实测会把它
+            // 校正到 180°，接着真正的后退片段就被判为同档同向【重复丢弃】——
+            // 走档因此没有正前方片段，而这件事不报任何错。
+            //
+            // 修法：把工程里**实际存在的文件名**放在候选链最前面，让精确匹配
+            // 稳定命中；后面的模糊候选保留，作为换素材时的兼容。
+            var idle = Pick(byName, "maria wprop j j ong@idle",
+                            "breathing idle", "standing idle", "idle");
+            var walk = Pick(byName, "maria wprop j j ong@walking",
+                            "great sword walk", "walking", "walk");
+            var run  = Pick(byName, "maria wprop j j ong@running",
+                            "great sword run", "running", "run");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
             // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
             // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。
@@ -501,6 +569,19 @@ namespace AdversityRoad.Combat
             var combatIdleUnarmed = Pick(byName, "fighting idle", "combat idle") ?? combatIdle;
 
             // 解析招式片段；目录中未被映射的片段也全部接入（动作库预览可逐个试播）
+            // ---- 方向移动片段先收集：它们要从动作层里【排除】掉 ----
+            // 这一步此前排在 actionList 之后，于是每条方向片段都被连接了**两次**：
+            // 一次进移动混合器（正经用途），一次又被下面"未映射片段全部接入"
+            // 那一轮塞进动作混合器（永远不会被播到）。
+            // 动作库从 43 条涨到 84 条之后，白连的那份从十来个变成二十来个，
+            // 每个角色的 AnimationClipPlayable 总数因此逼近 105——而场上同时有
+            // 玩家 + 若干敌人 + 路人，每一帧都要过这些 playable。
+            // 掉帧本身就会放大所有"单帧位移过大"的问题（见 CharacterMotion.StepMove），
+            // 所以这里省下的不只是动画开销。
+            var dirDefs = CollectDirectional(byName, walk, run);
+            var locoOnly = new HashSet<AnimationClip> { idle, combatIdle, combatIdleUnarmed };
+            foreach (var d in dirDefs) locoOnly.Add(d.clip);
+
             var actionList =
                 new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start, float end)>();
             var connected = new HashSet<AnimationClip>();
@@ -543,15 +624,13 @@ namespace AdversityRoad.Combat
             // 不去重会给同一个片段开两个混合器输入口。
             var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
-                if (listed.Add(kv.Value))
+                if (!locoOnly.Contains(kv.Value) && listed.Add(kv.Value))
                     actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
 
             // ---- 方向移动片段：收集 + 实测每一条的行进方向与自然速度 ----
             // 必须在**建图之前**做：实测走的是 clip.SampleAnimation，它直接往骨骼上写姿态，
             // 而图一旦接上 Animator 输出就开始争夺同一批骨骼的写入权。先量完再建图，
             // 两者不重叠。
-            var dirDefs = CollectDirectional(byName, walk, run);
-
             _graph = PlayableGraph.Create("CharAnim_" + (_graphSerial++));
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);   // 手动推进，配合 timeScale/顿帧
             var output = AnimationPlayableOutput.Create(_graph, "out", _animator);
@@ -564,6 +643,7 @@ namespace AdversityRoad.Combat
             _actionStart = new float[Mathf.Max(1, _actionCount)];
             _actionEnd = new float[Mathf.Max(1, _actionCount)];
             _actionRawLen = new float[Mathf.Max(1, _actionCount)];
+            _actionName = new string[Mathf.Max(1, _actionCount)];   // 调试叠层用
             var clipToInput = new Dictionary<AnimationClip, int>();
             for (int i = 0; i < _actionCount; i++)
             {
@@ -592,6 +672,7 @@ namespace AdversityRoad.Combat
                 _actionSpeed[i] = speed;
                 _actionHold[i] = hold;
                 _actionRawLen[i] = clip.length;
+                _actionName[i] = clip.name;
             }
 
             for (int u = 0; u < unarmedPose.Count; u++) _unarmedIndex[unarmedPose[u]] = unarmedFrom + u;
@@ -604,6 +685,16 @@ namespace AdversityRoad.Combat
                     _clipIndex[kv.Key] = ci;
 
             for (int r = 0; r < _rings.Length; r++) _rings[r] = new List<int>();
+            // 档位自然速度表要先给出**兜底值并把"最正前"距离置为无穷**，
+            // 否则 fwdness < _tierNatFwd[t] 永远不成立，整张表留在 0——
+            // 而 0 会让下面的插值把所有速度都判给最慢一档，不报任何错。
+            // 兜底值按"走 / 慢跑 / 跑 / 冲刺"的常识梯度给，实测到就覆盖掉。
+            for (int t = 0; t < TierCount; t++)
+            {
+                _tierNatFwd[t] = float.MaxValue;
+                _tierNat[t] = WalkNaturalSpeed *
+                    (t == 0 ? 1f : t == 1 ? 1.45f : t == 2 ? 2.6f : 3.1f);
+            }
             _loco = AnimationMixerPlayable.Create(_graph, DirBase + dirDefs.Count);
             ConnectLoco(idle, 0); ConnectLoco(combatIdle, 1); ConnectLoco(combatIdleUnarmed, 2);
             for (int i = 0; i < dirDefs.Count; i++)
@@ -614,26 +705,50 @@ namespace AdversityRoad.Combat
                 _dirs.Add(new LocoDir
                 {
                     cp = cp, angle = d.angle, tier = d.tier,
-                    natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length)
+                    natSpeed = d.natSpeed, len = Mathf.Max(0.05f, d.clip.length),
+                    name = d.clip.name, phase = d.phase
                 });
                 _rings[Mathf.Clamp(d.tier, 0, CrouchTier)].Add(i);
+                // 每档的"代表自然速度"取该档【最接近正前方】那条片段的实测值：
+                // 档位插值必须按片段自己的速度来分段（见 Tick 里的说明）。
+                if (d.tier >= 0 && d.tier < TierCount)
+                {
+                    float fwdness = Mathf.Abs(Mathf.DeltaAngle(d.angle, 0f));
+                    if (fwdness < _tierNatFwd[d.tier])
+                    {
+                        _tierNatFwd[d.tier] = fwdness;
+                        _tierNat[d.tier] = Mathf.Max(0.3f, d.natSpeed);
+                    }
+                }
             }
             _dirW = new float[_dirs.Count];
             foreach (var r in _rings) r.Sort((a, b) => _dirs[a].angle.CompareTo(_dirs[b].angle));
             HasDirectionalSet = CountDistinctDirections() >= 3;
             _loco.SetInputWeight(0, 1f);
 
-            _top = AnimationMixerPlayable.Create(_graph, 2);
+            _top = AnimationLayerMixerPlayable.Create(_graph, 2);
             _graph.Connect(_loco, 0, _top, 0);
             _graph.Connect(_actions, 0, _top, 1);
+            // 分层混合器的第 0 层是**基础层**，权重恒为 1；上面的层按自己的权重盖上去。
+            // 这与普通混合器的 (1-w, w) 是两回事，改类型时最容易漏掉这一处。
             _top.SetInputWeight(0, 1f);
             _top.SetInputWeight(1, 0f);
+            BuildMasks();
+            if (_maskFull != null) _top.SetLayerMaskFromAvatarMask(1, _maskFull);
 
             output.SetSourcePlayable(_top);
             Valid = true;
+            // 打一次实测相位：万一某条片段测出来是 0（找不到左脚 / 采样失败），
+            // 它就会成为唯一一条没对齐的，转到它身上时依旧抵消——那种情况只能靠
+            // 这行日志发现，画面上看不出是哪一条。
+            Debug.Log(DbgPhaseTable());
         }
 
-        struct DirDef { public AnimationClip clip; public float angle; public int tier; public float natSpeed; }
+        struct DirDef
+        {
+            public AnimationClip clip; public float angle; public int tier; public float natSpeed;
+            public float phase;      // 步态相位偏移，见 MeasureGaitPhase
+        }
 
         /// <summary>
         /// 方向移动片段的候选表。
@@ -663,9 +778,12 @@ namespace AdversityRoad.Combat
                 float nat = tier == 0 ? WalkNaturalSpeed
                           : tier == CrouchTier ? WalkNaturalSpeed * 0.6f
                           : RunNaturalSpeed;
-                bool measured = MeasureClipMotion(clip, root, hips, out float mA, out float mS);
+                bool measured = MeasureClipMotion(clip, root, hips,
+                                                  out float mA, out float mS, out float mP);
                 if (measured) { angle = mA; nat = mS; }
                 else if (requireMeasured) return;   // 斜向片段测不出方向就不用（见方法注释）
+                // 相位取值放在 if/else 链**之后**：夹在中间会把 else 与 if 拆开（CS8641）。
+                float gaitPhase = measured ? mP : 0f;
                 // 同一档、同一方向已经有片段了就跳过。动作库里难免有等价片段
                 //（Running 与 Run Forward、Jog Backward 与 Slow Jog Backwards），
                 // 两条都塞进同一圈会让 Bracket 拿到跨度为 0 的相邻对，插值出 NaN 权重。
@@ -680,7 +798,8 @@ namespace AdversityRoad.Combat
                             clip.name, TierName(tier), angle, d.clip.name));
                         return;
                     }
-                list.Add(new DirDef { clip = clip, angle = angle, tier = tier, natSpeed = nat });
+                list.Add(new DirDef { clip = clip, angle = angle, tier = tier,
+                                      natSpeed = nat, phase = gaitPhase });
             }
 
             // 档 0「走」：前 / 后 / 左 / 右
@@ -744,14 +863,19 @@ namespace AdversityRoad.Combat
         // 与是哪个角色在用无关。不缓存的话，每生成一个敌人就要把整套移动片段
         // 重新采样一遍（每次两帧 × 十来个片段），群战刷怪时会看到明显的卡顿。
         // 只有世界尺度要按角色的缩放另算，所以缓存里存的是**局部空间**的位移。
-        struct ClipMotion { public bool ok; public float angle; public float localDist; public float dur; }
+        struct ClipMotion
+        {
+            public bool ok; public float angle; public float localDist; public float dur;
+            /// <summary>该片段的步态相位偏移 [0,1)：左脚抬到最高（摆动中点）发生在片段的哪个归一化时刻。</summary>
+            public float phase;
+        }
         static readonly Dictionary<AnimationClip, ClipMotion> _motionCache =
             new Dictionary<AnimationClip, ClipMotion>();
 
         static bool MeasureClipMotion(AnimationClip clip, Transform root, Transform hips,
-            out float angleDeg, out float natSpeed)
+            out float angleDeg, out float natSpeed, out float gaitPhase)
         {
-            angleDeg = 0f; natSpeed = 0f;
+            angleDeg = 0f; natSpeed = 0f; gaitPhase = 0f;
             if (clip == null || root == null || hips == null || clip.length < 0.1f) return false;
 
             if (!_motionCache.TryGetValue(clip, out var m))
@@ -771,6 +895,7 @@ namespace AdversityRoad.Combat
                     // 局部位移 0.2 以下当作"原地片段"：Mixamo 的 in-place 版本位移就是零，
                     // 拿噪声去定方向只会把片段摆到一个随机角度上。
                     m.ok = m.localDist > 0.2f;
+                    m.phase = m.ok ? MeasureGaitPhase(clip, root, hips) : 0f;
                 }
                 catch (System.Exception e)
                 {
@@ -785,6 +910,7 @@ namespace AdversityRoad.Combat
             float scale = Mathf.Abs(root.lossyScale.x);
             if (scale < 1e-4f) scale = 1f;
             angleDeg = m.angle;
+            gaitPhase = m.phase;
             natSpeed = m.localDist * scale / Mathf.Max(0.01f, m.dur);
             // 合理性校验：位移量是在**模型局部空间**里量的，而各家 FBX 的单位口径
             // 不一定是米（有的一单位等于一厘米）。量出个每秒几十米的"走路"，
@@ -793,6 +919,60 @@ namespace AdversityRoad.Combat
             // 人快速移动而脚在慢慢挪，滑得比不做同步还厉害。
             if (natSpeed < 0.3f || natSpeed > 12f) { natSpeed = 0f; return false; }
             return true;
+        }
+
+        /// <summary>
+        /// 测出片段的步态相位偏移：**左脚抬到最高的那一刻**在片段里的归一化位置。
+        ///
+        /// 【为什么需要它——这是"转向/转圈/起步时漂移"的根因】
+        /// 方向环与档位环都是把两条片段按权重混起来的。而 Mixamo 每条片段的起始
+        /// 步态相位是随意的：Walking 可能从左脚在前开始，Right Strafe Walking
+        /// 从并步开始，Jog Forward 又是另一个点。此前所有片段共用一个归一化相位、
+        /// **不做任何逐片段补偿**，于是两条片段各占 50% 时，一条的左腿在前、
+        /// 另一条的左腿在后，加权平均下来两条腿都回到中位——**腿看上去停住了**，
+        /// 而人还在位移。这正是玩家说的"直接从 a 漂移到 b、没有脚步动画"。
+        ///
+        /// 只在这三个时刻会发生，与玩家报的场景完全吻合：
+        ///   · 转向 / 转圈 —— 行进夹角扫过两条方向片段之间；
+        ///   · 起步 / 变速 —— 速度跨过档位边界，走档与慢跑档各占一半；
+        ///   · 直线匀速时只有一条片段主导，所以看着正常。
+        ///
+        /// 参照事件选"左脚最高点"（摆动中点）而不是"脚着地"：抬脚是任何步态
+        /// 都有的相位事件，前进、后退、横移一律适用；而"着地"在横移片段里
+        /// 不好判（两脚都贴地滑）。
+        /// </summary>
+        static float MeasureGaitPhase(AnimationClip clip, Transform root, Transform hips)
+        {
+            var foot = FindLeftFoot(root);
+            if (foot == null || clip.length < 0.05f) return 0f;
+            const int Samples = 24;          // 一个周期采 24 个点，够定位到 1/24 周期
+            float best = float.NegativeInfinity, bestT = 0f;
+            for (int i = 0; i < Samples; i++)
+            {
+                float t01 = i / (float)Samples;
+                clip.SampleAnimation(root.gameObject, t01 * clip.length);
+                // 相对髋部的高度：直接用世界 Y 会被片段自带的整体升降带偏
+                float h = root.InverseTransformPoint(foot.position).y
+                        - root.InverseTransformPoint(hips.position).y;
+                if (h > best) { best = h; bestT = t01; }
+            }
+            return bestT;
+        }
+
+        /// <summary>找左脚踝。命名规则与 BodyPartHurtboxes 一致（去前缀、只留字母数字）。</summary>
+        static Transform FindLeftFoot(Transform root)
+        {
+            if (root == null) return null;
+            Transform best = null; int bestLen = int.MaxValue;
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                string n = Norm(t.name);
+                // 要 leftfoot，不要 lefttoebase / lefttoeend：取最短的那个名字
+                if (!n.Contains("leftfoot") || n.Length >= bestLen) continue;
+                bestLen = n.Length; best = t;
+            }
+            return best;
         }
 
         static Transform FindHips(Transform root)
@@ -837,14 +1017,17 @@ namespace AdversityRoad.Combat
         /// <summary>speed01=相对满速的比例；actualSpeed=真实移速 m/s（供步幅同步）；
         /// moveAngleDeg=行进方向相对角色正面（0=正前、±90=横移、180=后退）。</summary>
         public void SetLocomotion(float speed01, float actualSpeed = -1f, float moveAngleDeg = 0f,
-            bool crouch = false)
+            bool crouch = false, bool strafing = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _actualSpeed = actualSpeed;
             _moveAngle = moveAngleDeg;
             _crouch = crouch;
+            _strafing = strafing;
         }
         bool _crouch;
+        /// <summary>此刻是不是"脸锁着目标、脚独立走位"——夹角为有意为之而非转身残差。</summary>
+        bool _strafing;
         public void SetReady(bool ready) => _ready = ready;
 
         /// <summary>兵器此刻在不在手上（收刀后改用空手架势与空手替身片段）。</summary>
@@ -1041,8 +1224,29 @@ namespace AdversityRoad.Combat
             // 否则贴身绕圈时会看到左右步法来回"啪啪"硬切。
             // 用 MoveTowardsAngle：普通 MoveTowards 不懂 ±180 的回绕，
             // 从 170° 转到 -170°（只差 20°）会被它当成 340° 一路扫过去。
+            // 方向平滑用**非对称**速率：偏离正前方要慢，回到正前方要快。
+            //
+            // 为什么必须非对称：非锁定时身体本来就会转向行进方向，转身那零点几秒里
+            // 行进夹角会从 0 冲到 ±90°（甚至 180°）再退回 0。用对称速率的话，
+            // 腿会先甩出一个侧步/倒步再弹回来——那就是"掉头时闪一下侧步片段"，
+            // 也是当初把夹角硬写成 0 的原因（而那个做法让 13 条方向片段永远用不上）。
+            //
+            // 非对称之后两边都对：
+            //   · **持续**的横移/后撤（锁定绕圈、贴身走位）夹角一直大 ⇒ 攒够时间，
+            //     完整切到侧步/倒步片段；
+            //   · **瞬时**的转身残差只存在 0.2s 左右 ⇒ 按 240°/s 只推进到 ≈48°，
+            //     腿上只带一点点侧步的意思就回正了，读作"转身时垫了一步"，不是闪。
+            // 回正给 720°/s：残差一消失就立刻回到正前方，不留尾巴。
+            // 【锁定态例外】慢速 commit 是为了滤掉"转身残差"，而锁定时身体压根不会
+            // 转向行进方向——夹角是玩家主动要的，而且会一直保持。此时还慢慢攒，
+            // 意味着往后拉杆之后要等 0.75 秒腿才切成倒步，前面那大半秒人在后退、
+            // 腿却在向前走。锁定时按"释放"那档的速率直接切满。
+            float wantAbs = Mathf.Abs(Mathf.DeltaAngle(0f, _moveAngle));
+            float haveAbs = Mathf.Abs(_blendAngle);
+            float slew = (!_strafing && wantAbs > haveAbs)
+                ? BlendCommitDegPerSec : BlendReleaseDegPerSec;
             _blendAngle = Mathf.DeltaAngle(0f,
-                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, 900f * dt));
+                Mathf.MoveTowardsAngle(_blendAngle, _moveAngle, slew * dt));
 
             // 蹲伏：整套权重交给蹲伏圈。它只有后/左/右三条，正前方由它覆盖不了——
             // 那一份会在下面的"未覆盖转交"里落回走档（配合蹲伏压低叠加，
@@ -1087,30 +1291,385 @@ namespace AdversityRoad.Combat
             return 0;
         }
 
-        /// <summary>主导片段：权重最大的那个，步幅同步与相位推进都按它算。</summary>
+        /// <summary>
+        /// 步态相位推进。
+        ///
+        /// 【为什么不能用"权重最大的那一条"来算】
+        /// 相位速率 = rate / len，而 rate = 真实移速 / 该片段的自然速度。
+        /// 两条不同档的片段（走 nat=1.75 len=1.03、慢跑 nat=2.52 len=0.83）
+        /// 在档位交界处权重各约 50%，此时"谁是最大"由浮点噪声决定——
+        /// 而两者算出的相位速率差着 17%。于是每帧在两个速率之间来回跳，
+        /// 腿一会儿快一会儿慢，读作**抖动/卡顿**。档位从 2 档细分到 4 档之后
+        /// 交界点变成 4 个，这个抖动就从偶发变成常态。
+        ///
+        /// 正确做法是**按权重加权平均**：混合里每条片段各自算自己的相位速率，
+        /// 再按它在混合中的份额加权。权重连续变化 ⇒ 相位速率连续变化，
+        /// 没有"谁当选"这回事，也就没有跳变。
+        /// </summary>
         void LeadAndPhase(float actual, float dt)
         {
-            int lead = -1; float leadW = 0f;
-            for (int i = 0; i < _dirW.Length; i++)
-                if (_dirW[i] > leadW) { leadW = _dirW[i]; lead = i; }
-
-            if (lead >= 0)
+            // 【二分定位开关】单片段模式：只留权重最高的那一条，其余清零。
+            // 前两轮我把"漂移"归因于混合（相位不对齐、两条片段互相抵消）。
+            // 这个开关直接把混合这件事整个去掉——开了还漂，就证明与混合无关，
+            // 那两轮的结论都要推翻，不必再在权重和相位上打转。
+            if (SingleClipLoco)
             {
-                var L = _dirs[lead];
-                float nat = Mathf.Max(0.3f, L.natSpeed);
-                // 上限放到 2.0：侧移/后退目前只有"走"的片段，真实移速比它的自然速度快，
-                // 步频得跟着提。再高就成了小碎步快放，不如让它稍微滑一点。
-                float rate = Mathf.Clamp(actual / nat, 0.5f, 2.0f);
-                // 主导片段的方向与实际行进方向差了 120° 以上 = 这一圈里根本没有能表达
-                // 该方向的片段（比如某个角色的动作库只有向前走）。此时把片段**倒着播**：
-                // 步态每一帧都是对的，只是时间轴反过来，看上去就是在往后退。
-                // 有真后退片段时这条永远不会命中——它只是动作库不全时的兜底。
-                float sign = Mathf.Abs(Mathf.DeltaAngle(L.angle, _blendAngle)) > 120f ? -1f : 1f;
-                // 相位按【主导片段的时长】推进：混合中的片段因此在同一时刻走完
-                // 各自的一个完整步态周期，脚步不会互相错开。
-                _phase01 = Mathf.Repeat(_phase01 + dt * rate * sign / L.len, 1f);
+                int top = -1;
+                for (int i = 0; i < _dirW.Length; i++)
+                    if (top < 0 || _dirW[i] > _dirW[top]) top = i;
+                if (top >= 0)
+                {
+                    float keep = 0f;
+                    for (int i = 0; i < _dirW.Length; i++) { keep += _dirW[i]; _dirW[i] = 0f; }
+                    _dirW[top] = keep;      // 权重总量不变，全给主导片段
+                }
+            }
+
+            float wSum = 0f, rateSum = 0f;
+            _slipW = 0f; _slipClip = null;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                float w = _dirW[i];
+                if (w <= 0.001f) continue;
+                var d = _dirs[i];
+                float nat = Mathf.Max(0.3f, d.natSpeed);
+                // 上限 2.0：侧移/后退的自然速度低于前进，真实移速比它快时步频得跟着提。
+                // 再高就成了小碎步快放，不如让它稍微滑一点。
+                float rWant = actual / nat;
+                // ===== 下限必须是 0，不能是 0.5——录屏把这一条钉死了 =====
+                // 实机读数：「步幅 0.95m/步（应2.06）×0.46 ⚠滑 Walking 需0.33×得0.50×」
+                // 地面只要 0.33 倍的步频，腿却被强制转 0.50 倍——**腿比地面快五成**，
+                // 这就是"起步会滑动"。步幅同步的定义就是 r = actual / nat，
+                // 任何夹持都是在破坏它，而下限根本没有存在的理由：
+                // 慢就该慢，慢到极低时待机混合（idleTot）本来就接管了。
+                // 上限 2.0 保留：那一条防的是"小碎步快放"，是可读性问题，不是同步问题。
+                float r = Mathf.Clamp(rWant, 0f, 2.0f);
+                // 夹到边界＝**这一帧的步频没法跟上地面**，脚必然打滑：
+                // 撞上限（腿转不够快）读作"大步往前飘"，撞下限（腿转太快）读作"太空步"。
+                // 记下来打到屏幕上——"看上去在漂移"就此变成一个可读的数。
+                if (w > _slipW && !Mathf.Approximately(r, rWant))
+                { _slipW = w; _slipClip = d.name; _slipWant = rWant; _slipGot = r; }
+                // 该片段的方向与实际行进方向差 120° 以上 = 这一圈里没有能表达该方向的
+                // 片段（动作库不全时的兜底）：把它倒着播，步态每帧都对，只是时间轴反过来。
+                float sgn = Mathf.Abs(Mathf.DeltaAngle(d.angle, _blendAngle)) > 120f ? -1f : 1f;
+                rateSum += w * r * sgn / Mathf.Max(0.05f, d.len);
+                wSum += w;
+            }
+            if (wSum > 0.001f)
+            {
+                DbgPhaseRate = rateSum / wSum;          // 步态周期数/秒（诊断用，只读）
+                _phase01 = Mathf.Repeat(_phase01 + dt * DbgPhaseRate, 1f);
+            }
+            else DbgPhaseRate = 0f;
+        }
+
+        /// <summary>
+        /// 某一档正前方片段的**实测**自然速度（m/s）。
+        ///
+        /// 移速必须由它来定，而不是反过来——这份文件开头那段推导就是这个意思：
+        /// 播放倍率超过 1.25 倍，脚就开始打滑。所以 PlayerController 的
+        /// 冲刺速度直接取档 3（Fast Run）的实测值，而不是拍一个数。
+        /// 拍数的后果实机验证过：速度封顶 4.2 而档 3 要 5 以上才拿得到权重，
+        /// 于是冲刺档**永远选不到**，玩家的原话是"连冲刺的那个动画都没有出现"。
+        /// </summary>
+        public float TierNaturalSpeed(int tier) =>
+            Valid && tier >= 0 && tier < TierCount ? _tierNat[tier] : 0f;
+
+        /// <summary>诊断：共享步态相位的推进速率（周期/秒）。腿在不在按移速倒腾，看它。</summary>
+        public float DbgPhaseRate { get; private set; }
+
+        /// <summary>
+        /// 诊断：本帧"两条片段共混"的程度 = 次高权重。
+        /// 0 表示只有一条片段在演（直线匀速），0.5 表示两条各占一半。
+        /// 相位不对齐造成的"腿互相抵消"只会在这个值高的时候发生——转向、转圈、
+        /// 起步变速正是它高的时刻，与玩家报的三个场景一一对应。
+        /// </summary>
+        public float DbgBlendMix
+        {
+            get
+            {
+                if (!Valid || _dirW == null) return 0f;
+                float a = 0f, b = 0f;
+                for (int i = 0; i < _dirW.Length; i++)
+                {
+                    if (_dirW[i] > a) { b = a; a = _dirW[i]; }
+                    else if (_dirW[i] > b) b = _dirW[i];
+                }
+                return b;
             }
         }
+
+        /// <summary>诊断：各方向片段实测出来的步态相位偏移，一行一条。启动时打一次即可。</summary>
+        public string DbgPhaseTable()
+        {
+            if (!Valid) return "";
+            var sb = new System.Text.StringBuilder(256);
+            sb.Append("[步态相位实测] ");
+            for (int i = 0; i < _dirs.Count; i++)
+                sb.Append(_dirs[i].name).Append('=').Append(_dirs[i].phase.ToString("F2")).Append("  ");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 腿此刻是否真的在演走路。玩家反复报的"直接从 a 漂移到 b、没有脚步动画"
+        /// 就是它为 false 的那些帧——而**步幅比看不出这件事**：腿整个定住不动时，
+        /// 步幅比要么是上一帧的残值，要么根本不参与计算。
+        /// 三个条件缺一不可：
+        ///   ① 方向环里有片段真的拿到了权重（否则移动层等于没输出）；
+        ///   ② 步态相位在推进（相位不动 = 腿定格在一帧上）；
+        ///   ③ 动作层没有整体接管——开了上半身遮罩不算接管，那时腿仍归移动层。
+        /// </summary>
+        public bool LegsWalking
+        {
+            get
+            {
+                if (!Valid || _dirW == null) return false;
+                if (DbgPhaseRate <= 0.001f) return false;
+                if (_actionW > 0.90f && !_upperOnly) return false;
+                float sum = 0f;
+                for (int i = 0; i < _dirW.Length; i++) sum += _dirW[i];
+                return sum > 0.10f;
+            }
+        }
+
+        float _slipW, _slipWant, _slipGot;
+        string _slipClip;
+
+        /// <summary>
+        /// 诊断：这一帧【每一步实际跨了多远】，以及它跟片段自带步幅差多少。
+        ///
+        /// "一步一个脚印" 是可以算的：
+        ///     每步距离 = 实际速度 ÷ 步频        （步频就是 DbgPhaseRate，周期/秒）
+        ///     片段自带 = 片段自然速度 × 片段时长
+        /// 两者的比值就是脚在地面上滑了多少。1.00 = 脚踩实；1.30 = 每一步比腿
+        /// 能迈的多出三成，屏幕上就是"大步往前飘"；0.80 = 太空步。
+        /// 后面那半句只在播放速率被 [0.5, 2.0] 夹住时才会有内容——夹住即代表
+        /// 步频已经跟不上地面了，那是打滑的**充分条件**，一眼可判。
+        /// </summary>
+        public string DbgStride(float actual)
+        {
+            if (!Valid || DbgPhaseRate <= 0.001f) return "步幅 —";
+            float per = actual / DbgPhaseRate;
+            // 【上一版这个"应"取的是主导片段一条的步幅，读数是错的】
+            // 录屏里读到 ×1.15，我差点当成"脚滑了 15%"。实际上混合中的脚在局部
+            // 空间里走的是**各片段步幅的加权平均**（算术平均），而 actual/步频
+            // 给出的是调和平均——两条片段步幅差得远时，这两个平均本来就差一截。
+            // 拿其中一条去当基准，等于凭空造出一个不存在的偏差。
+            // 正确的基准是加权平均：Σ wᵢ·(natᵢ×lenᵢ)。
+            // 实测代入（Jog Forward 2.40×0.62 + Running 3.70×0.38 = 2.89
+            // 对 actual/步频 = 2.77）真实打滑只有 4%，不是 15%。
+            float wsum = 0f, natStride = 0f;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                float w = _dirW[i];
+                if (w <= 0.001f) continue;
+                var di = _dirs[i];
+                natStride += w * Mathf.Max(0.05f, di.natSpeed) * Mathf.Max(0.05f, di.len);
+                wsum += w;
+            }
+            if (wsum <= 0.001f) return "步幅 —";
+            natStride = Mathf.Max(0.05f, natStride / wsum);
+            string tail = _slipClip != null
+                ? string.Format("  ⚠滑 {0} 需{1:F2}×得{2:F2}×", _slipClip, _slipWant, _slipGot)
+                : "";
+            return string.Format("步幅 {0:F2}m/步（应{1:F2}）×{2:F2}{3}",
+                per, natStride, per / natStride, tail);
+        }
+
+        /// <summary>
+        /// 调试用：此刻**画面上真正在播的东西**——动作层片段名与权重，
+        /// 以及移动层里权重最高的两条方向片段。
+        ///
+        /// "横移/后退的动画放进去了却看不到效果"这类问题，光看代码永远说不清：
+        /// 片段可能没接上、可能接上了但权重恒为 0、也可能被动作层整个盖住。
+        /// 把这三件事同时打在屏幕上，一眼就能分辨是哪一种。
+        /// </summary>
+        // ===== 上半身遮罩 =====
+
+        /// <summary>下半身骨骼的规范名。第 1 层遮掉它们＝腿归移动层管。</summary>
+        static readonly string[] LowerBones =
+        {
+            "hips",
+            "leftupleg", "leftleg", "leftfoot", "lefttoebase", "lefttoeend",
+            "rightupleg", "rightleg", "rightfoot", "righttoebase", "righttoeend",
+        };
+
+        /// <summary>骨名规范化：只留字母数字、转小写、去 mixamorig 前缀。
+        /// 与 MecanimCharacter.Norm 同一套规则——异源骨架已被它统一改名成参考骨名，
+        /// 这里只需再挡一次前缀与分隔符的写法差异（mixamorig:LeftUpLeg / LeftUpLeg）。</summary>
+        static string NormBone(string n)
+        {
+            var sb = new System.Text.StringBuilder(n.Length);
+            foreach (char c in n) if (char.IsLetterOrDigit(c)) sb.Append(char.ToLowerInvariant(c));
+            string v = sb.ToString();
+            return v.StartsWith("mixamorig") ? v.Substring(9) : v;
+        }
+
+        /// <summary>
+        /// 建两张 AvatarMask。**必须把每一根骨骼都列进去**：没列进去的骨骼行为
+        /// 未定义（不同 Unity 版本表现不同），只列下半身会得到一张时灵时不灵的遮罩。
+        /// 路径是相对 Animator 所在 GameObject 的层级路径，与 AnimationClip 的
+        /// 绑定路径同一套写法。
+        /// </summary>
+        void BuildMasks()
+        {
+            if (_animator == null) return;
+            var root = _animator.transform;
+            var paths = new List<string>(128);
+            var lower = new List<bool>(128);
+            CollectBones(root, "", false, paths, lower);
+            if (paths.Count == 0) return;
+
+            _maskFull = new AvatarMask { transformCount = paths.Count };
+            _maskUpper = new AvatarMask { transformCount = paths.Count };
+            for (int i = 0; i < paths.Count; i++)
+            {
+                _maskFull.SetTransformPath(i, paths[i]);
+                _maskFull.SetTransformActive(i, true);
+                _maskUpper.SetTransformPath(i, paths[i]);
+                _maskUpper.SetTransformActive(i, !lower[i]);
+            }
+        }
+
+        /// <summary>
+        /// 递归收集骨骼路径，并标出哪些属于下半身。
+        /// 「是不是下半身」沿层级**向下继承**：一旦命中大腿根，它底下的整条腿
+        /// （小腿、脚、脚趾，以及挂在脚上的任何附件）都算下半身。不继承的话遮罩
+        /// 会在小腿处断开，出现"大腿归移动层、小腿在演招式"这种鬼样子。
+        /// hips 是全身的根，标为下半身＝招式不写根骨，人的位置与朝向仍归移动层，
+        /// 这正是"跑动中出招"要的：脚步不乱、位移不被招式接管。
+        /// </summary>
+        static void CollectBones(Transform t, string path, bool parentIsLower,
+                                 List<string> paths, List<bool> lower)
+        {
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var c = t.GetChild(i);
+                string p = path.Length == 0 ? c.name : path + "/" + c.name;
+                bool isLower = parentIsLower;
+                if (!isLower)
+                {
+                    string n = NormBone(c.name);
+                    for (int k = 0; k < LowerBones.Length; k++)
+                        if (n == LowerBones[k]) { isLower = true; break; }
+                }
+                paths.Add(p);
+                lower.Add(isLower);
+                CollectBones(c, p, isLower, paths, lower);
+            }
+        }
+
+        /// <summary>
+        /// 切换第 1 层的遮罩。true = 招式只写上半身，腿继续走移动混合。
+        /// 只在状态真的变化时才调用底层 API：SetLayerMaskFromAvatarMask 会重建
+        /// 层内部的绑定表，每帧调是实打实的开销。
+        /// </summary>
+        public void SetActionUpperBodyOnly(bool upperOnly)
+        {
+            if (!Valid || _maskFull == null || _maskUpper == null) return;
+            if (upperOnly == _upperOnly) return;
+            _upperOnly = upperOnly;
+            _top.SetLayerMaskFromAvatarMask(1, upperOnly ? _maskUpper : _maskFull);
+        }
+
+        /// <summary>诊断：第 1 层当前是否只写上半身。</summary>
+        public bool ActionUpperBodyOnly => _upperOnly;
+
+        public string DbgNowPlaying()
+        {
+            if (!Valid) return "—";
+            var sb = new System.Text.StringBuilder(96);
+            if (_cur >= 0 && _actionW > 0.01f &&
+                _actionName != null && _cur < _actionName.Length)
+                sb.Append("动作 ").Append(_actionName[_cur])
+                  .Append(' ').Append(_actionW.ToString("F2")).Append("  ");
+            else sb.Append("动作 —  ");
+
+            int a1 = -1, a2 = -1;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (a1 < 0 || _dirW[i] > _dirW[a1]) { a2 = a1; a1 = i; }
+                else if (a2 < 0 || _dirW[i] > _dirW[a2]) a2 = i;
+            }
+            sb.Append("移动 ");
+            if (a1 >= 0 && _dirW[a1] > 0.01f)
+                sb.Append(_dirs[a1].name).Append(' ').Append(_dirW[a1].ToString("F2"));
+            if (a2 >= 0 && _dirW[a2] > 0.01f)
+                sb.Append(" + ").Append(_dirs[a2].name).Append(' ')
+                  .Append(_dirW[a2].ToString("F2"));
+            if (a1 < 0 || _dirW[a1] <= 0.01f) sb.Append("待机");
+            return sb.ToString();
+        }
+        /// <summary>
+        /// 这个行进夹角上，动作库里【最快的那条片段】的自然速度（m/s）；没有片段则返回 0。
+        ///
+        /// 给横移封顶用。横移速度必须 ≤ 该方向片段能撑起来的速度，否则脚打滑；
+        /// 但也不该比它慢——慢了就是白白把玩家钉死在走路速度上。
+        /// 此前那张封顶表是**手写死的**（walkSpeed×1.45 / ×1.0 / ×0.8），
+        /// 和库里到底有什么片段完全无关：库里明明有 Left/Right Strafe（跑档横移）
+        /// 和 Running Backward（跑档后退），封顶却照旧按走档给，于是一进战斗
+        /// 就整整慢一倍。改成按实测自然速度反推——库里加了更快的片段，
+        /// 封顶自动跟着放开，不用再回来改一张表。
+        /// </summary>
+        public float NaturalSpeedAt(float angle)
+        {
+            float best = 0f;
+            for (int i = 0; i < _dirs.Count; i++)
+            {
+                var d = _dirs[i];
+                if (d.tier == CrouchTier) continue;                 // 蹲伏不参与
+                if (Mathf.Abs(Mathf.DeltaAngle(d.angle, angle)) > 50f) continue;
+                if (d.natSpeed > best) best = d.natSpeed;
+            }
+            return best;
+        }
+
+        // ===== 结构化诊断（给调试日志用）=====
+        // HUD 那几行是给人眼看的拼接字符串；日志要的是**可解析的列**，
+        // 否则每次都得靠正则从中文里抠数字。同一份数据，两种出口。
+        public string DbgActionName =>
+            _cur >= 0 && _actionName != null && _cur < _actionName.Length ? _actionName[_cur] : "";
+        public float DbgActionW => _actionW;
+        public string DbgSlipClip => _slipClip ?? "";
+        public float DbgSlipWant => _slipWant;
+        public float DbgSlipGot => _slipGot;
+
+        /// <summary>权重最高的两条方向片段（名字 + 权重）。</summary>
+        public void DbgTopDirs(out string n1, out float w1, out string n2, out float w2)
+        {
+            n1 = ""; w1 = 0f; n2 = ""; w2 = 0f;
+            if (!Valid || _dirW == null) return;
+            int a = -1, b = -1;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (a < 0 || _dirW[i] > _dirW[a]) { b = a; a = i; }
+                else if (b < 0 || _dirW[i] > _dirW[b]) b = i;
+            }
+            if (a >= 0 && _dirW[a] > 0.005f) { n1 = _dirs[a].name; w1 = _dirW[a]; }
+            if (b >= 0 && _dirW[b] > 0.005f) { n2 = _dirs[b].name; w2 = _dirW[b]; }
+        }
+
+        /// <summary>这一帧实际每个步态周期走了多远（米）。</summary>
+        public float DbgStrideActual(float actual) =>
+            DbgPhaseRate > 0.001f ? actual / DbgPhaseRate : 0f;
+
+        /// <summary>混合中各片段自带步幅的加权平均（米）——脚"应该"走多远。</summary>
+        public float DbgStrideWant()
+        {
+            if (!Valid || _dirW == null) return 0f;
+            float w = 0f, s2 = 0f;
+            for (int i = 0; i < _dirW.Length; i++)
+            {
+                if (_dirW[i] <= 0.001f) continue;
+                var d = _dirs[i];
+                s2 += _dirW[i] * Mathf.Max(0.05f, d.natSpeed) * Mathf.Max(0.05f, d.len);
+                w += _dirW[i];
+            }
+            return w > 0.001f ? s2 / w : 0f;
+        }
+
+        /// <summary>诊断：方向混合实际落在的角度（度）。恒 ≈0 就说明方向片段全没用上。</summary>
+        public float DbgBlendAngle => _blendAngle;
 
         /// <summary>把算好的方向权重与共享相位写进混合器。</summary>
         void ApplyDirWeights()
@@ -1121,11 +1680,18 @@ namespace AdversityRoad.Combat
                 if (!d.cp.IsValid()) continue;
                 _loco.SetInputWeight(DirBase + i, _dirW[i]);
                 // 共享归一化相位：每个片段都停在自己周期里的同一个百分比上
-                if (_dirW[i] > 0.001f) d.cp.SetTime(_phase01 * d.len);
+                // 加上该片段自己的相位偏移：所有片段的"左脚最高"因此落在同一个
+                // 全局相位上，两条片段各占一半时腿不会互相抵消（见 MeasureGaitPhase）。
+                if (_dirW[i] > 0.001f)
+                    d.cp.SetTime(Mathf.Repeat(_phase01 + d.phase, 1f) * d.len);
             }
         }
 
         float _blendAngle;
+        /// <summary>朝"偏离正前方"的方向切换的速率：慢，只有持续的横移才攒得满。</summary>
+        const float BlendCommitDegPerSec = 240f;
+        /// <summary>朝"回到正前方"的方向切换的速率：快，转身残差一消失就回正。</summary>
+        const float BlendReleaseDegPerSec = 720f;
 
         /// <summary>找出夹住该方向的前后两条片段（按角度排好序，环形回绕）。</summary>
         bool Bracket(List<int> ring, float angle, out int a, out int b, out float t, out float span)
@@ -1179,21 +1745,69 @@ namespace AdversityRoad.Combat
         {
             if (!Valid) return;
 
-            // 速度 → 档位权重：x∈[0,TierCount]，0=站立，每跨过一个整数就换一档，
-            // 相邻两档之间线性过渡（走→慢跑→跑→冲刺是连续的，不是三次跳变）。
-            float s = _speed01;
+            // ===== 速度 → 档位权重：按【片段实测自然速度】分段 =====
+            //
+            // 原来是把 speed01 均分成 TierCount 段（x = speed01 * 4，跨过一个整数
+            // 换一档）。那个映射与片段毫无关系——speed01 的分母是 runSpeed(5.2)，
+            // 一个纯玩法数值，而四档片段的实测自然速度是 1.75 / 2.52 / 4.65 / 5.53。
+            //
+            // 代入实机读数（实际 3.7m/s）：均分给出 15% 慢跑 + 85% 跑，
+            // 也就是**主要用自然速度 4.65 的片段去表现 3.7 的移动**，
+            // 播放速率 0.8 倍。脚不打滑（步幅同步是对的），但步幅仍是 4.65 那一档的
+            // 步幅——真人降速时会同时缩短步幅与降低步频，我们只降了步频，
+            // 于是"大步慢迈"，读作转一圈步数变少、人在飘。
+            //
+            // 算过一遍（步幅/步）：
+            //     3.3m/s  均分 1.33m   按自然速度 1.22m   真人 ≈1.21m
+            //     3.7m/s  均分 1.57m   按自然速度 1.34m   真人 ≈1.31m
+            //     4.5m/s  均分 1.72m   按自然速度 1.65m   真人 ≈1.52m
+            //     5.2m/s  均分 1.71m   按自然速度 1.72m   真人 ≈1.70m
+            // 中速段超出 20%，而冲刺档正好对得上——这正是"非冲刺移动才有问题"。
+            //
+            // 改为按自然速度找**相邻的两档**线性插值：移速落在哪两条片段之间，
+            // 就用那两条，播放速率因此始终贴近 1.0，步幅与步频一起随速度变化。
             for (int t = 0; t < TierCount; t++) _tierW[t] = 0f;
-            float x = s * TierCount;
-            float idleTot;
-            if (x <= 1f) { idleTot = 1f - x; _tierW[0] = x; }
-            else
+            float vNow = _actualSpeed >= 0f ? _actualSpeed : _speed01 * RunNaturalSpeed;
+            // 【单调性是插值的前提】实测值来自素材，不能假定它天然递增：
+            // 万一某档的正前片段测出来比下一档还快（素材放错/测量失败），
+            // bracket 就会错乱，表现为某个速度段永远选不到正确的片段。
+            // 就地夹一遍，代价只有几次比较。
+            for (int m = 1; m < TierCount; m++)
+                if (_tierNat[m] <= _tierNat[m - 1]) _tierNat[m] = _tierNat[m - 1] * 1.12f;
+            float nat0 = _tierNat[0];
+            // ===== 站立混合的过渡带必须窄 =====
+            //
+            // 旧写法把待机混合摊在 0 ~ nat0×0.9（实测 1.85 m/s）这么宽的一段上，
+            // 于是**整个慢速区都是半个待机**。实机日志：
+            //     0.5 m/s ⇒ 待机占 75%，步频 0.22 周期/秒（4.5 秒迈一步）
+            //     1.0 m/s ⇒ 待机占 44%，步频 0.49
+            // 人在走，身上却盖着大半个"站着不动"——玩家读作"像鬼一样漂移"。
+            //
+            // 待机混合的本意只是**停下来的那一瞬**别硬切，不是"慢速时半站着"。
+            // 收到 IdleBlendTop(0.55 m/s) 以内：低于它人基本已经停了，混待机是对的；
+            // 高于它就该是实打实的走路片段。
+            // 配合 PlayerController 那边的最低移动速度（1.3 m/s），正常行走
+            // 根本不会落进这一段，只有起步/刹停的零点几秒会经过。
+            const float IdleBlendTop = 0.55f;
+            float idleTot = Mathf.Clamp01(1f - vNow / IdleBlendTop);
+            float moveTot = 1f - idleTot;
+            if (moveTot > 0.0001f)
             {
-                idleTot = 0f;
-                int lo = Mathf.Clamp(Mathf.FloorToInt(x) - 1, 0, TierCount - 1);
-                float f = Mathf.Clamp01(x - Mathf.Floor(x));
-                if (lo >= TierCount - 1) { _tierW[TierCount - 1] = 1f; }
-                else { _tierW[lo] = 1f - f; _tierW[lo + 1] = f; }
+                int hi = -1;
+                for (int b = 1; b < TierCount; b++)
+                    if (vNow <= _tierNat[b]) { hi = b; break; }
+                if (hi < 0) _tierW[TierCount - 1] = moveTot;          // 比最快一档还快
+                else if (vNow <= nat0) _tierW[0] = moveTot;           // 比最慢一档还慢
+                else
+                {
+                    int lo = hi - 1;
+                    float span = Mathf.Max(0.05f, _tierNat[hi] - _tierNat[lo]);
+                    float f = Mathf.Clamp01((vNow - _tierNat[lo]) / span);
+                    _tierW[lo] = moveTot * (1f - f);
+                    _tierW[hi] = moveTot * f;
+                }
             }
+            float s = _speed01;
             _readyW = Mathf.MoveTowards(_readyW, _ready ? 1f : 0f, dt / 0.25f);
             _loco.SetInputWeight(0, idleTot * (1f - _readyW));
             _loco.SetInputWeight(1, idleTot * _readyW * (_armed ? 1f : 0f));
@@ -1201,6 +1815,23 @@ namespace AdversityRoad.Combat
 
             float actual = _actualSpeed >= 0f ? _actualSpeed : s * RunNaturalSpeed;
             BlendDirectional(_tierW, actual, dt);
+
+            // ===== 动作起播记录（屏幕提示用）=====
+            // 你要的是"每做出一个动作，屏幕上提示对应的动画"。判据只能是
+            // **动作层的片段索引发生了变化**，而不是姿态枚举变了——同一个姿态
+            // 可能换片段（左右转身），不同姿态也可能共用片段。
+            // 写在这里而不是三个起播点里：起播点有三处（招式 / 休息动作 / 起身倒放），
+            // 挂在调用侧迟早会漏一处，挂在状态跃迁上漏不了。
+            if (_cur != _lastNotedAction)
+            {
+                _lastNotedAction = _cur;
+                if (_cur >= 0 && _actionName != null && _cur < _actionName.Length)
+                {
+                    LastActionClip = _actionName[_cur];
+                    LastActionLen = _playLen;
+                    LastActionAt = Time.time;
+                }
+            }
 
             if (_cur >= 0)
             {
@@ -1231,7 +1862,8 @@ namespace AdversityRoad.Combat
             {
                 _actionW = Mathf.MoveTowards(_actionW, 0f, dt / 0.12f);
             }
-            _top.SetInputWeight(0, 1f - _actionW);
+            // 基础层恒 1（见建图处），只调第 1 层的权重
+            _top.SetInputWeight(0, 1f);
             _top.SetInputWeight(1, _actionW);
 
             if (_graph.IsValid()) _graph.Evaluate(dt);
@@ -1240,6 +1872,10 @@ namespace AdversityRoad.Combat
         public void Destroy()
         {
             if (_graph.IsValid()) _graph.Destroy();
+            // AvatarMask 是运行时 new 出来的 ScriptableObject：不显式销毁就会一直
+            // 留在内存里，每次重建角色（换装/重生/回住所）泄一对。
+            if (_maskFull != null) { Object.Destroy(_maskFull); _maskFull = null; }
+            if (_maskUpper != null) { Object.Destroy(_maskUpper); _maskUpper = null; }
         }
     }
 }

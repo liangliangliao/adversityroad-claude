@@ -20,7 +20,7 @@ namespace AdversityRoad.Combat
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (Vector3.Distance(transform.position, _player.transform.position) > interactRange) return;

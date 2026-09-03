@@ -82,7 +82,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                var pc = FindObjectOfType<PlayerController>();
+                var pc = AdversityRoad.Core.ActorRegistry.Player;
                 if (pc != null) _player = pc.transform;
             }
 
@@ -172,7 +172,7 @@ namespace AdversityRoad.OpenWorld
             if (SitController.Busy) return;   // 坐着/躺着时不抢交互键
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (Vector3.Distance(transform.position, _player.transform.position) > range) return;

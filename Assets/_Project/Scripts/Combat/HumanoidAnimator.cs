@@ -44,10 +44,72 @@ namespace AdversityRoad.Combat
         int _poseSerial, _lastMecanimSerial = -1;
         bool Mecanim => _mecanim != null && _mecanim.Valid;
 
+        /// <summary>诊断：动画层实际用的方向混合角与步频（无动捕时为 0）。</summary>
+        public float DbgBlendAngle => Mecanim ? _mecanim.DbgBlendAngle : 0f;
+        public float DbgPhaseRate => Mecanim ? _mecanim.DbgPhaseRate : 0f;
+        /// <summary>腿此刻是否真的在演走路（判据见 PlayableAnimator.LegsWalking）。</summary>
+        public bool LegsWalking => Mecanim && _mecanim.LegsWalking;
+        /// <summary>诊断：本帧两条方向片段共混的程度（次高权重）。见 PlayableAnimator.DbgBlendMix。</summary>
+        public float DbgBlendMix => Mecanim ? _mecanim.DbgBlendMix : 0f;
+        /// <summary>调试叠层：此刻画面上真正在播的动作层片段与移动层片段。</summary>
+        public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
+        /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>
+        public bool ActionUpperBodyOnly => Mecanim && _mecanim.ActionUpperBodyOnly;
+        /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
+        public string DbgPose => _pose.ToString();
+        /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>
+        public string LastActionClip => Mecanim ? _mecanim.LastActionClip : "";
+        /// <summary>那一段计划播多久（秒）。</summary>
+        public float LastActionLen => Mecanim ? _mecanim.LastActionLen : 0f;
+        /// <summary>起播时刻（Time.time）。</summary>
+        public float LastActionAt => Mecanim ? _mecanim.LastActionAt : -999f;
+
+        /// <summary>该行进夹角上最快的方向片段的自然速度（m/s）；0=这个方向没片段。
+        /// 横移封顶按它给，不再手写一张与素材无关的表。</summary>
+        public float NaturalSpeedAt(float angle) => Mecanim ? _mecanim.NaturalSpeedAt(angle) : 0f;
+
+        /// <summary>调试叠层：这一帧每步跨了多远、跟片段自带步幅差多少、有没有打滑。</summary>
+        public string DbgStride(float actual) => Mecanim ? _mecanim.DbgStride(actual) : "步幅 —";
+
+        // ===== 结构化诊断（调试日志用；与上面的 HUD 字符串同源）=====
+        public string DbgActionName => Mecanim ? _mecanim.DbgActionName : "";
+        public float DbgActionW => Mecanim ? _mecanim.DbgActionW : 0f;
+        public string DbgSlipClip => Mecanim ? _mecanim.DbgSlipClip : "";
+        public float DbgSlipWant => Mecanim ? _mecanim.DbgSlipWant : 0f;
+        public float DbgSlipGot => Mecanim ? _mecanim.DbgSlipGot : 0f;
+        public float DbgStrideActual(float actual) =>
+            Mecanim ? _mecanim.DbgStrideActual(actual) : 0f;
+        public float DbgStrideWant() => Mecanim ? _mecanim.DbgStrideWant() : 0f;
+
+        /// <summary>某一档正前方片段的实测自然速度（m/s）；没有 Mecanim 时返回 0。
+        /// 移速锚在它上面，见 PlayableAnimator.TierNaturalSpeed。</summary>
+        public float TierNaturalSpeed(int tier) =>
+            Mecanim ? _mecanim.TierNaturalSpeed(tier) : 0f;
+        public void DbgTopDirs(out string n1, out float w1, out string n2, out float w2)
+        {
+            if (Mecanim) { _mecanim.DbgTopDirs(out n1, out w1, out n2, out w2); return; }
+            n1 = ""; w1 = 0f; n2 = ""; w2 = 0f;
+        }
+
+        /// <summary>诊断用：这个角色走的是不是【动捕】通路。
+        /// 动捕角色各自持有一张 PlayableGraph（片段数 × 一个 ClipPlayable），
+        /// 而方块骨骼角色只是每帧算几十个关节角——两者开销差一个量级，
+        /// 只报"角色 131"分不出贵在哪儿。</summary>
+        public bool IsMocap => Mecanim;
+
         // ---- 髋骨 XZ 锚定（Generic 原样播放的原地化）----
         // 本动作包的走/跑等片段自带水平位移（实测 Walking +1.8m），Generic 播放
         // 会把模型带离胶囊体。每帧动画求值后把髋骨水平位置钉回绑定位（在模型
         // 根局部空间做，轴向安全），纵向起伏/腾空原样保留；世界位移由控制器负责。
+        /// <summary>倾身取真实倾角的几成（1.0 = 完全按 atan(a/g) 倾，像摩托压弯）。</summary>
+        const float LeanFraction = 0.6f;
+        /// <summary>倾角封顶（度）。</summary>
+        const float MaxLeanDeg = 12f;
+        /// <summary>倾角变化速率上限（度/秒）：转弯起手不允许"啪"地倒过去。</summary>
+        const float LeanSlewDegPerSec = 90f;
+        float _lean, _leanPrevYaw;
+        bool _leanInit;
+
         Transform _mocapModel, _hips;
         Vector3 _hipsBindLP;
         bool _hipsPin;
@@ -106,7 +168,47 @@ namespace AdversityRoad.Combat
             _mocapModel = model;
             _hips = hips;
             _hipsPin = model != null && hips != null;
-            if (_hipsPin) _hipsBindLP = model.InverseTransformPoint(hips.position);
+            if (_hipsPin)
+            {
+                _hipsBindLP = model.InverseTransformPoint(hips.position);
+                // ===== 这一行是"漂移"的根：锚点抓的是**当时那一帧的姿势**，不是绑定姿势 =====
+                //
+                // 钉髋的职责是"身体的水平位置跟着胶囊走"，锚点必须是绑定姿势下
+                // 髋骨的水平位置——对正常骨架就是模型原点附近（几厘米内）。
+                // 可是这里抓的是 SetMocapRoot 被调用那一瞬 hips.position 的**实际**值。
+                // 本动作库的走跑片段不是原地的（位移全在髋骨上），如果那一刻图已经
+                // 求值过一帧，抓到的就是片段把髋骨甩出去之后的位置。
+                //
+                // 实机日志（21695 帧）把后果量得清清楚楚：
+                //     bodyLX（髋骨在角色自身坐标系里的横向位置）从第 2 帧起
+                //     恒等于 1.338 米，中位数 1.111，只有 1 帧小于 0.2 米；
+                //     bodyLZ 恒为 0；hipRaw 恒等于 1.337。
+                // 也就是说：**渲染出来的身体常年站在自己碰撞胶囊右侧 1.34 米处**，
+                // 而且钉髋不是没拦住它，是钉髋自己每帧把它按在那里。
+                // 它和转向倾身无关（相关系数 0.04）、和速度无关（0.01）、
+                // 和步态无关（−0.27）——就是一个恒定偏置。
+                //
+                // 这同时解释了我一直复现不了的那条："360 度转圈推杆还是会穿墙"。
+                // 我查了好几轮胶囊嵌墙，一次都没查到（这份日志里 deep 也全是 0）——
+                // 因为穿墙的根本不是胶囊，是那个偏出去 1.34 米的身体：原地转一圈，
+                // 它就绕着胶囊扫出一个半径 1.34 米的圆，扫过旁边的墙。
+                //
+                // 修法不是去猜"什么时候抓才对"，而是让它抓不坏：绑定姿势下髋骨
+                // 横向偏移不可能有这么大，超过阈值就判定抓到的是动画帧，退回原点。
+                // 正常骨架那几厘米的真实偏移仍然保留。
+                float sc = Mathf.Abs(model.lossyScale.x) > 1e-4f
+                         ? Mathf.Abs(model.lossyScale.x) : 1f;
+                float offM = new Vector2(_hipsBindLP.x, _hipsBindLP.z).magnitude * sc;
+                if (offM > MaxHipBindOffset)
+                {
+                    Debug.LogWarning("[HumanoidAnimator] 髋骨锚点偏移 " + offM.ToString("F2") +
+                        "m，明显不是绑定姿势（多半抓到了动画帧），已退回模型原点。");
+                    _hipsBindLP.x = 0f;
+                    _hipsBindLP.z = 0f;
+                }
+                DbgHipBind = new Vector2(_hipsBindLP.x, _hipsBindLP.z) * sc;
+            }
+            else DbgHipBind = Vector2.zero;
             _footL = footL;
             _footR = footR;
             _ankleL = ankleL;
@@ -316,8 +418,246 @@ namespace AdversityRoad.Combat
             ankle.rotation = Quaternion.FromToRotation(v, target) * ankle.rotation;
         }
 
+
+        // ==================== 支撑脚锁定（foot lock IK）====================
+        //
+        // 【为什么必须有它——这一条是算出来的，不是感觉】
+        // 转弯时角色绕**自身竖轴**旋转，而脚是根节点的子物体，于是踩住的那只脚
+        // 会跟着一起扫过去。按实测参数（3.8m/s、0.61g、半径 2.41m、每步 1.39m）：
+        //     一步之内身体转过 33°
+        //     支撑脚离根 0.3m ⇒ 被拖 0.17m ；0.5m ⇒ 0.29m ；0.7m ⇒ 0.40m
+        // 一步才 1.39m，横向被拖走 0.17~0.40m —— 这就是"转圈会滑动"。
+        // 它跟播放速率无关（实测步幅比 0.92~1.00 是对的），也不是混合的问题：
+        // 直线跑时步幅同步就足以让脚站住，一旦路径带曲率就必然拖。
+        //
+        // 动作库里没有跑动转弯片段，所以只剩下成熟战斗游戏的通行解：
+        // **踩住的那一刻把脚钉在世界坐标上，让腿去迁就它。**
+        //
+        // 解析二骨 IK（先按余弦定理改膝角，再整条链绕髋对准目标）。
+        // 数学已离线验证：目标在可达范围内时踝误差恒为 0，超出时误差正好等于
+        // 超出量，且大腿/小腿长度一毫不变（绝不拉伸骨骼）。
+        static void TwoBoneIK(Transform hip, Transform knee, Transform ankle, Vector3 target)
+        {
+            if (hip == null || knee == null || ankle == null) return;
+            Vector3 a = hip.position, b = knee.position, c = ankle.position;
+            float lab = (b - a).magnitude, lcb = (c - b).magnitude;
+            if (lab < 1e-4f || lcb < 1e-4f) return;
+            float lat = Mathf.Clamp((target - a).magnitude, 1e-4f, lab + lcb - 1e-4f);
+
+            // ---- ① 弯曲：轴取【肢体自身平面的法线】。
+            // 用外部 hint 当轴是错的——hint 不在 A-B-C 平面里时，转完 B 会离开平面，
+            // 三角形就散了（离线验证时这个写法最坏残差 0.11m，换成平面法线后归零）。
+            Vector3 axis = Vector3.Cross(c - a, b - a);
+            if (axis.sqrMagnitude < 1e-10f) return;
+            axis.Normalize();
+            float ac_ab_0 = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((c - a).normalized, (b - a).normalized), -1f, 1f));
+            float ba_bc_0 = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((a - b).normalized, (c - b).normalized), -1f, 1f));
+            float ac_ab_1 = Mathf.Acos(Mathf.Clamp(
+                (lcb * lcb - lab * lab - lat * lat) / (-2f * lab * lat), -1f, 1f));
+            float ba_bc_1 = Mathf.Acos(Mathf.Clamp(
+                (lat * lat - lab * lab - lcb * lcb) / (-2f * lab * lcb), -1f, 1f));
+            hip.rotation = Quaternion.AngleAxis(
+                (ac_ab_1 - ac_ab_0) * Mathf.Rad2Deg, axis) * hip.rotation;
+            knee.rotation = Quaternion.AngleAxis(
+                (ba_bc_1 - ba_bc_0) * Mathf.Rad2Deg, axis) * knee.rotation;
+
+            // ---- ② 对准：整条链绕髋转，让踝指向目标。
+            Vector3 c2 = ankle.position;
+            Vector3 axis2 = Vector3.Cross(c2 - a, target - a);
+            if (axis2.sqrMagnitude < 1e-10f) return;
+            float aim = Mathf.Acos(Mathf.Clamp(
+                Vector3.Dot((c2 - a).normalized, (target - a).normalized), -1f, 1f));
+            hip.rotation = Quaternion.AngleAxis(aim * Mathf.Rad2Deg, axis2.normalized) * hip.rotation;
+        }
+
+        /// <summary>一条腿的锁定状态：踩住的世界坐标、权重、以及自校准的最低点。</summary>
+        struct FootLock
+        {
+            public Vector3 pos;      // 踩住那一刻的世界坐标
+            public float w;          // 0~1，进出都做渐变，避免"啪"地钉住
+            public float minH;       // 该脚离地高度的历史最低（自校准踩地阈值）
+            public bool init;
+        }
+        FootLock _lockL, _lockR;
+
+        /// <summary>锁定修正量的封顶（米）。超过它就说明步幅同步本身有问题，
+        /// 这时硬钉只会把腿拉成一字马——宁可让它滑，也不能扭断。</summary>
+        const float FootLockMaxFix = 0.28f;
+        /// <summary>支撑脚锁定总开关。**默认关。**
+        ///
+        /// 上一轮我一次性上了两个全新机制（支撑脚锁定、转向倾身）又把转向速率砍掉
+        /// 六成——三件事一起改，实机一说"更烂了"就根本分不清是哪一个。这是方法错误。
+        /// 现在全部挂到设置面板里，最新最险的这一个默认关着：先确认基线，
+        /// 再一个一个打开。IK 每帧直接改写腿骨旋转，是这几条里唯一能把画面弄难看的。</summary>
+        public static bool FootLockOn;
+        /// <summary>转向倾身总开关（默认开：它只是绕正前轴滚一个角度，风险低）。</summary>
+        public static bool TurnLeanOn = true;
+        /// <summary>诊断：这一帧两只脚的锁定修正量（米）与权重。</summary>
+        public float DbgFootFix { get; private set; }
+
+        /// <summary>踩住的脚钉在世界坐标上；腿由二骨 IK 迁就它。</summary>
+        void ApplyFootLock(Transform ankle, ref FootLock st, float dt)
+        {
+            if (ankle == null || visual == null) return;
+            var knee = ankle.parent;
+            var hip = knee != null ? knee.parent : null;
+            if (knee == null || hip == null) return;
+
+            float h = visual.InverseTransformPoint(ankle.position).y - _groundLocalY;
+            if (!st.init) { st.init = true; st.minH = h; }
+            // 历史最低点缓慢上浮（0.4m/s）：既能自校准出"踩地高度"，
+            // 又不会被一次异常的低点永久带偏。
+            st.minH = Mathf.Min(st.minH + 0.4f * dt, h);
+            bool planted = h < st.minH + 0.05f;
+
+            if (planted && st.w <= 0.001f) st.pos = ankle.position;   // 踩下的那一刻记位置
+            st.w = Mathf.MoveTowards(st.w, planted ? 1f : 0f, dt / (planted ? 0.08f : 0.10f));
+            if (st.w <= 0.001f) return;
+
+            // 只锁水平：纵向留给动画自己（起伏、屈膝都该保留）
+            Vector3 cur = ankle.position;
+            Vector3 fix = new Vector3(st.pos.x - cur.x, 0f, st.pos.z - cur.z);
+            float m = fix.magnitude;
+            if (m > FootLockMaxFix) fix *= FootLockMaxFix / m;        // 封顶，绝不拉伸成一字马
+            fix *= st.w;
+            DbgFootFix = Mathf.Max(DbgFootFix, fix.magnitude);
+            if (fix.sqrMagnitude < 1e-6f) return;
+            TwoBoneIK(hip, knee, ankle, cur + fix);
+        }
+
+        /// <summary>
+        /// 【二分定位开关】关掉动画图之后的**全部骨骼后处理**：
+        /// 钉髋、转向倾身、上下半身拧腰、前摇叠加、双脚贴地校准、锁脚 IK。
+        /// 关掉之后画面上就是 PlayableGraph 的原始输出，一根骨头都没被改过。
+        ///
+        /// 为什么要有它：找"漂移"找了八轮，每一轮都在图的**上游**（速度、权重、
+        /// 相位、混合）找到一个真实机制、修掉、症状照旧。而图**下游**这六层
+        /// 我一次都没验证过。与其再猜第九个机制，不如让这一刀切下去——
+        /// 关掉后不漂，原因就在这六层里；照样漂，就与骨骼后处理无关，
+        /// 我该去查角色位置与镜头的关系，而不是继续在动画里翻。
+        ///
+        /// 注意：钉髋一起关掉了，所以模型会带着片段自带的根位移往前"爬"，
+        /// 与碰撞体分家。那是**这个测试模式的正常现象**，不是新 bug；
+        /// 只用来看十秒钟内腿有没有停。
+        /// </summary>
+        public static bool BonePostFxOn = true;
+
+        // ===== 诊断：画面上的身体到底跑到哪去了 =====
+        //
+        // 玩家报的"漂移"一直定位不到，是因为之前所有的度量都长在**胶囊**上：
+        // 位移、速度、步幅、相位……而实机日志已经证明胶囊本身是干净的
+        // （逐帧全覆盖，除入座滑行与切场传送外，单帧位移从没超过 0.13m）。
+        // 那么玩家看见的漂移只可能发生在**渲染出来的身体相对胶囊**这一段上——
+        // 而这一段，我一次都没有量过。
+        //
+        // 走跑片段不是原地的（位移在髋骨上），钉髋负责把它抵消掉。抵消一旦
+        // 不完全或不连续，身体就会相对胶囊往前爬、再在循环点弹回去——那正是
+        // "从 a 漂移到 b，中间没有脚步"和"不断重复回到原来位置"。
+        //
+        //   hipLeak = 髋骨在模型局部空间里偏离绑定位的水平距离
+        //             ——钉髋漏掉了多少片段自带位移（应恒为 0）
+        //   visStep = 渲染身体这一帧在世界里走了多远
+        //             ——玩家眼睛看到的位移。它和胶囊的 stepLen 一旦对不上，
+        //               对不上的那部分就是漂移本体。
+        public float DbgHipLeak { get; private set; }
+        public float DbgVisStep { get; private set; }
+        /// <summary>本帧采样到的身体世界坐标（髋骨）。给漂移自检算矢量差用——
+        /// 标量的 visStep 减 stepLen 会把方向不同的两段位移当成同一件事。</summary>
+        public Vector3 DbgVisPos { get; private set; }
+        public bool DbgVisValid { get; private set; }
+        /// <summary>钉髋**之前**髋骨偏离绑定位多少（米）——片段这一帧想要的根位移。</summary>
+        public float DbgHipRaw { get; private set; }
+        /// <summary>本帧到底钉没钉髋。没钉时 DbgHipLeak 也是 0，光看它分不出来。</summary>
+        public bool DbgPinOn { get; private set; }
+        /// <summary>髋骨在**角色自身坐标系**里的水平位置。
+        /// 身体相对胶囊到底有没有滑、往哪个方向滑，只有它说了算：
+        /// 世界坐标里的位移混着胶囊平移和转身，分不开。</summary>
+        public Vector2 DbgBodyLocal { get; private set; }
+        /// <summary>钉髋锚点在模型空间里的水平偏移（米）。正常应接近 0；
+        /// 它一大，身体就被钉在离胶囊那么远的地方。</summary>
+        public Vector2 DbgHipBind { get; private set; }
+
+        /// <summary>锚点横向偏移的合理上限（米）。超过就不可能是绑定姿势。
+        /// 人的髋骨在绑定姿势下本来就该在模型中轴上，留 0.25m 已经很宽松。</summary>
+        const float MaxHipBindOffset = 0.25f;
+        Vector3 _visPrev; bool _visHas;
+
+        /// <summary>在整条后处理跑完之后采样：这时的骨骼就是这一帧渲染出去的骨骼。</summary>
+        void SampleVisualDrift()
+        {
+            // 量身体的**髋骨**而不是模型根：模型根的水平位置就是胶囊的位置，
+            // 片段自带位移全在髋骨上，量根节点等于什么都没量。
+            Transform m = _hips != null ? _hips
+                        : _mocapModel != null ? _mocapModel : visual;
+            if (m == null)
+            {
+                _visHas = false; DbgVisValid = false;
+                DbgVisStep = 0f; DbgHipLeak = 0f; return;
+            }
+            Vector3 w = m.position;
+            DbgVisStep = _visHas
+                ? new Vector2(w.x - _visPrev.x, w.z - _visPrev.z).magnitude : 0f;
+            _visPrev = w; _visHas = true;
+            DbgVisPos = w; DbgVisValid = true;
+            Vector3 bodyLp = transform.InverseTransformPoint(w);
+            DbgBodyLocal = new Vector2(bodyLp.x, bodyLp.z);
+            if (_hipsPin && _hips != null && _mocapModel != null)
+            {
+                Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
+                DbgHipLeak = new Vector2(lp.x - _hipsBindLP.x, lp.z - _hipsBindLP.z).magnitude
+                             * Mathf.Abs(_mocapModel.lossyScale.x);
+            }
+            else DbgHipLeak = 0f;
+        }
+
+        // LateUpdate 里有好几处提前 return（降频、非 Mecanim、没钉髋），采样必须
+        // 跑在所有分支之后，否则恰恰是"后处理没跑完"的那些帧量不到——而那正是
+        // 最可疑的一批帧。所以本体挪进 LateUpdateBody，采样统一在这里收口。
         void LateUpdate()
         {
+            LateUpdateBody();
+            SampleVisualDrift();
+        }
+
+        void LateUpdateBody()
+        {
+            if (!BonePostFxOn) return;
+            // ===== 钉髋绝不能跟着降频一起跳过 =====
+            //
+            // 原来这里第一行就是 `if (!_lodDue) return;`，理由写的是"骨骼没动，
+            // 钉髋也无事可做"。那句话是错的：降频跳过的只是 **Tick**（不推进片段
+            // 时间），而 **PlayableGraph 照样每帧求值并把姿态写进骨骼**——写进去的
+            // 髋骨 XZ 带着片段自身的前进位移（本动作库的走跑片段不是原地的）。
+            // 于是降频角色每一帧都在两个位置之间来回跳：
+            //     跳过的帧 → 髋骨停在片段自带位移处（一个步幅可达 1.7m）
+            //     更新的帧 → 被钉回绑定位
+            // 1/2 降频就是每隔一帧摆一次，幅度接近一个身位。这就是"某些角色
+            // 突然漂移到别处又回来"。玩家因为 _lodExempt 不受影响，所以只在
+            // 别的角色身上看得到——但它同样是"动作看起来不同步"的一份来源。
+            //
+            // 钉髋本身只有一次 InverseTransformPoint + TransformPoint，
+            // 比起被它防住的画面撕裂，这点开销可以忽略。降频要省的是下面那些
+            // 三角函数与四元数（分离拧腰、前摇、双脚贴地校准），不是这两行。
+            DbgPinOn = Mecanim && _hipsPin && _hips != null && _mocapModel != null &&
+                       _pose != PoseState.Death && _pose != PoseState.Knockdown;
+            if (DbgPinOn)
+            {
+                Vector3 pin = _mocapModel.InverseTransformPoint(_hips.position);
+                // 钉之前先记一笔：这才是片段这一帧**想要**的根位移。
+                // 钉完再量必然是 0（钉髋干的就是把它清零），拿钉后的值当"漏没漏"
+                // 的证据等于什么都没证明——上一版的 hipLeak 就栽在这里，
+                // 而且 _hipsPin 为 false 时它同样是 0，"钉得好"和"根本没钉"
+                // 读数一模一样。strideRatio 我犯过一次同样的错，这次记在代码里。
+                DbgHipRaw = new Vector2(pin.x - _hipsBindLP.x, pin.z - _hipsBindLP.z).magnitude
+                            * Mathf.Abs(_mocapModel.lossyScale.x);
+                pin.x = _hipsBindLP.x;
+                pin.z = _hipsBindLP.z;
+                _hips.position = _mocapModel.TransformPoint(pin);
+            }
+            else DbgHipRaw = 0f;
+            if (!_lodDue) return;
             if (!Mecanim)
             {
                 // 程序化方块骨骼：同一套上下半身分离（骨盆转、躯干回拧）
@@ -329,18 +669,43 @@ namespace AdversityRoad.Combat
             }
             if (!_hipsPin || _hips == null || _mocapModel == null) return;
 
-            // 髋骨 XZ 锚定是为【走跑片段自带水平位移】准备的（把模型钉回胶囊体）。
-            // 但**倒地与死亡本身就是靠髋骨水平移动完成的**——人向前扑倒、侧身躺下，
-            // 髋在水平面上会走出大半个身位。把它钉住，身体就永远倒不下去，
-            // 停在下蹲到一半的姿势上，看着像卡死（实机反馈的"半蹲没彻底躺平"）。
-            // 这两个姿态放行，让动作自己把身体放平。
-            bool freeHips = _pose == PoseState.Death || _pose == PoseState.Knockdown;
-            if (!freeHips)
+            // （钉髋已在本方法开头无条件做过——它不能跟着降频跳过，理由见那里。
+            //   倒地/死亡两个姿态放行：那两段动作本来就是靠髋骨水平移动完成的，
+            //   钉住的话人永远倒不下去，会停在下蹲到一半的姿势上。）
+
+            // ===== 转向倾身：跑动转弯的向心力靠身体向内倾提供 =====
+            //
+            // 录屏里 13 秒每一帧「夹角 0°、移动 Jog Forward + Running」——
+            // 身体以近 200°/s 在转，腿上却始终是一条直线跑循环，**没有任何
+            // 迹象表明这个人正在转弯**。这就是"不是一步一个脚印转的"。
+            // 动作库里没有跑动转弯片段（对齐表里方向环只有 前/后/左/右/斜），
+            // 而拿侧移片段去凑是错的：转弯时速度相对身体仍然是正前方，
+            // 播侧移会变成"横着挪"，那是另一种失真。
+            //
+            // 真人的做法只有一个自由度：**向内倾**，倾角就是 atan(a_lat / g)。
+            // 这是几何恒等式，不是手感参数——0.6g 的转弯对应 31°。
+            // 取六成、封顶 12°：够看得出在转弯，又不至于像摩托压弯。
+            // 直线跑时 a_lat=0 ⇒ 倾角自然归零，不需要任何额外的收手逻辑。
+            if (_mocapModel != null)
             {
-                Vector3 lp = _mocapModel.InverseTransformPoint(_hips.position);
-                lp.x = _hipsBindLP.x;
-                lp.z = _hipsBindLP.z;
-                _hips.position = _mocapModel.TransformPoint(lp);
+                float dtl = Mathf.Max(Time.deltaTime, 1e-4f);
+                float yawNow = transform.eulerAngles.y;
+                if (!_leanInit) { _leanInit = true; _leanPrevYaw = yawNow; }
+                float yawRate = Mathf.DeltaAngle(_leanPrevYaw, yawNow) / dtl;
+                _leanPrevYaw = yawNow;
+                bool leanOk = TurnLeanOn && _grounded && !_rest &&
+                              _pose != PoseState.Knockdown && _pose != PoseState.Death;
+                float aLat = yawRate * Mathf.Deg2Rad * Mathf.Max(0f, _actualSpeed);
+                float want = leanOk
+                    ? Mathf.Clamp(Mathf.Atan2(aLat, 9.81f) * Mathf.Rad2Deg * LeanFraction,
+                                  -MaxLeanDeg, MaxLeanDeg)
+                    : 0f;
+                _lean = Mathf.MoveTowards(_lean, want, LeanSlewDegPerSec * dtl);
+                // 绕模型本地正前轴滚转：+Z 正角把头顶推向 −X（左），
+                // 所以右转（yawRate>0 ⇒ _lean>0）要用负角才是向右倾。
+                _mocapModel.localRotation = Mathf.Abs(_lean) > 0.05f
+                    ? Quaternion.AngleAxis(-_lean, Vector3.forward)
+                    : Quaternion.identity;
             }
 
             // 横移/后撤的上下半身分离（只在贴地常规移动姿态下做——
@@ -397,8 +762,31 @@ namespace AdversityRoad.Combat
                 }
                 // 脚底高度校准仍只在【静立姿态】更新目标：出招/受击时脚离地是正常的，
                 // 拿那些帧去量最低脚会把整个模型上下拽（腾空/翻滚沿用上次值）
-                bool calibrate = _grounded &&
-                    (_pose == PoseState.Idle || _pose == PoseState.Guard);
+                //
+                // 【本轮修正：真正判"站定"，而不是判"没在出招"】
+                // 原判据只有 _pose == Idle/Guard。但 _pose 记的是**招式**姿态，
+                // 走路跑步根本不经过 SetPose——移动全程 _pose 恒等于 Idle。
+                // 于是这段"只在静立时校准"的代码，实际上**每一步都在跑**：
+                //   _feetTarget = _feetOffset + (_groundLocalY - minY)
+                // 是个反馈积分器，它每帧都想把"最低那只脚"按回地面。而跑动片段里
+                // 最低脚的高度本来就随步态起伏（冲刺还有双脚离地的腾空相），
+                // 于是整个模型被按着步频上下拽——读作**"人不是自己在跑，是被拉着腾空"**。
+                // 搓杆换向时方向片段一混合，minY 更是直接跳变，模型跟着被猛拽一下。
+                //
+                // 又一次栽在同一条上（铁律一）：判据写在了"恰好相关的量"(_pose)上，
+                // 而意图是"站定"。意图就在手边——_speed01。
+                //
+                // 【录屏证明：这段校准在实机上一次都没跑过】
+                // 上面那段注释已经把道理写对了——判"站定"要用 _speed01，不要用 _pose——
+                // 我却把 _pose 那一条**留着当额外的 &&**。而录屏里 13 秒每一帧都是
+                // 「姿态 TurnRight」（_pose 卡死，见下面 Update 里的回落修复），
+                // 于是 calibrate 恒为 false：**双脚贴地校准从来没有执行过**，
+                // 模型的 Y 偏移一直停在初始值。脚不在地上，人自然读作
+                // "不是自己在跑，是被拉着腾空"。
+                // 现在只留意图本身：站定 + 贴地 + 身体确实是直立的。
+                bool calibrate = _grounded && _speed01 < 0.05f &&
+                    _pose != PoseState.Knockdown && _pose != PoseState.Death &&
+                    _pose != PoseState.Dodge && !_rest;
                 if (calibrate)
                 {
                     float minY = float.MaxValue;
@@ -414,6 +802,22 @@ namespace AdversityRoad.Combat
                 mp.y = _modelBaseY + _feetOffset;
                 _mocapModel.localPosition = mp;
             }
+
+            // ===== 支撑脚锁定：必须放在整条 LateUpdate 的最后 =====
+            // 它读的是踝骨的**最终世界坐标**，所以钉髋、倾身、贴地校准全部落定
+            // 之后才能算——任何一个还在后面动，锁定就会追着一个还会变的目标。
+            // 只在贴地的常规移动里做：出招/翻滚/倒地/休息时身体的支撑关系由动作
+            // 自己负责，再去钉脚只会把腿拧坏。
+            DbgFootFix = 0f;
+            if (FootLockOn && _grounded && !_rest &&
+                _pose != PoseState.Knockdown && _pose != PoseState.Death &&
+                _pose != PoseState.Dodge && !_mecanim.ActionPlaying)
+            {
+                float dtl = Mathf.Max(Time.deltaTime, 1e-4f);
+                ApplyFootLock(_ankleL, ref _lockL, dtl);
+                ApplyFootLock(_ankleR, ref _lockR, dtl);
+            }
+            else { _lockL.w = 0f; _lockR.w = 0f; }
         }
 
         /// <summary>某招式对应动捕片段的有效时长（无片段返回 0；翻滚时长匹配用）。</summary>
@@ -639,15 +1043,46 @@ namespace AdversityRoad.Combat
         /// <summary>速度（0-1，相对奔跑速度）/ 是否蹲伏 / 是否着地 /
         /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
+        /// <summary>跑动中出招是否只写上半身（腿继续走移动混合）。关掉＝回到旧行为。</summary>
+        public static bool UpperBodyAttacksOn = true;
+        /// <summary>
+        /// 超过这个地面速度（m/s）才算"在移动"，才需要把腿还给移动层。
+        ///
+        /// 【1.2 是错的，它把所有真正发生的情况都挡在门外】
+        /// 出招期间速度被 _attackSpeedFactor 压到 0.3 倍，实机就是 1.2~1.56 m/s——
+        /// 正好压在这个门槛上下。于是遮罩在**最需要它的那一刻从不生效**：
+        /// 日志里 `Great Sword Slash 5 权重1.00 速度1.2` 连续 5.63 秒，
+        /// 2.4 秒里人挪了 3.81 米，全程没有一帧走路动画。
+        /// 玩家的原话是"直接从 a 漂移到 b，这段过程没有脚步移动动画"。
+        ///
+        /// 门槛该问的是"看得出来在移动吗"，不是"跑起来了吗"。0.25 m/s 下
+        /// 一秒挪 0.25 米，已经是肉眼可见的位移，腿就该跟着走。
+        /// </summary>
+        const float UpperBodySpeed = 0.25f;
+
+        /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。
+        /// 公开是为了让 PlayerController 判断"这一招能不能只动上半身"：
+        /// 不能的（腿法/旋身/位移型）必须靠**定步**让腿与地面一致，见那边的 attackFloor。</summary>
+        public static bool IsUpperBodyAction(PoseState p) =>
+            p == PoseState.Attack || p == PoseState.HeavyAttack || p == PoseState.AttackUp ||
+            p == PoseState.SwordThrust || p == PoseState.PunchJab || p == PoseState.PunchCross ||
+            p == PoseState.Cast || p == PoseState.CastProjectile ||
+            p == PoseState.Charge || p == PoseState.ChargeLoop || p == PoseState.Guard ||
+            // 言语攻击的微反应只写上半身：走着走着被说一句，是身子一颤，
+            // 不是停下脚步。这样它既看得见，又一步都不耽误。
+            p == PoseState.Flinch;
+
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
-            float moveAngleDeg = 0f)
+            float moveAngleDeg = 0f, bool strafing = false)
         {
             _speed01 = Mathf.Clamp01(speed01);
             _crouch = crouch;
             _grounded = grounded;
             _actualSpeed = actualSpeed;
             _moveAngle = moveAngleDeg;
+            _strafing = strafing;
         }
+        bool _strafing;
 
         // ===== 横移 / 后退（面向目标不转身）=====
         //
@@ -666,16 +1101,96 @@ namespace AdversityRoad.Combat
         /// 否则骨盆要拧出人体做不到的角度。55° 是常见取值（左右横跨自然，后撤走倒放）。</summary>
         const float MaxLowerBodyYaw = 55f;
 
+        // ===================== 距离分级（远处的人不必每帧算） =====================
+        //
+        // 这个 Update 是四百多行、每帧几十次三角函数与四元数运算，而实机上同时
+        // 存在**一百三十来个**角色（市民、路人、敌人）。此前没有任何距离或可见性
+        // 剔除：站在城市另一头、屏幕上只有几个像素的路人，和贴脸的敌人跑一样多的
+        // 计算。动捕角色更贵——每个各持一张 PlayableGraph，跳过一帧就是省下整张图
+        // 的求值。
+        //
+        // 做法是**降频**而不是关掉：远处按 1/2、1/4、1/8 的频率更新，跳过的时间
+        // 累加起来在真正更新的那一帧一次性推进（_lodDt），所以步态相位不会走慢——
+        // 远处的人依旧在正常速度地走路，只是动画的时间分辨率低一些。
+        // 各实例按 InstanceID 错开，避免所有人挤在同一帧更新形成周期性尖刺。
+        const float LodFullDist = 30f;    // 以内每帧
+        const float LodHalfDist = 55f;    // 1/2
+        const float LodQuarterDist = 85f; // 1/4，再远 1/8
+
+        static Transform _lodCam;
+        bool _lodExempt;                  // 玩家永不降频
+        static int _lodSeq;               // 自发的错开序号（见 OnEnable）
+        int _lodJitter;
+        int _lodStride = 1;
+        float _lodDt, _nextLodEval;
+        bool _lodDue = true;              // 本帧是否真的更新（LateUpdate 跟随同一决定）
+
+        // 本组件原本没有 Awake/Start，分级参数要有地方初始化。
+        // 用 OnEnable 而不是 Awake：对象池复用时也会重新跑到。
+        void OnEnable()
+        {
+            // 错开量自己发号：Unity 6000.5 起 GetInstanceID() 被标记为
+            // obsolete-as-error（CS0619）——本仓库 ShameLineEnemies 里早有同样的
+            // 注记，我这次径直踩了回去。而这里要的只是"让各实例落在不同帧"，
+            // 一个自增序号足矣，根本不需要引擎的实例 id。
+            _lodJitter = (_lodSeq++) & 7;
+            _lodExempt = GetComponent<Player.PlayerController>() != null;
+            _lodStride = 1;
+            _lodDue = true;
+            _nextLodEval = 0f;
+        }
+
+        bool LodDueThisFrame()
+        {
+            if (_lodExempt) return true;
+            if (Time.unscaledTime >= _nextLodEval)
+            {
+                // 半秒重估一次距离档位就够，且 Camera.main 会按 tag 查找，不能每帧调
+                _nextLodEval = Time.unscaledTime + 0.5f;
+                if (_lodCam == null && Camera.main != null) _lodCam = Camera.main.transform;
+                if (_lodCam == null) _lodStride = 1;
+                else
+                {
+                    float d = Vector3.Distance(_lodCam.position, transform.position);
+                    _lodStride = d < LodFullDist ? 1
+                               : d < LodHalfDist ? 2
+                               : d < LodQuarterDist ? 4 : 8;
+                }
+            }
+            if (_lodStride <= 1) return true;
+            return ((Time.frameCount + _lodJitter) % _lodStride) == 0;
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;
+            // 状态映射照常每帧跑：它决定"该摆什么姿态"，属于玩法，不是画面开销
             if (fsm != null) MapFromFsm();
+
+            // 降频：跳过的那几帧把时间攒着，轮到自己时一次性推进
+            _lodDt += dt;
+            _lodDue = LodDueThisFrame();
+            if (!_lodDue) return;
+            dt = _lodDt;
+            _lodDt = 0f;
 
             // 动捕模式：用 Playables 播 Mixamo 片段，跳过下方程序化骨骼
             if (Mecanim)
             {
                 _t += dt;
-                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch);
+                _mecanim.SetLocomotion(_speed01, _actualSpeed, _moveAngle, _crouch, _strafing);
+                // ===== 跑动中出招：招式只写上半身，腿继续走移动混合 =====
+                // 日志里最顽固的一类"多个动画在打架"就是这个：动作层是**替换**
+                // 移动层的，所以只要出招时人还在位移，腿就在演招式、身体却在平移。
+                // 140 秒的实机日志里这样的片段有 33 段。
+                //
+                // 判据两条，缺一不可：
+                //   · 招式本身是【上半身发力】的（挥砍/突刺/直拳/施法/格挡）。
+                //     腿法（踢/扫堂腿/旋身）与位移型招式（跃劈/飞踢/突进斩）不在此列
+                //     ——那些招的主体就是腿，遮掉腿等于把招砍没了。
+                //   · 人确实在移动。站着打就该整个身体一起使劲，遮上半身反而软。
+                _mecanim.SetActionUpperBodyOnly(
+                    UpperBodyAttacksOn && _actualSpeed > UpperBodySpeed && IsUpperBodyAction(_pose));
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
@@ -697,6 +1212,26 @@ namespace AdversityRoad.Combat
                         _mecanim.PlayAction(_pose, _poseDur);
                     }
                 }
+
+                // ===== 一次性招式播完之后，_pose 必须回落到 Idle =====
+                //
+                // 【录屏证明】13 秒里每一帧都是「姿态 TurnRight ｜ 动作 —」：
+                // 动作层权重早就是 0（片段播完了），_pose 却永远停在 TurnRight。
+                // 因为设招只有两个入口，两个都只在**变化时**触发：
+                //   · MapFromFsm 只在战斗状态机换状态时跑，而移动全程状态不变；
+                //   · PlayerController.UpdateMoveStatePose 只在转场那一帧设招。
+                // 没有任何人负责"招式结束了，回到普通移动"。
+                //
+                // 这不是一个显示问题——**_pose 是被别处当条件读的**：
+                // 贴地校准要求站定姿态、CanStrafe 有一张姿态排除表、
+                // 动作层的接管判断也看它。锁死一个招式姿态等于让这些逻辑
+                // 集体停在错误的分支上（上面的双脚校准就是这么被锁掉的）。
+                //
+                // 保持型姿态（格挡/蓄力/倒地/死亡/蹲伏待机/下落循环）不回落——
+                // 它们本来就该停在那儿等外部收招。
+                if (!_rest && _pose != PoseState.Idle &&
+                    !_mecanim.ActionPlaying && !IsHoldPose(_pose))
+                    _pose = PoseState.Idle;
 
                 // 击飞翻滚：被打飞很远时在视根上做后翻滚（腾空后仰翻转 + 落地），
                 // 让"飞出去"是一段真实的空翻而非僵直漂移
@@ -741,21 +1276,8 @@ namespace AdversityRoad.Combat
                 {
                     float swingLen = _poseDur > 0.02f ? _poseDur : _mecanim.ActionLength(_pose);
                     if (swingLen <= 0.01f) swingLen = 0.45f;
-                    bool sw = IsActionPose(_pose) && _pose != PoseState.Hit &&
-                              _pose != PoseState.HitHeavy && _t < swingLen;
-                    if (weaponTrail.emitting != sw)
-                    {
-                        weaponTrail.emitting = sw;
-                        // 【收招就把刀光抹掉】TrailRenderer 按【缩放时间】老化，
-                        // 而言语攻防面板、暂停、顿帧都会把 timeScale 打到 0——
-                        // 那一刻拖尾就**永远不再消失**，白色的剑痕挂在人身上不走
-                        //（玩家截图里那两片白翅膀）。停止发射时直接清点，
-                        // 不依赖它自己慢慢淡出。
-                        if (!sw) weaponTrail.Clear();
-                    }
-                    // 时间停住时也不留残迹（面板打开的那一帧可能正好在挥砍中）
-                    if (!sw && Time.timeScale < 0.01f && weaponTrail.positionCount > 0)
-                        weaponTrail.Clear();
+                    UpdateWeaponTrail(IsActionPose(_pose) && _pose != PoseState.Hit &&
+                                      _pose != PoseState.HitHeavy && _t < swingLen);
                 }
                 _mecanim.Tick(dt);
                 return;
@@ -1151,8 +1673,35 @@ namespace AdversityRoad.Combat
 
             ApplyWeaponFlourish();
 
-            if (weaponTrail != null && weaponTrail.emitting != swinging)
-                weaponTrail.emitting = swinging;
+            UpdateWeaponTrail(swinging);
+        }
+
+        /// <summary>
+        /// 刀光的开关与清点。
+        ///
+        /// 【为什么单独抽出来】这段逻辑此前只写在 Mecanim 那条路径上，
+        /// 程序化骨骼这条只有一句 `weaponTrail.emitting = swinging`——**没有 Clear()**。
+        /// 于是角色贰（走程序化骨骼那条）收招之后，已经吐出去的拖尾点还挂在身上：
+        /// TrailRenderer 按**缩放时间**老化，而言语攻防面板、暂停、顿帧都会把
+        /// timeScale 打到 0，那一刻拖尾就永远不再消失——玩家截图里挂在人身上的
+        /// 那两片白色带子就是它。
+        ///
+        /// 两条路径共用同一份逻辑，以后再加第三种骨骼也不会漏。
+        /// </summary>
+        void UpdateWeaponTrail(bool swinging)
+        {
+            if (weaponTrail == null) return;
+            // 告诉拖尾"我还管着你"：不盖这个时间戳，它会自己判定成孤儿关掉。
+            // 这正是收刀后白带子挂在身上的那条路径的兜底（见 WeaponTrailGuard）。
+            var guard = weaponTrail.GetComponent<WeaponTrailGuard>();
+            if (guard != null) guard.KeepDriven();
+
+            if (weaponTrail.emitting != swinging) weaponTrail.emitting = swinging;
+            // 不挥砍就**每帧**清一次，而不是只在状态切换的那一帧清。
+            // Clear 对空拖尾是空操作，开销可以忽略；而"只在切换时清"挡不住
+            // 任何一条绕过切换的路径（换父节点、被别处直接改 emitting、
+            // timeScale 归零导致的点位不老化）。修过两轮都漏，这次不再挑时机。
+            if (!swinging && weaponTrail.positionCount > 0) weaponTrail.Clear();
         }
 
         /// <summary>攻击类姿态（用更高的关节跟随系数，保证爆发相位脆快有力）。</summary>
@@ -1236,6 +1785,13 @@ namespace AdversityRoad.Combat
             }
         }
 
+        /// <summary>保持型姿态：播到末尾就停住等外部收招，不该自动回落到 Idle。
+        /// 与 PlayableAnimator 的 ActionMap 里 hold=true 的那几条对应。</summary>
+        static bool IsHoldPose(PoseState p) =>
+            p == PoseState.Guard || p == PoseState.Charge || p == PoseState.ChargeLoop ||
+            p == PoseState.Knockdown || p == PoseState.Death ||
+            p == PoseState.CrouchIdle || p == PoseState.FallLoop;
+
         void MapFromFsm()
         {
             if (fsm.Current == _lastFsmState) return;
@@ -1259,7 +1815,13 @@ namespace AdversityRoad.Combat
                 // 于是"人已经能动了，画面还在滚"——读作闪避迟钝。
                 case CombatState.Dodge: SetPose(DodgePose, DodgeDuration); break;
                 case CombatState.HitReaction: SetPose(HitPose); break;
-                case CombatState.MentalStagger: SetPose(PoseState.Stagger); break;
+                // 【心理失守用"稳住自己"，不用踉跄】
+                // 高反刍会把专注抽干，专注归零即触发短暂失守，而它原来落到
+                // PoseState.Stagger——首选片段是 Stunned，那是一段大幅度踉跄，
+                // 玩家读作"倒地"，而且"太明显"。
+                // 心理上的失守不是身体被打倒，是**撑住**：换成防御姿态，
+                // 人架起来稳一下，既看得出"这一下受了影响"，又不是被打趴。
+                case CombatState.MentalStagger: SetPose(PoseState.Guard); break;
                 case CombatState.Knockdown: SetPose(PoseState.Knockdown); break;
                 case CombatState.InnerPowerCast: SetPose(PoseState.Cast); break;
                 case CombatState.Death: SetPose(PoseState.Death); break;

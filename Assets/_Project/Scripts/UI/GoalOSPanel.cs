@@ -197,7 +197,7 @@ namespace AdversityRoad.UI
                 return;
             }
             GoalOS.LogRealityProgress(text);
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
             {
                 player.Stats.RestoreAxis(Personalization.WeaknessAxis.Procrastination, 30f);

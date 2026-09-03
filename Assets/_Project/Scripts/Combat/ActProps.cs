@@ -37,13 +37,13 @@ namespace AdversityRoad.Combat
             if (_glow != null) _glow.SetActive(ready);
             if (!ready) return;
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 
             // 找到场上的两元赖账王，对质破绽
             AI.EnemyController king = null;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != AI.EnemyState.Dead && e.profile != null &&
                     e.profile.enemyId != null && e.profile.enemyId.StartsWith("boss_gamble_king"))
                 { king = e; break; }
@@ -97,7 +97,7 @@ namespace AdversityRoad.Combat
         {
             _spin += Time.deltaTime * 90f;
             transform.rotation = Quaternion.Euler(0, _spin, 0);
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > 1.6f) return;
 

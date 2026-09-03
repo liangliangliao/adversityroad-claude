@@ -126,7 +126,7 @@ namespace AdversityRoad.Combat
         {
             _spin += Time.deltaTime * 120f;
             transform.rotation = Quaternion.Euler(0, _spin, 0);
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) < 1.4f)
             {
@@ -163,7 +163,7 @@ namespace AdversityRoad.Combat
         {
             if (!_judged)
             {
-                var p = FindObjectOfType<PlayerController>();
+                var p = AdversityRoad.Core.ActorRegistry.Player;
                 if (p != null &&
                     Vector3.Distance(transform.position, p.transform.position) < interactRange)
                     Judge(p);

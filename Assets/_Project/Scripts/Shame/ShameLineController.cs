@@ -81,7 +81,7 @@ namespace AdversityRoad.Shame
             _selfWorthZeroHandled = false;
             ShameBreakdown.Reset();
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null) _levelEntry = _lastRecoveryPoint = player.transform.position;
 
             ExposureSystem.Ensure();
@@ -144,7 +144,7 @@ namespace AdversityRoad.Shame
 
         void TickSelfWorthZero()
         {
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             bool zero = player.Stats.selfWorth <= 0.01f;
             if (zero && !_selfWorthZeroHandled)
@@ -206,7 +206,7 @@ namespace AdversityRoad.Shame
 
         void TeleportTo(Vector3 pos)
         {
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
@@ -232,7 +232,7 @@ namespace AdversityRoad.Shame
             d.outcomeRank = best ? "best" : "normal";
 
             // 法官从场景中消失：不打，不演出，权限没了就是没了
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.profile == null) continue;
                 if (e.profile.enemyId != null && e.profile.enemyId.StartsWith("boss_pending_judge"))

@@ -105,7 +105,7 @@ namespace AdversityRoad.UI
 
         void Update()
         {
-            if (_player == null) _player = FindObjectOfType<PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             if (_player == null || _player.Stats == null) return;
             var s = _player.Stats;
 

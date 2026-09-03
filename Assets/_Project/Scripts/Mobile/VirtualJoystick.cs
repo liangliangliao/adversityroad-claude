@@ -92,7 +92,8 @@ namespace AdversityRoad.Mobile
                 float rad = _angle * Mathf.Deg2Rad;
                 _value = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad)) * Mathf.Min(_mag, 1f);
             }
-            MobileInput.Move = _value;
+            // 漂移自检进行中由脚本驱动摇杆：同样的输入才谈得上"这次比上次好"。
+            MobileInput.Move = Core.DriftProbe.Active ? Core.DriftProbe.Stick : _value;
         }
 
         /// <summary>径向死区 + 重映射：滤掉手指微抖动，死区外平滑过渡不跳变。</summary>

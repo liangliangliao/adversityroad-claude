@@ -133,7 +133,7 @@ namespace AdversityRoad.UI
             if (Time.timeScale <= 0f) return;                 // 其它模态面板（剧情/复盘）打开中
             if (Time.unscaledTime < _nextAutoAllowed) return;
 
-            if (_player == null) _player = FindObjectOfType<Player.PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             if (_player == null) return;
 
             var stats = _player.Stats;
@@ -163,7 +163,7 @@ namespace AdversityRoad.UI
         {
             if (Active) return;
             _autoMode = true;
-            if (_player == null) _player = FindObjectOfType<Player.PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             var stats = _player != null ? _player.Stats : null;
             string reason = stats != null ? QuizSystem.ImbalanceLabel(stats) : "";
             BeginSession(stats != null ? QuizSystem.ImbalancedEnergyTags(stats) : null,
@@ -175,7 +175,7 @@ namespace AdversityRoad.UI
         {
             if (Active) return;
             _autoMode = false;
-            if (_player == null) _player = FindObjectOfType<Player.PlayerController>();
+            if (_player == null) _player = AdversityRoad.Core.ActorRegistry.Player;
             var stats = _player != null ? _player.Stats : null;
             BeginSession(stats != null ? QuizSystem.ImbalancedEnergyTags(stats) : null,
                 "练习模式 · 常识提醒与恢复训练");

@@ -258,7 +258,7 @@ namespace AdversityRoad.UI
 
         static PlayerStats Stats()
         {
-            var pc = FindObjectOfType<PlayerController>();
+            var pc = AdversityRoad.Core.ActorRegistry.Player;
             return pc != null ? pc.Stats : null;
         }
 

@@ -183,7 +183,7 @@ namespace AdversityRoad.Adversity
             if (_enemy == null || _enemy.State == EnemyState.Dead) return;
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
 

@@ -104,7 +104,7 @@ namespace AdversityRoad.Shame
                 createdAt = DateTime.UtcNow.ToString("o"),
             };
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             float restore = _timingRatio >= 0.4f ? 45f : 22f;
             if (p != null) p.Stats.RestoreAxis(Personalization.WeaknessAxis.Shame, restore);
             rec.selfWorthDelta = restore;

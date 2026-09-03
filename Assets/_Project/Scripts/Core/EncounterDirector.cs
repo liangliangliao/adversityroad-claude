@@ -27,11 +27,11 @@ namespace AdversityRoad.Core
 
             var gm = GameManager.Instance;
             if (gm == null || gm.CurrentProfile == null || spawner == null) return;
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null || player.Stats.IsDead) return;
 
             int alive = 0;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != EnemyState.Dead) alive++;
             if (alive >= 3) return;
 

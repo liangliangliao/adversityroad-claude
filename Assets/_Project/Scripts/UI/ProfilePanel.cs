@@ -164,7 +164,7 @@ namespace AdversityRoad.UI
             if (gm != null)
             {
                 gm.SetProfile(_pendingProfile);
-                var player = FindObjectOfType<Player.PlayerController>();
+                var player = AdversityRoad.Core.ActorRegistry.Player;
                 SaveSystem.Save(new SaveData
                 {
                     profile = _pendingProfile,

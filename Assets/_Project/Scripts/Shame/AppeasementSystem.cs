@@ -103,7 +103,7 @@ namespace AdversityRoad.Shame
         /// </summary>
         void ApplySignals()
         {
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             float t = Mathf.Clamp01(Value / 100f);
 

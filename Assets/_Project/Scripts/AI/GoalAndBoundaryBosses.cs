@@ -29,7 +29,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『目标遗忘者』守在目标板前——别忘了你进来是要做什么的。");
         }
@@ -137,7 +137,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『好人牢笼』现身——被好人卡困住时，用「责任归还」（键3/还）打破牢笼！");
         }
@@ -262,7 +262,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『无限代付者』现身——它发动【索取冲击】时举盾格挡，明确拒绝 = 它当场大破绽！");
         }

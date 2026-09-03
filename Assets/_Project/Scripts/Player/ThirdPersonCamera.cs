@@ -177,9 +177,14 @@ namespace AdversityRoad.Player
         // ---- 转向归位（settle）----
         // 进/出用不同门槛（回差）：进 16° 才起手，退到 7° 就收手——
         // 同一个数会让镜头在死区边缘反复起停，那比不跟随更难受。
-        const float SettleEnter = 16f;   // 偏差超过它才开始归位
-        const float SettleExit = 7f;     // 偏差小于它就收手（也是归位的目标精度）
-        const float SettleHold = 0.4f;   // 朝向要先稳这么久（转身途中不动镜）
+        // 【归位要"少而明确"，不能"勤而碎"】
+        // 16°/0.4s 这组门槛太松：随便走两步停下来就归一次位，玩家读到的是
+        // "镜头老在自己动"。归位的价值只在**转过身之后镜头明显落在后面**那一种情形，
+        // 那时偏差是大几十度、且人已经站定了一会儿。把门槛抬到那个量级上，
+        // 平时就彻底不动，真需要时才做一次明确的运镜。
+        const float SettleEnter = 42f;   // 偏差超过它才开始归位（原 16°：太勤）
+        const float SettleExit = 10f;    // 偏差小于它就收手（也是归位的目标精度）
+        const float SettleHold = 1.1f;   // 朝向要先稳这么久（原 0.4s：刚停下就归位，太急）
         bool _settleLatch;
 
         /// <summary>
@@ -201,6 +206,19 @@ namespace AdversityRoad.Player
         /// 26°/s ⇒ 半径 11.5m、补杆 26°/s、90° 转向 3.5 秒对齐——
         /// 慢到补杆是无意识的，于是实际路径几乎看不出弯。
         const float SustainedOrbitCap = 26f;
+
+        /// <summary>
+        /// 室内的绕行速率上限（度/秒）。
+        ///
+        /// 比室外的 26°/s 更狠，理由有两条：室内四面是墙，镜头绕着人转是晕动的主因；
+        /// 而"看见远处的路"这个绕行的唯一目的，在屋里根本不成立。
+        /// 14°/s 意味着代数环的增益被钉死——搓杆再快，角色被带偏的角速度也就这么多。
+        /// </summary>
+        const float IndoorOrbitCap = 14f;
+        /// <summary>室内"敌人已经出画"兜底的转速上限（度/秒）。
+        /// 这一条在屋里也必须留一条口子——打着打着对手不知道在哪是更糟的失明——
+        /// 但它同样要被室内几何管住，不能享受露天的 340°/s。</summary>
+        const float IndoorEnemyOrbitCap = 55f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -303,6 +321,19 @@ namespace AdversityRoad.Player
         /// </summary>
         public static bool IndoorMode;
 
+        /// <summary>
+        /// 推着摇杆时，允许镜头朝"角色朝向"**无限制**跟随。
+        /// 默认 false = 走有界跟随（转角预算，见 gentle 处的推导）。
+        /// 打开＝回到旧行为，用于当场对照：开了就会重现"推着斜杆匀速画圆"。
+        /// </summary>
+        public static bool HeadingFollowWhileSteering;
+
+        /// <summary>一次转身最多换来多少度的镜头绕行。90° 掉头够把新方向框进画面。</summary>
+        const float FollowBudgetDeg = 100f;
+        /// <summary>回到死区内后预算的补充速度（度/秒）：约 1.4 秒补满。</summary>
+        const float FollowRefillDegPerSec = 70f;
+        float _followBudget = FollowBudgetDeg;
+
         /// <summary>室内吊杆长度：短到墙基本碰不到它。</summary>
         const float IndoorBoom = 2.6f;
 
@@ -319,7 +350,74 @@ namespace AdversityRoad.Player
         /// 室外 1.2 米。镜头真的贴近时由 CharacterCloseFade 把角色淡开
         /// （它 1.1 米起淡、0.45 米最透），所以近到 0.5 米也不会"整屏一张脸"。
         /// </summary>
-        const float BoomFloorIndoor = 0.5f, BoomFloorOutdoor = 1.2f;
+        /// <summary>吊杆的【可用下限】。
+        ///
+        /// 上一版我把它定成 0.14m，理由是"只保证不缩进近裁剪面"。那个理由只考虑了
+        /// 几何，没考虑取景：住所里两三步一堵墙，吊杆于是被压到十几厘米——
+        /// 镜头正好卡在角色头顶，玩家反馈的"只拍摄到头顶画面"就是它。
+        /// 而看不见自己站在哪儿，进门当然对不准（"移动尺度过大而对不上门口位置"）。
+        ///
+        /// 0.9m 是"还能看出角色站位"的【取景偏好】——**不是几何下限**。
+        ///
+        /// 【录屏定位：这两个概念被混成一个常量，镜头因此被钉在墙里】
+        /// 上一版把它当成硬下限用：
+        ///     wantDist = Min(wantDist, Max(BoomHardMin, hit.distance - Skin))
+        /// 墙在 0.5m 处时 Max(0.9, 0.38) = 0.9 ⇒ 镜头被摆到 0.9m，
+        /// 也就是**墙的另一侧 0.4m 处**。而我在同一轮里还把这个值从 0.14
+        /// 提到 0.9，等于把这个错误放大了六倍。屋里两三步一堵墙，于是常驻穿墙。
+        /// 那一行上面我自己的注释写的正是"Max(floor, …) 就是禁止的那件事"，
+        /// 然后下一行照旧写了 Max(BoomHardMin, …)。
+        ///
+        /// 更糟的是脱出兜底也用它：DepenetrateBoom 一收到 0.9m 就 return，
+        /// **返回一个它已经判定为嵌在墙里的位置**。最后一道防线被同一个常量关掉了。
+        ///
+        /// 录屏里的因果链非常清楚（6.0→8.0 秒）：
+        ///   6.0~6.8s 角色在画面里正常跑，撞墙 0%
+        ///   7.2s     镜头贴到极近后角色整个消失
+        ///   7.6~8.0s 撞墙 100%、速度从 3.8 掉到 0.6m/s
+        /// 先失明，后撞墙。移动那边的数已经全对了（横向 0.61g、姿态 Idle、
+        /// 横移片段有权重），玩家只是看不见自己在哪儿。
+        ///
+        /// 现在拆成两个：这一条只在几何允许时作为**偏好**生效；
+        /// 真正不可逾越的是下面的 BoomFloor（近裁剪面）。</summary>
+        const float BoomHardMin = 0.9f;
+        /// <summary>吊杆的【几何下限】：唯一的理由是别缩进近裁剪面（近裁≈0.1）。
+        /// 障碍物距离永远是硬上限——墙贴到脸上时正确的表现是画面被迫拉近
+        /// （难看但成立），而不是穿过去。取景审美绝不能凌驾于几何之上。</summary>
+        const float BoomFloor = 0.12f;
+        /// <summary>视线抬高允许引起的最大仰角（这里存的是它的正切，20°）。
+        /// 吊杆被压短时，固定的抬高偏移会主导方向向量把镜头掀上天，见 lookUp 那里。</summary>
+        const float MaxLookTiltTan = 0.364f;
+        /// <summary>贴墙抬高的变化速率上限（米/秒）。"抬不抬得起来"在贴墙时天然
+        /// 在边界上抖，必须平滑掉——镜头量逐帧二值跳变一定会被看见。</summary>
+        const float LiftSlew = 1.2f;
+        float _liftSm;
+        /// <summary>吊杆短到这个距离（米）就完全按近第一人称看，长到 NearFpFree 就完全是第三人称。</summary>
+        const float NearFpBoom = 0.30f, NearFpFree = 1.10f;
+        float _tightSm;
+        /// <summary>诊断：贴身程度 0~1。1=已完全按近第一人称在看（吊杆被墙压死）。</summary>
+        public static float DbgTight;
+
+        // ===== 镜头诊断（PerfHud 第六行；不参与任何逻辑）=====
+        // 这一路我给了移动和动画一堆读数，却从没量过镜头——而录屏显示
+        // 十三帧里有十帧角色根本不在画面里。"看不见自己"是这几条抱怨的
+        // 共同上游（撞墙、进不去门、盲区），它必须有一个数。
+        /// <summary>当前吊杆长度（米）与它想要的长度。差得远＝正被墙压着。</summary>
+        public static float DbgBoom, DbgBoomWant;
+        /// <summary>贴墙抬高量（米）。</summary>
+        public static float DbgLift;
+        /// <summary>镜头俯角（度，正=往下看）。</summary>
+        public static float DbgPitch;
+        /// <summary>脱出之后镜头**仍然**嵌在环境里——这一帧玩家几乎必然看不见东西。</summary>
+        public static bool DbgStuck;
+        /// <summary>角色胸口这一点在不在视口内、且没有被环境挡住。
+        /// 这是整条镜头链路唯一真正要紧的输出：它为假，玩家就是在盲操。</summary>
+        public static bool DbgSeeSelf;
+        /// <summary>吊杆被墙压短时镜头（连同视线目标）最多抬起多少米。
+        /// 再高就会钻进天花板与吊灯里——室内层高本来就只有三米出头。</summary>
+        const float MaxPinchLift = 0.55f;
+        /// <summary>碰撞回缩留出的皮肤厚度（比探测球半径 0.18 稍薄即可）。</summary>
+        const float BoomSkin = 0.12f;
 
         // ===== 取景窗（camera window）：镜头运动的第一原则 =====
         // 出自 Mark Haigh-Hutchinson《Real-Time Cameras》，也是所有成熟动作游戏的骨架：
@@ -406,6 +504,11 @@ namespace AdversityRoad.Player
         /// 这是三项紧迫度里唯一【转镜头能解决】的一项，因此也是唯一有资格
         /// 授权镜头旋转的一项——另两项转多少度都白转，只换来角色画弧。</summary>
         float _viewBlocked, _viewBlockedVel;
+
+        /// <summary>把速度归一化用的参考速度：跟着玩家的 runSpeed 走。
+        /// 原来是三处硬编码的 5.2——runSpeed 一改（现已按动画自然速度定到 4.2），
+        /// 这三处就会把"全速"判早，运镜的引导量与拉远量都跟着失准。</summary>
+        float RunRef => player != null ? Mathf.Max(0.5f, player.runSpeed) : 4.2f;
         Transform _focusEnemy;                 // 「必须看得见的那个敌人」
         float _focusDist = 99f;                // 到聚焦敌人的水平距离
         Vector3 _focusPos;                     // 低通后的敌人位置（滤位置而不是滤屏幕角）
@@ -733,7 +836,7 @@ namespace AdversityRoad.Player
                 _threatDirs.Clear();
                 Transform focusPick = null;
                 float focusBest = float.MaxValue;
-                foreach (var e in Object.FindObjectsOfType<AI.EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 {
                     if (e.State == AI.EnemyState.Dead) continue;
                     Vector3 to = e.transform.position - target.position; to.y = 0;
@@ -896,10 +999,23 @@ namespace AdversityRoad.Player
                 // 脱战撤离：持续朝【背离这个敌人】的方向全速跑。这时玩家的意图是"走"，
                 // 不是"打"——兜底若照旧生效，镜头会扭回去盯着你正在逃离的那个敌人，
                 // 你就变成对着屏幕底部往里跑，完全违背意图。
+                // 【判据必须是意图，不能是速度——这是同一个坑的第三次】
+                //
+                // 原来是 moveSpeed > runSpeed*0.5 且背离 115°。玩家贴着 Boss 时
+                // 正被拴绳/束缚/泥潭压着速度，根本达不到这个门槛，于是"脱战"永远
+                // 不成立：镜头持续扭回去盯着 Boss，而移动是**相对镜头**的，
+                // 玩家往前推杆就一直被掰向 Boss——他的原话是"像被磁铁吸住，
+                // 无法开脱"。拿一个正被压制的量去判断"他想不想走"，必然如此。
+                //
+                // 软锁脱离、减速豁免我都已经改用摇杆方向；这里是同一条信号的
+                // 第三个用处，直接复用 PlayerController.LeaveIntent
+                //（朝背离最近敌人 100° 以上持续 0.4 秒）。摇杆不受任何封顶影响。
+                // 保留原来的速度判据作为并联条件：全速背离跑本来也该算脱战。
                 float runRef0 = player != null ? player.runSpeed : 5.2f;
-                disengaging = moveSpeed > runRef0 * 0.5f && _focusDist > 0.2f &&
-                              Vector3.Angle(Quaternion.Euler(0f, _headingAvg, 0f) * Vector3.forward,
-                                            toFoe.normalized) > 115f;
+                bool awayFast = moveSpeed > runRef0 * 0.5f && _focusDist > 0.2f &&
+                                Vector3.Angle(Quaternion.Euler(0f, _headingAvg, 0f) * Vector3.forward,
+                                              toFoe.normalized) > 115f;
+                disengaging = awayFast || (player != null && player.LeaveIntent);
                 if (Mathf.Abs(_focusScreenAng) > enemyWindow) _focusFrameT += dt;
                 else _focusFrameT = 0f;
             }
@@ -1287,6 +1403,57 @@ namespace AdversityRoad.Player
                 bool gentle = active && dirTrust > 0.01f && err > dz && !backingIntent
                               && _headingHoldT > steadyNeed * 0.35f;
 
+                // ===== 推着杆时不许朝"角色朝向"跟随：那是在追自己的尾巴 =====
+                //
+                // 本文件与 PlayerController 都写着同一个恒等式：摇杆是镜头相对的，
+                //     H = C + θ      （H 角色朝向、C 镜头偏航、θ 摇杆离轴角）
+                // 而这一路跟随的目标恰恰就是 H。把它代进偏差里：
+                //     err = |C − H| = |θ|
+                // **θ 由玩家的拇指决定，不随 C 变化。** 于是镜头转得再多，
+                // err 一点都不会减小——伺服永远看到同样大的偏差，就永远以同样的
+                // 速度转下去；而 C 每转 1°，H 就跟着转 1°，角色于是以恒定角速度
+                // 画圆。这不是"跟随慢了一点"，是一个**根本不收敛的闭环**：
+                // 玩家把杆推成一条直线，人却在走弧线，只能不停补杆，
+                // 补杆又改变 θ ⇒ 读起来就是"角色不听摇杆、在飘"。
+                //
+                // 数值改不动它。室内封顶 14°/s 看着很小，可它是**持续**的：
+                // 推杆走 5 秒就是 70°，住所里两三步一堵墙，这就是撞墙的全过程。
+                // 我上一轮把它从 55°/s 压到 14°/s，闭环还在，只是画的圆更大而已
+                // ——这也是为什么"改了等于没改"。
+                //
+                // 正确的解法是让跟随的目标**不要由 C 推导出来**：
+                //   · 松开摇杆时归位（_settleLatch）：那时 θ 无定义、人不动，
+                //     镜头怎么摆都不会掰弯任何轨迹 —— 这一路保留；
+                //   · 敌人相关的跟随（_combatReorient / enemyLost）：目标是敌人的
+                //     世界坐标，与 C 无关，不构成回路 —— 这一路也保留；
+                //   · 推着杆朝自己朝向跟随（gentle）：唯一构成回路的那一路，关掉。
+                // 关掉之后"跑久了镜头不在背后"由松杆归位与一键回正（V）负责，
+                // 这正是本文件上面那段注释早就写下的设计意图，只是 gentle 一直在
+                // 违反它。留开关是为了能当场 A/B，不是因为拿不准。
+                // ===== 有界跟随：给它一个"转角预算"，用完就停 =====
+                //
+                // 上面那段推导只证明了一件事：**误差恒等于摇杆离轴角 θ，与镜头转了
+                // 多少无关**，所以无预算的伺服必然一直转下去 —— 推着一根斜杆就是
+                // 匀速画圆。但由此得出"那就一点都别跟随"是矫枉过正：转完身之后
+                // 镜头还留在原处，人看到的是自己的侧面和一堵墙，**同样是盲区**。
+                // 两个极端我都实测过了，症状一模一样。
+                //
+                // 中间那条路是给跟随一个**转角预算**：
+                //   · 偏差出死区 ⇒ 一边跟随一边扣预算，扣光就停（不再画圆）；
+                //   · 偏差回到死区内（玩家把杆回正/停下）⇒ 预算按时间补满。
+                // 于是"我转了个身"能换来最多 FollowBudgetDeg 的镜头绕行——足够把
+                // 新方向框进画面；而"我一直斜着推"最多也只绕这么多，不会变成
+                // 无限旋转。预算是**角度**不是时间：转得快慢不影响它能绕多少，
+                // 这正是"跟随一次转身"这件事该有的量纲。
+                if (!HeadingFollowWhileSteering)
+                {
+                    if (err <= dz)
+                        _followBudget = Mathf.Min(FollowBudgetDeg,
+                                                  _followBudget + FollowRefillDegPerSec * dt);
+                    if (_followBudget <= 0.5f) gentle = false;
+                }
+                else _followBudget = FollowBudgetDeg;
+
                 // 跟随的【驱动强度】走临界阻尼，而不是布尔开关。
                 // 停下时若直接把伺服关掉，_yaw 会在有速度的那一帧硬停——速度台阶＝
                 // 无限 jerk，读作"卡一下"。改成 0.3s 内把上限速降到 0：
@@ -1325,7 +1492,17 @@ namespace AdversityRoad.Player
                 //
                 // 交战中（有锁定目标）也不归位：那时取景由战斗分支负责，
                 // 绕着敌人转圈方位角每秒变七十度，归位会变成"镜头一直在追"。
-                bool settleAllowed = !fightingNow && !stickHeld;
+                // 【室内一律不归位】——这是"住所里一转身镜头就自己跟过去、
+                // 人当场失明"的直接来源。归位这一路走的是 SettleEnter(42°) 起、
+                // 目标精度 SettleExit(10°)，而它**完全绕开了下面那道室内限速**
+                //（那道限速挂在"摇杆推着"的分支里，松杆时根本不执行）：
+                // 于是室内 _urgency 恒满 ⇒ esc=4 ⇒ 上限 exploreMaxSpeed(85)×4 = 340°/s，
+                // 站定 1.1 秒后镜头以每秒数百度甩到人背后。屋里两三步一堵墙，
+                // 这一甩就是吊杆扫墙 → 碰撞回缩 → 贴脸 → 什么都看不见。
+                //
+                // 而屋里本来就没有"看清远处的路"这个需求（跟随绕行存在的唯一理由）。
+                // 室内该由玩家自己决定看哪儿，要摆正有【一键回正】（V / 双击转镜区）。
+                bool settleAllowed = !fightingNow && !stickHeld && !IndoorMode;
                 if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
@@ -1387,9 +1564,25 @@ namespace AdversityRoad.Player
                     //   · 离轴 < 死区（开阔 28°）⇒ 跟随本身不成立 ⇒ 一动不动；
                     //   · 死区 → 死区+60° 之间线性升到满速；
                     //   · 再往上封顶。于是日常的小幅走位完全不动镜，只有真的换方向才缓缓跟。
-                    // 室内不做跟随绕行：屋里两三步一堵墙，镜头绕着人转就是晕动的主因，
-                    // 而房间里本来也不需要"看见远处的路"——那正是这条运镜存在的理由。
-                    if (player != null && !enemyNet && !IndoorMode)
+                    // ===== 室内必须【更严】地封顶，而不是跳过封顶（这里原来写反了）=====
+                    //
+                    // 原意注释写的是"室内不做跟随绕行"，实现却是 `!IndoorMode` 挂在
+                    // **封顶那一段**上——于是室内跳过的是**限速**，跟随本身照跑。
+                    // 后果是这套运镜里唯一约束代数环的东西在室内整个失效：
+                    //
+                    //   摇杆是镜头相对的 ⇒ H = C + θ。镜头朝角色朝向转 1°，
+                    //   行进方向就跟着转 1°，角色朝向又跟着转……环的增益全靠限速压住。
+                    //   室内没有 orbit 封顶时，maxSpd 由 exploreMaxSpeed(85) × esc(≤4)
+                    //   给到 **340°/s**——而室内 _urgency 恒高（四面是墙），esc 就在满档。
+                    //
+                    // 于是玩家快速搓杆时：镜头以数百度每秒追朝向 → 行进方向被一起拖着转
+                    // → 角色被甩成一个半径极小的圆（"不是自己在跑，是被拉着转"），
+                    // 参考系每帧大幅跳变（"换方向时人先瞬移到别处"），
+                    // 镜头本身以 340°/s 扫过墙体（截图里镜头整个在墙里）。
+                    //
+                    // 正确做法是室内把绕行压得**比室外还狠**：屋里两三步一堵墙，
+                    // 本来也不需要"看见远处的路"（那才是这条运镜存在的理由）。
+                    if (player != null && !enemyNet)
                     {
                         Vector3 sw = player.StickWorldDir;
                         if (sw.sqrMagnitude > 0.04f)
@@ -1428,9 +1621,20 @@ namespace AdversityRoad.Player
                             // 置信度直接缩放速率：一串换向按其"有多像一个方向"
                             // 给出相应的摆正速度，搓杆则趋零。
                             orbit *= dirTrust;
+                            // 室内一律再压到 IndoorOrbitCap 以下：环的增益被钉死在
+                            // 每秒十几度，搓杆再快也拖不动角色，更扫不进墙里。
                             maxSpd = Mathf.Min(maxSpd, orbit);
                         }
                     }
+                    // ===== 室内封顶必须【无条件】落地，不能挂在"摇杆推着"里面 =====
+                    // 上面那一整块的前置条件是 `!enemyNet` 且 `摇杆推着`。于是室内
+                    // 有两条路完全绕开限速：松杆时的归位（已在上面按室内关掉）、
+                    // 以及"敌人出画"的兜底。后者在屋里同样能把镜头以数百度每秒
+                    // 甩过去。限速属于【环境约束】，不属于某一条跟随理由，
+                    // 所以它的位置就该在这里——所有跟随理由算完之后，一次性落地。
+                    if (IndoorMode)
+                        maxSpd = Mathf.Min(maxSpd,
+                            enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap);
 
                     if (err > 45f)
                     {
@@ -1449,8 +1653,14 @@ namespace AdversityRoad.Player
 
                     // 软死区：驱动随偏差连续趋零，门槛开合处不再有速度突变
                     float softHeading = SoftTarget(_yaw, aimAt + _occYawBias, driveDz);
+                    float yawBeforeFollow = _yaw;
                     _yaw = Mathf.SmoothDampAngle(_yaw, softHeading, ref _yawFollowVel,
                         smoothT, maxSpd, dt);
+                    // 扣预算：只扣 gentle（朝自身朝向、构成回路的那一路）转出来的角度。
+                    // 敌人相关的跟随目标是世界坐标，不构成回路，不该被预算限制住
+                    // ——否则打着打着镜头就"没预算了"，敌人出画也不追，那是失职。
+                    if (gentle && !_combatReorient && !enemyNet)
+                        _followBudget -= Mathf.Abs(Mathf.DeltaAngle(yawBeforeFollow, _yaw));
                 }
                 else _yawFollowVel = Mathf.MoveTowards(_yawFollowVel, 0f, 900f * dt);
             }
@@ -1587,13 +1797,13 @@ namespace AdversityRoad.Player
                     // 实测这两样把前视点的屏幕角从 45.5° 压到 23.9°（取景窗 36.8°），
                     // 等价于 21.6° 的"虚拟转镜"，而角色的轨迹一点没被动。
                     _offAxisRun = Mathf.SmoothDamp(_offAxisRun,
-                        offAxis * Mathf.Clamp01(moveSpeed / 5.2f), ref _offAxisVel,
+                        offAxis * Mathf.Clamp01(moveSpeed / RunRef), ref _offAxisVel,
                         Mathf.Lerp(0.45f, 0.22f, _turnBurst), Mathf.Infinity, dt);
                     // 交战中大幅收敛引导留白（2.2m → 0.5m）：留白是为【长距离奔跑】
                     // 看清前方而设的，而近身缠斗的走位是短促往复——每一次侧闪/后撤
                     // 都会让焦点前后甩动最多 2.2m，那是位置侧最大的一处晃动源，
                     // 换来的"看清前方"在两米开外的对峙里根本用不上。
-                    float lead = Mathf.Clamp01(moveSpeed / 5.2f)
+                    float lead = Mathf.Clamp01(moveSpeed / RunRef)
                                  * Mathf.Lerp(0.45f * (1f - 0.5f * _combatBlend),
                                               Mathf.Lerp(2.2f, 0.5f, _combatBlend), _offAxisRun);
                     // ===== 留白必须平滑【向量】，不能只平滑长度（本轮修的抖动源）=====
@@ -1672,7 +1882,7 @@ namespace AdversityRoad.Player
                 // 有更多可见余量——转身/掉头的瞬间正是最需要看清周围的时刻。
                 // 幅度克制（合计 ≤ +12%）且变焦本身极慢（下方 1.1/s 插值），
                 // 不会形成"呼吸式"变焦那种不稳感。
-                float runOut = Mathf.Clamp01(moveSpeed / 5.2f) * 0.06f;
+                float runOut = Mathf.Clamp01(moveSpeed / RunRef) * 0.06f;
                 // 离轴奔跑再拉远 12%：与引导留白叠加后，横跑的可见前方由 5.5m 增至 8.1m
                 wantFactor = 1f + runOut + _offAxisRun * 0.12f;
             }
@@ -1712,21 +1922,51 @@ namespace AdversityRoad.Player
             // 镜头被迫急缩急伸，这是"互击时镜头严重晃动"的最大来源。
             // 探测球略缩小（0.25→0.18）：转身时吊杆扫过墙角/柱子不再因"擦边"就大幅回缩，
             // 减少「一转身视野突然变窄」的误触发
+            // 【无 GC】这一句每帧都在跑，而 SphereCastAll 每次调用都新建一个数组
+            // ——本文件下方给"通视探测"改 NonAlloc 时写过这条理由，却漏了**主回缩**
+            // 这条更热的路径。60fps 下就是每秒 60 次分配，攒够一波就是一次 GC 长帧。
             float wantDist = maxDist;
-            var occluders = Physics.SphereCastAll(pivot, 0.18f, boomDir, maxDist,
+            int nOcc = Physics.SphereCastNonAlloc(pivot, 0.18f, boomDir, BoomHits, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (var hit in occluders)
+            // 循环变量不叫 i：LateUpdate 是个很长的方法（634~1820 行），
+            // 上面第 820 行的换角探测里已经有一个 i，而 CS0136 **不看先后**，
+            // 同方法内层与外层重名就是编译错误。
+            for (int oi = 0; oi < nOcc; oi++)
             {
-                if (hit.distance <= 0.001f) continue;                       // 起点内嵌，忽略
+                var hit = BoomHits[oi];
                 var col = hit.collider;
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic)
-                    continue;                                               // 飞散碎屑
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                // 下限见 BoomFloorIndoor/Outdoor：**下限不能高过障碍物的距离**，
-                // 否则镜头就被按在障碍物里面（那才是玩家看到的"镜头被遮挡"）
-                float floor = IndoorMode ? BoomFloorIndoor : BoomFloorOutdoor;
-                wantDist = Mathf.Min(wantDist, Mathf.Max(floor, hit.distance - 0.1f));
+                if (!IsEnvironment(col)) continue;                          // 碎屑/玩家/敌人身体
+                // ===== 两条判断的顺序反了，后果是"取景点嵌在墙里时回缩整个失效" =====
+                //
+                // 原来先看 distance≤0.001（起点内嵌）就 continue，再看是不是环境。
+                // 于是**分不清那个零距离命中是谁**：既可能是角色自己的胶囊
+                //（无所谓），也可能是取景点真的埋在门框/矮墙/家具里（要命）。
+                // 一律忽略的结果是：取景点一旦嵌进环境，这一整圈扫掠就什么都拦不住，
+                // 吊杆保持全长，镜头直接落到墙的另一侧——**而且它并没有嵌在任何东西里**，
+                // 所以下面的 DepenetrateBoom 判定为"没问题"，一路放行。
+                // 这正是新加的诊断行里会读到「见自己 否、嵌墙 否」的那一档：
+                // 镜头本身在空气里，只是隔着一堵墙看不见人。
+                //
+                // 先认身份、再看距离：确认是环境之后，零距离就是**最坏情况**
+                //（取景点本身被埋了），必须一路收到几何下限，而不是无视。
+                if (hit.distance <= 0.001f)
+                {
+                    wantDist = BoomFloor;
+                    continue;
+                }
+                // 【这里曾经写反】原本是
+                //     wantDist = Min(wantDist, Max(floor, hit.distance - 0.1f))
+                // 而 Max(floor, ...) 的意思正是"**吊杆不许短于 floor**"——
+                // 也就是上一行注释明令禁止的那件事。墙比 floor 近时（室内 0.5m、
+                // 露天 1.2m），镜头被强行摆到 floor 处，而那个点在墙的**另一侧**：
+                // 这就是截图里镜头整个在墙里的由来，屋里越窄越必然。
+                //
+                // 修正：障碍物距离是**硬上限**，唯一的下限是"别缩进近裁剪面"。
+                // 墙贴到脸上时正确的表现是画面被迫拉近（难看但成立），
+                // 而不是穿过去（直接看穿关卡）。取景审美绝不能凌驾于几何之上。
+                // 下限用 BoomFloor（近裁剪面），**不是** BoomHardMin（取景偏好）。
+                // 用后者就等于"墙比 0.9m 近时把镜头摆到墙的另一侧"，见常量注释。
+                wantDist = Mathf.Min(wantDist, Mathf.Max(BoomFloor, hit.distance - BoomSkin));
             }
             // 回缩仍然快（避免穿墙），但【伸出恢复】明显加快（0.3→0.14s）：
             // 转身扫过障碍后视野立刻回到正常景别，不再长时间贴脸发窄
@@ -1738,7 +1978,50 @@ namespace AdversityRoad.Player
             _boomDist = Mathf.SmoothDamp(_boomDist, wantDist, ref _boomVel, smooth,
                 Mathf.Infinity, dt);
 
-            Vector3 pos = pivot + boomDir * _boomDist;
+            // ===== 贴墙时【抬高】，而不是继续把镜头压向后脑勺 =====
+            //
+            // 录屏里角色占满画面、甚至被裁掉——住所里两三步一堵墙，吊杆被碰撞回缩
+            // 一路压到一米出头。而"能不能看清自己站在哪儿"是操作的前提：
+            // 看不见位置就对不准门口，读起来就是"不受控制"。
+            //
+            // 完整入画所需的距离可以由 FOV 直接反推（角色高 ≈1.8m）：
+            //     d = 0.62·h / tan(fov/2)   →  60° 时约 1.9m
+            // 比这更近就一定装不下整个人。所以短于它的那一截**不再靠缩短来化解**，
+            // 而是把镜头等量抬起来：从斜上方俯看，人仍然完整在画面里，
+            // 而镜头位置更高、也更不容易插进家具和墙里。这是狭窄室内的通行做法。
+            //
+            // 【上一版这里做错了，而且正是"就像失去了眼睛"的来源】
+            // 上一版只把**镜头**抬起来，视线目标仍然钉在取景点上。那等于凭空
+            // 加了一个俯角，而且这个俯角大得离谱：
+            //     吊杆被墙压到 BoomHardMin=0.9m，frameNeed(60°FOV)=1.93m
+            //     ⇒ 抬高 1.03m ⇒ 额外俯角 atan((1.03−0.38)/0.9) = 36°
+            // 而 Unity 的 fieldOfView 是【垂直】视角，60° 的一半只有 30°。
+            // 36° > 30° ⇒ **地平线被整个推出画面**：画面里只剩地板和头顶，
+            // 前方有墙有门有家具全都看不见。屋里两三步一堵墙，这一档几乎常驻。
+            //
+            // 抬高本身没错，错在只抬一头。正确做法是**镜头与视线目标一起抬**：
+            // 那是一次纯粹的垂直平移，俯角一度不变，前方能见度不受任何损失，
+            // 代价只是角色在画面里坐得低一点（脚可能出画）。
+            // 至于"0.9m 装不下 1.8m 高的人"——那是几何事实，抬高解决不了它，
+            // 只能靠贴身景别接受下来（RE4 重制、最后生还者贴墙时都是这么处理的）。
+            // 能见度绝不能拿去换构图。
+            float fovNow = _camComp != null ? _camComp.fieldOfView : fieldOfView;
+            float frameNeed = 0.62f * 1.8f / Mathf.Tan(Mathf.Deg2Rad * fovNow * 0.5f);
+            // 抬高量另设上限：即便同抬视线目标，抬太多也会让镜头钻进天花板/吊灯。
+            float lift = Mathf.Min(Mathf.Max(0f, frameNeed - _boomDist), MaxPinchLift);
+            // 抬高必须自己负责脱出：下面的 DepenetrateBoom 只沿【吊杆方向】收，
+            // 抬进天花板/吊灯它一点忙都帮不上（那是垂直方向的嵌入）。
+            while (lift > 0.01f && BoomBlocked(pivot + boomDir * _boomDist + Vector3.up * lift))
+                lift -= 0.12f;
+            lift = Mathf.Max(0f, lift);
+            // ===== 但退让的结果必须【平滑】，绝不能逐帧二值横跳 =====
+            // 实机日志把这条钉死了：camLift 在 0.000 与 0.550 之间**一帧一换**
+            //（45.719 → 45.736：0.550 → 0.000；69.793 → 69.810：0.000 → 0.550），
+            // 因为"抬起来会不会嵌墙"在贴墙时本来就在边界上反复横跳。
+            // 任何镜头量逐帧二值跳变都是不能接受的，何况它还参与俯角计算。
+            _liftSm = Mathf.MoveTowards(_liftSm, lift, LiftSlew * dt);
+            lift = _liftSm;
+            Vector3 pos = pivot + boomDir * _boomDist + Vector3.up * lift;
 
             // ---- 受击纵向脉冲（幅度小、衰减快） ----
             if (_kick > 0.001f)
@@ -1747,7 +2030,17 @@ namespace AdversityRoad.Player
                 _kick = Mathf.MoveTowards(_kick, 0, dt * 2.2f);
             }
 
+            // 【兜底】上面的回缩只沿"取景点 → 镜头"这一条射线做扫掠，
+            // 而镜头绕行时走的是一段**圆弧**：与弧线相切的墙不落在任何一帧的射线上，
+            // 等它出现在射线上时镜头已经在墙里了。回缩本身也带平滑（室内 0.1s），
+            // 阶跃目标下总有几帧落在障碍物内。
+            // 所以最后再做一次脱出：镜头此刻若嵌在环境里，就沿吊杆往取景点收，
+            // 直到脱出为止。这一步只会让镜头更近，不会把它推远，因此不可能造成
+            // "卡在墙后跟不上角色"。
+            pos = DepenetrateBoom(pivot, pos);
             transform.position = pos;
+            DbgBoom = _boomDist; DbgBoomWant = maxDist; DbgLift = lift;
+            DbgStuck = BoomBlocked(pos);
             // 视线目标略高于取景点（锁定时再抬一点）：角色落于画面下半部，
             // 上半部留给天空/远景——开阔的黑猴式构图，而非满屏地板
             // 视线高度随景别变化：特写抬高到面部（看清神情与这一击落点），
@@ -1755,15 +2048,182 @@ namespace AdversityRoad.Player
             // 于是特写推近了却仍然对着胸口，"推近"只是变大而没有变成特写。
             float lookUp = 0.38f + 0.12f * _lockBlend
                            + 0.30f * _closeStrength * _ultimateBlend
-                           - 0.10f * Mathf.Clamp01(_shot.heightBias / 0.28f);
-            transform.rotation = Quaternion.LookRotation(pivot + Vector3.up * lookUp - pos);
+                           - 0.10f * Mathf.Clamp01(_shot.heightBias / 0.28f)
+                           // 贴墙抬高时视线目标同量抬起：纯垂直平移，俯角不变。
+                           // 少了这一项，抬高就变成了"把镜头低头按向后脑勺"。
+                           + lift;
+            // ===== 吊杆极短时，固定的抬头偏移会主导整个方向向量 =====
+            // 实机读到「吊杆0.12/2.60m 抬0.55 俯-70° 见自己 否」——镜头翻上了天。
+            // 算一遍就知道不是巧合：视线目标比镜头高 0.38m，而水平距离只剩 0.12m，
+            //     atan(0.38 / 0.12) = 72°
+            //   吊杆 2.60m → 仰 8°   1.20m → 18°   0.45m → 40°   0.12m → 72°
+            // 也就是说吊杆一被墙压短，镜头就自动仰起来看天花板——
+            // 上一轮刚把"穿墙"堵上，失明就从穿墙换成了仰天，症状一样。
+            //
+            // ===== 封顶只能作用在【取景偏移】上，抬高补偿必须原样保留 =====
+            //
+            // 上一版把 lift 加进 lookUp **之后**才封顶，于是贴墙时封顶把补偿一并
+            // 削掉，方向向量的竖直分量变成 (lookUp − lift) 这个**大负数**：
+            //     吊杆 0.122m、lift 0.55 ⇒ 封顶后 lookUp = 0.122×0.364 = 0.044
+            //     竖直分量 = 0.044 − 0.55 = −0.506
+            //     俯角 = atan(0.506 / 0.122) = 76.4°   ← 实机日志读到 +77.9°
+            // 配上上面那个逐帧横跳的 lift，镜头一帧之内在 −70° 与 +78° 之间摆，
+            // 玩家什么都看不清。这是我上一轮"修好穿墙"时亲手引进来的。
+            //
+            // 正确的拆法：镜头抬多少、视线目标就抬多少（那一项精确抵消，俯角不受
+            // 影响，这本来就是抬高的定义）；真正需要封顶的只有**取景偏移**那一项，
+            // 因为只有它会在水平距离变短时把俯角撬起来。
+            // ===== 封顶必须用【脱出之后】的真实距离，不能用 _boomDist =====
+            //
+            // 上一版按 _boomDist 封顶，可 DepenetrateBoom 会把镜头**再往回收**
+            // （收不出来时一路收到 BoomFloor=0.12），于是 lookUp 是按 0.42 算的、
+            // 镜头却站在 0.12 处。实机日志把这条钉死了——俯角突跳与 camStuck
+            // 从 0 变 1 **精确同帧**：
+            //     t=102.341  吊杆0.508 抬0.139 嵌墙0  俯 -3.35°
+            //     t=102.358  吊杆0.420 抬0.120 嵌墙1  俯 **-63.97°**
+            // 代入：baseLook=min(0.38, 0.42×0.364)=0.153，而镜头实际只在 0.12 处
+            //     俯角 = atan(0.153 / 0.06) = 69°     ← 与实机 -64° 对得上
+            // 也就是说这一条封顶从来没在真正需要它的那一刻生效过。
+            // 现在改用脱出之后的真实水平距离。
+            Vector3 toPivot = pivot - pos;
+            float horiz = new Vector2(toPivot.x, toPivot.z).magnitude;
+            float baseLook = Mathf.Min(lookUp - lift, horiz * MaxLookTiltTan);
+
+            // ===== 吊杆被压死时过渡到【近第一人称】 =====
+            //
+            // 0.12m 的距离下"第三人称取景"这件事本身已经不存在了：镜头就在角色
+            // 身体里，看向取景点只能看到后脑勺或地板。实机这一段有多难受，日志
+            // 里量得出来——75.39→80.26 共 4.86 秒连续盲区，吊杆平均 0.39m，
+            // 玩家全程推满杆（1.00），296 帧里 279 帧撞在墙上，整段只挪了 10 米。
+            //
+            // 成熟做法是过渡到近第一人称：视线改为**沿吊杆方向看出去**
+            //（−boomDir 就是玩家选定的那个朝向），玩家至少能看清前方。
+            // 代价是看不见自己——但"看不见前方"比"看不见自己"致命得多，
+            // 而且贴墙时本来也没有自己可看。
+            float tight = 1f - Mathf.InverseLerp(NearFpBoom, NearFpFree, horiz);
+            _tightSm = Mathf.MoveTowards(_tightSm, tight, dt / 0.25f);   // 别硬切
+            Vector3 lookDir = Vector3.Slerp((toPivot + Vector3.up * baseLook).normalized,
+                                            -boomDir, _tightSm);
+            if (lookDir.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(lookDir);
+            DbgTight = _tightSm;
+            // 近第一人称时把自己的身体藏起来：镜头都在躯干里了，不藏就是满屏
+            // 后脑勺和衣服内面，看前方反而更难。用 ShadowsOnly 而不是关渲染器——
+            // 影子留着，地面上仍然看得出自己站在哪儿。
+            HideSelfWhenTight(_tightSm > 0.55f);
+
+            DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
+            // 角色胸口在不在画面里：视口内 + 没有被环境挡住。
+            // 这两条缺一不可——在视口内但被墙挡住，玩家一样什么都看不见。
+            {
+                var cc0 = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
+                Vector3 chest = pivot;
+                bool onScreen = false;
+                if (cc0 != null)
+                {
+                    Vector3 vp = cc0.WorldToViewportPoint(chest);
+                    onScreen = vp.z > 0f && vp.x > 0.02f && vp.x < 0.98f &&
+                               vp.y > 0.02f && vp.y < 0.98f;
+                }
+                if (onScreen)
+                {
+                    Vector3 d = chest - pos;
+                    float dl = d.magnitude;
+                    onScreen = dl < 0.05f ||
+                        !Physics.Raycast(pos, d / dl, out RaycastHit vh, dl - 0.05f,
+                            Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ||
+                        !IsEnvironment(vh.collider);
+                }
+                DbgSeeSelf = onScreen;
+            }
 
             // 景别的焦段：群战广角看局势、决胜长焦压缩更有分量。
             // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
-            var camc = GetComponent<Camera>();
+            var camc = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
             if (camc != null && !Presets[PresetIndex].fp)
                 camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
                     fieldOfView + _shot.fovBias, 12f * dt);
+        }
+
+        Camera _camComp;   // 缓存：每帧 GetComponent 没必要
+
+        // 脱出检测的重叠缓冲（每帧一次，必须无 GC）
+        static readonly Collider[] BoomOverlap = new Collider[8];
+        // 主吊杆回缩与换角探测各自的扫掠缓冲（同上，避免每帧新建数组）
+        static readonly RaycastHit[] BoomHits = new RaycastHit[12];
+        static readonly RaycastHit[] ProbeHits = new RaycastHit[12];
+
+        /// <summary>这个碰撞体算不算【环境】——即吊杆该不该被它挡住。
+        /// 排除飞散的物理碎屑、玩家与敌人的身体胶囊。
+        /// （原本这三行判断在四处各抄了一遍，改一处就得记得改四处。）</summary>
+        static bool IsEnvironment(Collider col)
+        {
+            if (col == null) return false;
+            if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) return false;
+            if (col.GetComponentInParent<PlayerController>() != null) return false;
+            if (col.GetComponentInParent<AI.EnemyController>() != null) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// 若镜头位置嵌在环境几何里，沿吊杆方向朝取景点收，直到脱出（或到达硬下限）。
+        /// 过滤规则与碰撞回缩一致：忽略触发器、玩家/敌人身体、飞散的物理碎屑。
+        /// </summary>
+        Vector3 DepenetrateBoom(Vector3 pivot, Vector3 pos)
+        {
+            Vector3 back = pos - pivot;
+            float dist = back.magnitude;
+            if (dist < 0.01f) return pos;
+            Vector3 dir = back / dist;
+            // 由远及近试探：每次收一小段，最多收到硬下限。步长取皮肤厚度，
+            // 收满全程也只有二十来次，且绝大多数帧第一次就通过、直接返回。
+            for (int i = 0; i < 24; i++)
+            {
+                if (!BoomBlocked(pos)) return pos;
+                dist -= BoomSkin;
+                // 收到几何下限为止。上一版这里写的是 BoomHardMin(0.9)——
+                // 一到 0.9 就 return，而 return 的正是刚判定为"嵌在墙里"的那个点：
+                // 最后一道防线被取景偏好关掉了。脱出只该受近裁剪面约束。
+                if (dist <= BoomFloor) return pivot + dir * BoomFloor;
+                pos = pivot + dir * dist;
+            }
+            return pos;
+        }
+
+        Renderer[] _selfRends;
+        bool _selfHidden;
+
+        /// <summary>贴身到近第一人称时隐藏自己的身体（保留影子）。</summary>
+        void HideSelfWhenTight(bool hide)
+        {
+            if (hide == _selfHidden) return;
+            if (_selfRends == null)
+            {
+                if (player == null) return;
+                _selfRends = player.GetComponentsInChildren<Renderer>(true);
+            }
+            _selfHidden = hide;
+            for (int ri = 0; ri < _selfRends.Length; ri++)
+            {
+                var rd = _selfRends[ri];
+                if (rd == null) continue;
+                rd.shadowCastingMode = hide
+                    ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                    : UnityEngine.Rendering.ShadowCastingMode.On;
+            }
+        }
+
+        /// <summary>该点是否嵌在【环境】碰撞体里。</summary>
+        static bool BoomBlocked(Vector3 p)
+        {
+            int n = Physics.OverlapSphereNonAlloc(p, BoomSkin, BoomOverlap,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = BoomOverlap[i];
+                if (col == null || !IsEnvironment(col)) continue;
+                return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -1774,16 +2234,20 @@ namespace AdversityRoad.Player
         {
             Vector3 dir = (Quaternion.Euler(_curPitch, yawDeg, 0) * offset).normalized;
             float best = maxDist;
-            var hits = Physics.SphereCastAll(pivot, 0.18f, dir, maxDist,
+            // 换角探测一帧内要打好几个方向，同样不能每次分配一个数组。
+            // 用独立缓冲：它与主回缩不在同一段代码里，但共用一个缓冲会在将来
+            // 某次"探测里再套探测"时静默互相覆盖，分开更省心。
+            int nHit = Physics.SphereCastNonAlloc(pivot, 0.18f, dir, ProbeHits, maxDist,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            foreach (var hit in hits)
+            for (int i = 0; i < nHit; i++)
             {
+                var hit = ProbeHits[i];
                 if (hit.distance <= 0.001f) continue;
-                var col = hit.collider;
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
-                best = Mathf.Min(best, Mathf.Max(1.6f, hit.distance - 0.1f));
+                if (!IsEnvironment(hit.collider)) continue;
+                // 同样不能有下限：写 Max(1.6f, ...) 会让【所有比 1.6m 更近就被挡死
+                // 的方向】一律报 1.6m，于是换角探针分不出"墙贴脸"和"还算通透"，
+                // 挑出来的新机位可能一样是堵墙。如实报告探到的距离。
+                best = Mathf.Min(best, Mathf.Max(0f, hit.distance - BoomSkin));
             }
             return best;
         }
@@ -1809,12 +2273,9 @@ namespace AdversityRoad.Player
             {
                 var hit = SightHits[i];
                 if (hit.distance <= 0.001f) continue;
-                var col = hit.collider;
                 // 忽略动态碎屑、玩家与敌人本体：它们不构成"视野受限"，
                 // 敌人挡一下反而是你正想看的东西
-                if (col.attachedRigidbody != null && !col.attachedRigidbody.isKinematic) continue;
-                if (col.GetComponentInParent<PlayerController>() != null) continue;
-                if (col.GetComponentInParent<AI.EnemyController>() != null) continue;
+                if (!IsEnvironment(hit.collider)) continue;
                 best = Mathf.Min(best, hit.distance);
             }
             return best;

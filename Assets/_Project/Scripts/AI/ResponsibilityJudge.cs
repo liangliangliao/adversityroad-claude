@@ -33,7 +33,7 @@ namespace AdversityRoad.AI
         {
             _cd = 2.5f;
             _slamCd = 6f;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
         }
 

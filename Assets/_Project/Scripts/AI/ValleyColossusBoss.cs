@@ -33,7 +33,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『低谷巨像』矗立在回廊尽头——场边的求助电话亭是破局关键：求助不是羞耻。");
         }

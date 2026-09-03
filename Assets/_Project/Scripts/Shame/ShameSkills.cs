@@ -112,14 +112,14 @@ namespace AdversityRoad.Shame
             }
             _spotlightReadyAt = Time.time + SpotlightCooldown;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return false;
 
             // 玩家感知到的注意力：被暴露度整体抬高——这正是"高估"的来源
             float exposure01 = ExposureSystem.Instance != null ? ExposureSystem.Instance.Ratio : 0f;
             int counted = 0, overestimated = 0;
 
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.State == EnemyState.Dead) continue;
                 float dist = Vector3.Distance(e.transform.position, player.transform.position);
@@ -165,7 +165,7 @@ namespace AdversityRoad.Shame
             _refuseReadyAt = Time.time + RefuseCooldown;
             _refuseArmedUntil = Time.time + RefuseArmedSeconds;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
             {
                 CombatFeedback.MoveName(player.transform.position + Vector3.up * 2.2f, "不上庭", false);

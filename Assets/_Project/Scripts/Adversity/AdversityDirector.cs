@@ -72,7 +72,7 @@ namespace AdversityRoad.Adversity
             if (Time.time < _next) return;
             _next = Time.time + Random.Range(85f, 150f);
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null || player.Stats == null || player.Stats.IsDead) return;
 
             _budget = AdversityBudgetCalculator.Compute(GoalOS.Active, player.Stats,
@@ -103,7 +103,7 @@ namespace AdversityRoad.Adversity
             if (spawner == null) return;
 
             int alive = 0;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != EnemyState.Dead) alive++;
             int allowed = AdversityBudgetCalculator.EnemyCountFor(_budget);
             if (alive >= allowed) return;
@@ -241,7 +241,7 @@ namespace AdversityRoad.Adversity
             _consecutiveDefeats++;
             _consecutiveEasyWins = 0;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             var d = player != null ? DistrictCatalog.NearestTo(player.transform.position, 90f) : null;
             if (d != null) WorldState.NoteDefeat(d.id);
 
@@ -254,7 +254,7 @@ namespace AdversityRoad.Adversity
             _consecutiveDefeats = 0;
             // "轻松取胜" = 遭遇开始后很快解决且几乎没掉状态
             float dur = Time.time - _encounterStartedAt;
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             bool easy = dur > 0f && dur < 18f && player != null && player.Stats != null &&
                 player.Stats.hp > player.Stats.maxHp * 0.8f;
             if (easy) _consecutiveEasyWins++;

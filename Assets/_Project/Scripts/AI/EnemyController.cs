@@ -109,6 +109,11 @@ namespace AdversityRoad.AI
         /// <summary>当前血量比例（Boss 阶段机 0-1）。</summary>
         public float HpRatio => profile.maxHealth > 0 ? Mathf.Clamp01(_hp / profile.maxHealth) : 0f;
 
+        // 登记表：替掉各处 Update 里的全场景敌人扫描（见 Core.ActorRegistry）
+        //（每次调用都是全场景扫描 + 一次数组分配，见 Core.ActorRegistry）
+        void OnEnable() => Core.ActorRegistry.Register(this);
+        void OnDisable() => Core.ActorRegistry.Unregister(this);
+
         void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
@@ -121,9 +126,9 @@ namespace AdversityRoad.AI
         {
             _hp = profile.maxHealth;
             _posture = profile.posture;
-            _agent.speed = profile.moveSpeed;
+            _agent.speed = profile.MoveSpeed;
             _tauntTimer = Random.Range(4f, 9f);
-            var p = FindObjectOfType<Player.PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             if (statusBar != null)
             {
@@ -275,7 +280,7 @@ namespace AdversityRoad.AI
 
             // 部位伤情：腿伤减速、手伤削弱攻势（每帧同步到寻路速度上）
             if (_agent != null)
-                _agent.speed = profile.moveSpeed * (Time.time < _legHurtUntil ? 0.62f : 1f);
+                _agent.speed = profile.MoveSpeed * (Time.time < _legHurtUntil ? 0.62f : 1f);
 
             // 把移动速度喂给人形动画（步行/奔跑步态）。
             // 用【真实每帧位移】而非寻路速度：追击/游走/击退/侧闪，无论位移来自
@@ -288,15 +293,16 @@ namespace AdversityRoad.AI
                 _lastSelfPos = transform.position;
                 float inst = dt > 0.0001f ? planar.magnitude / dt : 0f;
                 _measuredSpeed = Mathf.Lerp(_measuredSpeed, inst, 12f * dt);
-                float refSpeed = Mathf.Max(2.5f, profile.moveSpeed);
+                float refSpeed = Mathf.Max(2.5f, profile.MoveSpeed);
                 // 移动方向相对身体正面的夹角：敌人交战时脸始终对着玩家，
                 // 而脚下在绕圈/后撤/横挪——不把这个角度喂给动画层，播的就永远是
                 // "向前走"，于是横着挪动时脚在原地倒腾＝**漂移**。
                 float moveAngle = 0f;
                 if (planar.sqrMagnitude > 1e-6f)
                     moveAngle = Vector3.SignedAngle(transform.forward, planar.normalized, Vector3.up);
+                // 敌人交战中脸始终对着玩家、脚下在绕圈/后撤，夹角恒为有意为之
                 poser.SetLocomotion(Mathf.Clamp01(_measuredSpeed / refSpeed) * 0.9f,
-                    false, true, _measuredSpeed, moveAngle);
+                    false, true, _measuredSpeed, moveAngle, true);
                 // 交战中静立时摆出格斗预备架势（而非松垮站立）
                 // 十类武术里只有刀术/棍术/重武器是持械的，其余七类是拳脚。
                 // 持剑动作集（临战架势、蹲伏、踢击、受击、倒下）双手都是握着东西的，
@@ -412,7 +418,7 @@ namespace AdversityRoad.AI
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
-                    float standoff = profile.attackRange + 1.8f;
+                    float standoff = profile.AttackRange + 1.8f;
                     if (dist > standoff)
                     {
                         MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
@@ -420,7 +426,7 @@ namespace AdversityRoad.AI
                     else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
                     {
                         MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
-                        if (dist <= profile.attackRange) State = EnemyState.Attack;
+                        if (dist <= profile.AttackRange) State = EnemyState.Attack;
                     }
                     else
                     {
@@ -442,7 +448,7 @@ namespace AdversityRoad.AI
                     UpdateEmotion("狰狞");
                     StopMoving();
                     FaceTarget();
-                    if (dist > profile.attackRange * 1.2f)
+                    if (dist > profile.AttackRange * 1.2f)
                     {
                         Combat.CombatDirector.Release(this);   // 脱离攻击态：归还攻击令牌
                         State = EnemyState.Chase; break;
@@ -465,7 +471,7 @@ namespace AdversityRoad.AI
                         }
                         Vector3 toP = _player.position - transform.position; toP.y = 0;
                         Vector3 side = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;
-                        _agent.Move(side * profile.moveSpeed * 0.32f * dt);
+                        _agent.Move(side * profile.MoveSpeed * 0.32f * dt);
                     }
                     break;
             }
@@ -516,8 +522,8 @@ namespace AdversityRoad.AI
                 }
                 dir = Vector3.Cross(Vector3.up, toP.normalized) * _strafeDir;   // 环上绕圈
             }
-            if (AgentReady) _agent.Move(dir * profile.moveSpeed * 0.5f * dt);
-            else transform.position += dir * profile.moveSpeed * 0.5f * dt;
+            if (AgentReady) _agent.Move(dir * profile.MoveSpeed * 0.5f * dt);
+            else transform.position += dir * profile.MoveSpeed * 0.5f * dt;
         }
 
         void MoveTowards(Vector3 target, float dt)
@@ -532,7 +538,7 @@ namespace AdversityRoad.AI
             Vector3 dir = target - transform.position;
             dir.y = 0;
             if (dir.sqrMagnitude < 0.04f) return;
-            transform.position += dir.normalized * profile.moveSpeed * dt;
+            transform.position += dir.normalized * profile.MoveSpeed * dt;
             transform.rotation = Quaternion.Slerp(transform.rotation,
                 Quaternion.LookRotation(dir), 8f * dt);
         }
@@ -671,7 +677,7 @@ namespace AdversityRoad.AI
         {
             if (_player == null) yield break;
             Vector3 to = _player.position - transform.position; to.y = 0;
-            float gap = to.magnitude - profile.attackRange * 0.75f;
+            float gap = to.magnitude - profile.AttackRange * 0.75f;
             if (gap <= 0.05f || dur <= 0.01f) yield break;
             Vector3 dir = to.normalized;
             float total = Mathf.Min(gap, 0.9f);   // 封顶 0.9m：踏一步，不是冲刺
@@ -720,7 +726,7 @@ namespace AdversityRoad.AI
             if (attackHitbox != null) attackHitbox.DisableHitbox();
             // 连击追加段：紧凑衔接下一招（间隔短，读作一套连招）
             if (_comboLeft > 0 && State == EnemyState.Attack && _player != null &&
-                Vector3.Distance(transform.position, _player.position) < profile.attackRange * 1.6f)
+                Vector3.Distance(transform.position, _player.position) < profile.AttackRange * 1.6f)
             {
                 _comboLeft--;
                 var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;

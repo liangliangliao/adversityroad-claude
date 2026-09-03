@@ -79,7 +79,7 @@ namespace AdversityRoad.Goals
         static bool MatchesBoss(string archetype, string enemyId)
         {
             if (string.IsNullOrEmpty(archetype) || string.IsNullOrEmpty(enemyId)) return false;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e != null && e.profile != null && e.profile.enemyId == enemyId)
                     return ChapterModuleLibrary.TryEnemy(archetype, out var t) &&
                            EnemyCatalog.TypeLabel(t) == e.profile.displayName;
@@ -100,7 +100,7 @@ namespace AdversityRoad.Goals
             if (!GoalOS.FinalGateOpen() || spawner == null) return;
 
             var goal = GoalOS.Active;
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (goal == null || player == null || player.Stats.IsDead) return;
 
             var d = DistrictCatalog.NearestTo(player.transform.position, 90f);
@@ -155,8 +155,8 @@ namespace AdversityRoad.Goals
             CourageSystem.NoteGoalAction("走完了整条旅程");
 
             var d = DistrictCatalog.NearestTo(
-                FindObjectOfType<PlayerController>() != null
-                    ? FindObjectOfType<PlayerController>().transform.position : Vector3.zero, 120f);
+                AdversityRoad.Core.ActorRegistry.Player != null
+                    ? AdversityRoad.Core.ActorRegistry.Player.transform.position : Vector3.zero, 120f);
             if (d != null) WorldState.OnMilestoneReached(d.id);
 
             GameEvents.RaiseSubtitle("我知道我要去哪里。困难可以阻挡道路，但不能替我决定方向。");

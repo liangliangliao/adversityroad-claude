@@ -171,7 +171,7 @@ namespace AdversityRoad.UI
             _panel.SetActive(false);
             _nextAllowed = Time.unscaledTime + Cooldown;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             bool correct = picked == _correctIndex;
 
             if (correct)

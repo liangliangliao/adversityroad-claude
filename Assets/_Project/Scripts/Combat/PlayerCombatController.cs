@@ -991,7 +991,7 @@ namespace AdversityRoad.Combat
         /// <summary>蓄力气场：强风场把半径内的敌人持续推出（蓄力期间无法被近身）。</summary>
         void RepelEnemies(float dt)
         {
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 e.Repel(transform.position, 3.8f, 6.5f, dt);
         }
 
@@ -1181,9 +1181,9 @@ namespace AdversityRoad.Combat
             {
                 Vector3 to = target.position - transform.position; to.y = 0;
                 float need = to.magnitude - 1.05f;   // 停在贴身出招距离
-                float move = Mathf.Min(Mathf.Max(need, 0f), Mathf.Max(lunge, 0.4f) + 0.9f);
+                float move = Mathf.Min(Mathf.Max(need, 0f), MaxLungeDist(lunge));
                 if (move > 0.04f && to.sqrMagnitude > 0.01f)
-                    GlideMove(to.normalized * move, 0.09f);
+                    GlideMove(to.normalized * move, LungeDuration(move));
                 return;
             }
             // 无目标时【几乎不前冲】——精准打击的关键：
@@ -1192,8 +1192,45 @@ namespace AdversityRoad.Combat
             // 于是"有时移动太多或太少、总是踢不准"。现在把普通招式的空挥前冲压到 0.12m 以内：
             // **站位由玩家说了算，所见即所中**；只有突进类指令技（lunge≥2）保留大位移。
             float cap = lunge >= 2f ? 0.9f : 0.12f;
-            GlideMove(transform.forward * Mathf.Min(lunge * 0.35f, cap), 0.1f);
+            float d = Mathf.Min(lunge * 0.35f, cap);
+            if (d <= 0.01f) return;
+            GlideMove(transform.forward * d, LungeDuration(d));
         }
+
+        /// <summary>突进封顶速度（m/s）。超过冲刺速度已经读作"瞬移"而不是"一步贴上去"。</summary>
+        const float LungeMaxSpeed = 8f;
+
+        /// <summary>出招磁吸总开关（设置面板可关）。关掉＝出招不再自动贴身，站位完全由玩家决定。</summary>
+        public static bool AttackMagnetOn = true;
+
+        /// <summary>诊断：本次测试里磁吸一共把角色挪了多少米。</summary>
+        public static float DbgLungeTotal;
+
+        /// <summary>
+        /// 一次出招最多能磁吸多远。
+        ///
+        /// 【实机数据否掉了上一版的取值】上一版是 max(lunge,0.4)+0.9，普通突刺
+        /// 就能吸 1.9 米。185 秒的日志里磁吸一共把角色挪了 **30.4 米**，50 次，
+        /// 单段最长 3.52 米（连段里一段接一段地叠）。玩家的原话是
+        /// "经常性滑动、更像是被动画控制了"——30 米就是那句话的量。
+        ///
+        /// 磁吸存在的理由只有一个：**触屏上瞄不准，补最后一小段**。补 0.5 米
+        /// 是补，补 1.9 米是替玩家走位。动作游戏里普攻的贴身修正普遍在 0.3~0.6 米，
+        /// 这里取 0.55 米；只有明确的突进类指令技（lunge≥2）保留大位移。
+        /// </summary>
+        static float MaxLungeDist(float lunge) => lunge >= 2f ? lunge * 0.6f : 0.55f;
+
+        /// <summary>
+        /// 突进用多久：距离固定，**时间随距离伸缩**，使速度不超过 LungeMaxSpeed。
+        ///
+        /// 之前一律 0.09 秒。旋风斩的磁吸最大能冲 1.5 米，1.5 / 0.09 = 16.7 m/s，
+        /// 是冲刺速度的三倍多——玩家读到的就是"魔法般改变位置"。实机日志里
+        /// 出招期间实测速度冲到 12.5 m/s，而同一帧指令速度只有 5.1。
+        /// 现在 1.5 米要走 0.19 秒，仍然利落，但看得出是"冲过去"而不是"闪现"。
+        /// 下限保留 0.09 秒：短距离微调不该被拖慢。
+        /// </summary>
+        static float LungeDuration(float dist) =>
+            Mathf.Max(0.09f, dist / LungeMaxSpeed);
 
         Transform _aimTarget;   // 本次出招锁定的目标（FaceAndLunge 磁吸共用）
         Vector3 _aimLatch;      // 连段内锁存的瞄准世界方向（防镜头回正把瞄准带偏）
@@ -1224,11 +1261,67 @@ namespace AdversityRoad.Combat
             {
                 Vector3 dir = _aimTarget.position - transform.position; dir.y = 0;
                 if (dir.sqrMagnitude > 0.01f)
-                    transform.rotation = Quaternion.LookRotation(dir.normalized);
+                    SnapFacing(Quaternion.LookRotation(dir.normalized));
                 return;
             }
             if (stick.sqrMagnitude > 0.02f)
-                transform.rotation = Quaternion.LookRotation(stick);
+                SnapFacing(Quaternion.LookRotation(stick));
+        }
+
+        /// <summary>两次言语微反应之间的最小间隔（秒）。言语攻击是连珠炮式的，
+        /// 不节流就会一句一颤，单次再短也读作"一直在被打断"。</summary>
+        const float FlinchCooldown = 1.6f;
+        float _nextFlinch;
+
+        /// <summary>一次出招最多能把朝向掰过去多少度（玩家没在推杆时）。</summary>
+        const float AttackFaceSnapMax = 30f;
+
+        /// <summary>玩家正在推杆时的上限：更小。推着杆＝他明确在指方向，磁吸只配微调。</summary>
+        const float AttackFaceSnapSteering = 12f;
+
+        /// <summary>诊断：**本帧**出招把朝向掰了多少度；本帧没出招就是 0。
+        /// 出招是离散事件，若把上一次的值一直留着，日志里会读成"一直在被强制转向"。</summary>
+        public static float DbgFaceSnap => _faceSnapFrame == Time.frameCount ? _faceSnapDeg : 0f;
+        static float _faceSnapDeg;
+        static int _faceSnapFrame = -1;
+
+        /// <summary>
+        /// 出招转向：**限幅**，不再瞬间对齐。
+        ///
+        /// 原来这里是一句 transform.rotation = LookRotation(...)，每按一次攻击就
+        /// 把角色朝向整个覆盖掉，没有任何速率或幅度限制。日志里玩家在连打时
+        /// 每 200ms 按一次，也就是每秒被强制转向五次——玩家说的
+        /// "很难精准控制角色、更像是被动画控制了"，这是最直接的一条。
+        ///
+        /// 自动瞄准本身要留（触屏上没有它根本打不中），但它的职权范围应当是
+        /// "帮你修正一点偏差"，不是"替你决定朝哪打"。超过 70° 说明玩家瞄的
+        /// 压根不是这个方向，这时听玩家的：只转 70°，剩下的差由玩家自己补。
+        /// 70° 这个数：普通斩击的判定框横向张角约 ±55°（见 PoseHitShape），
+        /// 也就是说在限幅之内仍然打得到，限幅之外本来就该落空。
+        /// </summary>
+        void SnapFacing(Quaternion want)
+        {
+            if (!AttackMagnetOn) return;
+            // ===== 上限分两档：推着杆时几乎不许动 =====
+            //
+            // 【实机数据否掉了上一版的 70°】185 秒里出招转向 47 次，其中
+            // **24 次（51%）顶满 70°**——也就是说一半的出招，自动瞄准想转的
+            // 角度比 70° 还大，限幅只是把"完全替玩家决定"改成了"替他决定 70°"。
+            // 玩家说"很难精准控制角色"，一半的出招被掰 70° 就是这句话的量。
+            //
+            // 分档的依据是玩家有没有在表达方向：
+            //   · 推着摇杆 ⇒ 他已经明确指了方向，磁吸只配修 12° 的偏差；
+            //   · 没推杆   ⇒ 他没表达，磁吸可以帮忙对准，但也只到 30°。
+            // 30° 仍在普通斩击的判定张角（±55°）之内，够得着；
+            // 超出的部分本来就该是"你瞄歪了"，而不是"系统替你转过去"。
+            float limit = WorldMoveDir().sqrMagnitude > 0.02f
+                ? AttackFaceSnapSteering : AttackFaceSnapMax;
+            float delta = Quaternion.Angle(transform.rotation, want);
+            _faceSnapDeg = Mathf.Min(delta, limit);
+            _faceSnapFrame = Time.frameCount;
+            transform.rotation = delta <= limit
+                ? want
+                : Quaternion.RotateTowards(transform.rotation, want, limit);
         }
 
         Player.LockOnSystem _lockOn;
@@ -1249,7 +1342,7 @@ namespace AdversityRoad.Combat
             var locked = LockedTarget();
             if (locked != null) return locked;
             if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：完全手操
-            var enemies = FindObjectsOfType<AI.EnemyController>();
+            var enemies = AdversityRoad.Core.ActorRegistry.Enemies;
             Transform best = null;
             float bestScore = float.MaxValue;
             bool hasDir = preferDir.sqrMagnitude > 0.02f;
@@ -1290,8 +1383,20 @@ namespace AdversityRoad.Combat
 
         /// <summary>短促滑步位移：突进不再一帧瞬移（瞬移会被跟随镜头复制成"一记一顿"
         /// 的画面抖动），改为 0.1 秒左右的高速滑行——镜头软跟随即可保持稳定。</summary>
+        float _glideUntil;   // 当前这次突进的结束时刻（unscaled，顿帧不该让它变长）
+
         void GlideMove(Vector3 offset, float duration)
         {
+            if (!AttackMagnetOn) return;
+            // ===== 不许链式叠加 =====
+            // 连段里每一段都会调一次 FaceAndLunge，而玩家连点时每 200ms 一次。
+            // 上一版每次都重起一段新的突进，于是一段接一段，实机日志里
+            // 734.51→735.04 这 0.53 秒内连续滑了 3.52 米——单次限速 8 m/s
+            // 完全没拦住，因为问题不在单次的速度，在**次数**。
+            // 一次突进没走完之前不再接受新的：想再贴一次，等这一次走完。
+            if (Time.unscaledTime < _glideUntil) return;
+            _glideUntil = Time.unscaledTime + duration;
+            DbgLungeTotal += offset.magnitude;
             if (_glideRoutine != null) StopCoroutine(_glideRoutine);
             _glideRoutine = StartCoroutine(Glide(offset, duration));
         }
@@ -1301,9 +1406,18 @@ namespace AdversityRoad.Combat
             float t = 0;
             while (t < duration)
             {
-                float dt = Time.deltaTime;
+                // 与 PlayerController 用同一个步长上限：突进是按"总位移 × 本帧占比"
+                // 推进的，一帧 0.13 秒就会把一大截位移压进一帧里，同样读作瞬移。
+                float dt = Mathf.Min(Time.deltaTime, Player.PlayerController.MaxSimStep);
                 t += dt;
-                _cc.Move(offset * Mathf.Min(dt / duration, 1f));
+                // 【不再自己调 StepMove】改成向 PlayerController 申请本帧的额外位移，
+                // 由它连同重力在唯一的一次 StepMove 里落地。理由见 PlayerController
+                // 的 _extMove：自己调的话，这一帧最后一次 Move 是纯水平的，
+                // CharacterController.isGrounded 立刻判成"离地"——实机日志里
+                // 出招期间每秒翻转两次接地状态，落地姿态与下落循环全被带乱。
+                Vector3 step = offset * Mathf.Min(dt / duration, 1f);
+                if (_player != null) _player.AddExternalMove(step, "出招突进");
+                else CharacterMotion.StepMove(_cc, step);
                 yield return null;
             }
         }
@@ -1432,7 +1546,7 @@ namespace AdversityRoad.Combat
         {
             AI.EnemyController best = null;
             float bestD = 9f;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e == null || e.State == AI.EnemyState.Dead) continue;
                 if (!string.IsNullOrEmpty(dmg.attackerId) && e.profile != null &&
@@ -1470,7 +1584,7 @@ namespace AdversityRoad.Combat
             var locked = LockedTarget();
             if (locked != null) return locked;
             if (!Player.LockOnSystem.AimAssist) return null;   // 吸附关闭：技能也完全手操
-            var enemies = FindObjectsOfType<AI.EnemyController>();
+            var enemies = AdversityRoad.Core.ActorRegistry.Enemies;
             Transform best = null;
             float bestDist = Mathf.Max(autoAimRange, 14f);
             foreach (var e in enemies)
@@ -1555,9 +1669,12 @@ namespace AdversityRoad.Combat
             float t = 0, dur = 0.15f;
             while (t < dur && _fsm.Current == CombatState.Knockdown)
             {
-                t += Time.deltaTime;
+                float dt = Mathf.Min(Time.deltaTime, Player.PlayerController.MaxSimStep);
+                t += dt;
                 float k = 1f - t / dur;
-                _cc.Move(dir * (5f * k * k) * Time.deltaTime);
+                Vector3 step = dir * (5f * k * k) * dt;
+                if (_player != null) _player.AddExternalMove(step, "击飞");
+                else CharacterMotion.StepMove(_cc, step);
                 yield return null;
             }
         }
@@ -1632,13 +1749,71 @@ namespace AdversityRoad.Combat
                 else
                 {
                     if (IsGuarding) mental *= (1f - guardMentalReduction);
+
+                    // ===== 言语攻击的身体反应按【心理韧性】分三档 =====
+                    //
+                    // 玩家的原话：受到语言攻击时出现倒地动画，"耽误了最好的攻击或
+                    // 防御时机"，他要的是"一个微小的反应就够了，不需要倒地"，
+                    // 而且"随着自己越来越强，反应越来越弱，最后没有任何反应"。
+                    //
+                    // 韧性怎么算见 PlayerStats.MentalResilience（心气 + 进度 + 这一下多重）。
+                    //   ≥0.75 心已定：不打断，只飘一行字。能量也几乎不掉。
+                    //   ≥0.40 稳得住：0.35 秒的短促一顿，**不解除锁定**——
+                    //                 掉锁定才是真正"耽误时机"的那一下。
+                    //   < 0.40 撑不住：维持原来的短暂失守（跪一下、掉锁定）。
+                    // 能量同样按韧性削（最多削九成），于是"越强越不掉"和
+                    // "越强越没反应"是同一条曲线，不会出现动作没反应而能量哗哗掉。
+                    float res = _player.Stats.MentalResilience(mental);
+                    mental *= 1f - res * 0.9f;
                     bool staggered = _player.Stats.TakeMentalDamage(dmg.mentalAxis, mental);
-                    if (staggered)
+
+                    if (res >= 0.75f)
                     {
-                        // 心理硬直 = 压力状态机里的「短暂失守」：跪一下、掉锁定，但只有几秒
-                        if (Adversity.StressStateMachine.Instance != null)
-                            Adversity.StressStateMachine.Instance.TriggerBreakdown();
-                        else _fsm.TriggerMentalStagger();
+                        // 心已定：一个字都不耽误，只让玩家知道"我感觉到了，但不为所动"
+                        CombatFeedback.DamageNumber(transform.position, "不为所动",
+                            new Color(0.7f, 0.9f, 1f), 1f);
+                    }
+                    else
+                    {
+                        // ===== 微反应：不动状态机，只写上半身 =====
+                        //
+                        // 上一版我把它做成 RequestState(MentalStagger, 0.35f)，玩家说
+                        // "修复结果不明显"。两个原因：
+                        //   ① MentalStagger 落到 PoseState.Stagger，而 Stagger 的**首选
+                        //      片段是 Stunned**——那是一段大幅度踉跄，正是他说的"倒地"。
+                        //      换首选片段解决不了，因为 Stagger 在真·失守时还得大幅度。
+                        //      所以新开 PoseState.Flinch，首选 Hit Reaction（小幅一颤）。
+                        //   ② 走状态机就必然有动作锁，哪怕只有 0.35 秒也是在"耽误时机"。
+                        //      微反应压根不该占用状态机：直接给动作层一个短片段，
+                        //      并且只写上半身（见 IsUpperBodyAction），走着走着挨一句
+                        //      是身子一颤，脚步一步都不停。
+                        //
+                        // 还有一条更要紧的：原来只有**资源见底**（staggered）才有反应，
+                        // 平时挨骂在画面上什么都不发生。玩家要的是"确实有反应，
+                        // 让他能感受到"——所以微反应对每一次没被完全化解的言语攻击都给。
+                        var poser = GetComponent<HumanoidAnimator>();
+                        // ===== 微反应还要更小、而且不能连着来 =====
+                        //
+                        // 玩家第三次说"反应太大"。前两次我调的是片段本身
+                        //（先是把倍速当时长填错、放慢了它，再是 1.7 倍速截前 32%）。
+                        // 这次连**频率**一起收：言语攻击是连珠炮式的，一句接一句，
+                        // 每句都颤一下，累积起来就还是"一直在被打断"，
+                        // 哪怕单次已经很短。
+                        // 片段这一版再收到 2.1 倍速、只取前 20%（约 0.1 秒的一颤），
+                        // 并加 FlinchCooldown 的节流：一段话里只颤第一下。
+                        if (poser != null && Time.time >= _nextFlinch)
+                        {
+                            _nextFlinch = Time.time + FlinchCooldown;
+                            poser.SetPose(PoseState.Flinch);
+                        }
+
+                        // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
+                        if (staggered)
+                        {
+                            if (Adversity.StressStateMachine.Instance != null)
+                                Adversity.StressStateMachine.Instance.TriggerBreakdown();
+                            else _fsm.TriggerMentalStagger();
+                        }
                     }
                 }
             }
@@ -1698,6 +1873,12 @@ namespace AdversityRoad.Combat
                 else if (blocked)
                 {
                     phys *= 0.2f;
+                    // 【接上格挡受击】PoseState.GuardHit 有专用片段（Great Sword Block Hit）、
+                    // 有枚举、也在 ActionMap 里，却**没有任何玩法代码触发它**——
+                    // 挡下一击时身体毫无抗力反馈，玩家分不清"挡住了"和"没打中"。
+                    // 这是四层审计里 L3→L4 唯一报出来的死姿态。
+                    if (_anim != null && _anim.HasPose(PoseState.GuardHit))
+                        _anim.SetPose(PoseState.GuardHit, 0.22f);
                     // 第八章「不上庭反制」的第二步：举盾接住那一下（章外调用直接被忽略）
                     Shame.ShameComboTracker.Push(Shame.ShameComboTracker.TagBoundaryGuard);
                 }

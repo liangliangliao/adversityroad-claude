@@ -84,7 +84,7 @@ namespace AdversityRoad.Adversity
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
                 _fsm = _player.GetComponent<CombatStateMachine>();
             }
@@ -112,7 +112,7 @@ namespace AdversityRoad.Adversity
         {
             if (_taunter == null)
             {
-                foreach (var e in FindObjectsOfType<EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 {
                     if (e.State != EnemyState.MentalAttack) continue;
                     float d = Vector3.Distance(e.transform.position, _player.transform.position);
@@ -152,7 +152,7 @@ namespace AdversityRoad.Adversity
         void TrackSurrounded()
         {
             int near = 0;
-            foreach (var e in FindObjectsOfType<EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e.State == EnemyState.Dead) continue;
                 if (Vector3.Distance(e.transform.position, _player.transform.position) < 9f) near++;

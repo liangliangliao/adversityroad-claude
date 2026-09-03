@@ -95,7 +95,7 @@ namespace AdversityRoad.Combat
         int CountNearbyEnemies(float radius)
         {
             int n = 0;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
             {
                 if (e.State == AI.EnemyState.Dead) continue;
                 if ((e.transform.position - transform.position).sqrMagnitude < radius * radius) n++;

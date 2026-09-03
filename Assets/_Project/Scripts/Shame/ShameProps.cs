@@ -93,7 +93,7 @@ namespace AdversityRoad.Shame
 
         protected virtual void Update()
         {
-            if (player == null) player = FindObjectOfType<PlayerController>();
+            if (player == null) player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             float dist = Vector3.Distance(transform.position, player.transform.position);
             if (dist > interactRange) { OnOutOfRange(); return; }
@@ -282,7 +282,7 @@ namespace AdversityRoad.Shame
         {
             var appease = AppeasementSystem.Instance;
             if (appease != null) appease.Appease(14f, "你先应下来了");
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
                 GameAudio.Play(GameAudio.Sfx.Cast, appease != null ? appease.VoiceVolume : 0.6f);
             Finish();
@@ -300,7 +300,7 @@ namespace AdversityRoad.Shame
                 Finish();
                 return;
             }
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null)
             {
                 player.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Shame, 9f);
@@ -452,7 +452,7 @@ namespace AdversityRoad.Shame
             var ctl = ShameLineController.Instance;
             if (ctl != null && ctl.ObjectiveDone(objectiveId)) { _done = true; return; }
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             if (Vector3.Distance(transform.position, player.transform.position) > interactRange)
             {

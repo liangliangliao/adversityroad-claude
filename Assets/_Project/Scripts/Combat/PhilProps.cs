@@ -38,7 +38,7 @@ namespace AdversityRoad.Combat
                 }
                 return;
             }
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 
@@ -184,12 +184,12 @@ namespace AdversityRoad.Combat
             if (_glow != null) _glow.SetActive(ready);
             if (!ready) return;
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 
             AI.EnemyController asker = null;
-            foreach (var e in FindObjectsOfType<AI.EnemyController>())
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                 if (e.State != AI.EnemyState.Dead && e.profile != null &&
                     e.profile.enemyId != null && e.profile.enemyId.StartsWith("boss_infinite_asker"))
                 { asker = e; break; }

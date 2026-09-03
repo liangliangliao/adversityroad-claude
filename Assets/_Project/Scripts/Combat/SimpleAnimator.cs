@@ -5,6 +5,10 @@ namespace AdversityRoad.Combat
     public enum PoseState
     {
         Idle, Attack, HeavyAttack, Dodge, Guard, Hit, Stagger, Knockdown, Cast, Death,
+        // 言语攻击的微反应：只是"我听见了、身体动了一下"，不是踉跄更不是倒地。
+        // 与 Stagger 分开是因为 Stagger 的首选片段是 Stunned——那是一段大幅度
+        // 踉跄，玩家读作"倒地"，而且会把最好的攻防时机整个吃掉。
+        Flinch,
         // 武术连段（参考黑神话悟空轻棍五段：横扫→上挑→蹬踢→旋身扫→跃劈）
         AttackUp,       // 上挑
         AttackKick,     // 蹬踢（腿法）
@@ -95,7 +99,13 @@ namespace AdversityRoad.Combat
                 case CombatState.Finisher: SetPose(PoseState.HeavyAttack); break;
                 case CombatState.Dodge: SetPose(PoseState.Dodge); break;
                 case CombatState.HitReaction: SetPose(PoseState.Hit); break;
-                case CombatState.MentalStagger: SetPose(PoseState.Stagger); break;
+                // 【心理失守用"稳住自己"，不用踉跄】
+                // 高反刍会把专注抽干，专注归零即触发短暂失守，而它原来落到
+                // PoseState.Stagger——首选片段是 Stunned，那是一段大幅度踉跄，
+                // 玩家读作"倒地"，而且"太明显"。
+                // 心理上的失守不是身体被打倒，是**撑住**：换成防御姿态，
+                // 人架起来稳一下，既看得出"这一下受了影响"，又不是被打趴。
+                case CombatState.MentalStagger: SetPose(PoseState.Guard); break;
                 case CombatState.Knockdown: SetPose(PoseState.Knockdown); break;
                 case CombatState.InnerPowerCast: SetPose(PoseState.Cast); break;
                 case CombatState.Death: SetPose(PoseState.Death); break;

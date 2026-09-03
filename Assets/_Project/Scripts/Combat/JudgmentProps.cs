@@ -60,7 +60,7 @@ namespace AdversityRoad.Combat
             CombatFeedback.Debris(transform.position, new Color(0.9f, 0.75f, 0.4f), 7);
             GameAudio.Play(GameAudio.Sfx.HeavyHit, 0.7f);
 
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 p.Stats.RestoreAxis(Personalization.WeaknessAxis.SelfDoubt, 14f);
@@ -85,7 +85,7 @@ namespace AdversityRoad.Combat
         void Update()
         {
             if (_read) return;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 
@@ -109,7 +109,7 @@ namespace AdversityRoad.Combat
         void Update()
         {
             if (_used) return;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
 

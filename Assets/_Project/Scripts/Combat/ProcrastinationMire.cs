@@ -35,7 +35,7 @@ namespace AdversityRoad.Combat
         // 不会触发，主动把减速还原
         void OnDestroy()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) p.ClearSlow(this);
         }
     }

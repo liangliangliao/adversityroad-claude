@@ -19,6 +19,12 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
+        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn;
+        Button _postFxBtn, _singleClipBtn;
+        Button _logBtn;
+        Text _logPath, _logTarget;
+        readonly System.Collections.Generic.List<(Button, float)> _turnBtns =
+            new System.Collections.Generic.List<(Button, float)>();
         bool _deleteArmed;
 
         static readonly Color Off = new Color(0.25f, 0.25f, 0.3f, 0.95f);
@@ -36,7 +42,7 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1040),
+            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1720),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
@@ -104,9 +110,172 @@ namespace AdversityRoad.UI
                     Refresh();
                 }, 22);
 
+            // ===== 移动手感调试开关（本轮新增）=====
+            //
+            // 上一轮我一次性上了两个全新机制（支撑脚锁定、转向倾身）又把转向速率
+            // 砍掉六成——三件事一起改，实机一说"更烂了"就根本分不清是哪一个，
+            // 只能靠再推四个构建去二分。那是方法错误，代价由玩家承担。
+            // 全部挂到这里：一个包就能自己定位，不必等我一轮轮试。
+            for (int ti = 0; ti < 3; ti++)
+            {
+                var lv = ti == 0 ? ("转向轻 12", 12f)
+                       : ti == 1 ? ("转向中 9", 9f)
+                                 : ("转向重 6", 6f);
+                float accel = lv.Item2;
+                var b = UiUtil.MakeButton(_panel.transform, lv.Item1, new Vector2(0.5f, 1f),
+                    new Vector2(-256 + ti * 256, -736), new Vector2(246, 70), Off, () =>
+                    {
+                        PlayerController.TurnAccelOverride = accel;
+                        Refresh();
+                    }, 22);
+                _turnBtns.Add((b, accel));
+            }
+            _footLockBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-195, -822), new Vector2(370, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.FootLockOn = !Combat.HumanoidAnimator.FootLockOn;
+                    Refresh();
+                }, 22);
+            _leanBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(195, -822), new Vector2(370, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.TurnLeanOn = !Combat.HumanoidAnimator.TurnLeanOn;
+                    Refresh();
+                }, 22);
+
+            // ===== 二分定位：两个开关把"漂移"锁进一半 =====
+            // 找了八轮都是"找到一个机制→修掉→照旧"，再猜第九个没有意义。
+            // 这两个开关各切掉一整条链路，玩家半分钟就能告诉我在哪一半：
+            //   · 关「骨骼后处理」不漂 ⇒ 原因在动画图**下游**（钉髋/倾身/拧腰/
+            //     前摇/贴地校准/锁脚）；
+            //   · 开「单片段」不漂     ⇒ 原因在**混合**（相位、跨片段权重）；
+            //   · 两个都试了还漂       ⇒ 与动画无关，去查角色位置与镜头。
+            _postFxBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-277, -564), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.BonePostFxOn =
+                        !Combat.HumanoidAnimator.BonePostFxOn;
+                    Refresh();
+                }, 22);
+            _singleClipBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(277, -564), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.PlayableAnimator.SingleClipLoco =
+                        !Combat.PlayableAnimator.SingleClipLoco;
+                    Refresh();
+                }, 22);
+
+            // ===== 出招磁吸（默认开）=====
+            // 关掉＝出招不再自动贴身、不再自动转向，站位与朝向完全由玩家决定。
+            // 触屏上瞄准本来就难，所以默认留着；但它是"补最后一小段"，
+            // 不该替玩家走位——玩家觉得不听使唤时，这是第一个该关掉试试的东西。
+            _magnetBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-277, -894), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.PlayerCombatController.AttackMagnetOn =
+                        !Combat.PlayerCombatController.AttackMagnetOn;
+                    Refresh();
+                }, 22);
+
+            // ===== 跑动中出招只写上半身（默认开）=====
+            // 关掉＝回到"招式接管整个身体"的旧行为，用于对照：
+            // 关了之后跑动中出招，腿会立刻改演招式，人却还在平移。
+            _upperBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(277, -894), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn =
+                        !Combat.HumanoidAnimator.UpperBodyAttacksOn;
+                    Refresh();
+                }, 22);
+
+            // ===== 推杆时的镜头自动跟随（默认关）=====
+            // 开着它就是"推着直杆却走弧线"的那个闭环（推导见 ThirdPersonCamera）。
+            // 留这个开关只为当场对照：开 → 走两步就偏、最后蹭墙；关 → 走直线。
+            _headFollowBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -980), new Vector2(560, 70), Off, () =>
+                {
+                    Player.ThirdPersonCamera.HeadingFollowWhileSteering =
+                        !Player.ThirdPersonCamera.HeadingFollowWhileSteering;
+                    Refresh();
+                }, 22);
+
+            // ===== 逐帧调试日志 =====
+            // 每次测试点一下"新建日志"，跑完把文件发出来即可。
+            _logBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-195, -1080), new Vector2(370, 70), Off, () =>
+                {
+                    Core.MoveLogger.Enabled = !Core.MoveLogger.Enabled;
+                    Refresh();
+                }, 22);
+            UiUtil.MakeButton(_panel.transform, "新建日志（每次测试点一下）",
+                new Vector2(0.5f, 1f), new Vector2(195, -1080), new Vector2(370, 70),
+                new Color(0.25f, 0.4f, 0.55f, 0.95f), () =>
+                {
+                    Core.MoveLogger.StartNewFile();
+                    Core.MoveLogger.Enabled = true;
+                    GameEvents.RaiseSubtitle("已新建日志：" + Core.MoveLogger.CurrentPath);
+                    Refresh();
+                }, 22);
+            // 日志放哪儿：persistentDataPath 在 Android 11 之后被 scoped storage
+            // 对文件管理器藏了起来，玩家进不去。用系统目录选择器挑一个自己能进的
+            // 文件夹（下载/文档/U 盘都行），拿到可持久化写授权后导出即可。
+            // 选一次记住，之后每次切后台自动导出一份。
+            UiUtil.MakeButton(_panel.transform, "选择日志目录（下载/文档…）",
+                new Vector2(0.5f, 1f), new Vector2(-195, -1166), new Vector2(370, 70),
+                new Color(0.3f, 0.45f, 0.3f, 0.95f), () =>
+                {
+                    if (!Platform.LogExport.Supported)
+                    {
+                        GameEvents.RaiseSubtitle("这个平台不支持系统目录选择器——" +
+                            "日志仍在：" + Core.MoveLogger.CurrentPath);
+                        return;
+                    }
+                    Platform.LogExport.PickFolder("选择存放调试日志的文件夹");
+                }, 22);
+            UiUtil.MakeButton(_panel.transform, "导出日志到该目录",
+                new Vector2(0.5f, 1f), new Vector2(195, -1166), new Vector2(370, 70),
+                new Color(0.3f, 0.45f, 0.55f, 0.95f), () =>
+                {
+                    Core.MoveLogger.ExportNow();
+                    GameEvents.RaiseSubtitle(Core.MoveLogger.LastExport);
+                    Refresh();
+                }, 22);
+            _logTarget = UiUtil.MakeText(_panel.transform, "LogTarget", "", 18,
+                TextAnchor.MiddleCenter, new Color(0.75f, 1f, 0.75f, 0.75f));
+            UiUtil.SetRect(_logTarget, new Vector2(0.5f, 1f), new Vector2(0, -1226),
+                new Vector2(1000, 34));
+
+            _logPath = UiUtil.MakeText(_panel.transform, "LogPath", "", 18,
+                TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.55f));
+            UiUtil.SetRect(_logPath, new Vector2(0.5f, 1f), new Vector2(0, -1266),
+                new Vector2(1000, 34));
+
+            // 真实色彩：关掉"改颜色"的那一层分级，看模型的本色。
+            // 玩家说"模型放进游戏颜色跟原来不一样"——查下来贴图全对，
+            // 改颜色的是全局 + 分区两层 ColorAdjustments（见 PostGrading）。
+            // 这是美术设计，不该我替他删，给开关让他自己比。
+            _gradingBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -1244), new Vector2(760, 70),
+                new Color(0.3f, 0.4f, 0.5f, 0.95f), () =>
+                {
+                    Core.PostGrading.Enabled = !Core.PostGrading.Enabled;
+                    Refresh();
+                }, 22);
+
+            // 漂移自检：不用再"玩一局导出 CSV"，点一下、看屏幕上的四个数就行。
+            // 脚本化的摇杆保证每次输入完全一样，两次结果才有可比性。
+            UiUtil.MakeButton(_panel.transform, "漂移自检（约 18 秒，全程别碰摇杆）",
+                new Vector2(0.5f, 1f), new Vector2(0, -1320), new Vector2(760, 70),
+                new Color(0.5f, 0.3f, 0.45f, 0.95f), () =>
+                {
+                    Hide();                       // 面板挡着看不到角色，也看不到结论
+                    Core.MoveLogger.Enabled = true;
+                    Core.DriftProbe.Run();
+                }, 22);
+
             // 跳章快进：主线结构重排后老玩家可快速回到原进度（视为完成，不发奖励）
             UiUtil.MakeButton(_panel.transform, "跳过当前子章（调试/老玩家快进）",
-                new Vector2(0.5f, 1f), new Vector2(0, -736), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -1388), new Vector2(760, 70),
                 new Color(0.45f, 0.4f, 0.25f, 0.95f), () =>
                 {
                     var story = StoryManager.Instance;
@@ -122,17 +291,17 @@ namespace AdversityRoad.UI
 
             // 心理安全系统：快速退出战斗——任何时刻一键传送回安全屋（独居小屋）
             UiUtil.MakeButton(_panel.transform, "一键返回安全屋（立刻脱离当前战斗）",
-                new Vector2(0.5f, 1f), new Vector2(0, -822), new Vector2(760, 70),
+                new Vector2(0.5f, 1f), new Vector2(0, -1474), new Vector2(760, 70),
                 new Color(0.25f, 0.4f, 0.55f, 0.95f), ReturnToSafeHouse, 24);
 
             _deleteBtn = UiUtil.MakeButton(_panel.transform, "删除全部数据（存档/画像/提示词/进度）",
-                new Vector2(0.5f, 1f), new Vector2(0, -908), new Vector2(760, 74),
+                new Vector2(0.5f, 1f), new Vector2(0, -1560), new Vector2(760, 74),
                 new Color(0.5f, 0.2f, 0.18f, 0.95f), OnDelete, 24);
 
             var note = UiUtil.MakeText(_panel.transform, "Note",
                 "个人材料仅保存在本机；删除后自新的第一章重新开始。",
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -968), new Vector2(900, 32));
+            UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -1620), new Vector2(900, 32));
 
             // 关闭移到右上角：底部空间让给新增的操作偏好行
             UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -46),
@@ -148,12 +317,13 @@ namespace AdversityRoad.UI
         /// <summary>一键返回安全屋：不论身处哪个区域/是否交战，立即传送回独居小屋。</summary>
         void ReturnToSafeHouse()
         {
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             var cc = player.GetComponent<CharacterController>();
             if (cc != null) cc.enabled = false;
             player.transform.position = new Vector3(0, 1.1f, -5);   // 独居小屋出生点
             if (cc != null) cc.enabled = true;
+            player.NotifyTeleported();   // 同上：跨场景传送后必须清掉旧的安全点
             player.MoveSpeedMultiplier = 1f;
             World.ZoneBuilder.CurrentZoneId = "home";
             Hide();
@@ -210,6 +380,96 @@ namespace AdversityRoad.UI
                 _aimAssistBtn.GetComponentInChildren<Text>().text =
                     LockOnSystem.AimAssist ? "攻击吸附：开" : "攻击吸附：关（完全手操）";
                 _aimAssistBtn.GetComponent<Image>().color = LockOnSystem.AimAssist ? On : Off;
+            }
+            foreach (var (btn, val) in _turnBtns)
+                btn.GetComponent<Image>().color =
+                    Mathf.Approximately(PlayerController.TurnAccelOverride, val) ? On : Off;
+            if (_footLockBtn != null)
+            {
+                _footLockBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.FootLockOn ? "支撑脚锁定：开" : "支撑脚锁定：关";
+                _footLockBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.FootLockOn ? On : Off;
+            }
+            if (_leanBtn != null)
+            {
+                _leanBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.TurnLeanOn ? "转向倾身：开" : "转向倾身：关";
+                _leanBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.TurnLeanOn ? On : Off;
+            }
+            if (_gradingBtn != null)
+            {
+                _gradingBtn.GetComponentInChildren<Text>().text =
+                    Core.PostGrading.Enabled
+                        ? "画面色彩分级：开（分区氛围）"
+                        : "画面色彩分级：关（模型本色）";
+                _gradingBtn.GetComponent<Image>().color =
+                    Core.PostGrading.Enabled ? On : Off;
+            }
+            if (_postFxBtn != null)
+            {
+                _postFxBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.BonePostFxOn
+                        ? "骨骼后处理：开（正常）"
+                        : "骨骼后处理：关（诊断·会与碰撞体分家）";
+                _postFxBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.BonePostFxOn ? On : Off;
+            }
+            if (_singleClipBtn != null)
+            {
+                _singleClipBtn.GetComponentInChildren<Text>().text =
+                    Combat.PlayableAnimator.SingleClipLoco
+                        ? "单片段模式：开（诊断·不混合）"
+                        : "单片段模式：关（正常）";
+                _singleClipBtn.GetComponent<Image>().color =
+                    Combat.PlayableAnimator.SingleClipLoco ? On : Off;
+            }
+            if (_magnetBtn != null)
+            {
+                _magnetBtn.GetComponentInChildren<Text>().text =
+                    Combat.PlayerCombatController.AttackMagnetOn
+                        ? "出招自动贴身/转向：开"
+                        : "出招自动贴身/转向：关";
+                _magnetBtn.GetComponent<Image>().color =
+                    Combat.PlayerCombatController.AttackMagnetOn ? On : Off;
+            }
+            if (_upperBtn != null)
+            {
+                _upperBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn
+                        ? "跑动出招·只动上半身：开"
+                        : "跑动出招·只动上半身：关";
+                _upperBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn ? On : Off;
+            }
+            if (_headFollowBtn != null)
+            {
+                _headFollowBtn.GetComponentInChildren<Text>().text =
+                    Player.ThirdPersonCamera.HeadingFollowWhileSteering
+                        ? "推杆时镜头自动跟随：开（会走弧线）"
+                        : "推杆时镜头自动跟随：关";
+                _headFollowBtn.GetComponent<Image>().color =
+                    Player.ThirdPersonCamera.HeadingFollowWhileSteering ? On : Off;
+            }
+            if (_logBtn != null)
+            {
+                _logBtn.GetComponentInChildren<Text>().text =
+                    Core.MoveLogger.Enabled ? "调试日志：开" : "调试日志：关";
+                _logBtn.GetComponent<Image>().color = Core.MoveLogger.Enabled ? On : Off;
+            }
+            if (_logPath != null)
+                _logPath.text = string.IsNullOrEmpty(Core.MoveLogger.CurrentPath)
+                    ? "日志未启用"
+                    : Core.MoveLogger.CurrentPath + "　（已写 " + Core.MoveLogger.Rows + " 行）";
+            if (_logTarget != null)
+            {
+                string tgt = Core.MoveLogger.TargetLabel();
+                _logTarget.text = string.IsNullOrEmpty(tgt)
+                    ? "导出目录：未选择　—— 点左边的按钮挑一个你进得去的文件夹"
+                    : "导出目录：" + tgt +
+                      (string.IsNullOrEmpty(Core.MoveLogger.LastExport)
+                          ? "" : "　｜　" + Core.MoveLogger.LastExport);
             }
         }
 

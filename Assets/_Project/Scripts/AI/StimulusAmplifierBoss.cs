@@ -31,7 +31,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) { _player = p.transform; _playerCombat = p.GetComponent<PlayerCombatController>(); }
             GameEvents.RaiseSubtitle("『刺激放大器』出现——它会放大每一个声音。用「不读心盾」「注意力回收」守住专注。");
         }

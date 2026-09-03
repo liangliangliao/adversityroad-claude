@@ -41,7 +41,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
             // 伤害推不动他：他的血由玩家的否认与暴露峰值维持，不由刀剑决定

@@ -58,7 +58,7 @@ namespace AdversityRoad.Combat
         void Start()
         {
             _dieAt = Time.time + 8f;
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null)
             {
                 _player = p.transform;

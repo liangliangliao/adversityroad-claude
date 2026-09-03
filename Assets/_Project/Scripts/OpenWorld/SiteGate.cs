@@ -137,7 +137,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             float dist = Vector3.Distance(transform.position, _player.transform.position);
@@ -183,7 +183,7 @@ namespace AdversityRoad.OpenWorld
                 GameEvents.RaiseSubtitle("这个场景还没准备好——稍等一下再试。");
                 return false;
             }
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return false;
 
             // 已经在别的生成场景里：先归还上一处的台词池，再进这一处
@@ -277,7 +277,7 @@ namespace AdversityRoad.OpenWorld
         public static void ExitToCity()
         {
             if (!_hasReturn) return;
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null) Teleport(player, _returnPoint);
             if (!string.IsNullOrEmpty(_returnZoneId))
                 ZoneBuilder.CurrentZoneId = _returnZoneId;
@@ -373,7 +373,7 @@ namespace AdversityRoad.OpenWorld
             if (!SiteGate.InsideSite || SiteGate.InsideChapterId != _chapterId)
             { UI.HUDController.SetObjective(""); return; }
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             int alive = 0;
             string bossName = "";
             Transform target = null;

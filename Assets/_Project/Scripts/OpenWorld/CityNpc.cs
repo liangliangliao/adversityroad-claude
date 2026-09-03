@@ -105,7 +105,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_flagged) return;
             if (kind != NpcKind.Challenge && kind != NpcKind.Disguised) return;
-            var player = FindObjectOfType<Player.PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             if (Vector3.Distance(transform.position, player.transform.position) > 14f) return;
 

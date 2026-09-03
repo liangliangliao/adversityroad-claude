@@ -101,7 +101,7 @@ namespace AdversityRoad.Shame
 
                 case StressStage.Breakdown:
                     // 短暂低头 + 解除锁定。没有围观特写，没有慢镜头羞辱
-                    var p = FindObjectOfType<PlayerController>();
+                    var p = AdversityRoad.Core.ActorRegistry.Player;
                     var poser = p != null ? p.GetComponent<HumanoidAnimator>() : null;
                     if (poser != null) poser.PlayFirstClip(1f, 0.2f, "Sad Idle", "Kneeling Down");
                     var lockOn = p != null ? p.GetComponent<LockOnSystem>() : null;

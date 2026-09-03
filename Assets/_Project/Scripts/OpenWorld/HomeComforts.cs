@@ -110,7 +110,7 @@ namespace AdversityRoad.OpenWorld
             if (SitController.Busy) return;
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
             }
             if (Vector3.Distance(SeatPoint, _player.transform.position) > range) return;
@@ -178,6 +178,8 @@ namespace AdversityRoad.OpenWorld
         float _moveT;
         bool _moveReleased;      // 坐下后是否松过前后键（否则"按着 W 走过来"会立刻起身）
         const float ApproachDur = 0.45f;
+        const float SeatInset = 0.35f;    // 落点离家具边沿至少留这么多，免得坐悬空
+        const float MaxApproach = 1.2f;   // 入座位移上限（米）：再远就不是"坐下"了
 
         public static void Sit(PlayerController player, Sittable seat)
         {
@@ -210,7 +212,7 @@ namespace AdversityRoad.OpenWorld
             // 高度保持站立时的高度：模型的升降由骨盆锚定负责，角色胶囊别乱动。
             if (_cc != null) _cc.enabled = false;
             _moveFrom = _standPos;
-            _moveTo = new Vector3(seat.SurfaceCenter.x, _standPos.y, seat.SurfaceCenter.z);
+            _moveTo = ApproachPoint(seat, _standPos);
             _moveT = 0f;
             _moveReleased = false;
             Vector3 face = new Vector3(seat.faceDir.x, 0f, seat.faceDir.z);
@@ -311,6 +313,42 @@ namespace AdversityRoad.OpenWorld
                 _phaseDur = 0.15f;
             }
             GameEvents.RaiseSubtitle("你站了起来。");
+        }
+
+        /// <summary>
+        /// 入座落点。
+        ///
+        /// 【原来这里是 seat.SurfaceCenter——家具**中心**，这就是实机日志里
+        ///   量到的那次"鬼一样的漂移"】
+        /// 床有 6.5 米长。站在床尾按下交互，中心点在 3.5 米之外，而入座位移是
+        /// 0.45 秒的直线插值、且插值期间 CharacterController 是关掉的——于是
+        /// 人以约 11m/s 直线穿过床架滑到床中央，全程没有任何脚步动画。
+        /// 日志里这一段长这样（t=224.69→225.03）：
+        ///     stick 0.00  finalSpeed 0.00  hVel 0.00  actual 0.00  stepLen 0.000
+        ///     posX 7353.83 → 7357.00   posZ −69.28 → −70.80
+        /// 移动系统全程认为人一动不动，坐标却走了 3.5 米——玩家说的
+        /// "完全一动不动，像鬼一样漂移起来"，一个字都不差。
+        ///
+        /// 落点改成**家具表面上离玩家最近的点**（再往里缩一点，免得坐在边沿上）：
+        /// 站在床尾就坐床尾，站在床边就坐床边，位移只有跨上去的那几十厘米。
+        /// 交互距离本来就短，所以再补一道上限——任何情况下都不滑超过 MaxApproach，
+        /// 剩下的差距交给"坐下"动作自带的位移，看起来反而更自然。
+        /// </summary>
+        static Vector3 ApproachPoint(Sittable seat, Vector3 from)
+        {
+            Vector3 c = seat.SurfaceCenter;
+            Vector3 e = seat.SurfaceExtents;
+            // 表面是世界轴对齐的包围盒（Sittable.Attach 用 bounds 取的），
+            // 所以直接按轴夹紧即可。内缩 Inset，坐在边沿上会半个身子悬空。
+            float ex = Mathf.Max(0f, e.x - SeatInset);
+            float ez = Mathf.Max(0f, e.z - SeatInset);
+            Vector3 to = new Vector3(
+                Mathf.Clamp(from.x, c.x - ex, c.x + ex), from.y,
+                Mathf.Clamp(from.z, c.z - ez, c.z + ez));
+            Vector3 d = to - from; d.y = 0f;
+            float len = d.magnitude;
+            if (len > MaxApproach) to = from + d / len * MaxApproach;
+            return to;
         }
 
         void Update()
@@ -490,6 +528,7 @@ namespace AdversityRoad.OpenWorld
         TextMesh _panel;
         PlayerController _player;
         CharacterController _cc;
+        Player.PlayerController _pcForBelt;
         float _lastHint = -99f;
         float _ranSeconds;
         float _rewardTick;
@@ -552,7 +591,7 @@ namespace AdversityRoad.OpenWorld
         {
             if (_player == null)
             {
-                _player = FindObjectOfType<PlayerController>();
+                _player = AdversityRoad.Core.ActorRegistry.Player;
                 if (_player == null) return;
                 _cc = _player.GetComponent<CharacterController>();
             }
@@ -621,8 +660,14 @@ namespace AdversityRoad.OpenWorld
 
             if (onBelt && _cc != null && _cc.enabled)
             {
-                // 履带把人往后送：站着不动就会被送下去，想留下就得跑
-                _cc.Move(new Vector3(0, 0, -beltSpeed * dt));
+                // 履带把人往后送：站着不动就会被送下去，想留下就得跑。
+                // 走外部通道而不是自己 Move：裸 Move 会把这一帧的 isGrounded 判成
+                // 离地（纯水平位移），跑步机上于是一直在"落地"，姿态反复被打断。
+                Vector3 belt = new Vector3(0, 0, -beltSpeed * dt);
+                if (_pcForBelt == null && _cc != null)
+                    _pcForBelt = _cc.GetComponent<Player.PlayerController>();
+                if (_pcForBelt != null) _pcForBelt.AddExternalMove(belt, "跑步机");
+                else _cc.Move(belt);
                 _ranSeconds += dt;
                 _rewardTick += dt;
                 if (_rewardTick > 5f)

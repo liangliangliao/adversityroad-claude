@@ -62,7 +62,7 @@ namespace AdversityRoad.OpenWorld
             _next = Time.time + Random.Range(minGap, maxGap);
             if (!DistrictCatalog.Ready) return;
 
-            var player = FindObjectOfType<PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null || player.Stats.IsDead) return;
             var d = DistrictCatalog.NearestTo(player.transform.position, 80f);
             if (d == null) return;   // 不在开放城区（在 V1 经典关卡里）就不加戏

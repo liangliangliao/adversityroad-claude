@@ -87,6 +87,23 @@ namespace AdversityRoad.Combat
             }
         }
 
+        /// <summary>放技能前锁定并对准目标：近战技能才打得中，弹道技能才飞得对。</summary>
+        void AimAtTargetForSkill(float castSeconds)
+        {
+            var lockOn = GetComponent<Player.LockOnSystem>();
+            Transform t = lockOn != null ? lockOn.AcquireNow() : null;
+            if (t == null) return;
+            Vector3 to = t.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude < 1e-4f) return;
+            // 【不能在这里直接写 transform.rotation】PlayerController 每帧都会
+            // 重写一遍朝向，而它在本组件之后执行——上一版就是这么被覆盖掉的，
+            // 玩家反馈"没效果"。改为请它代劳：施法期间由它强制对准并跟住目标。
+            var pc = GetComponent<Player.PlayerController>();
+            if (pc != null) pc.ForceFace(t, castSeconds);
+            else transform.rotation = Quaternion.LookRotation(to.normalized);
+        }
+
         public bool TryCast(Data.SkillDefinition skill)
         {
             if (skill == null) return false;
@@ -140,6 +157,17 @@ namespace AdversityRoad.Combat
                 return false;
             }
             if (skill.momentumCost > 0) Core.GameEvents.RaiseSkillBanner("「" + skill.displayName + "」");
+
+            // ===== 放「术」＝我要打那个敌人：自动锁定并转身对准 =====
+            //
+            // 此前技能是照着身体**当前朝向**放出去的，而锁定要玩家先手动按一次
+            // 锁定键（LockOnSystem.AutoAcquire 默认关）。于是点了技能却打空、
+            // 或者朝着侧面放出去，是常态。玩家点技能这个动作本身已经表达了
+            // "打它"，不该再要求他先做一次瞄准。
+            //
+            // 放在所有资源门槛**之后**：门槛没过时技能并没有放出去，
+            // 那时候把人转过去、把锁定加上，都是玩家没要求过的副作用。
+            AimAtTargetForSkill(Mathf.Max(0.25f, skill.castLockTime));
 
             // 技能同样是连招元素：成功施展即入融合链，于是「术→剑」「跃→术→剑」
             // 这类跨系统串法能接成融招（术后追斩 / 踏云术斩）。
@@ -306,14 +334,22 @@ namespace AdversityRoad.Combat
             return _anim != null && _anim.HasPose(p);
         }
 
+        Player.PlayerController _pcForMove;
+
         IEnumerator GlideRoutine(Vector3 offset, float duration)
         {
             float t = 0;
             while (t < duration)
             {
-                float dt = Time.deltaTime;
+                float dt = Mathf.Min(Time.deltaTime, Player.PlayerController.MaxSimStep);
                 t += dt;
-                if (_cc != null) _cc.Move(offset * Mathf.Min(dt / duration, 1f));
+                // 与出招磁吸同理：能走外部通道就走，让位移与重力在同一次 Move 里落地
+                //（见 PlayerController._extMove）。技能执行器也挂在敌人身上，
+                // 那边没有 PlayerController，退回自己分步位移。
+                Vector3 step = offset * Mathf.Min(dt / duration, 1f);
+                if (_pcForMove == null) _pcForMove = GetComponent<Player.PlayerController>();
+                if (_pcForMove != null) _pcForMove.AddExternalMove(step, "技能突进");
+                else if (_cc != null) CharacterMotion.StepMove(_cc, step);
                 yield return null;
             }
         }
@@ -397,7 +433,7 @@ namespace AdversityRoad.Combat
                 CombatFeedback.ShockRing(transform.position, ringColor, 5.5f - i * 1.4f);
                 CombatFeedback.HitSpark(transform.position + Vector3.up * 1.1f, ringColor, 4);
                 Strike(ringPose, 10f + i * 4f, 16f, 2.5f, 0.02f, 0.12f, 1.2f, "player_skill_dingxin");
-                foreach (var e in FindObjectsOfType<AI.EnemyController>())
+                foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
                     e.Repel(transform.position, 4.5f, 5f, 0.16f);
                 Core.GameAudio.Play(Core.GameAudio.Sfx.Cast, 0.5f);
                 yield return new WaitForSeconds(0.16f);

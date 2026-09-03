@@ -205,7 +205,7 @@ namespace AdversityRoad.Core
                 sb.Append("。玩家近期答错的概念（优先围绕它们出题）：")
                   .Append(string.Join("、", wrongConcepts));
 
-            var player = FindObjectOfType<Player.PlayerController>();
+            var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player != null && player.Stats != null)
             {
                 string imbalance = QuizSystem.ImbalanceLabel(player.Stats);

@@ -40,7 +40,13 @@ namespace AdversityRoad.Core
         void Start()
         {
             // 场景重载时系统单例仍在，但世界内容需要重建
-            if (Object.FindFirstObjectByType<PlayerController>() != null) return;
+            if (AdversityRoad.Core.ActorRegistry.Player != null) return;
+
+            // 走到这里＝确实要重建世界。此刻新世界还一个敌人都没生成，
+            // 清空登记表既安全又能扫掉上一个世界残留的条目。
+            // （注意不能放在上面那句 return 之前：世界已经建好时清空，
+            //  在场敌人不会再触发 OnEnable 重新登记，名册就永久空了。）
+            AdversityRoad.Core.ActorRegistry.Reset();
 
             ApplyComfortAndPerformance();
             EnsureSystems();
@@ -73,6 +79,9 @@ namespace AdversityRoad.Core
             SpawnChapterEnemy();
             SpawnZoneMinions();
             ZoneBuilder.SpawnLife(_world);
+            // 围观群众：与行人同一时机（都要等 NavMesh 烘焙完），但两者是两回事——
+            // 行人到处走，围观者站着看戏。见 ZoneBuilder.SpawnSpectators。
+            ZoneBuilder.SpawnSpectators(_world);
             OpenWorldBuilder.SpawnCityNpcs(_world);   // 有日程的市民：城市先是有人住的地方
             SpawnShadowGuardianIfEarned();
             EnsureV2Systems();
@@ -279,6 +288,46 @@ namespace AdversityRoad.Core
             int hz = Mathf.RoundToInt((float)Screen.currentResolution.refreshRateRatio.value);
             Application.targetFrameRate = Mathf.Clamp(hz, 60, 120);
 
+            // 【单帧步长的硬上限】Unity 默认 maximumDeltaTime = 0.333s：一次 GC 或加载
+            // 造成的顿帧，会让下一帧的 dt 直接给到三分之一秒。配上冲刺速度 5.2m/s，
+            // 那一帧角色挪 1.7 米——任何普通厚度的墙都挡不住（扫掠检测只扫一条线段），
+            // 摇杆方向也在这一帧里跨了很大角度，读作"人被瞬移过去"。
+            // 【0.2 → 0.05，由实机日志改】当初取 0.2s 的理由是"更小会导致低帧率下走
+            // 慢动作，而移动变慢正是要排查的现象"。那个顾虑现在有数据可以量了：
+            // 140 秒 7983 帧里，**dt 超过 0.05s 的只有 11 帧（0.14%）**，
+            // 而 0.2s 的上限对它们一个都没生效。代价与收益是这样的：
+            //   · 代价：那 11 帧走慢动作——0.14% 的帧，人眼读作"卡了一下"，
+            //     本来掉到 8fps 时也就是卡了一下；
+            //   · 收益：那 11 帧里最狠的一帧位移 0.691m（dt=0.133s、5.2m/s），
+            //     封到 0.05 之后是 0.260m。0.69 米是一步半，在一帧里出现就是
+            //     **"抑扬顿挫突然漂移到其他某个位置"**——玩家反复报的那个现象。
+            // 日志里单帧位移最大的三帧全部出现在 fps 7.5/8.6/10.0 上，无一例外，
+            // 这条因果是干净的：不是逻辑在瞬移，是一帧走了太多路。
+            //
+            // 这也解释了"新装 APK 在住所里问题全复现、跑一趟关卡回来就好转"：
+            // 冷启动时着色器编译与资源流入制造大量尖峰，跑热之后尖峰消失，
+            // 于是同一份代码在两个时刻表现完全不同。
+            //
+            // 真正防穿墙的仍是 CharacterMotion.StepMove 的分步位移（结构性保证，
+            // 与帧率无关）；这里管的是**观感**——分步能防穿墙，但防不了"一帧挪半步"
+            // 被看见。
+            Time.maximumDeltaTime = 0.05f;
+
+            // 帧率读数（右上角）：低帧率会同时造出"穿墙/被拉着转/时快时慢"这一整串
+            // 现象，而它们与逻辑 bug 在描述上分不开。把数字摆出来，别再靠猜。
+            var perf = new GameObject("PerfHud");
+            Object.DontDestroyOnLoad(perf);
+            perf.AddComponent<UI.PerfHud>();
+
+            // 逐帧调试日志：HUD 是给人眼看的，日志是给分析用的。
+            // 录屏截帧一段 20 秒只能抠出十来个采样点，而"起步滑一下""转向那一瞬漂了"
+            // 只存在于零点几秒里——十来个点大概率整个错过。日志每帧一行，一段测试
+            // 就是上千行完整状态，任何一帧都能回溯。见 MoveLogger。
+            MoveLogger.Create();
+            // 目录选择结果只能按 GameObject 名字回调（UnitySendMessage 的限制），
+            // 所以要有一个名字固定、常驻不销毁的接收端。
+            Platform.MoveLoggerBridge.Ensure();
+
             // 后处理防晕：禁用运动模糊/色差/镜头畸变/噪点，压低暗角强度
             var vol = Object.FindFirstObjectByType<Volume>();
             if (vol != null && vol.profile != null)
@@ -443,6 +492,10 @@ namespace AdversityRoad.Core
             var vignette = profile.Add<Vignette>(true);
             vignette.intensity.Override(0.22f);                            // 极淡暗角聚焦（低于防晕上限）
             vignette.smoothness.Override(0.4f);
+
+            // 玩家可以整体关掉"改颜色"的那一层（见 PostGrading 的推导）：
+            // 关掉后模型呈现的是未分级的本色，用来和原始模型对比。
+            PostGrading.Apply();
         }
 
         void BakeNavMesh()
@@ -496,9 +549,23 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大（受击判定罩全身）
-            hurtCol.center = new Vector3(0, 0.9f, 0);
-            hurtCol.radius = 0.55f;
+            // ===== 全身受击框按【真实身高】，不再拍一个两倍大的罩子 =====
+            //
+            // 原来是 height=4.0、center.y=0.9、radius=0.55，而角色标准身高
+            // MecanimCharacter.TargetHeight 就是 2.0——**整整放大了一倍**，
+            // 而且向下探到地面以下 1.1 米、向上到 2.9 米。
+            // 敌人的攻击盒前沿在 z≈1.6，再加上这 0.55 的半径，
+            // 中心到中心 2.2 米开外就算命中；体型大的 Boss 还要再乘一次缩放。
+            // 这就是玩家说的"几米开外发动攻击都能伤害到，有点搞笑"。
+            //
+            // 成熟动作游戏的做法是受击体≈躯干：高度取身高、半径取身高的 ~0.17
+            //（2.0m 的人 ≈ 0.34m，正好是一个人肩宽的一半）。
+            // 于是有效命中距离落回 1.6+0.34+pad ≈ 2.0 米——一个 2 米高的人
+            // 挥剑能够到的地方，和 AI 用来决定"该不该出手"的 attackRange(1.8~2.2)
+            // 也终于对得上了。
+            hurtCol.height = MecanimCharacter.TargetHeight;
+            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 部位受击框：头/胸/腰腹/双臂/双腿各挂在对应骨骼下，跟着动画走。
             // 兜底框保留——部位框覆盖不到的缝隙照样打得中，同一次挥击由 Hitbox 择优结算。
@@ -760,8 +827,8 @@ namespace AdversityRoad.Core
             body.radius = 0.5f;
 
             var agent = root.AddComponent<NavMeshAgent>();
-            agent.speed = profile.moveSpeed;
-            agent.stoppingDistance = profile.attackRange * 0.8f;
+            agent.speed = profile.MoveSpeed;
+            agent.stoppingDistance = profile.AttackRange * 0.8f;
             // NavMeshAgent 把根节点贴在导航面上，而胶囊体/模型脚底在根节点下方 1 单位
             // （height=2、center=0 → 底部 = root - 1）。抬高 baseOffset = 胶囊半高，让胶囊
             // 底部正好落在导航面，模型脚底再由 MecanimCharacter 对齐到胶囊底部。
@@ -792,9 +859,12 @@ namespace AdversityRoad.Core
             hurt.transform.SetParent(root.transform, false);
             var hurtCol = hurt.AddComponent<CapsuleCollider>();
             hurtCol.isTrigger = true;
-            hurtCol.height = 4.0f;                       // 随视觉体型放大
-            hurtCol.center = new Vector3(0, 0.9f, 0);
-            hurtCol.radius = 0.65f;
+            // 同玩家侧：受击框按真实身高，不再是两倍大的罩子。
+            // 敌人这边尤其要紧——它决定的是**玩家的攻击能从多远打中**，
+            // 原来的 0.65 半径等于白送玩家 0.65 米的够不着也能打中。
+            hurtCol.height = MecanimCharacter.TargetHeight;
+            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 敌人同样拆部位：打头会心、打腿削韧且减速、打手削弱它的攻势（见 BodyPartTable）
             BodyPartHurtboxes.Attach(root.transform, MecanimCharacter.TargetHeight * scale);

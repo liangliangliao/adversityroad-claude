@@ -41,6 +41,70 @@ namespace AdversityRoad.Combat
         /// <param name="groundLocalY">脚底在 visualRoot 局部空间的目标高度（角色胶囊体底部，通常 = -身高一半）。</param>
         /// <param name="modelName">指定 Resources/Characters/ 下的模型名（如 PlayerModel2）；null=按 isPlayer 默认。</param>
         /// <param name="animsFolder">指定该角色专属动作库目录（如 Characters/Anims2）；null/无效=默认动作库。</param>
+        /// <summary>
+        /// 把角色的 *_specular 贴图接到材质上，并切到 URP 的高光工作流。
+        ///
+        /// 【CI 诊断打出来的事实】（[CIDIAG][材质]）：
+        ///     材质 Paladin_MAT  shader=Universal Render Pipeline/Lit
+        ///       _BaseMap          = Paladin_diffuse  2048x2048  BC7  mip=12
+        ///       _BumpMap          = Paladin_normal   2048x2048  BC7  mip=12
+        ///       _MetallicGlossMap = （空）
+        ///       _SpecGlossMap     = （空）
+        /// 底色和法线都接上了、分辨率是满的 2048、压缩是高质量 BC7——
+        /// 也就是说"分辨率被降低了"并不成立，**但高光图从来没被用上**。
+        ///
+        /// 这解释了我连修两轮导入参数（sRGB / 法线类型 / 压缩）都"几乎没效果"：
+        /// 我一直在修一张**根本没被材质引用**的图怎么解码。
+        ///
+        /// 没有高光/粗糙度输入时，URP/Lit 在默认的金属度工作流下拿一个固定的
+        /// 光滑度渲染整个人：皮肤和布料失去表面质感，读起来就是"发假、发平、
+        /// 颜色不对"。这套贴图是按**高光工作流**做的（diffuse + normal +
+        /// specular，没有 metallic），所以要一起把工作流切过去，否则 URP 会
+        /// 拿高光图当金属度用，越修越错。
+        ///
+        /// 【为什么在运行时做，而不是导入时】材质是 FBX 内嵌生成的，改它需要
+        /// 编辑器钩子；而上一轮的教训正是：全新克隆时 Unity 可能在 Editor 程序集
+        /// 编译完成之前就导入了资产，钩子根本没跑到。运行时这一步一定会执行，
+        /// 而且与 PlayerAppearance.FixModelMaterials（武器/背包走的就是这条路）
+        /// 是同一个套路。改的是实例材质，不写回资产。
+        /// </summary>
+        public static void WireSpecularMaps(GameObject model)
+        {
+            if (model == null) return;
+            foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.materials;          // 实例材质，安全修改
+                bool touched = false;
+                foreach (var m in mats)
+                {
+                    if (m == null || !m.HasProperty("_SpecGlossMap")) continue;
+                    if (m.GetTexture("_SpecGlossMap") != null) continue;   // 已经接过就别动
+                    // 按底色贴图的名字推高光贴图：Paladin_diffuse → Paladin_specular。
+                    // 用材质名去猜不可靠（材质叫 Paladin_MAT），底色图才是这套
+                    // 贴图的真正锚点，而它一定是接上的。
+                    var baseTex = (m.HasProperty("_BaseMap") ? m.GetTexture("_BaseMap") : null)
+                               ?? (m.HasProperty("_MainTex") ? m.GetTexture("_MainTex") : null);
+                    if (baseTex == null) continue;
+                    string stem = baseTex.name;
+                    int cut = stem.LastIndexOf('_');
+                    if (cut <= 0) continue;
+                    var spec = Resources.Load<Texture2D>(
+                        "Characters/" + stem.Substring(0, cut) + "_specular");
+                    if (spec == null) continue;
+
+                    m.SetTexture("_SpecGlossMap", spec);
+                    m.EnableKeyword("_METALLICSPECGLOSSMAP");   // 不开这个关键字，贴图不会被采样
+                    // 切到高光工作流：这套贴图没有 metallic，留在金属度工作流下
+                    // URP 会把高光图当金属度用，人会整个变成金属光泽。
+                    if (m.HasProperty("_WorkflowMode")) m.SetFloat("_WorkflowMode", 0f);
+                    m.EnableKeyword("_SPECULAR_SETUP");
+                    if (m.HasProperty("_SpecColor")) m.SetColor("_SpecColor", Color.white);
+                    touched = true;
+                }
+                if (touched) r.materials = mats;
+            }
+        }
+
         public static bool TryBuild(Transform visualRoot, HumanoidAnimator poser, bool isPlayer,
             Material baseMaterial, WeaponKind weapon, float groundLocalY = -1f,
             string modelName = null, string animsFolder = null)
@@ -76,6 +140,9 @@ namespace AdversityRoad.Combat
                     Debug.LogWarning("[MecanimCharacter] 骨架对齐失败（跳过）：" + e.Message);
                 }
             }
+
+            // 接上高光贴图（见 WireSpecularMaps 的推导）
+            WireSpecularMaps(model);
 
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);

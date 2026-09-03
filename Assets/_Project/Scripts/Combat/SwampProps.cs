@@ -38,7 +38,7 @@ namespace AdversityRoad.Combat
                 }
                 return;
             }
-            var p = FindObjectOfType<PlayerController>();
+            var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > interactRange) return;
             Ignite(p);

@@ -144,6 +144,37 @@ namespace AdversityRoad.Player
         }
 
         /// <summary>心理伤害按弱点轴落到对应属性。返回是否触发心理硬直。</summary>
+        /// <summary>
+        /// 心理韧性 [0,1]：面对言语攻击"还剩多少不为所动"。
+        ///
+        /// 玩家要的是这么一条曲线：一个人从脆弱走到强大，外部与内部的言语攻击
+        /// 对他的影响越来越小——先是能量掉得越来越少，最后连身体反应都没有了。
+        /// 所以这个数由三样东西合成，正好对应他说的三条：
+        ///   · 当下的心气（五项心理能量的平均充盈度）——"玩家的能量很强"
+        ///   · 走了多远（复盘点，通关与斩杀 Boss 累积而来）——"通关的几率越大"
+        ///   · 这一下有多重（相对满值的占比）——"敌人的攻击力非常弱"
+        /// 三项加权而不是取其一：只看进度会让新号在低血时毫无还手之力，
+        /// 只看当下心气则打完一场硬仗立刻被杂兵说两句就崩，都不是那个意思。
+        ///
+        /// 韧性只削**心理**能量与身体反应，永远不碰生命值——生命值本来就不由
+        /// 言语攻击扣（见 TakeMentalDamage 的分支，一条都没有动 hp）。
+        /// </summary>
+        public float MentalResilience(float incoming)
+        {
+            float reserve = 0.2f * (
+                Frac(will, maxWill) + Frac(focus, maxFocus) +
+                Frac(selfWorth, maxSelfWorth) + Frac(boundary, maxBoundary) +
+                Frac(actionPower, maxActionPower));
+            // 复盘点是通关与斩杀累积来的，拿它当"走了多远"的代理量。
+            // 200 点封顶：到那时进度这一项已经给满，再往后靠心气与强弱差继续拉开。
+            float progress = Mathf.Clamp01(Core.GrowthSystem.Points / 200f);
+            // 这一下相对满值越轻，越不该有反应。12 点是一次普通言语攻击的量级。
+            float weak = 1f - Mathf.Clamp01(incoming / 12f);
+            return Mathf.Clamp01(0.45f * reserve + 0.35f * progress + 0.20f * weak);
+        }
+
+        static float Frac(float v, float max) => max > 0.01f ? Mathf.Clamp01(v / max) : 0f;
+
         public bool TakeMentalDamage(Personalization.WeaknessAxis axis, float dmg)
         {
             // 休养生息答题结束后的短暂护体：心理攻击无效（方案 V3.0：返回战斗给 2 秒保护）
