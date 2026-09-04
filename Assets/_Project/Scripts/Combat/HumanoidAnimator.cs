@@ -1112,6 +1112,11 @@ namespace AdversityRoad.Combat
         /// 门槛该问的是"看得出来在移动吗"，不是"跑起来了吗"。0.25 m/s 下
         /// 一秒挪 0.25 米，已经是肉眼可见的位移，腿就该跟着走。
         /// </summary>
+        /// <summary>【跑动出招·只动上半身】设置面板里的对照开关（默认开）。
+        /// 关掉＝回到"招式接管整个身体"的旧行为。它只管玩家自己的招式：
+        /// 敌人与按名字播的片段一律不受它影响（见遮罩判据处的推导）。</summary>
+        public static bool UpperBodyAttacksOn = true;
+
         const float UpperBodySpeed = 0.25f;
 
         /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。
@@ -1344,17 +1349,17 @@ namespace AdversityRoad.Combat
                 bool actionLive = _mecanim.DbgActionW > 0.02f;
                 PoseState maskPose = actionLive ? _lastActionPose : _pose;
 
-                // 【"跑动出招·只动上半身"那个对照开关已经取消】
+                // 【对照开关按玩家要求保留，但只管玩家自己的招式】
                 //
-                // 实机日志判了它死刑：整整 199 秒里 upperOnly=1 只出现在
-                // 40.7s~74.7s 这一段，之后 150 秒一次都没有；而同一个
-                // Attack / Great Sword Slash 5，42 秒时遮罩是开的、118 秒时是关的。
-                // 也就是说这个静态开关在中途被关掉了，此后每一个上半身招式都把
-                // 腿钉死——玩家反复报的"还是会滑"，很大一部分就是这么来的。
-                //
-                // 那个开关的用途是"关掉＝回到旧行为，用于对照"。对照的价值已经
-                // 拿到了（遮罩是对的），而它一旦被关就变成本项目最顽固的缺陷，
-                // 而且从外面完全看不出来。留着它弊远大于利，去掉。
+                // 它确实有代价：上一份日志里 upperOnly=1 只出现在 40.7~74.7s，
+                // 之后 150 秒一次都没有——开关被关掉之后，每个上半身招式都把腿
+                // 钉死，那就是"还是会滑"。所以这一次把范围收到最小：
+                //   · 只管【玩家】：敌人、路人、围观者不受它影响，
+                //     玩家没有理由为了自己做对照而让满场的人滑起来；
+                //   · 只管【招式】：按名字播的片段（拔刀/收刀/Boss 说话/
+                //     羞耻线待机）不受它管——那些不是招式，边走边播时腿被钉死
+                //     纯粹是缺陷，没有"关掉做对照"的意义。
+                bool toggleOn = UpperBodyAttacksOn || !isPlayer;
 
                 // 【动作层确实在压着腿、但不知道它是什么 → 按"该遮"处理】
                 // _lastActionPose 的初值是 Idle，而 Idle 被算作"腿是主体"，
@@ -1365,13 +1370,14 @@ namespace AdversityRoad.Combat
                 bool unknownLive = actionLive && maskPose == PoseState.Idle;
 
                 bool wantUpper = _actualSpeed > UpperBodySpeed &&
-                    (namedClip || unknownLive || IsUpperBodyAction(maskPose));
+                    (namedClip || unknownLive || (toggleOn && IsUpperBodyAction(maskPose)));
                 _mecanim.SetActionUpperBodyOnly(wantUpper);
 
                 // 遮罩为什么没开，直接记下来给 HUD——这一轮我又在"它到底卡在
                 // 哪一个门上"上绕了一圈，判据有四个条件，光看开/关分不出来。
                 _maskWhy = wantUpper ? ""
                     : _actualSpeed <= UpperBodySpeed ? "速度"
+                    : !toggleOn ? "开关"
                     : !IsUpperBodyAction(maskPose) ? "腿部招"
                     : "?";
                 _mecanim.SetReady(_ready);
@@ -1886,7 +1892,8 @@ namespace AdversityRoad.Combat
             // 移动中的上半身动作：把腿还给步态（见上面的快照）。
             // 判据与 Mecanim 那条完全一致，两种骨架的行为才不会分家。
             if (moving && _actualSpeed > UpperBodySpeed &&
-                (Time.time < _upperClipUntil || IsUpperBodyAction(_pose)))
+                (Time.time < _upperClipUntil ||
+                 ((UpperBodyAttacksOn || !isPlayer) && IsUpperBodyAction(_pose))))
             {
                 hipLp = legHipL; hipRp = legHipR;
                 kneeLp = legKneeL; kneeRp = legKneeR;

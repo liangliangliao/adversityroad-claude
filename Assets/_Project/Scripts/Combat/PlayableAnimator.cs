@@ -1490,11 +1490,25 @@ namespace AdversityRoad.Combat
         // ===== 上半身遮罩 =====
 
         /// <summary>下半身骨骼的规范名。第 1 层遮掉它们＝腿归移动层管。</summary>
-        /// <summary>胯骨：归移动层，但它是全身的根，标记**不许沿层级传播**
-        /// （见 CollectBones）。传下去等于把上半身也一起关掉。</summary>
-        const string HipBone = "hips";
+        /// <summary>
+        /// 【分界线在腿根，不在胯骨】
+        ///
+        /// 曾经把胯骨也划给移动层，玩家的反馈很明确："开启这个开关之后，
+        /// 战斗动作明显不协调，身体摇摇晃晃不停抖动；关掉就自然了。"
+        ///
+        /// 原因是招式片段的**脊椎关键帧是按「胯骨钉住」做的**。胯骨归移动层
+        /// 之后，跑动周期的上下起伏、左右摆、扭腰全都还在，而动作层又在这个
+        /// 一直在动的胯骨之上叠一套按静止胯骨编排的上身姿态——两层动作互相
+        /// 打架，读出来就是抖。日志里也对得上：遮罩开的帧身体角速度均值
+        /// 103.7°/s（峰 873），关的时候 70.4（峰 420）。
+        ///
+        /// 所以胯骨要跟着招式走，移动层只保留**两条腿**：
+        ///   · 上半身与胯骨 ← 动作层，按片段原样演，不再被跑步周期摇；
+        ///   · 腿（UpLeg→Leg→Foot→Toe）← 移动层，脚继续跟着地面迈，不滑。
+        /// 腿的局部旋转是相对胯骨的，所以胯骨换成招式姿态之后腿照样正常循环。
+        /// </summary>
 
-        /// <summary>腿链：这几根以及它们的子骨骼都归移动层。</summary>
+        /// <summary>腿链：这几根以及它们的子骨骼都归移动层（胯骨不在其中，见上）。</summary>
         static readonly string[] LowerBones =
         {
             "leftupleg", "leftleg", "leftfoot", "lefttoebase", "lefttoeend",
@@ -1582,17 +1596,18 @@ namespace AdversityRoad.Combat
                 // 不是"只写上半身"，是"什么都不写"。
                 // 表现出来就是招式/拔刀动画整个消失，而不是腿归移动层。
                 //
-                // 正确的分工是：胯骨与两条腿归移动层，脊椎以上归动作层。
-                // 所以 Hips 自己标成下半身、但**不传播**；真正要传播的是
-                // 两条腿的链（UpLeg → Leg → Foot → Toe）。
+                // 正确的分工是：**两条腿**归移动层，胯骨与脊椎以上归动作层。
+                // （胯骨为什么不划给移动层，见 LowerBones 上面那段：
+                //   划过去会让上半身在跑步周期之上再叠一层，读作"抖"。）
                 bool propagate = parentIsLower;
                 if (!isLower)
                 {
                     string n = NormBone(c.name);
-                    if (n == HipBone) { isLower = true; }        // 只此一根，不传播
-                    else
-                        for (int k = 0; k < LowerBones.Length; k++)
-                            if (n == LowerBones[k]) { isLower = true; propagate = true; break; }
+                    // 只有腿链归移动层，并且沿层级传播（膝、踝、脚趾跟着腿根）。
+                    // 胯骨**不在**这张表里——它跟着招式走，理由见 LowerBones 上面
+                    // 那段：胯骨归移动层会让上半身在跑步周期上再叠一层，就是抖。
+                    for (int k = 0; k < LowerBones.Length; k++)
+                        if (n == LowerBones[k]) { isLower = true; propagate = true; break; }
                 }
                 paths.Add(p);
                 lower.Add(isLower);

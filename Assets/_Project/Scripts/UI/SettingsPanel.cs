@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
         Button _lockModeBtn, _aimAssistBtn;
-        Button _footLockBtn, _leanBtn, _headFollowBtn, _magnetBtn, _gradingBtn, _neutralBtn;
+        Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
         Button _logBtn;
         Text _logPath, _logTarget;
@@ -180,12 +180,18 @@ namespace AdversityRoad.UI
                     Refresh();
                 }, 22);
 
-            // 【"跑动出招·只动上半身"这个对照开关已取消】
-            // 实机日志判了它死刑：199 秒里遮罩只在 40.7~74.7s 开过，之后 150 秒
-            // 一次都没有——它在中途被关掉了，此后每个上半身招式都把腿钉死，
-            // 也就是玩家反复在报的滑行。对照的价值已经拿到（遮罩是对的），
-            // 而它一旦被关就是本项目最顽固的缺陷，且从外面完全看不出来。
-            // 见 HumanoidAnimator 里同一处的推导。
+            // ===== 跑动中出招只写上半身（默认开）=====
+            // 关掉＝回到"招式接管整个身体"的旧行为，用于对照。
+            // 【它只管玩家自己的招式】敌人、路人，以及按名字播的片段
+            //（拔刀/收刀/Boss 说话）一律不受它影响——那些边走边播时腿被钉死
+            // 纯粹是缺陷，没有"关掉做对照"的意义。
+            _upperBtn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(277, -894), new Vector2(545, 70), Off, () =>
+                {
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn =
+                        !Combat.HumanoidAnimator.UpperBodyAttacksOn;
+                    Refresh();
+                }, 22);
 
             // ===== 推杆时的镜头自动跟随（默认关）=====
             // 开着它就是"推着直杆却走弧线"的那个闭环（推导见 ThirdPersonCamera）。
@@ -454,6 +460,15 @@ namespace AdversityRoad.UI
                         : "出招自动贴身/转向：关";
                 _magnetBtn.GetComponent<Image>().color =
                     Combat.PlayerCombatController.AttackMagnetOn ? On : Off;
+            }
+            if (_upperBtn != null)
+            {
+                _upperBtn.GetComponentInChildren<Text>().text =
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn
+                        ? "跑动出招·只动上半身：开"
+                        : "跑动出招·只动上半身：关";
+                _upperBtn.GetComponent<Image>().color =
+                    Combat.HumanoidAnimator.UpperBodyAttacksOn ? On : Off;
             }
             if (_headFollowBtn != null)
             {
