@@ -24,6 +24,10 @@ namespace AdversityRoad.Combat
         public Transform weaponPivot; // 兵器枢轴（叠加在手部之上做刀刃轨迹）
         public TrailRenderer weaponTrail;
         public bool isEnemy;          // 招式名浮字颜色区分（玩家金/敌人红）
+        /// <summary>这具骨架是不是玩家本人。
+        /// 设置面板里的"跑动出招·只动上半身"是给玩家做 A/B 对照的开关，
+        /// 只该管玩家自己——敌人、路人、围观者会不会滑行，与那个对照无关。</summary>
+        public bool isPlayer;
 
         PoseState _pose = PoseState.Idle;
         CombatState _lastFsmState = CombatState.Idle;
@@ -70,7 +74,11 @@ namespace AdversityRoad.Combat
         public string DbgMask => !Mecanim ? "遮罩:方块骨骼"
             : !_mecanim.MaskReady ? "遮罩:无(未建)"
             : _mecanim.MaskUpperCount == 0 ? "遮罩:坏(上半身0根)"
-            : (_mecanim.ActionUpperBodyOnly ? "遮罩:开" : "遮罩:关");
+            : _mecanim.ActionUpperBodyOnly ? "遮罩:开"
+            : "遮罩:关(" + _maskWhy + ")";
+
+        /// <summary>遮罩没开时卡在哪个条件上（速度/开关/腿部招）。</summary>
+        string _maskWhy = "";
 
         /// <summary>诊断：上半身遮罩把骨架切成了几比几（CI 与 HUD 共用）。</summary>
         public string DbgMaskSplit => Mecanim ? _mecanim.MaskSplit : "（方块骨骼）";
@@ -1303,17 +1311,38 @@ namespace AdversityRoad.Combat
                 // 它们边走边播时腿被定住纯粹是缺陷，没有"关掉它做对照"的意义。
                 bool namedClip = Time.time < _upperClipUntil;
                 // 【判据要跟着"动作层还在不在压着腿"走，而不是跟着 _pose 走】
-                //
-                // 实机 HUD 抓到的最后一处滑行就是这个缝：
-                //     敌 Chase 3.9m/s ｜ 动作 Spell Casting 0.83 ｜ 遮罩:关
-                // 施法片段已经播完（_pose 被上面那段收回了 Idle），但动作层的
-                // 权重还有 0.83 在淡出——腿仍然被它压着，而遮罩已经按 Idle 关掉了。
-                // 于是"敌人一边跑一边收招"的那半秒就是滑的。
-                // 权重没落干净之前，一律按【真正送进动作层的那个姿态】判。
-                PoseState maskPose = _mecanim.DbgActionW > 0.02f ? _lastActionPose : _pose;
-                _mecanim.SetActionUpperBodyOnly(
-                    _actualSpeed > UpperBodySpeed &&
-                    (namedClip || (UpperBodyAttacksOn && IsUpperBodyAction(maskPose))));
+                // _pose 会在片段播完那一刻先回到 Idle，而动作层的权重还要再淡出
+                // 一段——那段时间腿仍被它压着。权重没落干净之前，一律按
+                // 【真正送进动作层的那个姿态】判。
+                bool actionLive = _mecanim.DbgActionW > 0.02f;
+                PoseState maskPose = actionLive ? _lastActionPose : _pose;
+
+                // 【敌人不受玩家那个对照开关管】
+                // UpperBodyAttacksOn 是设置面板里的"跑动出招·只动上半身"，
+                // 它的用途写得很清楚："关掉＝回到招式接管整个身体的旧行为，用于对照"。
+                // 那是给玩家自己做 A/B 的，不该连带决定**别人**会不会滑行——
+                // 玩家没有任何理由为了看自己的对照效果而让满场敌人、路人滑起来。
+                bool toggleOn = UpperBodyAttacksOn || !isPlayer;
+
+                // 【动作层确实在压着腿、但不知道它是什么 → 按"该遮"处理】
+                // _lastActionPose 的初值是 Idle，而 Idle 被算作"腿是主体"，
+                // 于是任何没经过 PlayAction 那条路就把权重顶上来的片段，
+                // 都会落进"不遮"的那一侧——正好是滑行。
+                // 两种猜错的代价不对等：遮错了只是动作的腿部细节少一点，
+                // 不遮错了就是玩家反复在报的滑行。所以未知一律遮。
+                bool unknownLive = actionLive && maskPose == PoseState.Idle;
+
+                bool wantUpper = _actualSpeed > UpperBodySpeed &&
+                    (namedClip || unknownLive || (toggleOn && IsUpperBodyAction(maskPose)));
+                _mecanim.SetActionUpperBodyOnly(wantUpper);
+
+                // 遮罩为什么没开，直接记下来给 HUD——这一轮我又在"它到底卡在
+                // 哪一个门上"上绕了一圈，判据有四个条件，光看开/关分不出来。
+                _maskWhy = wantUpper ? ""
+                    : _actualSpeed <= UpperBodySpeed ? "速度"
+                    : !toggleOn ? "开关"
+                    : !IsUpperBodyAction(maskPose) ? "腿部招"
+                    : "?";
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)

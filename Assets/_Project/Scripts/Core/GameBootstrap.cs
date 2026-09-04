@@ -538,6 +538,7 @@ namespace AdversityRoad.Core
             var poser = root.AddComponent<HumanoidAnimator>();
             poser.visual = visualRoot.transform;
             poser.fsm = fsm;
+            poser.isPlayer = true;   // "跑动出招·只动上半身"那个对照开关只管玩家自己
 
             _appearance = root.AddComponent<PlayerAppearance>();
             _appearance.visualRoot = visualRoot.transform;
