@@ -1274,6 +1274,26 @@ namespace AdversityRoad.Combat
         const float FlinchCooldown = 1.6f;
         float _nextFlinch;
 
+        // ===== 心神失守（Great Sword Blocking 那一下）的频率控制 =====
+        //
+        // 玩家的两条要求合在一起：现在触发太频繁；而且要"随着通关越多、战斗力
+        // 越强，防御反应频率逐渐减少，直到完全消失"。
+        //
+        // 原来只有一条判据——资源见底就演，没有任何节流，也不看玩家有多强。
+        // 一段连珠炮式的言语攻击里资源会反复见底，于是一遍遍地演。
+        //
+        // 改成两层：
+        //   · 节流：两次失守之间至少隔一段冷却，而冷却随韧性拉长
+        //     （韧性 0 → 18 秒，韧性 0.55 → 90 秒）；
+        //   · 封顶：韧性到 0.55 就完全不再失守。
+        // 韧性怎么算见 PlayerStats.MentalResilience：心气占 45%、进度占 35%
+        //（复盘点 200 封顶）、这一下多轻占 20%。也就是说通关越多、状态越好，
+        // 先是越来越少，过了线之后一次都不会再有——正是玩家要的那条曲线。
+        const float StaggerCdMin = 18f;    // 秒：最脆弱时两次失守的最小间隔
+        const float StaggerCdMax = 90f;    // 秒：接近免疫线时的间隔
+        const float StaggerImmuneRes = 0.55f;   // 韧性到这里就再也不失守
+        float _nextStagger;
+
         /// <summary>最近一次"真的在跟人交手"的时刻：自己出招、或挨了一记物理攻击。
         /// 见 InFight——言语攻击的微反应在交手期间一律不做。</summary>
         float _lastMeleeAt = -99f;
@@ -1878,8 +1898,16 @@ namespace AdversityRoad.Combat
                         // 也就是说这一下是**硬锁**：那一秒半里推满杆一步都动不了，
                         // 而屏幕上正有敌人贴着你。心神失守发生在安全距离上是有味道的，
                         // 发生在对方随时能砍到你的时候就只是"被夺走一秒半的操作权"。
-                        if (staggered && !FoeInStrikeRange())
+                        // 触发条件三重：资源真的见底、敌人不在打击距离内
+                        //（贴身时不夺操作权，见 FoeInStrikeRange）、
+                        // 而且没在冷却里、韧性也还没到免疫线（见上面那段的推导）。
+                        if (staggered && !FoeInStrikeRange() &&
+                            res < StaggerImmuneRes && Time.time >= _nextStagger)
                         {
+                            // 越强隔得越久：韧性 0 → 18 秒，到免疫线 → 90 秒
+                            _nextStagger = Time.time + Mathf.Lerp(
+                                StaggerCdMin, StaggerCdMax,
+                                Mathf.Clamp01(res / StaggerImmuneRes));
                             if (Adversity.StressStateMachine.Instance != null)
                                 Adversity.StressStateMachine.Instance.TriggerBreakdown();
                             else _fsm.TriggerMentalStagger();

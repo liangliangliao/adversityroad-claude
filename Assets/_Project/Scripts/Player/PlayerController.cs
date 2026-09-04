@@ -342,6 +342,11 @@ namespace AdversityRoad.Player
         /// </summary>
         public float indoorPaceSpeed = 2.0f;
 
+        /// <summary>拔刀/收刀期间的移速上限（m/s）：慢跑档。
+        /// 见移动段里 UpperClipActive 那一处的推导。</summary>
+        public float drawPaceSpeed = 3.0f;
+        float DrawPaceSpeed => drawPaceSpeed;
+
         /// <summary>减速的下限：任何机制叠加后都不许低于它。见 MoveSpeedMultiplier。</summary>
         const float SlowFloor = 0.6f;
         /// <summary>玩家明确表达"我要离开"时的减速下限——比常规下限更宽。</summary>
@@ -653,6 +658,14 @@ namespace AdversityRoad.Player
             // 测速的上一帧位置也要跟着作废，否则传送的那一帧会被算成
             // "一帧跑了几百米"（实测 662171 m/s，见下面的 TeleportStep）。
             _lastPos = transform.position;
+
+            // 新关卡开场统一是站立待机：把上一关可能还挂在身上的东西一次清干净
+            //（没播完的招式、坐/躺的休息姿态、临战架势、拔刀片段、待起身标记）。
+            // 见 HumanoidAnimator.ResetToIdle 的推导。
+            // 顺序要紧：先让坐姿控制器收工，再重置动画层——反过来的话，
+            // 它下一帧会把休息姿态重新写回去，等于白清。
+            OpenWorld.SitController.ForceStand();
+            if (_anim != null) _anim.ResetToIdle();
             // 嵌墙兜底的安全点同样作废：它是"上一帧确认没嵌进环境的位置"，
             // 传送之后那个坐标属于另一张地图，拿它回滚就是把人拽回上一个场景。
             _hasSafePos = false;
@@ -918,6 +931,23 @@ namespace AdversityRoad.Player
             {
                 speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
                 speedCap = Mathf.Min(speedCap, indoorPaceSpeed * MoveSpeedMultiplier);
+            }
+            // ===== 拔刀 / 收刀期间放慢到慢跑 =====
+            //
+            // 玩家的原话："跑步同时伴随收剑和拔剑动画时，脚的速度与实际速度不匹配，
+            // 需要做出收剑或拔剑时统一放慢速度，保持脚的移动步数与实际运动距离
+            // 相匹配、协调一致。"
+            //
+            // 为什么会不匹配：拔刀/收刀是**站着**做的片段，它接管上半身与胯骨，
+            // 而胯骨是跑动周期里上下起伏、左右摆的那一根。片段把它按站姿钉住之后，
+            // 腿虽然还在按实际速度迈，但少了胯骨那一层，全速跑时视觉上就对不上。
+            // 速度越低，胯骨该有的起伏越小，这个差就越不明显——所以放慢到慢跑
+            // 正好把它抹掉，而且"边收刀边慢下来"本身也符合直觉。
+            if (_anim != null && _anim.UpperClipActive)
+            {
+                float draw = Mathf.Min(speedCap, DrawPaceSpeed * MoveSpeedMultiplier);
+                speed = Mathf.Min(speed, draw);
+                speedCap = draw;
             }
             if (IsCrouched) { speed *= crouchSpeedMult; speedCap *= crouchSpeedMult; }
 

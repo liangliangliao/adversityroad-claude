@@ -1027,6 +1027,30 @@ namespace AdversityRoad.Combat
         /// HitReaction 之前按这一击的分量写入，见 HitPoseFor。</summary>
         public PoseState HitPose { get; set; } = PoseState.Hit;
 
+        /// <summary>
+        /// 一切归零，回到站立待机。传送到新关卡时调用。
+        ///
+        /// 玩家的原话："被传送到每个关卡的初始默认待机动作动画应该统一都是
+        /// 站立不动的待机动画，不要搞错。"过传送门时角色身上可能还挂着上一关的
+        /// 任何东西——没播完的招式、休息姿态（坐/躺）、临战架势、按名字播的
+        /// 拔刀片段、待起身标记。这些都不会因为换了张地图就自己消失，
+        /// 于是新关卡开场的第一个姿势是随上一关而变的。这里一次清干净。
+        /// </summary>
+        public void ResetToIdle()
+        {
+            _rest = false;
+            _ready = false;
+            _crouch = false;
+            _pendingGetUp = false;
+            _getUpPlaying = false;
+            _upperClipUntil = 0f;
+            _lastActionPose = PoseState.Idle;
+            _speed01 = 0f;
+            _actualSpeed = 0f;
+            if (Mecanim) _mecanim.StopAction();
+            SetPose(PoseState.Idle);
+        }
+
         public void SetPose(PoseState p) => SetPose(p, 0f);
 
         /// <summary>设招。duration&gt;0 = 这一招在战斗逻辑里占用的时长——
@@ -1196,6 +1220,10 @@ namespace AdversityRoad.Combat
         {
             if (seconds > 0f) _upperClipUntil = Time.time + seconds;
         }
+
+        /// <summary>此刻是不是在播一段"按名字播的上半身片段"（拔刀/收刀等）。
+        /// 移动层据此放慢速度——见 PlayerController 里 UpperClipSpeedMult 的推导。</summary>
+        public bool UpperClipActive => Time.time < _upperClipUntil;
 
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
             float moveAngleDeg = 0f, bool strafing = false)
