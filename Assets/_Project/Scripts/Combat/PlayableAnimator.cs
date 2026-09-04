@@ -1425,7 +1425,10 @@ namespace AdversityRoad.Combat
             {
                 if (!Valid || _dirW == null) return false;
                 if (DbgPhaseRate <= 0.001f) return false;
-                if (_actionW > 0.90f && !_upperOnly) return false;
+                // 0.90 → 0.60：实机抓到的那一处是 _actionW = 0.83（片段淡出的尾巴），
+                // 卡在 0.90 上就不亮灯，而画面上腿已经明显被压住了。
+                // 这一条是**指示灯**，宁可早亮，也不要"看得见却报不出来"。
+                if (_actionW > 0.60f && !_upperOnly) return false;
                 float sum = 0f;
                 for (int i = 0; i < _dirW.Length; i++) sum += _dirW[i];
                 return sum > 0.10f;

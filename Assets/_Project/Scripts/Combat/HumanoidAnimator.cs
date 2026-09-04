@@ -1151,6 +1151,9 @@ namespace AdversityRoad.Combat
         /// 若只该写上半身，播的时候标一下时长，遮罩在这段时间里一并生效。</summary>
         float _upperClipUntil;
 
+        /// <summary>最后一次真正送进动作层的姿态（不是 _pose——它会先回落到 Idle）。</summary>
+        PoseState _lastActionPose = PoseState.Idle;
+
         /// <summary>
         /// 把"刚按名字播出去的那段"标成【移动中只写上半身】。
         ///
@@ -1286,9 +1289,18 @@ namespace AdversityRoad.Combat
                 // 拔刀、收刀、Boss 说话、羞耻线的待机表演都不是招式，
                 // 它们边走边播时腿被定住纯粹是缺陷，没有"关掉它做对照"的意义。
                 bool namedClip = Time.time < _upperClipUntil;
+                // 【判据要跟着"动作层还在不在压着腿"走，而不是跟着 _pose 走】
+                //
+                // 实机 HUD 抓到的最后一处滑行就是这个缝：
+                //     敌 Chase 3.9m/s ｜ 动作 Spell Casting 0.83 ｜ 遮罩:关
+                // 施法片段已经播完（_pose 被上面那段收回了 Idle），但动作层的
+                // 权重还有 0.83 在淡出——腿仍然被它压着，而遮罩已经按 Idle 关掉了。
+                // 于是"敌人一边跑一边收招"的那半秒就是滑的。
+                // 权重没落干净之前，一律按【真正送进动作层的那个姿态】判。
+                PoseState maskPose = _mecanim.DbgActionW > 0.02f ? _lastActionPose : _pose;
                 _mecanim.SetActionUpperBodyOnly(
                     _actualSpeed > UpperBodySpeed &&
-                    (namedClip || (UpperBodyAttacksOn && IsUpperBodyAction(_pose))));
+                    (namedClip || (UpperBodyAttacksOn && IsUpperBodyAction(maskPose))));
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
@@ -1307,6 +1319,10 @@ namespace AdversityRoad.Combat
                     else
                     {
                         _pendingGetUp = false;
+                        // 记住"真正被送进动作层的那个姿态"——见下面遮罩判据的推导：
+                        // _pose 会在片段播完那一刻先回到 Idle，而动作层的权重还要
+                        // 再淡出一段，那段时间腿依旧被动作层压着。
+                        _lastActionPose = _pose;
                         _mecanim.PlayAction(_pose, _poseDur);
                     }
                 }
