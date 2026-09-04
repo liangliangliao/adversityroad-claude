@@ -1293,6 +1293,29 @@ namespace AdversityRoad.Combat
         ///   · 锁定着某个目标（玩家自己按下的"我要打这个"）；
         ///   · 最近 3 秒内真的交过手（自己出过招，或挨过一记物理攻击）。
         /// </summary>
+        /// <summary>
+        /// 有没有敌人已经贴到【能打到玩家】的距离。
+        ///
+        /// 用敌人自己的攻击距离（EnemyProfile.AttackRange，已被 AttackRangeCap 收在
+        /// 2.1 米以内）再放宽半米当缓冲——它下一步就能进入打击圈。
+        /// 只算活着并且已经盯上你的（追击/攻击/心念），站着不动的不算威胁。
+        /// </summary>
+        bool FoeInStrikeRange()
+        {
+            var foes = Core.ActorRegistry.Enemies;
+            if (foes == null) return false;
+            foreach (var e in foes)
+            {
+                if (e == null || e.profile == null) continue;
+                if (e.State == AI.EnemyState.Dead || e.State == AI.EnemyState.Idle ||
+                    e.State == AI.EnemyState.Patrol) continue;
+                Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                float reach = e.profile.AttackRange + 0.5f;
+                if (d.sqrMagnitude <= reach * reach) return true;
+            }
+            return false;
+        }
+
         bool InFight
         {
             get
@@ -1847,7 +1870,15 @@ namespace AdversityRoad.Combat
                         }
 
                         // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
-                        if (staggered)
+                        //
+                        // 【敌人已经贴到能打到你的距离，就不触发】
+                        // 玩家的原话：这个动画"阻碍玩家进行攻击或移动"。日志把它量清楚了：
+                        //     Guard 帧 90，其中【推杆却不动】89 帧 = 99%
+                        //     combat 状态全程 MentalStagger，hardLock 90 帧，连续 1.48 秒
+                        // 也就是说这一下是**硬锁**：那一秒半里推满杆一步都动不了，
+                        // 而屏幕上正有敌人贴着你。心神失守发生在安全距离上是有味道的，
+                        // 发生在对方随时能砍到你的时候就只是"被夺走一秒半的操作权"。
+                        if (staggered && !FoeInStrikeRange())
                         {
                             if (Adversity.StressStateMachine.Instance != null)
                                 Adversity.StressStateMachine.Instance.TriggerBreakdown();

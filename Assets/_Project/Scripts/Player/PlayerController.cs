@@ -267,11 +267,32 @@ namespace AdversityRoad.Player
             if (!string.IsNullOrEmpty(source)) DbgExtSrc = source;
         }
 
-        /// <summary>取走并清空本帧的外部位移。一帧只会被真正消费一次。</summary>
+        /// <summary>外部位移的单帧上限（米）。0.6m 在 60fps 下相当于 36 m/s，
+        /// 突进/击飞这类真实位移绰绰有余；再大就是"一帧挪过去"的瞬移了。</summary>
+        const float MaxExtStep = 0.6f;
+
+        /// <summary>
+        /// 取走本帧的外部位移，超出单帧上限的部分**留到下一帧**。
+        ///
+        /// 【为什么要封顶，又为什么不能直接丢】实机日志：
+        ///     ⑥b 谁在推角色：出招突进 666 帧 累计 18.73m 峰值当量速度 200.0 m/s
+        /// 200 m/s 在 60fps 下就是一帧挪 3.3 米——那既是玩家说的"魔法般改变位置"，
+        /// 也是穿墙的直接来源（胶囊半径才 0.4m）。
+        /// 但突进本来就该走完那段距离，直接把超出部分丢掉会让招式够不到人。
+        /// 所以是**顺延**不是截断：这一帧走上限，剩下的下一帧接着走，
+        /// 总位移一分不少，只是不再压在一帧里。
+        /// </summary>
         Vector3 TakeExternalMove()
         {
             var v = _extMove;
-            _extMove = Vector3.zero;
+            float len = v.magnitude;
+            if (len > MaxExtStep)
+            {
+                Vector3 take = v * (MaxExtStep / len);
+                _extMove = v - take;      // 余量留到下一帧
+                v = take;
+            }
+            else _extMove = Vector3.zero;
             DbgExtMove = v.magnitude;
             if (v.sqrMagnitude < 1e-10f) DbgExtSrc = "";
             return v;
@@ -1716,6 +1737,14 @@ namespace AdversityRoad.Player
             bool teleported = planar.magnitude > TeleportStep;
             if (teleported) { _lastPos = transform.position; planar = Vector3.zero; }
             float actual = planar.magnitude / Mathf.Max(dt, MinSpeedDt);
+            // 【顿帧期间的测速要封顶】上一份日志里传送那一下已经堵住了，这一份
+            // 又抓到另一条路：timeScale<0.9 的帧占 28.2%（最低 0.000），
+            // 而顿帧里位移可能由**不缩放时间**的协程推进，分母 dt 却是缩放过的，
+            // 于是量出 36 m/s（正常冲刺 6.3）。这个数往下污染移动层混合权重、
+            // 步幅同步、上半身遮罩的速度门槛与镜头紧迫度。
+            // 人不可能比冲刺再快一倍，超过就是测量假象，按上限收。
+            float speedCeil = Mathf.Max(runSpeed, SprintSpeedNow()) * 2f;
+            if (actual > speedCeil) actual = speedCeil;
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
             // 动画层据此在方向片段之间混合（前/后/左/右/斜向）。
