@@ -711,11 +711,11 @@ namespace AdversityRoad.Core
             if (occ == null) occ = camGo.AddComponent<CameraOcclusionFade>();
             occ.target = _player.transform;
 
-            // 近镜角色淡出：镜头贴近玩家/敌人身体时把该角色淡为半透明——
-            // 根治近身缠斗时"整屏被白色模型糊脸/镜头穿模"的问题
-            var closeFade = camGo.GetComponent<CharacterCloseFade>();
-            if (closeFade == null) closeFade = camGo.AddComponent<CharacterCloseFade>();
-            closeFade.player = _player.transform;
+            // 近镜角色让位：镜头快钻进敌人身体时把它整体收起来（只留影子）——
+            // 根治近身缠斗时"整屏被模型糊脸/镜头穿模"。玩家本体不归它管，
+            // 由 ThirdPersonCamera.HideSelfWhenTight 负责（见该类的注释）。
+            if (camGo.GetComponent<CharacterCloseFade>() == null)
+                camGo.AddComponent<CharacterCloseFade>();
 
             // 取景补光·镜头平行光(headlight)：方向 = 镜头前方，随镜头转动，
             // 无距离衰减——任何朝向镜头的表面(=玩家/敌人的脸)恒被照亮。之前用点光，
