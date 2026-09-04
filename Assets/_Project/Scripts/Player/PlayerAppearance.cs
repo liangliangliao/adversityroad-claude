@@ -85,6 +85,11 @@ namespace AdversityRoad.Player
             // 剑身出鞘/回鞘的过渡时长 = 动画时长，两者严格同步（否则剑先到位、
             // 手还在动，或者反过来）。片段一个都没有时退回一个保守值。
             float dur = poser != null ? poser.PlayFirstClip(1f, 0.12f, keys) : 0f;
+            // 【边走边拔刀不许滑】这段是按片段名直接播的，全程不经过 PoseState，
+            // 所以动作层的"只写上半身"遮罩不会自己打开——拔刀动画会接管整个
+            // 身体、腿停住，而位移照常，就是滑行。这里显式标一下时长。
+            // 拔刀/收刀本来就是纯上半身动作，走着拔刀是完全正常的。
+            if (poser != null) poser.MarkUpperBodyClip(dur);
             if (dur <= 0.05f) dur = 0.7f;
             _sheath.Toggle(dur);
         }
