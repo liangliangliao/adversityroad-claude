@@ -45,6 +45,10 @@ namespace AdversityRoad.Player
         {
             public Transform root;
             public Renderer[] renderers;
+            /// <summary>每个渲染器**原本**的投影模式。还原时直接写 On 是错的：
+            /// 敌人脚下的危险圈贴片就是被刻意设成不投影的（EnemyController），
+            /// 一律写 On 会让一张平贴片开始投影。</summary>
+            public UnityEngine.Rendering.ShadowCastingMode[] modes;
             public bool hidden;
         }
 
@@ -79,7 +83,10 @@ namespace AdversityRoad.Player
                 list.Add(r);
             }
             if (list.Count == 0) return;
-            var e = new Entry { root = root, renderers = list.ToArray(), hidden = false };
+            var arr = list.ToArray();
+            var modes = new UnityEngine.Rendering.ShadowCastingMode[arr.Length];
+            for (int i = 0; i < arr.Length; i++) modes[i] = arr[i].shadowCastingMode;
+            var e = new Entry { root = root, renderers = arr, modes = modes, hidden = false };
             _entries.Add(e);
             if (old.TryGetValue(root, out bool wasHidden) && wasHidden) SetHidden(e, true);
         }
@@ -115,10 +122,14 @@ namespace AdversityRoad.Player
         static void SetHidden(Entry e, bool hide)
         {
             e.hidden = hide;
-            var mode = hide ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
-                            : UnityEngine.Rendering.ShadowCastingMode.On;
-            foreach (var r in e.renderers)
-                if (r != null) r.shadowCastingMode = mode;
+            for (int i = 0; i < e.renderers.Length; i++)
+            {
+                var r = e.renderers[i];
+                if (r == null) continue;
+                r.shadowCastingMode = hide
+                    ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                    : e.modes[i];
+            }
         }
     }
 }

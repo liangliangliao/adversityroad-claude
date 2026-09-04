@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Mobile;
 
@@ -2256,17 +2257,56 @@ namespace AdversityRoad.Player
         }
 
         Renderer[] _selfRends;
+        UnityEngine.Rendering.ShadowCastingMode[] _selfModes;
         bool _selfHidden;
+        float _selfScanAt;
 
-        /// <summary>贴身到近第一人称时隐藏自己的身体（保留影子）。</summary>
+        /// <summary>
+        /// 吊杆被压到贴身时把玩家自己收起来（只留影子）。
+        ///
+        /// 【为什么之前完全没生效】渲染器列表是**一次性缓存**的：
+        ///     if (_selfRends == null) _selfRends = player.GetComponentsInChildren...
+        /// 而 PlayerAppearance.Rebuild() 会把 visualRoot 下的子物体全部销毁重建
+        ///（换角色预设、换装、拔刀/收刀、换面具/背包都会触发）。重建之后
+        /// 缓存里全是已销毁的引用，循环把 null 全跳过——于是这个方法**什么都没做**，
+        /// 而 _selfHidden 还停在 true，`hide == _selfHidden` 的早退让它再也不补写。
+        /// 玩家看到的就是：镜头被墙挤到 0.17m，人脸糊在屏幕上，收不掉。
+        ///
+        /// 改为定期重扫，并且【重扫之后必须重新落一次】，新生成的渲染器才拿得到状态。
+        /// 同时记住每个渲染器**原本**的投影模式再还原——直接写 On 会把那些刻意设成
+        /// 不投影的部件（贴片、特效）改掉。
+        /// </summary>
         void HideSelfWhenTight(bool hide)
         {
-            if (hide == _selfHidden) return;
-            if (_selfRends == null)
+            if (player == null) return;
+            bool rescan = _selfRends == null || Time.unscaledTime > _selfScanAt;
+            if (rescan)
             {
-                if (player == null) return;
-                _selfRends = player.GetComponentsInChildren<Renderer>(true);
+                _selfScanAt = Time.unscaledTime + 0.5f;
+                var all = player.GetComponentsInChildren<Renderer>(true);
+                var keep = new List<Renderer>(all.Length);
+                foreach (var r in all)
+                {
+                    if (r == null) continue;
+                    // 拖尾/线/粒子不参与：把刀光设成 ShadowsOnly 等于把它关掉
+                    if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+                    if (r.GetComponent<TextMesh>() != null) continue;
+                    if (r.GetComponentInParent<Canvas>() != null) continue;
+                    keep.Add(r);
+                }
+                _selfRends = keep.ToArray();
+                _selfModes = new UnityEngine.Rendering.ShadowCastingMode[_selfRends.Length];
+                for (int i = 0; i < _selfRends.Length; i++)
+                {
+                    var m = _selfRends[i].shadowCastingMode;
+                    // 重扫时它可能正处在被我们收起来的状态，别把 ShadowsOnly 记成原值
+                    _selfModes[i] = (_selfHidden &&
+                                     m == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly)
+                        ? UnityEngine.Rendering.ShadowCastingMode.On : m;
+                }
             }
+            else if (hide == _selfHidden) return;
+
             _selfHidden = hide;
             for (int ri = 0; ri < _selfRends.Length; ri++)
             {
@@ -2274,77 +2314,8 @@ namespace AdversityRoad.Player
                 if (rd == null) continue;
                 rd.shadowCastingMode = hide
                     ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
-                    : UnityEngine.Rendering.ShadowCastingMode.On;
+                    : _selfModes[ri];
             }
-        }
-
-        /// <summary>该点是否嵌在【环境】碰撞体里。</summary>
-        static bool BoomBlocked(Vector3 p)
-        {
-            int n = Physics.OverlapSphereNonAlloc(p, BoomSkin, BoomOverlap,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            for (int i = 0; i < n; i++)
-            {
-                var col = BoomOverlap[i];
-                if (col == null || !IsEnvironment(col)) continue;
-                return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// 探测「若把镜头转到该偏航角，吊杆能退到多远」——用于避免把镜头甩进墙里。
-        /// 与主碰撞回缩同一套过滤规则（忽略触发器、玩家/敌人身体、飞散碎屑）。
-        /// </summary>
-        float FreeBoomDistance(Vector3 pivot, float yawDeg, float maxDist)
-        {
-            Vector3 dir = (Quaternion.Euler(_curPitch, yawDeg, 0) * offset).normalized;
-            float best = maxDist;
-            // 换角探测一帧内要打好几个方向，同样不能每次分配一个数组。
-            // 用独立缓冲：它与主回缩不在同一段代码里，但共用一个缓冲会在将来
-            // 某次"探测里再套探测"时静默互相覆盖，分开更省心。
-            int nHit = Physics.SphereCastNonAlloc(pivot, 0.18f, dir, ProbeHits, maxDist,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            for (int i = 0; i < nHit; i++)
-            {
-                var hit = ProbeHits[i];
-                if (hit.distance <= 0.001f) continue;
-                if (!IsEnvironment(hit.collider)) continue;
-                // 同样不能有下限：写 Max(1.6f, ...) 会让【所有比 1.6m 更近就被挡死
-                // 的方向】一律报 1.6m，于是换角探针分不出"墙贴脸"和"还算通透"，
-                // 挑出来的新机位可能一样是堵墙。如实报告探到的距离。
-                best = Mathf.Min(best, Mathf.Max(0f, hit.distance - BoomSkin));
-            }
-            return best;
-        }
-
-        /// <summary>
-        /// 【通视距离】：从取景点沿某个方位平射出去，多远才被挡住（封顶 SightMax）。
-        /// 这是"视野开不开阔"的直接度量，也是本轮运镜快慢的唯一裁决者。
-        /// 与 FreeBoomDistance 的区别：那条是往【镜头要退去的方向】探（吊杆会不会顶墙），
-        /// 这条是往【要看/要去的方向】平探（看不看得见远方）。
-        /// </summary>
-        // 这条探测每帧要跑两次（画面正前 + 行进方向），必须无 GC：
-        // SphereCastAll 每次都会新建数组，60fps 下就是每秒 120 次分配。
-        static readonly RaycastHit[] SightHits = new RaycastHit[8];
-
-        float SightDistance(float yawDeg)
-        {
-            Vector3 eye = target.position + Vector3.up * (_pivotH + 0.5f);
-            Vector3 dir = Quaternion.Euler(0f, yawDeg, 0f) * Vector3.forward;
-            float best = SightMax;
-            int n = Physics.SphereCastNonAlloc(eye, SightProbeRadius, dir, SightHits, SightMax,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            for (int i = 0; i < n; i++)
-            {
-                var hit = SightHits[i];
-                if (hit.distance <= 0.001f) continue;
-                // 忽略动态碎屑、玩家与敌人本体：它们不构成"视野受限"，
-                // 敌人挡一下反而是你正想看的东西
-                if (!IsEnvironment(hit.collider)) continue;
-                best = Mathf.Min(best, hit.distance);
-            }
-            return best;
         }
 
         void SetHeadVisible(bool visible)
