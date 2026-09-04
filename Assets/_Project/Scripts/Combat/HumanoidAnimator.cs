@@ -1126,6 +1126,20 @@ namespace AdversityRoad.Combat
 
         /// <summary>腿是主体的动作：移动中也必须整身播（遮上半身会把招砍没）。</summary>
         public static bool IsLegDrivenAction(PoseState p) =>
+            // 【受击/踉跄不在这张表里，这是上一轮判断错了的一处】
+            // 我原本把 Hit / HitHeavy / Stagger 也算成"腿是主体"，理由是
+            // "它们本来就伴随硬直停步"。但实机不是这样：敌人挨打时走的是
+            // EnemyController.KnockSlide —— 0.22 秒内被推开 0.2~0.8 米，
+            // 那段代码自己的注释写得很清楚：
+            //     "击退平滑化……位移驱动的步态会同步迈脚，读作'被打得连退几步'"
+            // 也就是说，原设计要的正是"腿跟着位移迈"。把受击排除在遮罩之外，
+            // 等于把腿钉死在受击片段上，而人还在被推——就是玩家一直在报的滑行，
+            // 而且每打中一下就来一次，是残余漂移里频率最高的一种。
+            //
+            // 受击反应本来就是纯上半身的（挨一下、上身一缩）。站着挨打时
+            // _actualSpeed < 0.25，遮罩根本不会开，完整的受击动作照旧；
+            // 只有确实被推着走的时候腿才交还给移动层。判据自己就分好了。
+            //
             // 腿法与跃击
             p == PoseState.AttackKick || p == PoseState.SideKick ||
             p == PoseState.SpinKick || p == PoseState.JumpKick ||
@@ -1134,9 +1148,8 @@ namespace AdversityRoad.Combat
             // 闪避与位移
             p == PoseState.Dodge || p == PoseState.DodgeLeft || p == PoseState.DodgeRight ||
             p == PoseState.StepBack || p == PoseState.DashAttack ||
-            // 受击 / 倒地（这几段本来就伴随硬直停步，遮了反而上下半身各走各的）
-            p == PoseState.Hit || p == PoseState.HitHeavy ||
-            p == PoseState.Stagger || p == PoseState.Knockdown || p == PoseState.Death ||
+            // 倒地/死亡：人已经在地上，腿没有"继续走"这回事，必须整身播。
+            p == PoseState.Knockdown || p == PoseState.Death ||
             // 移动层过渡：起步/急停/原地转身，主体就是腿
             p == PoseState.StartMove || p == PoseState.StopMove ||
             p == PoseState.TurnLeft || p == PoseState.TurnRight || p == PoseState.Turn180 ||

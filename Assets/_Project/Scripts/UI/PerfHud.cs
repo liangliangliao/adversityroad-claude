@@ -359,9 +359,14 @@ namespace AdversityRoad.UI
                     {
                         bool fMoving = near.MeasuredSpeed > 0.8f;
                         bool fDead = fMoving && !fa.LegsWalking;
-                        _foe5.text = string.Format("敌 {0} {1:F1}m/s ｜ {2}{3}  {4}",
+                        // 步幅打滑也一并打出来：滑行有两种，一种是腿被动作层
+                        // 定住（⚠腿:定住），另一种是腿在动但每步跨得跟位移对不上
+                        // （×1.30 就是每步比腿该迈的多滑三成）。玩家那一行早就有
+                        // 这个数，敌人这一行缺了它，就分不清是哪一种。
+                        _foe5.text = string.Format("敌 {0} {1:F1}m/s ｜ {2}{3}  {4} ｜ {5}",
                             near.State, near.MeasuredSpeed, fa.DbgNowPlaying,
-                            fDead ? "  ⚠腿:定住" : "", fa.DbgMask);
+                            fDead ? "  ⚠腿:定住" : "", fa.DbgMask,
+                            fa.DbgStride(near.MeasuredSpeed));
                         _foe5.color = fDead ? new Color(1f, 0.35f, 0.3f)
                                             : new Color(1f, 0.85f, 0.6f);
                     }
