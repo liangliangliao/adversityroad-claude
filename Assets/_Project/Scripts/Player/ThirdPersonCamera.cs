@@ -2318,6 +2318,75 @@ namespace AdversityRoad.Player
             }
         }
 
+        /// <summary>该点是否嵌在【环境】碰撞体里。</summary>
+        static bool BoomBlocked(Vector3 p)
+        {
+            int n = Physics.OverlapSphereNonAlloc(p, BoomSkin, BoomOverlap,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var col = BoomOverlap[i];
+                if (col == null || !IsEnvironment(col)) continue;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 探测「若把镜头转到该偏航角，吊杆能退到多远」——用于避免把镜头甩进墙里。
+        /// 与主碰撞回缩同一套过滤规则（忽略触发器、玩家/敌人身体、飞散碎屑）。
+        /// </summary>
+        float FreeBoomDistance(Vector3 pivot, float yawDeg, float maxDist)
+        {
+            Vector3 dir = (Quaternion.Euler(_curPitch, yawDeg, 0) * offset).normalized;
+            float best = maxDist;
+            // 换角探测一帧内要打好几个方向，同样不能每次分配一个数组。
+            // 用独立缓冲：它与主回缩不在同一段代码里，但共用一个缓冲会在将来
+            // 某次"探测里再套探测"时静默互相覆盖，分开更省心。
+            int nHit = Physics.SphereCastNonAlloc(pivot, 0.18f, dir, ProbeHits, maxDist,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < nHit; i++)
+            {
+                var hit = ProbeHits[i];
+                if (hit.distance <= 0.001f) continue;
+                if (!IsEnvironment(hit.collider)) continue;
+                // 同样不能有下限：写 Max(1.6f, ...) 会让【所有比 1.6m 更近就被挡死
+                // 的方向】一律报 1.6m，于是换角探针分不出"墙贴脸"和"还算通透"，
+                // 挑出来的新机位可能一样是堵墙。如实报告探到的距离。
+                best = Mathf.Min(best, Mathf.Max(0f, hit.distance - BoomSkin));
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// 【通视距离】：从取景点沿某个方位平射出去，多远才被挡住（封顶 SightMax）。
+        /// 这是"视野开不开阔"的直接度量，也是本轮运镜快慢的唯一裁决者。
+        /// 与 FreeBoomDistance 的区别：那条是往【镜头要退去的方向】探（吊杆会不会顶墙），
+        /// 这条是往【要看/要去的方向】平探（看不看得见远方）。
+        /// </summary>
+        // 这条探测每帧要跑两次（画面正前 + 行进方向），必须无 GC：
+        // SphereCastAll 每次都会新建数组，60fps 下就是每秒 120 次分配。
+        static readonly RaycastHit[] SightHits = new RaycastHit[8];
+
+        float SightDistance(float yawDeg)
+        {
+            Vector3 eye = target.position + Vector3.up * (_pivotH + 0.5f);
+            Vector3 dir = Quaternion.Euler(0f, yawDeg, 0f) * Vector3.forward;
+            float best = SightMax;
+            int n = Physics.SphereCastNonAlloc(eye, SightProbeRadius, dir, SightHits, SightMax,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var hit = SightHits[i];
+                if (hit.distance <= 0.001f) continue;
+                // 忽略动态碎屑、玩家与敌人本体：它们不构成"视野受限"，
+                // 敌人挡一下反而是你正想看的东西
+                if (!IsEnvironment(hit.collider)) continue;
+                best = Mathf.Min(best, hit.distance);
+            }
+            return best;
+        }
+
         void SetHeadVisible(bool visible)
         {
             if (_head == null && player != null)
