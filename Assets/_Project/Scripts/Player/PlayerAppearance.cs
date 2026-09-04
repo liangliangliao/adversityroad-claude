@@ -85,6 +85,13 @@ namespace AdversityRoad.Player
             // 剑身出鞘/回鞘的过渡时长 = 动画时长，两者严格同步（否则剑先到位、
             // 手还在动，或者反过来）。片段一个都没有时退回一个保守值。
             float dur = poser != null ? poser.PlayFirstClip(1f, 0.12f, keys) : 0f;
+            // 【边走边拔刀不许滑】这段是按片段名直接播的，全程不经过 PoseState，
+            // 所以动作层的"只写上半身"遮罩不会自己打开——拔刀动画会接管整个
+            // 身体、腿停住，而位移照常，就是滑行。这里显式标一下时长。
+            // 拔刀/收刀本来就是纯上半身动作，走着拔刀是完全正常的。
+            // 同时标"陪着放慢"：这段是站着做的片段，接管上半身与胯骨之后，
+            // 全速跑的步幅会对不上（见 PlayerController 里的推导）。
+            if (poser != null) { poser.MarkUpperBodyClip(dur); poser.MarkPaceSlowClip(dur); }
             if (dur <= 0.05f) dur = 0.7f;
             _sheath.Toggle(dur);
         }
@@ -416,6 +423,7 @@ namespace AdversityRoad.Player
                 w.transform.localPosition = Vector3.zero;
                 w.transform.localRotation = Quaternion.identity;
                 FixWeaponMaterials(w);   // 接回武器贴图（修白模）
+                Combat.TextureFidelity.EnsureMipmaps(w);   // 补 mip 链（外部模型通用）
 
                 // 带剑鞘的成套武器（如 scene 剑）：默认收刀挂左手、按拔刀键出鞘到右手。
                 // 剑鞘识别：先按名(scabbard/sheath/鞘)——但导入器可能不保留节点名
@@ -946,6 +954,7 @@ namespace AdversityRoad.Player
             var bp = Object.Instantiate(prefab, holder, false);
             bp.name = "Model";
             FixModelMaterials(bp, ScopedTextures("Characters/Backpacks", CurrentBackpack));  // 有贴图才接线
+            Combat.TextureFidelity.EnsureMipmaps(bp);          // 补 mip 链（外部模型通用）
             // 不做任何染色：保持模型本色（本背包原型即白色，按用户要求恢复本色）
             FitBackpack(holder, back, model);
             DisableSelfShadow();

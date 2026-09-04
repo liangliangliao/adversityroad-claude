@@ -29,6 +29,29 @@ namespace AdversityRoad.Core
     public static class PostGrading
     {
         const string Key = "ar_post_grading";
+        const string NeutralKey = "ar_neutral_light";
+
+        /// <summary>
+        /// 【模型本色对照】把场景照明整体换成中性白环境光：主光关、镜头补光关、
+        /// 雾关、分级关。这时角色身上看到的**几乎就是底色贴图本身**
+        ///（只再乘一层模型自带的 AO），是能在游戏里做到的、与原图最接近的一次呈现。
+        ///
+        /// 这不是画面模式，是一次**判定**：
+        ///   · 开了之后如果和原图对上了 —— 贴图/材质/着色器全都没问题，
+        ///     游戏里那点差别全部来自打光与分区分级，那是美术口径的取舍；
+        ///   · 开了之后仍然对不上 —— 那就是资产或着色器这一层还有问题，我继续查。
+        /// 一次开关就能把范围砍掉一半，比继续凭截图猜快得多。
+        /// </summary>
+        public static bool NeutralLight
+        {
+            get => PlayerPrefs.GetInt(NeutralKey, 0) != 0;
+            set
+            {
+                PlayerPrefs.SetInt(NeutralKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+                Apply();
+            }
+        }
 
         public static bool Enabled
         {
@@ -49,7 +72,8 @@ namespace AdversityRoad.Core
         /// </summary>
         public static void Apply()
         {
-            bool on = Enabled;
+            // 本色对照期间分级一律关掉：留着它就不叫"本色"了。
+            bool on = Enabled && !NeutralLight;
             foreach (var v in Object.FindObjectsByType<Volume>(
                          FindObjectsInactive.Include, FindObjectsSortMode.None))
             {

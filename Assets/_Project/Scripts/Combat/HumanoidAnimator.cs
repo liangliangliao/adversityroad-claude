@@ -24,6 +24,10 @@ namespace AdversityRoad.Combat
         public Transform weaponPivot; // 兵器枢轴（叠加在手部之上做刀刃轨迹）
         public TrailRenderer weaponTrail;
         public bool isEnemy;          // 招式名浮字颜色区分（玩家金/敌人红）
+        /// <summary>这具骨架是不是玩家本人。
+        /// 设置面板里的"跑动出招·只动上半身"是给玩家做 A/B 对照的开关，
+        /// 只该管玩家自己——敌人、路人、围观者会不会滑行，与那个对照无关。</summary>
+        public bool isPlayer;
 
         PoseState _pose = PoseState.Idle;
         CombatState _lastFsmState = CombatState.Idle;
@@ -63,6 +67,21 @@ namespace AdversityRoad.Combat
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
         /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>
         public bool ActionUpperBodyOnly => Mecanim && _mecanim.ActionUpperBodyOnly;
+
+        /// <summary>诊断：上半身遮罩的实况，直接打进 HUD。
+        /// "遮罩:无" = AvatarMask 压根没建起来（异源骨架的骨名对不上），
+        /// 这时所有"只写上半身"的努力都是静默失效的——必须看得见。</summary>
+        public string DbgMask => !Mecanim ? "遮罩:方块骨骼"
+            : !_mecanim.MaskReady ? "遮罩:无(未建)"
+            : _mecanim.MaskUpperCount == 0 ? "遮罩:坏(上半身0根)"
+            : _mecanim.ActionUpperBodyOnly ? "遮罩:开"
+            : "遮罩:关(" + _maskWhy + ")";
+
+        /// <summary>遮罩没开时卡在哪个条件上（速度/开关/腿部招）。</summary>
+        string _maskWhy = "";
+
+        /// <summary>诊断：上半身遮罩把骨架切成了几比几（CI 与 HUD 共用）。</summary>
+        public string DbgMaskSplit => Mecanim ? _mecanim.MaskSplit : "（方块骨骼）";
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
         /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>
@@ -122,6 +141,11 @@ namespace AdversityRoad.Combat
         Vector3 _hipsBindLP;
         bool _hipsPin;
         bool _pendingGetUp;
+
+        /// <summary>起身动画正在播（Standing Up）。见 LateUpdateBody 里的打断逻辑。</summary>
+        bool _getUpPlaying;
+        /// <summary>起身被跑动打断的速度门槛（m/s）。</summary>
+        const float GetUpCancelSpeed = 1.2f;
         // 双脚贴地校准：不同体型腿长≠动作数据骨架腿长（踮脚/悬空/陷地的根因）
         Transform _footL, _footR;         // 脚尖（toe）
         Transform _ankleL, _ankleR;       // 脚踝（foot）——脚掌放平修正用
@@ -895,8 +919,12 @@ namespace AdversityRoad.Combat
             Mecanim && _mecanim.PlayClip(clipName);
 
         /// <summary>按关键词试播动作库片段（拔刀/收刀等按 "draw"/"sheath" 触发）。</summary>
-        public bool PlayClipContaining(string key) =>
-            Mecanim && _mecanim.PlayClipContaining(key);
+        public bool PlayClipContaining(string key)
+        {
+            if (!Mecanim || !_mecanim.PlayClipContaining(key)) return false;
+            MarkUpperBodyClip(_mecanim.ClipLengthContaining(key));   // 同上：源头标记
+            return true;
+        }
 
         /// <summary>按关键词返回匹配片段时长（拔刀/收刀过渡与动画同步用）；无则 0。</summary>
         public float ClipLengthContaining(string key) =>
@@ -957,7 +985,18 @@ namespace AdversityRoad.Combat
             foreach (var k in keys)
             {
                 float len = _mecanim.PlayNamed(k, false, false, speed, fade);
-                if (len > 0f) return len;
+                if (len > 0f)
+                {
+                    // 【在源头标，不指望每个调用点记得】按名字播的片段一律是
+                    // "叠在移动之上的上半身表演"：拔刀/收刀、Boss 的 Talking、
+                    // 羞耻线的 Sad Idle……它们全都不经过 PoseState，所以遮罩判据
+                    // 里的 IsUpperBodyAction(_pose) 读到的还是 Idle，遮罩不会开，
+                    // 腿被动作层定住而位移照常 —— 就是玩家报的滑行。
+                    // 坐下/躺下那类要整身播的走 PlayRestClip，不经过这里；
+                    // 何况遮罩本来就要求"确实在移动"，坐着不会触发。
+                    MarkUpperBodyClip(len);
+                    return len;
+                }
             }
             return 0f;
         }
@@ -987,6 +1026,31 @@ namespace AdversityRoad.Combat
         /// <summary>下一次受击该用哪条受击片段（轻/重）。由伤害方在请求
         /// HitReaction 之前按这一击的分量写入，见 HitPoseFor。</summary>
         public PoseState HitPose { get; set; } = PoseState.Hit;
+
+        /// <summary>
+        /// 一切归零，回到站立待机。传送到新关卡时调用。
+        ///
+        /// 玩家的原话："被传送到每个关卡的初始默认待机动作动画应该统一都是
+        /// 站立不动的待机动画，不要搞错。"过传送门时角色身上可能还挂着上一关的
+        /// 任何东西——没播完的招式、休息姿态（坐/躺）、临战架势、按名字播的
+        /// 拔刀片段、待起身标记。这些都不会因为换了张地图就自己消失，
+        /// 于是新关卡开场的第一个姿势是随上一关而变的。这里一次清干净。
+        /// </summary>
+        public void ResetToIdle()
+        {
+            _rest = false;
+            _ready = false;
+            _crouch = false;
+            _pendingGetUp = false;
+            _getUpPlaying = false;
+            _upperClipUntil = 0f;
+            _paceSlowUntil = 0f;
+            _lastActionPose = PoseState.Idle;
+            _speed01 = 0f;
+            _actualSpeed = 0f;
+            if (Mecanim) _mecanim.StopAction();
+            SetPose(PoseState.Idle);
+        }
 
         public void SetPose(PoseState p) => SetPose(p, 0f);
 
@@ -1060,7 +1124,6 @@ namespace AdversityRoad.Combat
         /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
         /// <summary>跑动中出招是否只写上半身（腿继续走移动混合）。关掉＝回到旧行为。</summary>
-        public static bool UpperBodyAttacksOn = true;
         /// <summary>
         /// 超过这个地面速度（m/s）才算"在移动"，才需要把腿还给移动层。
         ///
@@ -1074,19 +1137,113 @@ namespace AdversityRoad.Combat
         /// 门槛该问的是"看得出来在移动吗"，不是"跑起来了吗"。0.25 m/s 下
         /// 一秒挪 0.25 米，已经是肉眼可见的位移，腿就该跟着走。
         /// </summary>
+        /// <summary>【跑动出招·只动上半身】设置面板里的对照开关（默认开）。
+        /// 关掉＝回到"招式接管整个身体"的旧行为。它只管玩家自己的招式：
+        /// 敌人与按名字播的片段一律不受它影响（见遮罩判据处的推导）。</summary>
+        public static bool UpperBodyAttacksOn = true;
+
         const float UpperBodySpeed = 0.25f;
 
         /// <summary>这一招是不是【上半身发力】——只有这些才适合在跑动中只写上半身。
         /// 公开是为了让 PlayerController 判断"这一招能不能只动上半身"：
         /// 不能的（腿法/旋身/位移型）必须靠**定步**让腿与地面一致，见那边的 attackFloor。</summary>
-        public static bool IsUpperBodyAction(PoseState p) =>
-            p == PoseState.Attack || p == PoseState.HeavyAttack || p == PoseState.AttackUp ||
-            p == PoseState.SwordThrust || p == PoseState.PunchJab || p == PoseState.PunchCross ||
-            p == PoseState.Cast || p == PoseState.CastProjectile ||
-            p == PoseState.Charge || p == PoseState.ChargeLoop || p == PoseState.Guard ||
-            // 言语攻击的微反应只写上半身：走着走着被说一句，是身子一颤，
-            // 不是停下脚步。这样它既看得见，又一步都不耽误。
-            p == PoseState.Flinch;
+        /// <summary>
+        /// 这个动作在【移动中】该不该只写上半身（腿继续走路，不被动作接管）。
+        ///
+        /// 【从白名单改成黑名单】原来是列举"哪些动作可以只写上半身"，
+        /// 于是**任何没被列进去的动作，在移动中都会接管整个身体 → 腿停下、
+        /// 人继续位移 → 滑行**。玩家先后报了三处，都是同一个漏：
+        ///   · 敌人边走边做动作（言语攻击/格挡受击…）；
+        ///   · 拔刀/收刀边走边播；
+        ///   · 更早的"跑动中出招腿不动"。
+        /// 白名单的失败模式是"漏了就滑"，而漏是必然的——招式表一直在加。
+        /// 反过来列举"腿是主体、必须整身播"的那些，失败模式变成"多遮了一个
+        /// 动作的腿部细节"，比滑行轻得多，而且新加的动作默认是安全的那一侧。
+        ///
+        /// 腿为主体的：腿法、跃击、翻滚闪身、倒地/受击/踉跄、移动层过渡
+        ///（起步/急停/转身）、腾空与着陆、蹲伏、突进位移段。
+        /// 这些遮成上半身等于把招砍没了，必须整身播。
+        /// </summary>
+        public static bool IsUpperBodyAction(PoseState p) => !IsLegDrivenAction(p);
+
+        /// <summary>腿是主体的动作：移动中也必须整身播（遮上半身会把招砍没）。</summary>
+        public static bool IsLegDrivenAction(PoseState p) =>
+            // 【受击/踉跄不在这张表里，这是上一轮判断错了的一处】
+            // 我原本把 Hit / HitHeavy / Stagger 也算成"腿是主体"，理由是
+            // "它们本来就伴随硬直停步"。但实机不是这样：敌人挨打时走的是
+            // EnemyController.KnockSlide —— 0.22 秒内被推开 0.2~0.8 米，
+            // 那段代码自己的注释写得很清楚：
+            //     "击退平滑化……位移驱动的步态会同步迈脚，读作'被打得连退几步'"
+            // 也就是说，原设计要的正是"腿跟着位移迈"。把受击排除在遮罩之外，
+            // 等于把腿钉死在受击片段上，而人还在被推——就是玩家一直在报的滑行，
+            // 而且每打中一下就来一次，是残余漂移里频率最高的一种。
+            //
+            // 受击反应本来就是纯上半身的（挨一下、上身一缩）。站着挨打时
+            // _actualSpeed < 0.25，遮罩根本不会开，完整的受击动作照旧；
+            // 只有确实被推着走的时候腿才交还给移动层。判据自己就分好了。
+            //
+            // 腿法与跃击
+            p == PoseState.AttackKick || p == PoseState.SideKick ||
+            p == PoseState.SpinKick || p == PoseState.JumpKick ||
+            p == PoseState.Sweep || p == PoseState.AttackLeap ||
+            p == PoseState.JumpAttack || p == PoseState.AttackSpin ||
+            // 闪避与位移
+            p == PoseState.Dodge || p == PoseState.DodgeLeft || p == PoseState.DodgeRight ||
+            p == PoseState.StepBack || p == PoseState.DashAttack ||
+            // 倒地/死亡：人已经在地上，腿没有"继续走"这回事，必须整身播。
+            p == PoseState.Knockdown || p == PoseState.Death ||
+            // 移动层过渡：起步/急停/原地转身，主体就是腿
+            p == PoseState.StartMove || p == PoseState.StopMove ||
+            p == PoseState.TurnLeft || p == PoseState.TurnRight || p == PoseState.Turn180 ||
+            // 腾空与着陆
+            p == PoseState.JumpUp || p == PoseState.FallLoop ||
+            p == PoseState.Land || p == PoseState.LandHard ||
+            p == PoseState.CrouchIdle ||
+            // Idle 不是动作
+            p == PoseState.Idle;
+
+        /// <summary>按名字播的片段（拔刀/收刀走的是这条路，不经过 PoseState）
+        /// 若只该写上半身，播的时候标一下时长，遮罩在这段时间里一并生效。</summary>
+        float _upperClipUntil;
+
+        /// <summary>最后一次真正送进动作层的姿态（不是 _pose——它会先回落到 Idle）。</summary>
+        PoseState _lastActionPose = PoseState.Idle;
+
+        /// <summary>
+        /// 把"刚按名字播出去的那段"标成【移动中只写上半身】。
+        ///
+        /// 【为什么需要它】拔刀/收刀走 PlayFirstClip → PlayNamed，直接往动作层
+        /// 塞片段，**全程不经过 _pose**。于是下面那句遮罩判据里的
+        /// IsUpperBodyAction(_pose) 读到的还是 Idle，遮罩不会开——
+        /// 拔刀动画接管整个身体、腿停住，而位移照常，就是玩家看到的滑行。
+        /// </summary>
+        public void MarkUpperBodyClip(float seconds)
+        {
+            if (seconds > 0f) _upperClipUntil = Time.time + seconds;
+        }
+
+        /// <summary>此刻是不是在播一段"按名字播的上半身片段"（拔刀/收刀等）。</summary>
+        public bool UpperClipActive => Time.time < _upperClipUntil;
+
+        float _paceSlowUntil;
+
+        /// <summary>
+        /// 把"刚播出去的那段"标成【移动要陪着放慢】。
+        ///
+        /// 【为什么不直接用 UpperClipActive】按名字播的片段远不止拔刀/收刀：
+        /// Boss 说话、羞耻线的 Sad Idle / Kneeling Down / Breathing Idle 也走
+        /// 同一条路。那些是几秒钟的**待机**，玩家在它们播放期间照样该能全速跑；
+        /// 拿"在播命名片段"当放慢的判据，等于顺手给这些场合也踩了一脚刹车，
+        /// 而玩家要的只是拔刀/收刀这一件事。所以单独标一个口子。
+        /// </summary>
+        public void MarkPaceSlowClip(float seconds)
+        {
+            if (seconds > 0f) _paceSlowUntil = Time.time + seconds;
+        }
+
+        /// <summary>此刻是不是在播一段"要陪着放慢"的片段（拔刀/收刀）。
+        /// 移动层据此收速——见 PlayerController 里那一段的推导。</summary>
+        public bool PaceSlowActive => Time.time < _paceSlowUntil;
 
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
             float moveAngleDeg = 0f, bool strafing = false)
@@ -1205,8 +1362,72 @@ namespace AdversityRoad.Combat
                 //     腿法（踢/扫堂腿/旋身）与位移型招式（跃劈/飞踢/突进斩）不在此列
                 //     ——那些招的主体就是腿，遮掉腿等于把招砍没了。
                 //   · 人确实在移动。站着打就该整个身体一起使劲，遮上半身反而软。
-                _mecanim.SetActionUpperBodyOnly(
-                    UpperBodyAttacksOn && _actualSpeed > UpperBodySpeed && IsUpperBodyAction(_pose));
+                // 【按名字播的片段不受"跑动出招·只动上半身"这个开关管】
+                // 那个开关的语义是"出招时要不要只写上半身"，是招式的事。
+                // 拔刀、收刀、Boss 说话、羞耻线的待机表演都不是招式，
+                // 它们边走边播时腿被定住纯粹是缺陷，没有"关掉它做对照"的意义。
+                // ===== 起身动画被跑动打断 =====
+                //
+                // 实机日志里这是"腿没在走"里最大的一块：Standing Up 共 251 帧，
+                // **速度中位数 4.60 m/s**（也就是全速跑），而战斗状态机
+                // 249/251 帧已经回到 Locomotion、没有任何动作锁。
+                // 也就是说倒地爬起来的这三四秒里，玩家可以全速跑，而动作层还在
+                // 播起身（权重 1.00）把腿钉死——玩家报的"倒地后同时移动会漂移"
+                // 就是这一段。
+                //
+                // 不能靠遮罩解决：起身的主体本来就是腿，遮成上半身是上下半身
+                // 各走各的。正解是**玩家一开始跑，起身就该收掉**——他已经站起来
+                // 并且在跑了，那段动画的前提不成立了。这也是动作游戏的常规做法
+                //（起身的收招帧可被移动取消）。
+                if (_getUpPlaying)
+                {
+                    if (_actualSpeed > GetUpCancelSpeed)
+                    {
+                        _mecanim.StopAction();
+                        _getUpPlaying = false;
+                    }
+                    else if (!_mecanim.ActionPlaying) _getUpPlaying = false;
+                }
+
+                bool namedClip = Time.time < _upperClipUntil;
+                // 【判据要跟着"动作层还在不在压着腿"走，而不是跟着 _pose 走】
+                // _pose 会在片段播完那一刻先回到 Idle，而动作层的权重还要再淡出
+                // 一段——那段时间腿仍被它压着。权重没落干净之前，一律按
+                // 【真正送进动作层的那个姿态】判。
+                bool actionLive = _mecanim.DbgActionW > 0.02f;
+                PoseState maskPose = actionLive ? _lastActionPose : _pose;
+
+                // 【对照开关按玩家要求保留，但只管玩家自己的招式】
+                //
+                // 它确实有代价：上一份日志里 upperOnly=1 只出现在 40.7~74.7s，
+                // 之后 150 秒一次都没有——开关被关掉之后，每个上半身招式都把腿
+                // 钉死，那就是"还是会滑"。所以这一次把范围收到最小：
+                //   · 只管【玩家】：敌人、路人、围观者不受它影响，
+                //     玩家没有理由为了自己做对照而让满场的人滑起来；
+                //   · 只管【招式】：按名字播的片段（拔刀/收刀/Boss 说话/
+                //     羞耻线待机）不受它管——那些不是招式，边走边播时腿被钉死
+                //     纯粹是缺陷，没有"关掉做对照"的意义。
+                bool toggleOn = UpperBodyAttacksOn || !isPlayer;
+
+                // 【动作层确实在压着腿、但不知道它是什么 → 按"该遮"处理】
+                // _lastActionPose 的初值是 Idle，而 Idle 被算作"腿是主体"，
+                // 于是任何没经过 PlayAction 那条路就把权重顶上来的片段，
+                // 都会落进"不遮"的那一侧——正好是滑行。
+                // 两种猜错的代价不对等：遮错了只是动作的腿部细节少一点，
+                // 不遮错了就是玩家反复在报的滑行。所以未知一律遮。
+                bool unknownLive = actionLive && maskPose == PoseState.Idle;
+
+                bool wantUpper = _actualSpeed > UpperBodySpeed &&
+                    (namedClip || unknownLive || (toggleOn && IsUpperBodyAction(maskPose)));
+                _mecanim.SetActionUpperBodyOnly(wantUpper);
+
+                // 遮罩为什么没开，直接记下来给 HUD——这一轮我又在"它到底卡在
+                // 哪一个门上"上绕了一圈，判据有四个条件，光看开/关分不出来。
+                _maskWhy = wantUpper ? ""
+                    : _actualSpeed <= UpperBodySpeed ? "速度"
+                    : !toggleOn ? "开关"
+                    : !IsUpperBodyAction(maskPose) ? "腿部招"
+                    : "?";
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
@@ -1219,12 +1440,21 @@ namespace AdversityRoad.Combat
                     else if (_pose == PoseState.Idle)
                     {
                         // 回到 Idle：从倒地恢复时先倒放起身，否则直接收招回移动层
-                        if (_pendingGetUp) { _pendingGetUp = false; _mecanim.PlayGetUp(); }
+                        if (_pendingGetUp)
+                        {
+                            _pendingGetUp = false;
+                            _getUpPlaying = true;   // 见下面的"起身被跑动打断"
+                            _mecanim.PlayGetUp();
+                        }
                         else _mecanim.StopAction();
                     }
                     else
                     {
                         _pendingGetUp = false;
+                        // 记住"真正被送进动作层的那个姿态"——见下面遮罩判据的推导：
+                        // _pose 会在片段播完那一刻先回到 Idle，而动作层的权重还要
+                        // 再淡出一段，那段时间腿依旧被动作层压着。
+                        _lastActionPose = _pose;
                         _mecanim.PlayAction(_pose, _poseDur);
                     }
                 }
@@ -1418,6 +1648,21 @@ namespace AdversityRoad.Combat
                 kneeLp += 46f; kneeRp += 52f;
                 shLr += 38f; shRr -= 38f;
             }
+
+            // ===== 程序骨架也要有"移动中只写上半身" =====
+            //
+            // Mecanim 那条路早就有了（SetActionUpperBodyOnly：跑动中出招只写上半身，
+            // 腿归移动层）。程序骨架这条没有——下面的招式 switch 会把腿部变量
+            // **整个覆盖掉**，于是"边走边做动作"就是腿停住、人继续位移 = 滑行。
+            // 玩家报的"敌人做出动画同时移动会滑行"，非动捕的敌人/路人走的正是这条。
+            //
+            // 做法：把步态刚算好的腿部量先存下来，招式演完之后按同一条判据
+            //（上半身动作 + 确实在移动）还原回去。腿法/跃击/翻滚那些
+            // IsLegDrivenAction 的招不还原——它们的主体本来就是腿。
+            float legHipL = hipLp, legHipR = hipRp;
+            float legKneeL = kneeLp, legKneeR = kneeRp;
+            float legFootL = footLp, legFootR = footRp;
+            float legPelvisY = pelvisY;
 
             // ---------- 招式姿态 ----------
             Quaternion bodyRot = Quaternion.identity;
@@ -1690,6 +1935,18 @@ namespace AdversityRoad.Combat
                     hipLp = 10f; hipRp = 24f; torsoR = 8f;
                     bodyLerp = 5f;
                     break;
+            }
+
+            // 移动中的上半身动作：把腿还给步态（见上面的快照）。
+            // 判据与 Mecanim 那条完全一致，两种骨架的行为才不会分家。
+            if (moving && _actualSpeed > UpperBodySpeed &&
+                (Time.time < _upperClipUntil ||
+                 ((UpperBodyAttacksOn || !isPlayer) && IsUpperBodyAction(_pose))))
+            {
+                hipLp = legHipL; hipRp = legHipR;
+                kneeLp = legKneeL; kneeRp = legKneeR;
+                footLp = legFootL; footRp = legFootR;
+                pelvisY = legPelvisY;
             }
 
             if (!directBody)

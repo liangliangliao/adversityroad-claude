@@ -116,10 +116,16 @@ namespace AdversityRoad.Player
             m.DisableKeyword("_ALPHABLEND_ON");
             m.EnableKeyword("_SURFACE_TYPE_OPAQUE");
             m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
-            Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
-            c.a = 1f;
-            m.color = c;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+            // 还原不透明也要两套属性名都写：glTFast 的 Shader Graph 用
+            // baseColorFactor，只写 _BaseColor 的话，角色·贰淡出之后就再也
+            // 恢复不回来了（写不进去 ⇒ 也擦不掉）。
+            foreach (var prop in new[] { "_BaseColor", "_Color", "baseColorFactor" })
+            {
+                if (!m.HasProperty(prop)) continue;
+                Color cc = m.GetColor(prop);
+                cc.a = 1f;
+                m.SetColor(prop, cc);
+            }
         }
     }
 }

@@ -28,6 +28,11 @@ namespace AdversityRoad.AI
 
         public EnemyState State { get; private set; } = EnemyState.Idle;
 
+        /// <summary>诊断：这一帧量出来的真实位移速度（m/s）。
+        /// HUD 的敌人行用它判"确实在移动却没在演走路"——寻路速度不算数，
+        /// 被击退、侧闪、绕圈同样是移动。</summary>
+        public float MeasuredSpeed => _measuredSpeed;
+
         NavMeshAgent _agent;
         Animator _anim;
         Transform _player;

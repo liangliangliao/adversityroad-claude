@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.Mobile;
 
@@ -114,6 +115,8 @@ namespace AdversityRoad.Player
         // 开阔度仍比原来高一档。角色占屏与视野开阔是直接对立的两个量，
         // 40% 是这条曲线上的折中点，不是"两者都要"的解。
         public float fieldOfView = 62f;
+        /// <summary>交战满档时视野角加宽多少度（只开视野，不转镜头）。</summary>
+        const float CombatFovBoost = 10f;
 
         [Header("镜头运镜规则（探索/战斗/大招三模式，参考主流第三人称防晕运镜）：" +
                 "角色转向快、镜头位置中速跟随、镜头旋转慢——只有玩家【持续朝某方向移动一段" +
@@ -219,6 +222,17 @@ namespace AdversityRoad.Player
         /// 这一条在屋里也必须留一条口子——打着打着对手不知道在哪是更糟的失明——
         /// 但它同样要被室内几何管住，不能享受露天的 340°/s。</summary>
         const float IndoorEnemyOrbitCap = 55f;
+        /// <summary>室内【松杆归位】的转速上限（度/秒）。
+        ///
+        /// 和 IndoorOrbitCap(14°/s) 分开定，因为两者约束的根本不是同一件事：
+        ///   · 绕行封顶管的是"镜头转会不会把玩家的行进方向掰弯"（H = C + θ），
+        ///     所以推着杆时必须压到几乎不动；
+        ///   · 归位只在**松杆**时发生，人不动，没有任何输入会被掰弯，
+        ///     唯一的顾虑只是吊杆别扫墙——而那有碰撞回缩兜底。
+        /// 14°/s 套到归位上，掉一次头要 13 秒，等于没有跟随（玩家报的
+        /// "住所里转向或掉头，镜头没有及时跟随"就是这个数）。90°/s 下
+        /// 180° 掉头约 2 秒，是"稳稳地转过去"而不是"甩过去"。</summary>
+        const float IndoorSettleCap = 90f;
 
         // ---- 一键回正（业界通行的"逃生口"）----
         // 摇杆是镜头相对的 ⇒ H = C + θ，而"镜头对着角色正前方"要求 C = H ⇒ θ = 0。
@@ -347,8 +361,9 @@ namespace AdversityRoad.Player
         /// 「角色占屏太大」是构图问题，「镜头在柜子里」是画面报废，孰轻孰重很清楚。
         ///
         /// 所以下限必须让位给通透：室内 0.5 米（贴到肩后，等同越肩视角），
-        /// 室外 1.2 米。镜头真的贴近时由 CharacterCloseFade 把角色淡开
-        /// （它 1.1 米起淡、0.45 米最透），所以近到 0.5 米也不会"整屏一张脸"。
+        /// 室外 1.2 米。镜头真的贴近时由 HideSelfWhenTight 把玩家整体收起来
+        /// （0.66 米起，只留影子），所以近到 0.5 米也不会"整屏一张脸"。
+        /// 敌人那一侧同理，由 CharacterCloseFade 负责。
         /// </summary>
         /// <summary>吊杆的【可用下限】。
         ///
@@ -394,6 +409,10 @@ namespace AdversityRoad.Player
         float _liftSm;
         /// <summary>吊杆短到这个距离（米）就完全按近第一人称看，长到 NearFpFree 就完全是第三人称。</summary>
         const float NearFpBoom = 0.30f, NearFpFree = 1.10f;
+        /// <summary>吊杆短到这个距离（米）才把玩家自己收起来（只留影子）。
+        /// 见 HideSelfWhenTight 的调用点：这是"镜头进到身体里了"，
+        /// 不是"镜头有点近"——后者不该让角色消失。</summary>
+        const float SelfHideBoom = 0.38f;
         float _tightSm;
         /// <summary>诊断：贴身程度 0~1。1=已完全按近第一人称在看（吊杆被墙压死）。</summary>
         public static float DbgTight;
@@ -1024,7 +1043,41 @@ namespace AdversityRoad.Player
             // 是保证"打着打着敌人不知道在哪"不会发生，其余时刻它必须闭嘴。
             // 只管【近身】的那个对手（8m 内）：十米开外跑动中的追兵不属于
             // "我把对手打丢了"，那种情形由 threatAhead 那条路负责。
+            // 【磁铁感的第四条路，也是"路过敌人"那一条】
+            //
+            // 前三次我堵的是"逃离"：软锁脱离、减速豁免、脱战撤离，判据都改成了
+            // 摇杆意图，且都要求【背离】敌人。但玩家说的是**路过**——从敌人身边
+            // 横着走过去，与敌人方位大约成 90°，"背离 100° 持续 0.4 秒"永远不成立，
+            // 于是 disengaging 一直是 false，这条兜底照常生效。
+            //
+            // 它生效意味着什么：敌人一出取景窗，镜头就以**全速、10° 死区**把它
+            // 转回窗沿（下面 dz/calmSpd 的 enemyLost 分支）。而移动是镜头相对的
+            //（H = C + θ），镜头一转，玩家推着不动的那一杆在世界里就跟着转——
+            // 于是人绕着敌人画弧。这就是"像被磁铁吸住"的全部来源，
+            // 与速度、锁定、减速一概无关，是取景在改运动方向。
+            //
+            // 玩家的要求是"任何时候只要做出任何方向的移动，都能按意图运动"，
+            // 以及"应该可以自主选择是否和敌人战斗，不能强制"。那么规则只能是：
+            // **摇杆在手时，镜头不准为了框住敌人而自己转。**
+            // 想让镜头盯着敌人，有明确的入口——锁定（lockTarget，走上面的战斗机位
+            // 分支）。那是玩家自己按的，不是系统替他决定的。
+            // 松杆之后这条兜底照旧生效，"打着打着敌人不知道在哪"仍然不会发生。
+            // 【安全窗口的判据是"镜头转动会不会改变玩家的移动方向"，不是"在不在打"】
+            // 上一版我一刀切成"摇杆在手就不许转"，结果打起来镜头彻底不跟，
+            // 敌人整场在画面外——方向没错，手段太钝。
+            //
+            // 从 H = C + θ 直接推：镜头偏航只在【玩家正用摇杆驱动水平位移】时
+            // 才会把人带偏。那么另外三种情况下自动取景是完全安全的：
+            //   · 松杆（本来就不在走）；
+            //   · 锁定中（走的是战斗机位那一支，且移动语义本身已变成绕步）；
+            //   · 硬锁招式期间（技能/绝招/重击：移动方法在开头就 return，
+            //     水平位移归零，这时镜头爱怎么转都改不了玩家的轨迹）。
+            // 战斗中出招是高频事件，第三条等于把大量取景机会还了回来，
+            // 而且是在"玩家本来就停下来了"的那些帧上转——观感上最自然。
+            bool freeSteering = stickHeld && lockTarget == null &&
+                                !(player != null && player.MotionLocked);
             bool enemyLost = _focusEnemy != null && !manualLook && !disengaging &&
+                !freeSteering &&
                 _focusDist < CombatFollowRange &&
                 _focusFrameT > Mathf.Lerp(FocusFrameHold, FocusFrameHoldCombat, _combatBlend);
 
@@ -1502,7 +1555,13 @@ namespace AdversityRoad.Player
                 //
                 // 而屋里本来就没有"看清远处的路"这个需求（跟随绕行存在的唯一理由）。
                 // 室内该由玩家自己决定看哪儿，要摆正有【一键回正】（V / 双击转镜区）。
-                bool settleAllowed = !fightingNow && !stickHeld && !IndoorMode;
+                // 【室内不再一律禁止归位】上面那段注释写的理由是"归位完全绕开了
+                // 下面那道室内限速"——那是当时的实现事实，但限速后来已经移到
+                // "所有跟随理由算完之后一次性落地"（见下面的 IndoorMode 封顶），
+                // 归位现在同样被它管着。禁用这一条的前提已经不存在了，
+                // 留着它的唯一效果就是玩家在住所里转身/掉头之后镜头永远不跟。
+                // 改为：室内照常归位，但走一条专门的、更稳的限速（IndoorSettleCap）。
+                bool settleAllowed = !fightingNow && !stickHeld;
                 if (settleAllowed && !manualRecently && _headingHoldT > SettleHold &&
                     err > (_settleLatch ? SettleExit : SettleEnter))
                     _settleLatch = true;
@@ -1633,8 +1692,14 @@ namespace AdversityRoad.Player
                     // 甩过去。限速属于【环境约束】，不属于某一条跟随理由，
                     // 所以它的位置就该在这里——所有跟随理由算完之后，一次性落地。
                     if (IndoorMode)
+                    {
+                        // 归位（松杆、人不动）与绕行（推着杆、会掰弯行进方向）
+                        // 是两件事，室内封顶必须分开：见 IndoorSettleCap 的推导。
+                        bool settling = _settleLatch && !gentle && !_combatReorient;
                         maxSpd = Mathf.Min(maxSpd,
-                            enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap);
+                            settling ? IndoorSettleCap
+                                     : (enemyNet ? IndoorEnemyOrbitCap : IndoorOrbitCap));
+                    }
 
                     if (err > 45f)
                     {
@@ -2106,10 +2171,21 @@ namespace AdversityRoad.Player
                                             -boomDir, _tightSm);
             if (lookDir.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(lookDir);
             DbgTight = _tightSm;
-            // 近第一人称时把自己的身体藏起来：镜头都在躯干里了，不藏就是满屏
-            // 后脑勺和衣服内面，看前方反而更难。用 ShadowsOnly 而不是关渲染器——
-            // 影子留着，地面上仍然看得出自己站在哪儿。
-            HideSelfWhenTight(_tightSm > 0.55f);
+            // 【收起自己的门槛，与近第一人称的过渡解耦】
+            //
+            // 原来挂在 _tightSm > 0.55 上，换算过来是吊杆 0.66m 以下就收人。
+            // 而屋里过门、贴墙、绕家具时吊杆本来就常在 0.7~1.1m —— 于是角色
+            // 动不动就消失。玩家明确说了：镜头贴身**不应该**让角色隐藏。
+            //
+            // 但完全不收也不行：吊杆掉到 0.17m 时镜头已经在脑袋里，不收就是
+            // 上一轮那张"人脸出现在头顶"的截图。两条反馈都要满足，
+            // 那么门槛就该定在"镜头真的进到身体里"，而不是"镜头有点近"。
+            // 角色胶囊半径约 0.34m，0.38m 是它的外壁再往外一点点：
+            // 到这个距离画面上本来就只剩一片皮肤，收掉反而露出前方。
+            // 与近第一人称的视线过渡（_tightSm，0.30~1.10m）分开算——
+            // 那一条管的是"看哪儿"，这一条管的是"看不看得见自己"，
+            // 两件事没有理由共用一个门槛。
+            HideSelfWhenTight(horiz < SelfHideBoom);
 
             DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
             // 角色胸口在不在画面里：视口内 + 没有被环境挡住。
@@ -2140,8 +2216,14 @@ namespace AdversityRoad.Player
             // 变焦本身极慢（跟随 _shot 的插值），不会形成"呼吸式"变焦的不稳感。
             var camc = _camComp != null ? _camComp : (_camComp = GetComponent<Camera>());
             if (camc != null && !Presets[PresetIndex].fp)
+                // 交战时加宽视野：想让敌人留在画面里，除了转镜头，还有一个
+                // **完全没有副作用**的办法——把视野角开大。62°→72° 水平可视
+                // 范围多出约 20%，贴身缠斗时对手横移出画的概率明显下降，
+                // 而镜头一度都没转，所以不可能像自动取景那样把玩家带偏。
+                // （写在这一处：这里本来就是每帧唯一的 FOV 写者，
+                //   另起一个写者会和运镜特写抢同一个字段。）
                 camc.fieldOfView = Mathf.MoveTowards(camc.fieldOfView,
-                    fieldOfView + _shot.fovBias, 12f * dt);
+                    fieldOfView + _shot.fovBias + CombatFovBoost * _combatBlend, 12f * dt);
         }
 
         Camera _camComp;   // 缓存：每帧 GetComponent 没必要
@@ -2190,17 +2272,56 @@ namespace AdversityRoad.Player
         }
 
         Renderer[] _selfRends;
+        UnityEngine.Rendering.ShadowCastingMode[] _selfModes;
         bool _selfHidden;
+        float _selfScanAt;
 
-        /// <summary>贴身到近第一人称时隐藏自己的身体（保留影子）。</summary>
+        /// <summary>
+        /// 吊杆被压到贴身时把玩家自己收起来（只留影子）。
+        ///
+        /// 【为什么之前完全没生效】渲染器列表是**一次性缓存**的：
+        ///     if (_selfRends == null) _selfRends = player.GetComponentsInChildren...
+        /// 而 PlayerAppearance.Rebuild() 会把 visualRoot 下的子物体全部销毁重建
+        ///（换角色预设、换装、拔刀/收刀、换面具/背包都会触发）。重建之后
+        /// 缓存里全是已销毁的引用，循环把 null 全跳过——于是这个方法**什么都没做**，
+        /// 而 _selfHidden 还停在 true，`hide == _selfHidden` 的早退让它再也不补写。
+        /// 玩家看到的就是：镜头被墙挤到 0.17m，人脸糊在屏幕上，收不掉。
+        ///
+        /// 改为定期重扫，并且【重扫之后必须重新落一次】，新生成的渲染器才拿得到状态。
+        /// 同时记住每个渲染器**原本**的投影模式再还原——直接写 On 会把那些刻意设成
+        /// 不投影的部件（贴片、特效）改掉。
+        /// </summary>
         void HideSelfWhenTight(bool hide)
         {
-            if (hide == _selfHidden) return;
-            if (_selfRends == null)
+            if (player == null) return;
+            bool rescan = _selfRends == null || Time.unscaledTime > _selfScanAt;
+            if (rescan)
             {
-                if (player == null) return;
-                _selfRends = player.GetComponentsInChildren<Renderer>(true);
+                _selfScanAt = Time.unscaledTime + 0.5f;
+                var all = player.GetComponentsInChildren<Renderer>(true);
+                var keep = new List<Renderer>(all.Length);
+                foreach (var r in all)
+                {
+                    if (r == null) continue;
+                    // 拖尾/线/粒子不参与：把刀光设成 ShadowsOnly 等于把它关掉
+                    if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+                    if (r.GetComponent<TextMesh>() != null) continue;
+                    if (r.GetComponentInParent<Canvas>() != null) continue;
+                    keep.Add(r);
+                }
+                _selfRends = keep.ToArray();
+                _selfModes = new UnityEngine.Rendering.ShadowCastingMode[_selfRends.Length];
+                for (int i = 0; i < _selfRends.Length; i++)
+                {
+                    var m = _selfRends[i].shadowCastingMode;
+                    // 重扫时它可能正处在被我们收起来的状态，别把 ShadowsOnly 记成原值
+                    _selfModes[i] = (_selfHidden &&
+                                     m == UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly)
+                        ? UnityEngine.Rendering.ShadowCastingMode.On : m;
+                }
             }
+            else if (hide == _selfHidden) return;
+
             _selfHidden = hide;
             for (int ri = 0; ri < _selfRends.Length; ri++)
             {
@@ -2208,7 +2329,7 @@ namespace AdversityRoad.Player
                 if (rd == null) continue;
                 rd.shadowCastingMode = hide
                     ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
-                    : UnityEngine.Rendering.ShadowCastingMode.On;
+                    : _selfModes[ri];
             }
         }
 

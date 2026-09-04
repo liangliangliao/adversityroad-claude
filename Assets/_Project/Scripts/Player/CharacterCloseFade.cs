@@ -4,73 +4,91 @@ using UnityEngine;
 namespace AdversityRoad.Player
 {
     /// <summary>
-    /// 近镜角色淡出（大作标配的镜头保护）：镜头贴近任何角色（玩家或敌人）时，
-    /// 把该角色整体淡为半透明——距离越近越透，移开立即淡回。
-    /// 根治近身缠斗/贴墙回缩时"整张屏幕被白色模型糊住/镜头穿进身体"的问题：
-    /// 镜头碰撞不再需要缩进角色身体也能保画面，角色挡镜时玩家永远看得见战场。
-    /// 距离按「镜头到角色躯干竖线段」计算（脚到头），比只算根位置精准。
+    /// 近镜角色让位（镜头保护）：镜头快要钻进某个角色身体时，把它整体收起来
+    /// （只留影子），移开立刻恢复。根治"镜头穿进身体 / 整张屏幕被模型糊住"。
+    ///
+    /// 【为什么是"收起来"而不是"淡出"——这一版的重点】
+    /// 上一版是渐进半透明：距离越近越透。玩家的截图证明这条路走不通——
+    /// 门口吊杆 0.74m 时角色被画成八成不透明度，画面上能**透过脸看到耳朵、
+    /// 透过下巴看到脖子、透过肩膀看到夹克内面**，脸整个是花的。
+    /// 那不是"淡"，是坏掉了。
+    ///
+    /// 原因是半透明渲染必须关掉深度写入（ZWrite=0，见 CameraOcclusionFade
+    /// .SetTransparent）。对一个箱子、一根柱子这类凸的环境物件没问题；
+    /// 但角色是自我遮挡极重的网格——关掉深度之后，同一个人的正面与背面、
+    /// 外套的外面与里面、五官与后脑勺全都按提交顺序胡乱混在一起。
+    /// **任何**不为零的半透明度都会出现这个现象，越透越明显，
+    /// 所以调阈值只能让它少发生，不可能让它变对。
+    ///
+    /// 成熟做法要么是抖动/屏幕门透明（保留深度写入，需要改着色器，
+    /// 而本项目的角色横跨 URP/Lit 与 glTFast 两套着色器，运行时改不动），
+    /// 要么就是**二值收起**。这里选后者：
+    ///   · 阈值定在"镜头确实要进身体了"（角色胶囊半径约 0.34m）；
+    ///   · 到那个距离角色本来就占满屏幕，收掉反而露出房间，正是玩家要的；
+    ///   · 用 ShadowsOnly 而不是关渲染器——影子留着，地上仍看得出人在哪儿；
+    ///   · 带迟滞，避免在阈值上反复闪。
+    ///
+    /// 【玩家本体不归这里管】ThirdPersonCamera.HideSelfWhenTight 已经在做同一件
+    /// 事（且与"近第一人称"过渡绑在一起，0.66m 起收）。两处都写
+    /// shadowCastingMode 会互相覆盖——它有 `hide == _selfHidden` 的早退，
+    /// 被这里翻回去之后就再也不补写了。所以这里只管敌人。
     /// </summary>
     public class CharacterCloseFade : MonoBehaviour
     {
-        public Transform player;
-        // 收紧触发距离：镜头碰撞回缩下限≈1.35m，之前 2.1m 起淡→靠近建筑镜头一回缩
-        // 角色就被淡成半透明("整个人变虚不清晰")。收到 1.1m 才起淡、且保留更高保底
-        // 不透明度：贴墙近观角色依然清晰，只有镜头真要钻进身体时才淡开留出视野。
-        [Tooltip("开始淡出的镜头距离")] public float startDist = 1.35f;
-        [Tooltip("最透时的镜头距离")] public float minDist = 0.75f;
-        /// <summary>最透时的不透明度。
-        /// 【为什么必须是 0】室内镜头被家具挡住时会一路回缩到 0.5 米（那是对的，
-        /// 否则镜头会卡在柜子里）。停在 0.32 的半透明上，画面就是**一张占满屏幕的
-        /// 半透明大脸**——玩家说的"脸模糊不清"。要么看得清，要么彻底让开，
-        /// 半透明的大脸是两头不讨好。</summary>
-        [Range(0f, 1f)] public float minAlpha = 0f;
-        public float fadeSpeed = 7f;
+        /// <summary>收起来的距离（米）：镜头到躯干竖线段近于它就收。
+        /// 角色胶囊半径约 0.34m，0.55m 时镜头基本贴到身上了。</summary>
+        [Tooltip("收起角色的镜头距离")] public float hideDist = 0.38f;
+        /// <summary>恢复距离（米）：比 hideDist 大一截，形成迟滞，阈值上不会闪。</summary>
+        [Tooltip("恢复显示的镜头距离")] public float showDist = 0.55f;
 
         class Entry
         {
             public Transform root;
             public Renderer[] renderers;
-            public float alpha = 1f;
-            public bool isPlayer;
+            /// <summary>每个渲染器**原本**的投影模式。还原时直接写 On 是错的：
+            /// 敌人脚下的危险圈贴片就是被刻意设成不投影的（EnemyController），
+            /// 一律写 On 会让一张平贴片开始投影。</summary>
+            public UnityEngine.Rendering.ShadowCastingMode[] modes;
+            public bool hidden;
         }
 
         readonly List<Entry> _entries = new List<Entry>();
-        ThirdPersonCamera _tpc;
         float _rescanAt;
-
-        void Awake() => _tpc = GetComponent<ThirdPersonCamera>();
 
         void Rescan()
         {
-            // 保留已跟踪条目的 alpha，重建渲染器列表（角色可能中途生成/销毁/换装）
-            var old = new Dictionary<Transform, float>();
+            var old = new Dictionary<Transform, bool>();
             foreach (var e in _entries)
-                if (e.root != null) old[e.root] = e.alpha;
+                if (e.root != null) old[e.root] = e.hidden;
+            // 重扫之前先把当前隐藏的恢复回来：渲染器列表要重建，
+            // 漏掉的那几个会永远停在 ShadowsOnly 上（换装/生成时会发生）。
+            foreach (var e in _entries) if (e.hidden) SetHidden(e, false);
             _entries.Clear();
 
-            if (player != null) AddEntry(player, true, old);
             foreach (var ec in AdversityRoad.Core.ActorRegistry.Enemies)
-                AddEntry(ec.transform, false, old);
+            {
+                if (ec == null) continue;
+                AddEntry(ec.transform, old);
+            }
         }
 
-        void AddEntry(Transform root, bool isPlayer, Dictionary<Transform, float> old)
+        void AddEntry(Transform root, Dictionary<Transform, bool> old)
         {
             var list = new List<Renderer>();
             foreach (var r in root.GetComponentsInChildren<Renderer>())
             {
                 if (r is TrailRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
-                if (r.GetComponent<TextMesh>() != null) continue;   // 浮字/警示不参与淡出
+                if (r.GetComponent<TextMesh>() != null) continue;   // 浮字/警示不参与
                 if (r.GetComponentInParent<Canvas>() != null) continue;
                 list.Add(r);
             }
             if (list.Count == 0) return;
-            _entries.Add(new Entry
-            {
-                root = root,
-                renderers = list.ToArray(),
-                isPlayer = isPlayer,
-                alpha = old.TryGetValue(root, out float a) ? a : 1f
-            });
+            var arr = list.ToArray();
+            var modes = new UnityEngine.Rendering.ShadowCastingMode[arr.Length];
+            for (int i = 0; i < arr.Length; i++) modes[i] = arr[i].shadowCastingMode;
+            var e = new Entry { root = root, renderers = arr, modes = modes, hidden = false };
+            _entries.Add(e);
+            if (old.TryGetValue(root, out bool wasHidden) && wasHidden) SetHidden(e, true);
         }
 
         void LateUpdate()
@@ -82,50 +100,35 @@ namespace AdversityRoad.Player
             }
 
             Vector3 cam = transform.position;
-            float dt = Time.unscaledDeltaTime;
-            bool fp = _tpc != null && _tpc.FirstPerson;
-
             foreach (var e in _entries)
             {
                 if (e.root == null) continue;
-                // 第一人称模式玩家本体不淡出（要看见自己的手脚兵器）
-                float want = 1f;
-                if (!(fp && e.isPlayer))
-                {
-                    // 镜头到躯干竖线段（脚→头）的最近距离（随标准体型 TargetHeight）
-                    float h = Combat.MecanimCharacter.TargetHeight * Mathf.Max(0.4f, e.root.lossyScale.y);
-                    Vector3 feet = e.root.position - Vector3.up * (h * 0.5f);
-                    float t = Mathf.Clamp(cam.y - feet.y, 0f, h);
-                    Vector3 closest = feet + Vector3.up * t;
-                    float d = Vector3.Distance(cam, closest);
-                    float k = Mathf.InverseLerp(minDist, startDist, d);   // 0=贴脸 1=够远
-                    want = Mathf.Lerp(minAlpha, 1f, k);
-                }
+                // 镜头到躯干竖线段（脚→头）的最近距离，比只算根位置准
+                float h = Combat.MecanimCharacter.TargetHeight * Mathf.Max(0.4f, e.root.lossyScale.y);
+                Vector3 feet = e.root.position - Vector3.up * (h * 0.5f);
+                float t = Mathf.Clamp(cam.y - feet.y, 0f, h);
+                float d = Vector3.Distance(cam, feet + Vector3.up * t);
 
-                float next = Mathf.MoveTowards(e.alpha, want, fadeSpeed * dt);
-                if (Mathf.Abs(next - e.alpha) < 0.001f && next >= 0.999f) continue;
-                e.alpha = next;
-                Apply(e);
+                if (!e.hidden && d < hideDist) SetHidden(e, true);
+                else if (e.hidden && d > showDist) SetHidden(e, false);
             }
         }
 
-        static void Apply(Entry e)
+        void OnDisable()
         {
-            bool opaque = e.alpha >= 0.999f;
-            foreach (var r in e.renderers)
+            foreach (var e in _entries) if (e.hidden) SetHidden(e, false);
+        }
+
+        static void SetHidden(Entry e, bool hide)
+        {
+            e.hidden = hide;
+            for (int i = 0; i < e.renderers.Length; i++)
             {
+                var r = e.renderers[i];
                 if (r == null) continue;
-                var m = r.material;
-                if (opaque)
-                {
-                    CameraOcclusionFade.SetOpaque(m);
-                    continue;
-                }
-                CameraOcclusionFade.SetTransparent(m);
-                Color c = m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : m.color;
-                c.a = e.alpha;
-                m.color = c;
-                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
+                r.shadowCastingMode = hide
+                    ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                    : e.modes[i];
             }
         }
     }

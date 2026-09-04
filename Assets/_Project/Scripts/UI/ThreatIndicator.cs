@@ -33,6 +33,11 @@ namespace AdversityRoad.UI
     public class ThreatIndicator : MonoBehaviour
     {
         const int Pool = 8;                 // 同屏最多画几个方向标（围攻上限足够）
+        // 【在场标】与前摇标是两件事：前摇标回答"哪儿要挨打"，在场标回答
+        // "敌人在哪儿"。玩家报的"敌人在视野盲区、镜头拍不到"要的是后者——
+        // 它得一直在，而不是等对方抬手才出现。
+        const int SoftPool = 6;
+        const float SoftRange = 32f;        // 米：这个距离外的追兵不占标位
         const float Radius = 0.34f;         // 箭头落在屏幕短边 34% 半径的圆环上
         const float HitFlashTime = 0.7f;    // 受击方向标停留时长
 
@@ -44,6 +49,8 @@ namespace AdversityRoad.UI
         }
 
         readonly List<Mark> _marks = new List<Mark>();
+        readonly List<Mark> _soft = new List<Mark>();
+        LockOnSystem _lock;
         RectTransform _canvasRt;
         Transform _player;
         Camera _cam;
@@ -55,6 +62,9 @@ namespace AdversityRoad.UI
         static readonly Color Normal = new Color(1f, 0.25f, 0.2f, 0.9f);
         static readonly Color Perilous = new Color(1f, 0.55f, 0.05f, 0.95f);
         static readonly Color Damage = new Color(1f, 0.85f, 0.35f, 0.95f);
+        // 在场标要"看得见但不抢戏"：前摇标是红/橙的警报，在场标是灰白的方位提示。
+        static readonly Color Presence = new Color(0.86f, 0.88f, 0.95f, 0.55f);
+        static readonly Color Locked = new Color(1f, 0.82f, 0.30f, 0.95f);
 
         public static ThreatIndicator Create(Transform canvas)
         {
@@ -84,6 +94,24 @@ namespace AdversityRoad.UI
                 grt.offsetMin = Vector2.zero; grt.offsetMax = Vector2.zero;
                 go.SetActive(false);
                 _marks.Add(new Mark { rt = rt, img = img, glyph = glyph });
+            }
+            for (int i = 0; i < SoftPool; i++)
+            {
+                var go = new GameObject("Foe" + i, typeof(Image));
+                go.transform.SetParent(canvas, false);
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.sizeDelta = new Vector2(52, 52);
+                var img = go.GetComponent<Image>();
+                img.color = new Color(0, 0, 0, 0);
+                img.raycastTarget = false;
+                var glyph = UiUtil.MakeText(go.transform, "Glyph", "▲", 34,
+                    TextAnchor.MiddleCenter, Presence);
+                var grt = glyph.GetComponent<RectTransform>();
+                grt.anchorMin = Vector2.zero; grt.anchorMax = Vector2.one;
+                grt.offsetMin = Vector2.zero; grt.offsetMax = Vector2.zero;
+                go.SetActive(false);
+                _soft.Add(new Mark { rt = rt, img = img, glyph = glyph });
             }
         }
 
@@ -135,6 +163,49 @@ namespace AdversityRoad.UI
             for (int i = used; i < Pool; i++)
                 if (_marks[i].rt.gameObject.activeSelf) _marks[i].rt.gameObject.SetActive(false);
 
+            // ---- 在场标：正在追你/打你、却不在画面里的敌人 ----
+            //
+            // 【为什么用记号而不是转镜头】移动是镜头相对的（H = C + θ）：
+            // 玩家按着摇杆时镜头每自动转 1°，角色的世界朝向就被带转 1°。
+            // 所以"敌人跑出画面就把镜头转回去"这件事，代价是玩家被迫绕着敌人画弧
+            //（他报的"像被磁铁吸住"）。这条路在无锁定状态下不能走。
+            //
+            // 成熟动作游戏对"看不见敌人"的通行解法本来就不是转镜头，而是
+            // 屏幕边缘的方位记号（鬼泣/猎天使/怪猎/战神都是这套）+ 锁定。
+            // 记号不动镜头，所以它不可能改变玩家的移动方向。
+            if (_lock == null)
+            {
+                var pc0 = AdversityRoad.Core.ActorRegistry.Player;
+                if (pc0 != null) _lock = pc0.GetComponent<LockOnSystem>();
+            }
+            Transform locked = _lock != null ? _lock.CurrentTarget : null;
+            int soft = 0;
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+            {
+                if (soft >= SoftPool) break;
+                if (e == null || e.State == EnemyState.Dead) continue;
+                // 只标"已经动起来"的：待机/巡逻的还没盯上你，标出来只是噪音
+                if (e.State != EnemyState.Chase && e.State != EnemyState.Attack &&
+                    e.State != EnemyState.MentalAttack) continue;
+                if (e.Telegraphing) continue;      // 它已经有一枚更醒目的前摇标了
+                float d = Vector3.Distance(e.transform.position, _player.position);
+                if (d > SoftRange) continue;
+                Vector3 sp = _cam.WorldToViewportPoint(e.transform.position + Vector3.up * 1.2f);
+                if (sp.z > 0f && sp.x > 0.06f && sp.x < 0.94f &&
+                    sp.y > 0.06f && sp.y < 0.94f) continue;   // 画面里就不用标
+                bool isLocked = locked != null && locked == e.transform;
+                // 越近越大越实：远处的追兵只是"知道在那边"，贴脸的那个要一眼看见
+                float near = 1f - Mathf.Clamp01(d / SoftRange);
+                var c = isLocked ? Locked : Presence;
+                c.a *= isLocked ? 1f : Mathf.Lerp(0.55f, 1f, near);
+                Place(_soft[soft], e.transform.position, c,
+                      isLocked ? "◆" : "▲", ring * 0.86f,
+                      (isLocked ? 1.15f : 0.85f) + near * 0.25f);
+                soft++;
+            }
+            for (int i = soft; i < SoftPool; i++)
+                if (_soft[i].rt.gameObject.activeSelf) _soft[i].rt.gameObject.SetActive(false);
+
             // ---- 受击方向标 ----
             var hitMark = _marks[Pool];
             if (_hitT > 0f)
@@ -173,13 +244,15 @@ namespace AdversityRoad.UI
             m.glyph.color = color;
             // 「！」「危」是字，跟着箭头一起转会读不出来——把字形转回水平
             var grt = m.glyph.GetComponent<RectTransform>();
-            grt.localRotation = glyph == "▲" ? Quaternion.identity
+            grt.localRotation = (glyph == "▲" || glyph == "◆") ? Quaternion.identity
                 : Quaternion.Inverse(m.rt.localRotation);
         }
 
         void HideAll()
         {
             foreach (var m in _marks)
+                if (m.rt.gameObject.activeSelf) m.rt.gameObject.SetActive(false);
+            foreach (var m in _soft)
                 if (m.rt.gameObject.activeSelf) m.rt.gameObject.SetActive(false);
         }
     }

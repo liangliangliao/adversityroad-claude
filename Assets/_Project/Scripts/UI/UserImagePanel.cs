@@ -78,7 +78,7 @@ namespace AdversityRoad.UI
                 new Vector2(180, 72), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
 
             UiUtil.MakeButton(_panel.transform, "打 开 手 机 相 册", new Vector2(0.5f, 1f),
-                new Vector2(0, -232), new Vector2(520, 66),
+                new Vector2(0, -232), new Vector2(480, 66),
                 new Color(0.26f, 0.44f, 0.34f, 0.98f), OpenSystemGallery, 26);
             UiUtil.MakeButton(_panel.transform, "重新扫描", new Vector2(0.5f, 1f),
                 new Vector2(330, -232), new Vector2(160, 66),

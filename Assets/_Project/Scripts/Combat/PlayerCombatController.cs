@@ -581,6 +581,7 @@ namespace AdversityRoad.Combat
 
         void StartAttack(AttackBtn pressed)
         {
+            _lastMeleeAt = Time.time;   // 交手记忆（见 InFight）
             if (!_cc.isGrounded)
             {
                 // 空中连段：一次滞空最多两段（大作通用的 air combo）。
@@ -1273,6 +1274,81 @@ namespace AdversityRoad.Combat
         const float FlinchCooldown = 1.6f;
         float _nextFlinch;
 
+        // ===== 心神失守（Great Sword Blocking 那一下）的频率控制 =====
+        //
+        // 玩家的两条要求合在一起：现在触发太频繁；而且要"随着通关越多、战斗力
+        // 越强，防御反应频率逐渐减少，直到完全消失"。
+        //
+        // 原来只有一条判据——资源见底就演，没有任何节流，也不看玩家有多强。
+        // 一段连珠炮式的言语攻击里资源会反复见底，于是一遍遍地演。
+        //
+        // 改成两层：
+        //   · 节流：两次失守之间至少隔一段冷却，而冷却随韧性拉长
+        //     （韧性 0 → 18 秒，韧性 0.55 → 90 秒）；
+        //   · 封顶：韧性到 0.55 就完全不再失守。
+        // 韧性怎么算见 PlayerStats.MentalResilience：心气占 45%、进度占 35%
+        //（复盘点 200 封顶）、这一下多轻占 20%。也就是说通关越多、状态越好，
+        // 先是越来越少，过了线之后一次都不会再有——正是玩家要的那条曲线。
+        const float StaggerCdMin = 18f;    // 秒：最脆弱时两次失守的最小间隔
+        const float StaggerCdMax = 90f;    // 秒：接近免疫线时的间隔
+        const float StaggerImmuneRes = 0.55f;   // 韧性到这里就再也不失守
+        float _nextStagger;
+
+        /// <summary>最近一次"真的在跟人交手"的时刻：自己出招、或挨了一记物理攻击。
+        /// 见 InFight——言语攻击的微反应在交手期间一律不做。</summary>
+        float _lastMeleeAt = -99f;
+        /// <summary>交手记忆窗（秒）：这段时间内都算"还在打"。</summary>
+        const float MeleeMemory = 3f;
+
+        /// <summary>
+        /// 玩家此刻是不是【正在和敌人交手】。
+        ///
+        /// 玩家的要求：交手中受到言语攻击不需要有任何身体反应。理由很实在——
+        /// 打起来的时候一颤就是在抢玩家的输入窗口，而言语攻击是连珠炮式的，
+        /// 抢的还不止一次。走在路上挨一句身子一颤是有味道的；正在对刀时不是。
+        ///
+        /// 判据要narrow：不能用"附近有敌人"，因为发起言语攻击的那个敌人自己
+        /// 就在附近，那样等于永远不反应。只认三件真正意味着"在打"的事：
+        ///   · 状态机不在普通移动上（正在出招/收招/闪避/受击）；
+        ///   · 锁定着某个目标（玩家自己按下的"我要打这个"）；
+        ///   · 最近 3 秒内真的交过手（自己出过招，或挨过一记物理攻击）。
+        /// </summary>
+        /// <summary>
+        /// 有没有敌人已经贴到【能打到玩家】的距离。
+        ///
+        /// 用敌人自己的攻击距离（EnemyProfile.AttackRange，已被 AttackRangeCap 收在
+        /// 2.1 米以内）再放宽半米当缓冲——它下一步就能进入打击圈。
+        /// 只算活着并且已经盯上你的（追击/攻击/心念），站着不动的不算威胁。
+        /// </summary>
+        bool FoeInStrikeRange()
+        {
+            var foes = Core.ActorRegistry.Enemies;
+            if (foes == null) return false;
+            foreach (var e in foes)
+            {
+                if (e == null || e.profile == null) continue;
+                if (e.State == AI.EnemyState.Dead || e.State == AI.EnemyState.Idle ||
+                    e.State == AI.EnemyState.Patrol) continue;
+                Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                float reach = e.profile.AttackRange + 0.5f;
+                if (d.sqrMagnitude <= reach * reach) return true;
+            }
+            return false;
+        }
+
+        bool InFight
+        {
+            get
+            {
+                // _lockOn 原本只在吸附那条路上懒加载；吸附关掉时它会一直是 null，
+                // 那样"锁定中"这一条就永远不成立。这里自己补一次。
+                if (_lockOn == null) _lockOn = GetComponent<Player.LockOnSystem>();
+                return (_fsm != null && _fsm.Current != CombatState.Locomotion)
+                    || (_lockOn != null && _lockOn.CurrentTarget != null)
+                    || Time.time < _lastMeleeAt + MeleeMemory;
+            }
+        }
+
         /// <summary>一次出招最多能把朝向掰过去多少度（玩家没在推杆时）。</summary>
         const float AttackFaceSnapMax = 30f;
 
@@ -1801,15 +1877,37 @@ namespace AdversityRoad.Combat
                         // 哪怕单次已经很短。
                         // 片段这一版再收到 2.1 倍速、只取前 20%（约 0.1 秒的一颤），
                         // 并加 FlinchCooldown 的节流：一段话里只颤第一下。
-                        if (poser != null && Time.time >= _nextFlinch)
+                        // 【交手中一律不做身体反应】见 InFight 的推导：
+                        // 打起来的时候一颤就是在抢玩家的输入窗口，而言语攻击是
+                        // 连珠炮式的，抢的还不止一次。走在路上挨一句身子一颤是
+                        // 有味道的；正在对刀时不是。
+                        // 心神伤害与飘字照旧结算——不做的是**动作**，
+                        // 不是把言语攻击在战斗中变成免费的。
+                        if (poser != null && !InFight && Time.time >= _nextFlinch)
                         {
                             _nextFlinch = Time.time + FlinchCooldown;
                             poser.SetPose(PoseState.Flinch);
                         }
 
                         // 资源真的见底了，才是短暂失守（跪一下、掉锁定）。
-                        if (staggered)
+                        //
+                        // 【敌人已经贴到能打到你的距离，就不触发】
+                        // 玩家的原话：这个动画"阻碍玩家进行攻击或移动"。日志把它量清楚了：
+                        //     Guard 帧 90，其中【推杆却不动】89 帧 = 99%
+                        //     combat 状态全程 MentalStagger，hardLock 90 帧，连续 1.48 秒
+                        // 也就是说这一下是**硬锁**：那一秒半里推满杆一步都动不了，
+                        // 而屏幕上正有敌人贴着你。心神失守发生在安全距离上是有味道的，
+                        // 发生在对方随时能砍到你的时候就只是"被夺走一秒半的操作权"。
+                        // 触发条件三重：资源真的见底、敌人不在打击距离内
+                        //（贴身时不夺操作权，见 FoeInStrikeRange）、
+                        // 而且没在冷却里、韧性也还没到免疫线（见上面那段的推导）。
+                        if (staggered && !FoeInStrikeRange() &&
+                            res < StaggerImmuneRes && Time.time >= _nextStagger)
                         {
+                            // 越强隔得越久：韧性 0 → 18 秒，到免疫线 → 90 秒
+                            _nextStagger = Time.time + Mathf.Lerp(
+                                StaggerCdMin, StaggerCdMax,
+                                Mathf.Clamp01(res / StaggerImmuneRes));
                             if (Adversity.StressStateMachine.Instance != null)
                                 Adversity.StressStateMachine.Instance.TriggerBreakdown();
                             else _fsm.TriggerMentalStagger();
@@ -1978,6 +2076,7 @@ namespace AdversityRoad.Combat
                 }
                 else if (!dmg.isMentalOnly)
                 {
+                    _lastMeleeAt = Time.time;   // 交手记忆（见 InFight）
                     if (phys >= knockdownThreshold)
                     {
                         // 重击=被撞飞一段距离重重倒地，起身带无敌帧立刻回到战斗

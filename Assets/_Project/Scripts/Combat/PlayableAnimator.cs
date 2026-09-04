@@ -1425,7 +1425,10 @@ namespace AdversityRoad.Combat
             {
                 if (!Valid || _dirW == null) return false;
                 if (DbgPhaseRate <= 0.001f) return false;
-                if (_actionW > 0.90f && !_upperOnly) return false;
+                // 0.90 → 0.60：实机抓到的那一处是 _actionW = 0.83（片段淡出的尾巴），
+                // 卡在 0.90 上就不亮灯，而画面上腿已经明显被压住了。
+                // 这一条是**指示灯**，宁可早亮，也不要"看得见却报不出来"。
+                if (_actionW > 0.60f && !_upperOnly) return false;
                 float sum = 0f;
                 for (int i = 0; i < _dirW.Length; i++) sum += _dirW[i];
                 return sum > 0.10f;
@@ -1487,9 +1490,27 @@ namespace AdversityRoad.Combat
         // ===== 上半身遮罩 =====
 
         /// <summary>下半身骨骼的规范名。第 1 层遮掉它们＝腿归移动层管。</summary>
+        /// <summary>
+        /// 【分界线在腿根，不在胯骨】
+        ///
+        /// 曾经把胯骨也划给移动层，玩家的反馈很明确："开启这个开关之后，
+        /// 战斗动作明显不协调，身体摇摇晃晃不停抖动；关掉就自然了。"
+        ///
+        /// 原因是招式片段的**脊椎关键帧是按「胯骨钉住」做的**。胯骨归移动层
+        /// 之后，跑动周期的上下起伏、左右摆、扭腰全都还在，而动作层又在这个
+        /// 一直在动的胯骨之上叠一套按静止胯骨编排的上身姿态——两层动作互相
+        /// 打架，读出来就是抖。日志里也对得上：遮罩开的帧身体角速度均值
+        /// 103.7°/s（峰 873），关的时候 70.4（峰 420）。
+        ///
+        /// 所以胯骨要跟着招式走，移动层只保留**两条腿**：
+        ///   · 上半身与胯骨 ← 动作层，按片段原样演，不再被跑步周期摇；
+        ///   · 腿（UpLeg→Leg→Foot→Toe）← 移动层，脚继续跟着地面迈，不滑。
+        /// 腿的局部旋转是相对胯骨的，所以胯骨换成招式姿态之后腿照样正常循环。
+        /// </summary>
+
+        /// <summary>腿链：这几根以及它们的子骨骼都归移动层（胯骨不在其中，见上）。</summary>
         static readonly string[] LowerBones =
         {
-            "hips",
             "leftupleg", "leftleg", "leftfoot", "lefttoebase", "lefttoeend",
             "rightupleg", "rightleg", "rightfoot", "righttoebase", "righttoeend",
         };
@@ -1522,14 +1543,30 @@ namespace AdversityRoad.Combat
 
             _maskFull = new AvatarMask { transformCount = paths.Count };
             _maskUpper = new AvatarMask { transformCount = paths.Count };
+            int up = 0;
             for (int i = 0; i < paths.Count; i++)
             {
                 _maskFull.SetTransformPath(i, paths[i]);
                 _maskFull.SetTransformActive(i, true);
                 _maskUpper.SetTransformPath(i, paths[i]);
                 _maskUpper.SetTransformActive(i, !lower[i]);
+                if (!lower[i]) up++;
             }
+            // 【把分割结果记下来，让它可核对】上半身遮罩曾经把整副骨架都关掉
+            //（Hips 是全身的根，"下半身"标记一传播就全军覆没），而症状是
+            // "动作没有了"而不是报错——从外面完全看不出来。
+            // 记一行摘要，CI 诊断与 HUD 都能读：上半身为 0 就是这套东西坏了。
+            _maskSplit = string.Format("上半身{0}根/下半身{1}根", up, paths.Count - up);
+            _maskUpperCount = up;
         }
+
+        string _maskSplit = "（未建）";
+        int _maskUpperCount;
+
+        /// <summary>诊断：上半身遮罩把骨架切成了几比几。上半身 0 根 = 遮罩坏了。</summary>
+        public string MaskSplit => _maskSplit;
+        /// <summary>诊断：上半身遮罩里还活着几根骨骼。</summary>
+        public int MaskUpperCount => _maskUpperCount;
 
         /// <summary>
         /// 递归收集骨骼路径，并标出哪些属于下半身。
@@ -1547,15 +1584,34 @@ namespace AdversityRoad.Combat
                 var c = t.GetChild(i);
                 string p = path.Length == 0 ? c.name : path + "/" + c.name;
                 bool isLower = parentIsLower;
+                // 【Hips 归下半身，但绝不能把这个标记传下去】
+                //
+                // 这是"只写上半身"整套机制一直似有似无的真正原因，也是玩家刚报的
+                // "跑动中拔刀/收刀已没有相应的动画"的直接来源。
+                //
+                // Mixamo 骨架里 Hips 是**全身的根**：Spine/Neck/Head、两条胳膊
+                // 与两条腿全都挂在它下面。原来的写法一旦在 Hips 上判定为下半身，
+                // 就把 isLower 沿层级一路传下去——于是 _maskUpper 里
+                // **每一根骨骼都是关的**，遮罩一打开，动作层什么都写不出来：
+                // 不是"只写上半身"，是"什么都不写"。
+                // 表现出来就是招式/拔刀动画整个消失，而不是腿归移动层。
+                //
+                // 正确的分工是：**两条腿**归移动层，胯骨与脊椎以上归动作层。
+                // （胯骨为什么不划给移动层，见 LowerBones 上面那段：
+                //   划过去会让上半身在跑步周期之上再叠一层，读作"抖"。）
+                bool propagate = parentIsLower;
                 if (!isLower)
                 {
                     string n = NormBone(c.name);
+                    // 只有腿链归移动层，并且沿层级传播（膝、踝、脚趾跟着腿根）。
+                    // 胯骨**不在**这张表里——它跟着招式走，理由见 LowerBones 上面
+                    // 那段：胯骨归移动层会让上半身在跑步周期上再叠一层，就是抖。
                     for (int k = 0; k < LowerBones.Length; k++)
-                        if (n == LowerBones[k]) { isLower = true; break; }
+                        if (n == LowerBones[k]) { isLower = true; propagate = true; break; }
                 }
                 paths.Add(p);
                 lower.Add(isLower);
-                CollectBones(c, p, isLower, paths, lower);
+                CollectBones(c, p, propagate, paths, lower);
             }
         }
 
@@ -1566,7 +1622,14 @@ namespace AdversityRoad.Combat
         /// </summary>
         public void SetActionUpperBodyOnly(bool upperOnly)
         {
-            if (!Valid || _maskFull == null || _maskUpper == null) return;
+            if (!Valid) return;
+            // 【遮罩缺了就当场补，别静默 return】
+            // 原来这里一句 return 就走了：一旦遮罩没建起来（异源骨架、换装重建
+            // 之后骨骼层级变了……），"只写上半身"就永远是空操作，而外面完全
+            // 看不出区别——玩家看到的只是"还在滑"。补建一次的代价是可忽略的，
+            // 而静默失效的代价是好几轮往返。
+            if (_maskFull == null || _maskUpper == null) BuildMasks();
+            if (_maskFull == null || _maskUpper == null) return;
             if (upperOnly == _upperOnly) return;
             _upperOnly = upperOnly;
             _top.SetLayerMaskFromAvatarMask(1, upperOnly ? _maskUpper : _maskFull);
@@ -1574,6 +1637,12 @@ namespace AdversityRoad.Combat
 
         /// <summary>诊断：第 1 层当前是否只写上半身。</summary>
         public bool ActionUpperBodyOnly => _upperOnly;
+
+        /// <summary>诊断：上半身遮罩到底建起来没有。
+        /// SetActionUpperBodyOnly 在遮罩为空时是**静默 return** 的——
+        /// 于是"我明明打开了遮罩却还在滑"这种情况，从外面完全看不出区别。
+        /// 异源骨架（glb 角色）的骨名与参考骨架不同，这一条必须能被看见。</summary>
+        public bool MaskReady => _maskFull != null && _maskUpper != null;
 
         public string DbgNowPlaying()
         {

@@ -143,6 +143,9 @@ namespace AdversityRoad.Combat
 
             // 接上高光贴图（见 WireSpecularMaps 的推导）
             WireSpecularMaps(model);
+            // 补上缺失的 mipmap 链（见 TextureFidelity 的推导）：角色·贰的贴图
+            // 进 Unity 之后 mip=1，缩小采样时糊成噪点——"失真"的实际来源。
+            TextureFidelity.EnsureMipmaps(model);
 
             // ---- 缩放到标准身高 + 脚底落地（修复"太小 / 腾空"）----
             FitAndGround(visualRoot, model.transform, groundLocalY);

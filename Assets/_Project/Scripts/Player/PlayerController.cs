@@ -267,11 +267,32 @@ namespace AdversityRoad.Player
             if (!string.IsNullOrEmpty(source)) DbgExtSrc = source;
         }
 
-        /// <summary>取走并清空本帧的外部位移。一帧只会被真正消费一次。</summary>
+        /// <summary>外部位移的单帧上限（米）。0.6m 在 60fps 下相当于 36 m/s，
+        /// 突进/击飞这类真实位移绰绰有余；再大就是"一帧挪过去"的瞬移了。</summary>
+        const float MaxExtStep = 0.6f;
+
+        /// <summary>
+        /// 取走本帧的外部位移，超出单帧上限的部分**留到下一帧**。
+        ///
+        /// 【为什么要封顶，又为什么不能直接丢】实机日志：
+        ///     ⑥b 谁在推角色：出招突进 666 帧 累计 18.73m 峰值当量速度 200.0 m/s
+        /// 200 m/s 在 60fps 下就是一帧挪 3.3 米——那既是玩家说的"魔法般改变位置"，
+        /// 也是穿墙的直接来源（胶囊半径才 0.4m）。
+        /// 但突进本来就该走完那段距离，直接把超出部分丢掉会让招式够不到人。
+        /// 所以是**顺延**不是截断：这一帧走上限，剩下的下一帧接着走，
+        /// 总位移一分不少，只是不再压在一帧里。
+        /// </summary>
         Vector3 TakeExternalMove()
         {
             var v = _extMove;
-            _extMove = Vector3.zero;
+            float len = v.magnitude;
+            if (len > MaxExtStep)
+            {
+                Vector3 take = v * (MaxExtStep / len);
+                _extMove = v - take;      // 余量留到下一帧
+                v = take;
+            }
+            else _extMove = Vector3.zero;
             DbgExtMove = v.magnitude;
             if (v.sqrMagnitude < 1e-10f) DbgExtSrc = "";
             return v;
@@ -321,6 +342,11 @@ namespace AdversityRoad.Player
         /// </summary>
         public float indoorPaceSpeed = 2.0f;
 
+        /// <summary>拔刀/收刀期间的移速上限（m/s）：慢跑档。
+        /// 见移动段里 PaceSlowActive 那一处的推导。</summary>
+        public float drawPaceSpeed = 3.0f;
+        float DrawPaceSpeed => drawPaceSpeed;
+
         /// <summary>减速的下限：任何机制叠加后都不许低于它。见 MoveSpeedMultiplier。</summary>
         const float SlowFloor = 0.6f;
         /// <summary>玩家明确表达"我要离开"时的减速下限——比常规下限更宽。</summary>
@@ -328,6 +354,48 @@ namespace AdversityRoad.Player
         /// <summary>背离威胁推杆多久算"我要离开"（秒）。</summary>
         const float LeaveIntentTime = 0.4f;
         float _leaveIntentT;
+
+        // ===== 有敌人盯上你时，"屋里只走不跑"必须让路 =====
+        //
+        // 玩家的要求："即使惊动了敌人也能够快速逃离，而不是被吸住不得不和敌人战斗。"
+        // 这条在室内是**算术上不可能**的：
+        //     室内步速上限 indoorPaceSpeed = 2.0 m/s
+        //     敌人移速上限 EnemyProfile.MoveSpeedCap = 3.9 m/s
+        // 敌人快到接近两倍，而脱战判据是"拉开到侦测距离的 1.5 倍"——距离只会
+        // 越缩越小，永远脱不掉。序章独居小屋、羞耻线的走廊/教室、病房回廊、
+        // 图书馆……这些关卡全在室内，所以"被磁铁吸住不得不打"在那里是必然的，
+        // 与镜头、锁定、减速都无关，纯粹是速度上限的问题。
+        //
+        // "屋里不狂奔"是氛围规则（也是防晕的一环），不是战斗规则。有人正在追你的
+        // 时候，它必须让路——现实里也没有人被追着还在自己家里慢慢走。
+        // 威胁一走就自动收回，屋里照旧只走。
+        const float ThreatPoll = 0.25f;      // 秒：不必每帧遍历敌人表
+        const float ThreatRadius = 20f;      // 米：这个范围内有敌人在追/在打就算被盯上
+        float _nextThreatPoll;
+        bool _threatNear;
+
+        /// <summary>诊断：附近有没有正在追击/交战的敌人（室内步速让路的判据）。</summary>
+        public bool ThreatNear => _threatNear;
+
+        void UpdateThreatNear()
+        {
+            if (Time.time < _nextThreatPoll) return;
+            _nextThreatPoll = Time.time + ThreatPoll;
+            bool near = false;
+            var foes = AdversityRoad.Core.ActorRegistry.Enemies;
+            if (foes != null)
+                foreach (var e in foes)
+                {
+                    if (e == null) continue;
+                    // 只认"已经动起来"的：待机/巡逻的敌人还没盯上你，
+                    // 不该因为屋里站着一个人就解掉室内步速。
+                    if (e.State == AI.EnemyState.Idle || e.State == AI.EnemyState.Patrol ||
+                        e.State == AI.EnemyState.Dead) continue;
+                    Vector3 d = e.transform.position - transform.position; d.y = 0f;
+                    if (d.sqrMagnitude < ThreatRadius * ThreatRadius) { near = true; break; }
+                }
+            _threatNear = near;
+        }
 
         /// <summary>当前移速倍率（所有在册减益取最小；无减益 = 1）。</summary>
         public float MoveSpeedMultiplier
@@ -587,6 +655,17 @@ namespace AdversityRoad.Player
             _safeStamp = 0f;
             _vy = 0f;
             _hVel = Vector3.zero;
+            // 测速的上一帧位置也要跟着作废，否则传送的那一帧会被算成
+            // "一帧跑了几百米"（实测 662171 m/s，见下面的 TeleportStep）。
+            _lastPos = transform.position;
+
+            // 新关卡开场统一是站立待机：把上一关可能还挂在身上的东西一次清干净
+            //（没播完的招式、坐/躺的休息姿态、临战架势、拔刀片段、待起身标记）。
+            // 见 HumanoidAnimator.ResetToIdle 的推导。
+            // 顺序要紧：先让坐姿控制器收工，再重置动画层——反过来的话，
+            // 它下一帧会把休息姿态重新写回去，等于白清。
+            OpenWorld.SitController.ForceStand();
+            if (_anim != null) _anim.ResetToIdle();
             // 嵌墙兜底的安全点同样作废：它是"上一帧确认没嵌进环境的位置"，
             // 传送之后那个坐标属于另一张地图，拿它回滚就是把人拽回上一个场景。
             _hasSafePos = false;
@@ -805,6 +884,7 @@ namespace AdversityRoad.Player
             // 与软锁脱离用的是同一个信号——摇杆方向，不受任何封顶影响。
             // 它同时解开减速下限（见 MoveSpeedMultiplier），于是"想走就一定走得掉"。
             UpdateLeaveIntent(moveDir, dt);
+            UpdateThreatNear();
 
             // 传摇杆方向而不是速度：脱离软锁的依据必须是玩家的意图，
             // 而锁定期间速度是被本状态自己封顶的（见 SoftFaceTarget 里的推导）。
@@ -817,7 +897,10 @@ namespace AdversityRoad.Player
             float apMult = Mathf.Lerp(0.65f, 1f, Mathf.Clamp01(Stats.actionPower / 35f));
             // 冲刺的前提：站在地上、没蹲、不在只许走的区域、也没在锁定横移。
             // 锁定时角色是横着走位（步法），不是冲刺——档 3 也没有横向片段。
-            bool canSprint = GroundedStable && !IsCrouched && !WalkOnly && !IndoorPace &&
+            // 室内步速在"被敌人盯上"时让路（见 UpdateThreatNear 的推导）：
+            // 屋里 2.0 m/s 对敌人 3.9 m/s，不解掉这条就永远逃不掉。
+            bool indoorCap = IndoorPace && !_threatNear;
+            bool canSprint = GroundedStable && !IsCrouched && !WalkOnly && !indoorCap &&
                              !StrafeActive;
             float speed = TierSpeedFromStick(inputMag, DbgMoveAngle, canSprint, dt) *
                           MoveSpeedMultiplier * apMult;
@@ -844,10 +927,27 @@ namespace AdversityRoad.Player
                 speed = Mathf.Min(speed, walkSpeed * MoveSpeedMultiplier);
                 speedCap = Mathf.Min(speedCap, walkSpeed * MoveSpeedMultiplier);
             }
-            if (IndoorPace)
+            if (indoorCap)
             {
                 speed = Mathf.Min(speed, indoorPaceSpeed * MoveSpeedMultiplier);
                 speedCap = Mathf.Min(speedCap, indoorPaceSpeed * MoveSpeedMultiplier);
+            }
+            // ===== 拔刀 / 收刀期间放慢到慢跑 =====
+            //
+            // 玩家的原话："跑步同时伴随收剑和拔剑动画时，脚的速度与实际速度不匹配，
+            // 需要做出收剑或拔剑时统一放慢速度，保持脚的移动步数与实际运动距离
+            // 相匹配、协调一致。"
+            //
+            // 为什么会不匹配：拔刀/收刀是**站着**做的片段，它接管上半身与胯骨，
+            // 而胯骨是跑动周期里上下起伏、左右摆的那一根。片段把它按站姿钉住之后，
+            // 腿虽然还在按实际速度迈，但少了胯骨那一层，全速跑时视觉上就对不上。
+            // 速度越低，胯骨该有的起伏越小，这个差就越不明显——所以放慢到慢跑
+            // 正好把它抹掉，而且"边收刀边慢下来"本身也符合直觉。
+            if (_anim != null && _anim.PaceSlowActive)
+            {
+                float draw = Mathf.Min(speedCap, DrawPaceSpeed * MoveSpeedMultiplier);
+                speed = Mathf.Min(speed, draw);
+                speedCap = draw;
             }
             if (IsCrouched) { speed *= crouchSpeedMult; speedCap *= crouchSpeedMult; }
 
@@ -1378,6 +1478,10 @@ namespace AdversityRoad.Player
         /// 也就是说本文件下面所有的移动代码一行都不执行。</summary>
         public string DbgCombatState => _combat != null ? _combat.Current.ToString() : "无";
         public bool DbgHardLocked => _combat != null && _combat.IsHardLocked;
+
+        /// <summary>水平位移这一帧是不是完全不归摇杆管（硬锁招式期间）。
+        /// 镜头用它判断"现在转镜头会不会把玩家带偏"——不会，就可以放心取景。</summary>
+        public bool MotionLocked => _combat != null && _combat.IsHardLocked;
         /// <summary>诊断：摇杆方向与身体正面的夹角（度），也就是"还要转多少"。</summary>
         public float DbgTurnNeed { get; private set; }
         /// <summary>诊断：当前转向上限对应的横向加速度（g）。超过 1g 就不像人在跑。</summary>
@@ -1653,7 +1757,24 @@ namespace AdversityRoad.Player
             // 顿帧时它把商压回真实量级（0.035m / 0.011s ≈ 3.1 m/s，
             // 而不是 0.035 / 0.001 = 35）。
             const float MinSpeedDt = 1f / 90f;
+            // 【传送那一帧不许当成"跑得飞快"】实机日志里量到过 662171 m/s：
+            //     t=36.23  actual=662171  hVel=0  stepLen=0  posX 从 0 跳到 282
+            // 那是过传送门，位置被别人写了几百米，而这里照旧拿"位移÷dt"当速度。
+            // 这个数会往下污染一整串：移动层混合权重、步幅同步、上半身遮罩的
+            // 速度门槛、镜头的紧迫度，全都读它。单帧位移超过 2 米在 60fps 下
+            // 对应 120 m/s，人是不可能的——一律判为传送，这一帧速度记 0。
+            const float TeleportStep = 2f;
+            bool teleported = planar.magnitude > TeleportStep;
+            if (teleported) { _lastPos = transform.position; planar = Vector3.zero; }
             float actual = planar.magnitude / Mathf.Max(dt, MinSpeedDt);
+            // 【顿帧期间的测速要封顶】上一份日志里传送那一下已经堵住了，这一份
+            // 又抓到另一条路：timeScale<0.9 的帧占 28.2%（最低 0.000），
+            // 而顿帧里位移可能由**不缩放时间**的协程推进，分母 dt 却是缩放过的，
+            // 于是量出 36 m/s（正常冲刺 6.3）。这个数往下污染移动层混合权重、
+            // 步幅同步、上半身遮罩的速度门槛与镜头紧迫度。
+            // 人不可能比冲刺再快一倍，超过就是测量假象，按上限收。
+            float speedCeil = Mathf.Max(runSpeed, SprintSpeedNow()) * 2f;
+            if (actual > speedCeil) actual = speedCeil;
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。
             // 动画层据此在方向片段之间混合（前/后/左/右/斜向）。
