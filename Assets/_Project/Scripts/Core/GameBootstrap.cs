@@ -196,7 +196,8 @@ namespace AdversityRoad.Core
             SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Novice, o[25] + new Vector3(-3, 1.1f, -30), true);
             SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Standard, o[25] + new Vector3(3, 1.1f, -14), true);
             SpawnEnemy(EnemyType.WeeklyInquirer, EnemyTier.Standard, o[25] + new Vector3(0, 1.1f, -2), true);
-            SpawnEnemy(EnemyType.AppeaseEcho, EnemyTier.Standard, o[25] + new Vector3(-2.5f, 1.1f, 12), true);
+            // 等级按方案附录对位：讨好回声 T3 → 精英
+            SpawnEnemy(EnemyType.AppeaseEcho, EnemyTier.Elite, o[25] + new Vector3(-2.5f, 1.1f, 12), true);
             SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(3.4f, 1.1f, -22), true);
             SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(-3.4f, 1.1f, 4), true);
 
@@ -210,15 +211,16 @@ namespace AdversityRoad.Core
             FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
                 o[26] + new Vector3(-11, 1.1f, -6), o[26] + new Vector3(0, 1.1f, -18));
 
+            // 等级按方案 8.6.3 对位：放大镜围观者 T2 / 身份钉兵 T3 / 心虚投影 T4 / 伪装同学 T2
             SpawnEnemy(EnemyType.MagnifierOnlooker, EnemyTier.Standard, o[26] + new Vector3(6, 1.1f, -2), true);
-            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Standard, o[26] + new Vector3(-6, 1.1f, 9), true);
-            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Standard, o[26] + new Vector3(2, 1.1f, -8), true);
-            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Novice, o[26] + new Vector3(-2, 1.1f, -12), true);
+            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Elite, o[26] + new Vector3(-6, 1.1f, 9), true);
+            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Elite, o[26] + new Vector3(2, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Standard, o[26] + new Vector3(-2, 1.1f, -12), true);
 
             // 后排低语组：双人单位，互相登记为搭档
-            var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+            var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
                 o[26] + new Vector3(-4, 1.1f, 12), true);
-            var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+            var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
                 o[26] + new Vector3(4, 1.1f, 12), true);
             var pa = a != null ? a.GetComponent<BackRowPair>() : null;
             var pb = b != null ? b.GetComponent<BackRowPair>() : null;

@@ -47,8 +47,11 @@ namespace AdversityRoad.AI
             // 伤害推不动他：他的血由玩家的否认与暴露峰值维持，不由刀剑决定
             _ec.externalDamageMult = 0.1f;
             _ec.minHpFloor = 0.05f;
+            // 他的血不由伤害决定，而由否认次数与暴露峰值维持（方案 8.6.4）。
+            // 这一条必须写在头顶，否则"砍半天不掉血"只会被读成打不死。
+            _ec.emotionOverride = "血由你的否认维持 · 刀砍不动";
             GameEvents.RaiseSubtitle("【后排低语者】他不动手。他看、他说、他指——" +
-                "你每否认一次，他就回一口气。");
+                "刀砍不动他：他的血由你的否认次数维持，不由伤害决定。");
             SetPhase(1);
         }
 

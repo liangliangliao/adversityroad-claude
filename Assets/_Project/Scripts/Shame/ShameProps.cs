@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using AdversityRoad.AI;
@@ -569,14 +570,39 @@ namespace AdversityRoad.Shame
         }
     }
 
-    /// <summary>恢复点：站上去即登记为羞耻状态的回落点（不回退关卡进度）。</summary>
+    /// <summary>
+    /// 恢复点：羞耻状态（SelfWorth 归零）的回落处。
+    ///
+    /// 【为什么改成登记而不是"站上去才记"】
+    /// 方案 8.5.5 写的是"回到长廊**最近**恢复点"。原来的写法是"最后踩过的那一个"，
+    /// 而全关只有入口那一个恢复点——于是"最近恢复点"事实上永远等于关卡起点，
+    /// 玩家每次自尊归零都被拽回门口，反复几次就成了"一直回到关卡最开始的位置"。
+    /// 现在全场恢复点自己登记进表，回落时按**离玩家当前位置最近**的那个算。
+    /// </summary>
     public class ShameRecoverySpot : MonoBehaviour
     {
-        void OnTriggerStay(Collider other)
+        static readonly List<ShameRecoverySpot> All = new List<ShameRecoverySpot>();
+
+        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        void OnDisable() { All.Remove(this); }
+
+        /// <summary>离给定位置最近的恢复点；场上一个都没有时返回 false。</summary>
+        public static bool Nearest(Vector3 from, out Vector3 pos)
         {
-            if (other.transform.root.GetComponentInChildren<PlayerController>() == null) return;
-            var ctl = ShameLineController.Instance;
-            if (ctl != null) ctl.NoteRecoveryPoint(transform.position);
+            pos = from;
+            float best = float.MaxValue;
+            ShameRecoverySpot found = null;
+            foreach (var s in All)
+            {
+                if (s == null) continue;
+                float d = (s.transform.position - from).sqrMagnitude;
+                if (d >= best) continue;
+                best = d;
+                found = s;
+            }
+            if (found == null) return false;
+            pos = found.transform.position;
+            return true;
         }
     }
 }

@@ -95,6 +95,14 @@ namespace AdversityRoad.UI
             if (stress != null)
                 sb.Append("当前压力：").Append(StressStateMachine.StageLabel(stress.Stage))
                   .Append("（").Append(Mathf.RoundToInt(stress.Pressure * 100f)).Append("%）\n");
+
+            // 第八章的 Adversity History 记录项（方案 8.11.1）：
+            // 首次身份钉、累计否认/认领、暴露峰值、陈述提前量。
+            // 只在真的进过这一章时才占版面——没打过的人看到一行空数据没有意义。
+            string shame = Shame.ShameLineController.HistorySummary();
+            if (!string.IsNullOrEmpty(shame))
+                sb.Append("羞耻线：").Append(shame).Append('\n');
+
             sb.Append('\n');
 
             if (NemesisSystem.Count == 0)

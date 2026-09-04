@@ -89,7 +89,13 @@ namespace AdversityRoad.Shame
             for (int i = 0; i < add; i++) AppendSegment();
 
             var exposure = ExposureSystem.Instance;
-            if (exposure != null) exposure.RaiseCap(10f, what + "——当下过去了");
+            if (exposure != null)
+            {
+                // 抬的是天花板（后面能被看得更狠），涨的是当下这一点——
+                // 方案 8.3 把"使用隐瞒类交互物成功"同时列进了上升来源与上限来源。
+                exposure.RaiseCap(10f, what + "——当下过去了");
+                exposure.Add(6f, null);
+            }
 
             SpawnNewHandle();
             RebakeNav();

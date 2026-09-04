@@ -2322,15 +2322,15 @@ namespace AdversityRoad.World
             drawer.AddComponent<Shame.ConcealmentDrawer>().coverStory = "先借一笔，回头再说";
             Plaque(o + new Vector3(6, 2.1f, -38), "抽屉", new Color(0.8f, 0.76f, 0.66f));
 
-            // 恢复点：羞耻状态的回落处（不回退关卡进度）
-            var spot = new GameObject("ShameRecoverySpot");
-            spot.transform.position = o + new Vector3(0, 0.4f, -46);
-            var spotCol = spot.AddComponent<BoxCollider>();
-            spotCol.isTrigger = true;
-            spotCol.size = new Vector3(6f, 3f, 6f);
-            spot.AddComponent<Shame.ShameRecoverySpot>();
-            Decoration(ctx, "RecoveryPad", o + new Vector3(0, 0.06f, -46),
-                new Vector3(5f, 0.06f, 5f), new Color(0.5f, 0.6f, 0.5f));
+            // 恢复点：羞耻状态的回落处（不回退关卡进度）。
+            // 【沿长廊摆一串，而不是只在门口放一个】
+            // 方案说的是"回到长廊**最近**恢复点"。全关只有入口一个的话，
+            // "最近"永远等于关卡起点——玩家每次自尊归零都被拽回门口，
+            // 反复几次就成了"一直回到最开始的地方"。
+            ShameRecoveryPad(ctx, o + new Vector3(0, 0, -46));    // 小商店（起点）
+            ShameRecoveryPad(ctx, o + new Vector3(-3.2f, 0, -24));// 长廊前段·墙边
+            ShameRecoveryPad(ctx, o + new Vector3(3.2f, 0, -8));  // 长廊中段·墙边
+            ShameRecoveryPad(ctx, o + new Vector3(-3.2f, 0, 10)); // 长廊后段·公告位前
 
             // ---- Adversity → Inner：长廊本体（基础 4 段，隐瞒会让它继续变长）----
             Box(ctx, "Corridor_Floor", o + new Vector3(0, -0.25f, -6),
@@ -2536,16 +2536,29 @@ namespace AdversityRoad.World
             Plaque(o + new Vector3(0, 3.6f, -18), "门 · 走出去（不要冲刺）",
                 new Color(0.85f, 0.88f, 0.8f));
 
-            // 恢复点：门外的走廊一角
-            var spot = new GameObject("ShameRecoverySpot");
-            spot.transform.position = o + new Vector3(-9, 0.4f, -16);
-            var spotCol = spot.AddComponent<BoxCollider>();
-            spotCol.isTrigger = true;
-            spotCol.size = new Vector3(5f, 3f, 5f);
-            spot.AddComponent<Shame.ShameRecoverySpot>();
+            // 恢复点：门口、教室两个后角。三处分散，"最近"才有意义
+            ShameRecoveryPad(ctx, o + new Vector3(-9, 0, -16));   // 门内一角
+            ShameRecoveryPad(ctx, o + new Vector3(-12, 0, 6));    // 西侧后排
+            ShameRecoveryPad(ctx, o + new Vector3(12, 0, 14));    // 东侧最后一排
 
             MakePortal(ctx, o + new Vector3(-6f, 0, -25), 25, "欠条长廊");
             MakePortal(ctx, o + new Vector3(6f, 0, -25), 0, "独居小屋（安全屋）");
+        }
+
+        /// <summary>
+        /// 一处羞耻线恢复点：脚下一块可辨认的垫子 + 一个登记用的触发体。
+        /// 它不回血、不清进度，只是"这一带没人看着你"的那个坐标。
+        /// </summary>
+        static void ShameRecoveryPad(WorldContext ctx, Vector3 at)
+        {
+            var spot = new GameObject("ShameRecoverySpot");
+            spot.transform.position = at + Vector3.up * 0.4f;
+            var col = spot.AddComponent<BoxCollider>();
+            col.isTrigger = true;
+            col.size = new Vector3(4.5f, 3f, 4.5f);
+            spot.AddComponent<Shame.ShameRecoverySpot>();
+            Decoration(ctx, "RecoveryPad", at + new Vector3(0, 0.06f, 0),
+                new Vector3(3.4f, 0.06f, 3.4f), new Color(0.5f, 0.6f, 0.5f));
         }
 
         /// <summary>把一块几何体建好并挂到指定父节点下（长廊/广播室这类要整体移动的组）。</summary>

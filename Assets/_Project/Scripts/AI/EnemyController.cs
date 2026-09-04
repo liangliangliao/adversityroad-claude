@@ -105,6 +105,21 @@ namespace AdversityRoad.AI
         /// </summary>
         [HideInInspector] public bool holdPosition;
 
+        /// <summary>
+        /// 被动单位（第八章的注视 / 低语 / 追问类）：不主动出手、不追击、不喊话，
+        /// 但**照常吃伤害、照常会被打倒**。
+        ///
+        /// 【为什么不能用 pacified】
+        /// pacified 是剧情态，连伤害都免疫（旧我整合阶段"无需再战"）。
+        /// 侧目者、旁观耳语者、每周追问者只是不动手——玩家挥刀过去必须有反应，
+        /// 否则整关读作"敌人打不死"。
+        ///
+        /// 【与 holdPosition 的区别】
+        /// 候场是临时的，挨一下就入场；这个是这类单位的常态，被打也不还手——
+        /// 它们的威胁本来就不是拳脚，是那道视线。
+        /// </summary>
+        [HideInInspector] public bool passive;
+
         /// <summary>玩家主动打过它：从此不再被排进候场队列（打了就得认真打完）。</summary>
         [HideInInspector] public bool provoked;
 
@@ -356,6 +371,23 @@ namespace AdversityRoad.AI
                 return;
             }
 
+            // 被动单位：站着不动，不追不打。与候场的区别是它不巡逻、也不会因为挨打而入场。
+            // 硬直中不打断——被打飞的那一下要播完。
+            if (passive && State != EnemyState.Stagger)
+            {
+                if (State == EnemyState.Chase || State == EnemyState.Attack ||
+                    State == EnemyState.MentalAttack)
+                {
+                    Combat.CombatDirector.Release(this);
+                    ShowTelegraph(false);
+                    if (attackHitbox != null) attackHitbox.DisableHitbox();
+                    StopMoving();
+                    State = EnemyState.Idle;
+                }
+                UpdateEmotion("旁观");
+                return;
+            }
+
             // 候场：还没轮到上场的那几个，站在自己那一带，不追不打不喊话。
             // 硬直中不打断——被打飞的那一下要播完，否则会看到人被打中却瞬间站直。
             if (holdPosition && State != EnemyState.Stagger)
@@ -482,9 +514,21 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>
+        /// 头顶那行字的常驻覆盖（非空时压过每帧的情绪文本）。
+        ///
+        /// 给"打不死是设计、不是 Bug"的那几个用：悬案法官没有血条、
+        /// 后排低语者的血由否认次数维持、讨好回声只能靠降讨好度削。
+        /// 不写在头顶的话，玩家读到的只有"砍半天不掉血"——那是同一个画面，
+        /// 却是完全相反的两句话。
+        /// 破绽 / 语塞这类**即时反馈**仍然直接写 statusBar，压在覆盖之上一闪而过。
+        /// </summary>
+        [HideInInspector] public string emotionOverride;
+
         void UpdateEmotion(string emotion)
         {
-            if (statusBar != null) statusBar.SetEmotion(emotion);
+            if (statusBar == null) return;
+            statusBar.SetEmotion(string.IsNullOrEmpty(emotionOverride) ? emotion : emotionOverride);
         }
 
         void PatrolTick()

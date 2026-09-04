@@ -226,6 +226,65 @@ namespace AdversityRoad.Shame
             }
         }
 
+        // ---- 注视的补位（侧目者被打倒之后）----
+        struct PendingRelay
+        {
+            public Vector3 at;
+            public Vector3 lookAt;
+            public float dueAt;
+        }
+
+        readonly List<PendingRelay> _relays = new List<PendingRelay>();
+
+        /// <summary>侧目者被打倒后，多久有人从别处补上这道视线。</summary>
+        public const float RelayDelay = 20f;
+
+        /// <summary>
+        /// 登记一次"注视补位"。
+        ///
+        /// 【为什么打倒侧目者不能一劳永逸】
+        /// 这一章的命题是"被看见的同时仍能行动"，不是"把看你的人清干净"。
+        /// 低语链断了 8 秒后从另一处重建，注视同理：打倒它换来的是
+        /// 20 秒的空窗（真实的战术回报，够做完一次长按目标动作），
+        /// 而不是永远没人看你——那会让三个目标物"全在锥内"这条布局失效。
+        /// </summary>
+        public void ScheduleRelay(Vector3 deadAt, Vector3 lookAt)
+        {
+            _relays.Add(new PendingRelay
+            {
+                at = deadAt,
+                lookAt = lookAt,
+                dueAt = Time.time + RelayDelay,
+            });
+        }
+
+        void Update()
+        {
+            for (int i = _relays.Count - 1; i >= 0; i--)
+            {
+                if (Time.time < _relays[i].dueAt) continue;
+                var r = _relays[i];
+                _relays.RemoveAt(i);
+                Respawn(r);
+            }
+        }
+
+        void Respawn(PendingRelay r)
+        {
+            // 从**别处**站出来：沿原位横向挪开几米，读作"有人换了个位置继续看"
+            Vector3 side = Vector3.Cross(Vector3.up, (r.lookAt - r.at).normalized);
+            if (side.sqrMagnitude < 0.01f) side = Vector3.right;
+            Vector3 want = r.at + side.normalized * (Random.value > 0.5f ? 4.5f : -4.5f);
+
+            var go = AI.EnemySpawnHook.SpawnNear(AI.EnemyType.SideGlancer, AI.EnemyTier.Novice, want);
+            if (go == null) return;
+            Vector3 dir = r.lookAt - go.transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.01f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            Core.GameEvents.RaiseSubtitle("另一个人抬起了头——注视换了个位置，没有消失。");
+        }
+
         /// <summary>
         /// 统一设置全场锥体的可见度（压力阶段映射用，见 ShameStressMapping）。
         /// 真正的下限由 GazeCone 自己兜住：注视可以更清楚，但不可能变成隐形。

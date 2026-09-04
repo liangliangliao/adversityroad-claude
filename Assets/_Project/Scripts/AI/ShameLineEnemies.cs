@@ -104,7 +104,8 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.minHpFloor = 0.15f;
+            _ec.minHpFloor = 0.15f;   // 无法直接击杀（方案 8.5.3）——但打得动，会硬直
+            _ec.emotionOverride = "砍不死 · 降讨好度才削得动";
             if (_ec.dialogue != null) _ec.dialogue.Show("你刚才不是答应得好好的吗？", 2.6f);
         }
 
@@ -121,12 +122,14 @@ namespace AdversityRoad.AI
             _ec.externalDamageMult = Mathf.Lerp(1.4f, 0.5f, t);
             if (_ec.profile != null)
                 _ec.profile.mentalDamage = Mathf.Lerp(4f, 18f, t);
-            if (t <= 0.02f && !_ec.pacified)
+            // 讨好度归零 = 它没有力气了，于是停手；但**不是免疫**——
+            // 方案说的是"无法直接击杀"（血线保护），不是"打上去没反应"。
+            if (t <= 0.02f && !_ec.passive)
             {
-                _ec.pacified = true;
+                _ec.passive = true;
                 GameEvents.RaiseSubtitle("讨好回声安静下来了——它靠的从来不是自己的力气。");
             }
-            else if (t > 0.02f) _ec.pacified = false;
+            else if (t > 0.02f) _ec.passive = false;
         }
     }
 
@@ -147,8 +150,9 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;      // 它不打人，也打不动
-            _ec.holdPosition = true;
+            // 它不打人——但**打得动**。用 passive 而不是 pacified：
+            // pacified 连伤害都免疫，玩家挥刀过去只会看到"无需再战"，读作敌人打不死。
+            _ec.passive = true;
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
@@ -189,8 +193,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;
-            _ec.holdPosition = true;
+            _ec.passive = true;      // 不主动攻击，但可以被打倒（见 EnemyController.passive）
             _base = transform.rotation;
 
             var go = new GameObject("GazeCone");
@@ -212,9 +215,25 @@ namespace AdversityRoad.AI
             gameObject.AddComponent<Shame.WhisperNode>().rank = 1;
         }
 
+        bool _relayScheduled;
+
         void Update()
         {
-            if (_ec == null || _ec.State == EnemyState.Dead) return;
+            if (_ec == null) return;
+
+            // 被打倒了：这道视线不是消失，是移开一会儿。20 秒后有人从别处补上。
+            if (_ec.State == EnemyState.Dead)
+            {
+                if (_relayScheduled) return;
+                _relayScheduled = true;
+                var gaze = GazeConeSystem.Instance;
+                if (gaze != null)
+                    gaze.ScheduleRelay(transform.position,
+                        transform.position + transform.forward * coneRange);
+                if (_cone != null) _cone.gameObject.SetActive(false);
+                return;
+            }
+
             _phase += Time.deltaTime * 0.35f;
             transform.rotation = _base * Quaternion.Euler(0f, Mathf.Sin(_phase) * sweep, 0f);
         }
@@ -332,7 +351,8 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.minHpFloor = 0.2f;      // 不可击杀
+            _ec.minHpFloor = 0.2f;      // 不可击杀（方案 8.6.3）——认领成功后它会透明 12 秒
+            _ec.emotionOverride = "砍不死 · 认领后它会透明";
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
@@ -352,7 +372,7 @@ namespace AdversityRoad.AI
             {
                 _lastOwnCount = ShameLine.Data.ownCount;
                 _transparentUntil = Time.time + 12f;
-                if (_ec != null) _ec.pacified = true;
+                if (_ec != null) _ec.passive = true;
                 GameEvents.RaiseSubtitle("心虚投影透明了 12 秒——认领之后，它没有东西可以预判。");
             }
         }
@@ -383,7 +403,7 @@ namespace AdversityRoad.AI
             if (_transparentUntil > 0f && Time.time >= _transparentUntil)
             {
                 _transparentUntil = -1f;
-                _ec.pacified = false;
+                _ec.passive = false;
             }
             if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 
@@ -440,8 +460,9 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;
-            _ec.holdPosition = true;
+            // 还没敌化时是路人：不动手、也不被排进战斗，但**可以被打**——
+            // 玩家先动手时它必须当场给出识别信号并敌化，而不是回一句"无需再战"。
+            _ec.passive = true;
             if (_ec.statusBar != null) _ec.statusBar.gameObject.SetActive(false);
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
@@ -453,7 +474,10 @@ namespace AdversityRoad.AI
 
             if (_revealAt < 0f)
             {
-                if (Vector3.Distance(transform.position, _player.position) > revealRange) return;
+                // 玩家先动手：立刻走识别信号，不让"我打了它却没反应"这一秒出现
+                bool struck = _ec.HpRatio < 0.999f;
+                if (!struck && Vector3.Distance(transform.position, _player.position) > revealRange)
+                    return;
                 _revealAt = Time.time + revealLead;
                 if (_ec.dialogue != null) _ec.dialogue.Show("……我一直都知道。", revealLead);
                 if (_ec.statusBar != null) _ec.statusBar.gameObject.SetActive(true);
@@ -463,7 +487,7 @@ namespace AdversityRoad.AI
             }
             if (Time.time < _revealAt) return;
             _hostile = true;
-            _ec.pacified = false;
+            _ec.passive = false;
             _ec.holdPosition = false;
             _ec.provoked = true;
         }
@@ -491,7 +515,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;         // 追问本身就是攻击，不需要动手
+            _ec.passive = true;          // 追问本身就是攻击，不需要动手——但它挨得住打
             _anchor = transform.position;
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
