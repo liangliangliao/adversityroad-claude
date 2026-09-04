@@ -1575,6 +1575,12 @@ namespace AdversityRoad.Combat
         /// <summary>诊断：第 1 层当前是否只写上半身。</summary>
         public bool ActionUpperBodyOnly => _upperOnly;
 
+        /// <summary>诊断：上半身遮罩到底建起来没有。
+        /// SetActionUpperBodyOnly 在遮罩为空时是**静默 return** 的——
+        /// 于是"我明明打开了遮罩却还在滑"这种情况，从外面完全看不出区别。
+        /// 异源骨架（glb 角色）的骨名与参考骨架不同，这一条必须能被看见。</summary>
+        public bool MaskReady => _maskFull != null && _maskUpper != null;
+
         public string DbgNowPlaying()
         {
             if (!Valid) return "—";

@@ -37,9 +37,9 @@ namespace AdversityRoad.Player
     {
         /// <summary>收起来的距离（米）：镜头到躯干竖线段近于它就收。
         /// 角色胶囊半径约 0.34m，0.55m 时镜头基本贴到身上了。</summary>
-        [Tooltip("收起角色的镜头距离")] public float hideDist = 0.55f;
+        [Tooltip("收起角色的镜头距离")] public float hideDist = 0.38f;
         /// <summary>恢复距离（米）：比 hideDist 大一截，形成迟滞，阈值上不会闪。</summary>
-        [Tooltip("恢复显示的镜头距离")] public float showDist = 0.80f;
+        [Tooltip("恢复显示的镜头距离")] public float showDist = 0.55f;
 
         class Entry
         {

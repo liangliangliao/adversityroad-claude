@@ -409,6 +409,10 @@ namespace AdversityRoad.Player
         float _liftSm;
         /// <summary>吊杆短到这个距离（米）就完全按近第一人称看，长到 NearFpFree 就完全是第三人称。</summary>
         const float NearFpBoom = 0.30f, NearFpFree = 1.10f;
+        /// <summary>吊杆短到这个距离（米）才把玩家自己收起来（只留影子）。
+        /// 见 HideSelfWhenTight 的调用点：这是"镜头进到身体里了"，
+        /// 不是"镜头有点近"——后者不该让角色消失。</summary>
+        const float SelfHideBoom = 0.38f;
         float _tightSm;
         /// <summary>诊断：贴身程度 0~1。1=已完全按近第一人称在看（吊杆被墙压死）。</summary>
         public static float DbgTight;
@@ -2167,10 +2171,21 @@ namespace AdversityRoad.Player
                                             -boomDir, _tightSm);
             if (lookDir.sqrMagnitude > 1e-8f) transform.rotation = Quaternion.LookRotation(lookDir);
             DbgTight = _tightSm;
-            // 近第一人称时把自己的身体藏起来：镜头都在躯干里了，不藏就是满屏
-            // 后脑勺和衣服内面，看前方反而更难。用 ShadowsOnly 而不是关渲染器——
-            // 影子留着，地面上仍然看得出自己站在哪儿。
-            HideSelfWhenTight(_tightSm > 0.55f);
+            // 【收起自己的门槛，与近第一人称的过渡解耦】
+            //
+            // 原来挂在 _tightSm > 0.55 上，换算过来是吊杆 0.66m 以下就收人。
+            // 而屋里过门、贴墙、绕家具时吊杆本来就常在 0.7~1.1m —— 于是角色
+            // 动不动就消失。玩家明确说了：镜头贴身**不应该**让角色隐藏。
+            //
+            // 但完全不收也不行：吊杆掉到 0.17m 时镜头已经在脑袋里，不收就是
+            // 上一轮那张"人脸出现在头顶"的截图。两条反馈都要满足，
+            // 那么门槛就该定在"镜头真的进到身体里"，而不是"镜头有点近"。
+            // 角色胶囊半径约 0.34m，0.38m 是它的外壁再往外一点点：
+            // 到这个距离画面上本来就只剩一片皮肤，收掉反而露出前方。
+            // 与近第一人称的视线过渡（_tightSm，0.30~1.10m）分开算——
+            // 那一条管的是"看哪儿"，这一条管的是"看不看得见自己"，
+            // 两件事没有理由共用一个门槛。
+            HideSelfWhenTight(horiz < SelfHideBoom);
 
             DbgPitch = Mathf.DeltaAngle(0f, transform.eulerAngles.x);
             // 角色胸口在不在画面里：视口内 + 没有被环境挡住。

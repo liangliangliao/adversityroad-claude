@@ -304,10 +304,15 @@ namespace AdversityRoad.UI
                 bool moving = pcx != null && pcx.DbgActual > 0.8f;
                 bool legsDead = hax != null && moving && !hax.LegsWalking;
                 _anim4.text = hax != null
-                    ? string.Format("姿态 {0} ｜ 待转{1:F0}° {2}｜ {3}{4}",
+                    // 【遮罩实况必须在这一行】"腿:定住"只说结果，不说为什么。
+                    // SetActionUpperBodyOnly 在 AvatarMask 没建起来时是静默 return 的，
+                    // 于是"遮罩明明该开却还在滑"从外面完全看不出区别。
+                    // 把 遮罩:开/关/无(未建) 打出来，一眼分得清是判据没成立
+                    // 还是遮罩这套东西在这个骨架上压根没生效。
+                    ? string.Format("姿态 {0} ｜ 待转{1:F0}° {2}｜ {3}{4}  {5}",
                         hax.DbgPose, pcx.DbgTurnNeed,
                         pcx.DbgStartGate ? "[闸] " : "", hax.DbgNowPlaying,
-                        legsDead ? "  ⚠腿:定住" : "")
+                        legsDead ? "  ⚠腿:定住" : "", hax.DbgMask)
                     : "";
                 _anim4.color = legsDead ? new Color(1f, 0.35f, 0.3f)
                                         : new Color(0.7f, 1f, 0.7f);

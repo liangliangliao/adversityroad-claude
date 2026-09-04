@@ -63,6 +63,13 @@ namespace AdversityRoad.Combat
         public string DbgNowPlaying => Mecanim ? _mecanim.DbgNowPlaying() : "（方块骨骼）";
         /// <summary>诊断：此刻招式是否只写上半身（腿归移动层）。</summary>
         public bool ActionUpperBodyOnly => Mecanim && _mecanim.ActionUpperBodyOnly;
+
+        /// <summary>诊断：上半身遮罩的实况，直接打进 HUD。
+        /// "遮罩:无" = AvatarMask 压根没建起来（异源骨架的骨名对不上），
+        /// 这时所有"只写上半身"的努力都是静默失效的——必须看得见。</summary>
+        public string DbgMask => !Mecanim ? "遮罩:方块骨骼"
+            : !_mecanim.MaskReady ? "遮罩:无(未建)"
+            : (_mecanim.ActionUpperBodyOnly ? "遮罩:开" : "遮罩:关");
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
         /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>
@@ -895,8 +902,12 @@ namespace AdversityRoad.Combat
             Mecanim && _mecanim.PlayClip(clipName);
 
         /// <summary>按关键词试播动作库片段（拔刀/收刀等按 "draw"/"sheath" 触发）。</summary>
-        public bool PlayClipContaining(string key) =>
-            Mecanim && _mecanim.PlayClipContaining(key);
+        public bool PlayClipContaining(string key)
+        {
+            if (!Mecanim || !_mecanim.PlayClipContaining(key)) return false;
+            MarkUpperBodyClip(_mecanim.ClipLengthContaining(key));   // 同上：源头标记
+            return true;
+        }
 
         /// <summary>按关键词返回匹配片段时长（拔刀/收刀过渡与动画同步用）；无则 0。</summary>
         public float ClipLengthContaining(string key) =>
@@ -957,7 +968,18 @@ namespace AdversityRoad.Combat
             foreach (var k in keys)
             {
                 float len = _mecanim.PlayNamed(k, false, false, speed, fade);
-                if (len > 0f) return len;
+                if (len > 0f)
+                {
+                    // 【在源头标，不指望每个调用点记得】按名字播的片段一律是
+                    // "叠在移动之上的上半身表演"：拔刀/收刀、Boss 的 Talking、
+                    // 羞耻线的 Sad Idle……它们全都不经过 PoseState，所以遮罩判据
+                    // 里的 IsUpperBodyAction(_pose) 读到的还是 Idle，遮罩不会开，
+                    // 腿被动作层定住而位移照常 —— 就是玩家报的滑行。
+                    // 坐下/躺下那类要整身播的走 PlayRestClip，不经过这里；
+                    // 何况遮罩本来就要求"确实在移动"，坐着不会触发。
+                    MarkUpperBodyClip(len);
+                    return len;
+                }
             }
             return 0f;
         }
@@ -1255,9 +1277,14 @@ namespace AdversityRoad.Combat
                 //     腿法（踢/扫堂腿/旋身）与位移型招式（跃劈/飞踢/突进斩）不在此列
                 //     ——那些招的主体就是腿，遮掉腿等于把招砍没了。
                 //   · 人确实在移动。站着打就该整个身体一起使劲，遮上半身反而软。
+                // 【按名字播的片段不受"跑动出招·只动上半身"这个开关管】
+                // 那个开关的语义是"出招时要不要只写上半身"，是招式的事。
+                // 拔刀、收刀、Boss 说话、羞耻线的待机表演都不是招式，
+                // 它们边走边播时腿被定住纯粹是缺陷，没有"关掉它做对照"的意义。
+                bool namedClip = Time.time < _upperClipUntil;
                 _mecanim.SetActionUpperBodyOnly(
-                    UpperBodyAttacksOn && _actualSpeed > UpperBodySpeed &&
-                    (IsUpperBodyAction(_pose) || Time.time < _upperClipUntil));
+                    _actualSpeed > UpperBodySpeed &&
+                    (namedClip || (UpperBodyAttacksOn && IsUpperBodyAction(_pose))));
                 _mecanim.SetReady(_ready);
                 _mecanim.SetArmed(_armed);
                 if (_poseSerial != _lastMecanimSerial)
@@ -1760,8 +1787,9 @@ namespace AdversityRoad.Combat
 
             // 移动中的上半身动作：把腿还给步态（见上面的快照）。
             // 判据与 Mecanim 那条完全一致，两种骨架的行为才不会分家。
-            if (UpperBodyAttacksOn && moving && _actualSpeed > UpperBodySpeed &&
-                (IsUpperBodyAction(_pose) || Time.time < _upperClipUntil))
+            if (moving && _actualSpeed > UpperBodySpeed &&
+                (Time.time < _upperClipUntil ||
+                 (UpperBodyAttacksOn && IsUpperBodyAction(_pose))))
             {
                 hipLp = legHipL; hipRp = legHipR;
                 kneeLp = legKneeL; kneeRp = legKneeR;
