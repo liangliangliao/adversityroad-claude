@@ -1044,6 +1044,7 @@ namespace AdversityRoad.Combat
             _pendingGetUp = false;
             _getUpPlaying = false;
             _upperClipUntil = 0f;
+            _paceSlowUntil = 0f;
             _lastActionPose = PoseState.Idle;
             _speed01 = 0f;
             _actualSpeed = 0f;
@@ -1221,9 +1222,28 @@ namespace AdversityRoad.Combat
             if (seconds > 0f) _upperClipUntil = Time.time + seconds;
         }
 
-        /// <summary>此刻是不是在播一段"按名字播的上半身片段"（拔刀/收刀等）。
-        /// 移动层据此放慢速度——见 PlayerController 里 UpperClipSpeedMult 的推导。</summary>
+        /// <summary>此刻是不是在播一段"按名字播的上半身片段"（拔刀/收刀等）。</summary>
         public bool UpperClipActive => Time.time < _upperClipUntil;
+
+        float _paceSlowUntil;
+
+        /// <summary>
+        /// 把"刚播出去的那段"标成【移动要陪着放慢】。
+        ///
+        /// 【为什么不直接用 UpperClipActive】按名字播的片段远不止拔刀/收刀：
+        /// Boss 说话、羞耻线的 Sad Idle / Kneeling Down / Breathing Idle 也走
+        /// 同一条路。那些是几秒钟的**待机**，玩家在它们播放期间照样该能全速跑；
+        /// 拿"在播命名片段"当放慢的判据，等于顺手给这些场合也踩了一脚刹车，
+        /// 而玩家要的只是拔刀/收刀这一件事。所以单独标一个口子。
+        /// </summary>
+        public void MarkPaceSlowClip(float seconds)
+        {
+            if (seconds > 0f) _paceSlowUntil = Time.time + seconds;
+        }
+
+        /// <summary>此刻是不是在播一段"要陪着放慢"的片段（拔刀/收刀）。
+        /// 移动层据此收速——见 PlayerController 里那一段的推导。</summary>
+        public bool PaceSlowActive => Time.time < _paceSlowUntil;
 
         public void SetLocomotion(float speed01, bool crouch, bool grounded, float actualSpeed = -1f,
             float moveAngleDeg = 0f, bool strafing = false)

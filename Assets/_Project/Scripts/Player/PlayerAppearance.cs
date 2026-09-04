@@ -89,7 +89,9 @@ namespace AdversityRoad.Player
             // 所以动作层的"只写上半身"遮罩不会自己打开——拔刀动画会接管整个
             // 身体、腿停住，而位移照常，就是滑行。这里显式标一下时长。
             // 拔刀/收刀本来就是纯上半身动作，走着拔刀是完全正常的。
-            if (poser != null) poser.MarkUpperBodyClip(dur);
+            // 同时标"陪着放慢"：这段是站着做的片段，接管上半身与胯骨之后，
+            // 全速跑的步幅会对不上（见 PlayerController 里的推导）。
+            if (poser != null) { poser.MarkUpperBodyClip(dur); poser.MarkPaceSlowClip(dur); }
             if (dur <= 0.05f) dur = 0.7f;
             _sheath.Toggle(dur);
         }

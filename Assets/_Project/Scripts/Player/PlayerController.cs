@@ -343,7 +343,7 @@ namespace AdversityRoad.Player
         public float indoorPaceSpeed = 2.0f;
 
         /// <summary>拔刀/收刀期间的移速上限（m/s）：慢跑档。
-        /// 见移动段里 UpperClipActive 那一处的推导。</summary>
+        /// 见移动段里 PaceSlowActive 那一处的推导。</summary>
         public float drawPaceSpeed = 3.0f;
         float DrawPaceSpeed => drawPaceSpeed;
 
@@ -943,7 +943,7 @@ namespace AdversityRoad.Player
             // 腿虽然还在按实际速度迈，但少了胯骨那一层，全速跑时视觉上就对不上。
             // 速度越低，胯骨该有的起伏越小，这个差就越不明显——所以放慢到慢跑
             // 正好把它抹掉，而且"边收刀边慢下来"本身也符合直觉。
-            if (_anim != null && _anim.UpperClipActive)
+            if (_anim != null && _anim.PaceSlowActive)
             {
                 float draw = Mathf.Min(speedCap, DrawPaceSpeed * MoveSpeedMultiplier);
                 speed = Mathf.Min(speed, draw);
