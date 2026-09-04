@@ -581,6 +581,7 @@ namespace AdversityRoad.Combat
 
         void StartAttack(AttackBtn pressed)
         {
+            _lastMeleeAt = Time.time;   // 交手记忆（见 InFight）
             if (!_cc.isGrounded)
             {
                 // 空中连段：一次滞空最多两段（大作通用的 air combo）。
@@ -1273,6 +1274,38 @@ namespace AdversityRoad.Combat
         const float FlinchCooldown = 1.6f;
         float _nextFlinch;
 
+        /// <summary>最近一次"真的在跟人交手"的时刻：自己出招、或挨了一记物理攻击。
+        /// 见 InFight——言语攻击的微反应在交手期间一律不做。</summary>
+        float _lastMeleeAt = -99f;
+        /// <summary>交手记忆窗（秒）：这段时间内都算"还在打"。</summary>
+        const float MeleeMemory = 3f;
+
+        /// <summary>
+        /// 玩家此刻是不是【正在和敌人交手】。
+        ///
+        /// 玩家的要求：交手中受到言语攻击不需要有任何身体反应。理由很实在——
+        /// 打起来的时候一颤就是在抢玩家的输入窗口，而言语攻击是连珠炮式的，
+        /// 抢的还不止一次。走在路上挨一句身子一颤是有味道的；正在对刀时不是。
+        ///
+        /// 判据要narrow：不能用"附近有敌人"，因为发起言语攻击的那个敌人自己
+        /// 就在附近，那样等于永远不反应。只认三件真正意味着"在打"的事：
+        ///   · 状态机不在普通移动上（正在出招/收招/闪避/受击）；
+        ///   · 锁定着某个目标（玩家自己按下的"我要打这个"）；
+        ///   · 最近 3 秒内真的交过手（自己出过招，或挨过一记物理攻击）。
+        /// </summary>
+        bool InFight
+        {
+            get
+            {
+                // _lockOn 原本只在吸附那条路上懒加载；吸附关掉时它会一直是 null，
+                // 那样"锁定中"这一条就永远不成立。这里自己补一次。
+                if (_lockOn == null) _lockOn = GetComponent<Player.LockOnSystem>();
+                return (_fsm != null && _fsm.Current != CombatState.Locomotion)
+                    || (_lockOn != null && _lockOn.CurrentTarget != null)
+                    || Time.time < _lastMeleeAt + MeleeMemory;
+            }
+        }
+
         /// <summary>一次出招最多能把朝向掰过去多少度（玩家没在推杆时）。</summary>
         const float AttackFaceSnapMax = 30f;
 
@@ -1801,7 +1834,13 @@ namespace AdversityRoad.Combat
                         // 哪怕单次已经很短。
                         // 片段这一版再收到 2.1 倍速、只取前 20%（约 0.1 秒的一颤），
                         // 并加 FlinchCooldown 的节流：一段话里只颤第一下。
-                        if (poser != null && Time.time >= _nextFlinch)
+                        // 【交手中一律不做身体反应】见 InFight 的推导：
+                        // 打起来的时候一颤就是在抢玩家的输入窗口，而言语攻击是
+                        // 连珠炮式的，抢的还不止一次。走在路上挨一句身子一颤是
+                        // 有味道的；正在对刀时不是。
+                        // 心神伤害与飘字照旧结算——不做的是**动作**，
+                        // 不是把言语攻击在战斗中变成免费的。
+                        if (poser != null && !InFight && Time.time >= _nextFlinch)
                         {
                             _nextFlinch = Time.time + FlinchCooldown;
                             poser.SetPose(PoseState.Flinch);
@@ -1978,6 +2017,7 @@ namespace AdversityRoad.Combat
                 }
                 else if (!dmg.isMentalOnly)
                 {
+                    _lastMeleeAt = Time.time;   // 交手记忆（见 InFight）
                     if (phys >= knockdownThreshold)
                     {
                         // 重击=被撞飞一段距离重重倒地，起身带无敌帧立刻回到战斗
