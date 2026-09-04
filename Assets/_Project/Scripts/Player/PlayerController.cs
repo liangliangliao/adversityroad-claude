@@ -629,6 +629,9 @@ namespace AdversityRoad.Player
             _safeStamp = 0f;
             _vy = 0f;
             _hVel = Vector3.zero;
+            // 测速的上一帧位置也要跟着作废，否则传送的那一帧会被算成
+            // "一帧跑了几百米"（实测 662171 m/s，见下面的 TeleportStep）。
+            _lastPos = transform.position;
             // 嵌墙兜底的安全点同样作废：它是"上一帧确认没嵌进环境的位置"，
             // 传送之后那个坐标属于另一张地图，拿它回滚就是把人拽回上一个场景。
             _hasSafePos = false;
@@ -1703,6 +1706,15 @@ namespace AdversityRoad.Player
             // 顿帧时它把商压回真实量级（0.035m / 0.011s ≈ 3.1 m/s，
             // 而不是 0.035 / 0.001 = 35）。
             const float MinSpeedDt = 1f / 90f;
+            // 【传送那一帧不许当成"跑得飞快"】实机日志里量到过 662171 m/s：
+            //     t=36.23  actual=662171  hVel=0  stepLen=0  posX 从 0 跳到 282
+            // 那是过传送门，位置被别人写了几百米，而这里照旧拿"位移÷dt"当速度。
+            // 这个数会往下污染一整串：移动层混合权重、步幅同步、上半身遮罩的
+            // 速度门槛、镜头的紧迫度，全都读它。单帧位移超过 2 米在 60fps 下
+            // 对应 120 m/s，人是不可能的——一律判为传送，这一帧速度记 0。
+            const float TeleportStep = 2f;
+            bool teleported = planar.magnitude > TeleportStep;
+            if (teleported) { _lastPos = transform.position; planar = Vector3.zero; }
             float actual = planar.magnitude / Mathf.Max(dt, MinSpeedDt);
             float speed01 = Mathf.Clamp01(actual / Mathf.Max(0.1f, runSpeed));
             // 移动方向相对身体正面的夹角：0=正前、±90=横跨、180=后撤。

@@ -1607,7 +1607,14 @@ namespace AdversityRoad.Combat
         /// </summary>
         public void SetActionUpperBodyOnly(bool upperOnly)
         {
-            if (!Valid || _maskFull == null || _maskUpper == null) return;
+            if (!Valid) return;
+            // 【遮罩缺了就当场补，别静默 return】
+            // 原来这里一句 return 就走了：一旦遮罩没建起来（异源骨架、换装重建
+            // 之后骨骼层级变了……），"只写上半身"就永远是空操作，而外面完全
+            // 看不出区别——玩家看到的只是"还在滑"。补建一次的代价是可忽略的，
+            // 而静默失效的代价是好几轮往返。
+            if (_maskFull == null || _maskUpper == null) BuildMasks();
+            if (_maskFull == null || _maskUpper == null) return;
             if (upperOnly == _upperOnly) return;
             _upperOnly = upperOnly;
             _top.SetLayerMaskFromAvatarMask(1, upperOnly ? _maskUpper : _maskFull);

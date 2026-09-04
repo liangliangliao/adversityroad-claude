@@ -141,6 +141,11 @@ namespace AdversityRoad.Combat
         Vector3 _hipsBindLP;
         bool _hipsPin;
         bool _pendingGetUp;
+
+        /// <summary>起身动画正在播（Standing Up）。见 LateUpdateBody 里的打断逻辑。</summary>
+        bool _getUpPlaying;
+        /// <summary>起身被跑动打断的速度门槛（m/s）。</summary>
+        const float GetUpCancelSpeed = 1.2f;
         // 双脚贴地校准：不同体型腿长≠动作数据骨架腿长（踮脚/悬空/陷地的根因）
         Transform _footL, _footR;         // 脚尖（toe）
         Transform _ankleL, _ankleR;       // 脚踝（foot）——脚掌放平修正用
@@ -1094,7 +1099,6 @@ namespace AdversityRoad.Combat
         /// 真实移速 m/s（供步幅同步，&lt;0=未提供）/
         /// moveAngleDeg = 移动方向相对角色**正面**的夹角（0=正前、±90=横移、180=后退）。</summary>
         /// <summary>跑动中出招是否只写上半身（腿继续走移动混合）。关掉＝回到旧行为。</summary>
-        public static bool UpperBodyAttacksOn = true;
         /// <summary>
         /// 超过这个地面速度（m/s）才算"在移动"，才需要把腿还给移动层。
         ///
@@ -1309,6 +1313,29 @@ namespace AdversityRoad.Combat
                 // 那个开关的语义是"出招时要不要只写上半身"，是招式的事。
                 // 拔刀、收刀、Boss 说话、羞耻线的待机表演都不是招式，
                 // 它们边走边播时腿被定住纯粹是缺陷，没有"关掉它做对照"的意义。
+                // ===== 起身动画被跑动打断 =====
+                //
+                // 实机日志里这是"腿没在走"里最大的一块：Standing Up 共 251 帧，
+                // **速度中位数 4.60 m/s**（也就是全速跑），而战斗状态机
+                // 249/251 帧已经回到 Locomotion、没有任何动作锁。
+                // 也就是说倒地爬起来的这三四秒里，玩家可以全速跑，而动作层还在
+                // 播起身（权重 1.00）把腿钉死——玩家报的"倒地后同时移动会漂移"
+                // 就是这一段。
+                //
+                // 不能靠遮罩解决：起身的主体本来就是腿，遮成上半身是上下半身
+                // 各走各的。正解是**玩家一开始跑，起身就该收掉**——他已经站起来
+                // 并且在跑了，那段动画的前提不成立了。这也是动作游戏的常规做法
+                //（起身的收招帧可被移动取消）。
+                if (_getUpPlaying)
+                {
+                    if (_actualSpeed > GetUpCancelSpeed)
+                    {
+                        _mecanim.StopAction();
+                        _getUpPlaying = false;
+                    }
+                    else if (!_mecanim.ActionPlaying) _getUpPlaying = false;
+                }
+
                 bool namedClip = Time.time < _upperClipUntil;
                 // 【判据要跟着"动作层还在不在压着腿"走，而不是跟着 _pose 走】
                 // _pose 会在片段播完那一刻先回到 Idle，而动作层的权重还要再淡出
@@ -1317,12 +1344,17 @@ namespace AdversityRoad.Combat
                 bool actionLive = _mecanim.DbgActionW > 0.02f;
                 PoseState maskPose = actionLive ? _lastActionPose : _pose;
 
-                // 【敌人不受玩家那个对照开关管】
-                // UpperBodyAttacksOn 是设置面板里的"跑动出招·只动上半身"，
-                // 它的用途写得很清楚："关掉＝回到招式接管整个身体的旧行为，用于对照"。
-                // 那是给玩家自己做 A/B 的，不该连带决定**别人**会不会滑行——
-                // 玩家没有任何理由为了看自己的对照效果而让满场敌人、路人滑起来。
-                bool toggleOn = UpperBodyAttacksOn || !isPlayer;
+                // 【"跑动出招·只动上半身"那个对照开关已经取消】
+                //
+                // 实机日志判了它死刑：整整 199 秒里 upperOnly=1 只出现在
+                // 40.7s~74.7s 这一段，之后 150 秒一次都没有；而同一个
+                // Attack / Great Sword Slash 5，42 秒时遮罩是开的、118 秒时是关的。
+                // 也就是说这个静态开关在中途被关掉了，此后每一个上半身招式都把
+                // 腿钉死——玩家反复报的"还是会滑"，很大一部分就是这么来的。
+                //
+                // 那个开关的用途是"关掉＝回到旧行为，用于对照"。对照的价值已经
+                // 拿到了（遮罩是对的），而它一旦被关就变成本项目最顽固的缺陷，
+                // 而且从外面完全看不出来。留着它弊远大于利，去掉。
 
                 // 【动作层确实在压着腿、但不知道它是什么 → 按"该遮"处理】
                 // _lastActionPose 的初值是 Idle，而 Idle 被算作"腿是主体"，
@@ -1333,14 +1365,13 @@ namespace AdversityRoad.Combat
                 bool unknownLive = actionLive && maskPose == PoseState.Idle;
 
                 bool wantUpper = _actualSpeed > UpperBodySpeed &&
-                    (namedClip || unknownLive || (toggleOn && IsUpperBodyAction(maskPose)));
+                    (namedClip || unknownLive || IsUpperBodyAction(maskPose));
                 _mecanim.SetActionUpperBodyOnly(wantUpper);
 
                 // 遮罩为什么没开，直接记下来给 HUD——这一轮我又在"它到底卡在
                 // 哪一个门上"上绕了一圈，判据有四个条件，光看开/关分不出来。
                 _maskWhy = wantUpper ? ""
                     : _actualSpeed <= UpperBodySpeed ? "速度"
-                    : !toggleOn ? "开关"
                     : !IsUpperBodyAction(maskPose) ? "腿部招"
                     : "?";
                 _mecanim.SetReady(_ready);
@@ -1355,7 +1386,12 @@ namespace AdversityRoad.Combat
                     else if (_pose == PoseState.Idle)
                     {
                         // 回到 Idle：从倒地恢复时先倒放起身，否则直接收招回移动层
-                        if (_pendingGetUp) { _pendingGetUp = false; _mecanim.PlayGetUp(); }
+                        if (_pendingGetUp)
+                        {
+                            _pendingGetUp = false;
+                            _getUpPlaying = true;   // 见下面的"起身被跑动打断"
+                            _mecanim.PlayGetUp();
+                        }
                         else _mecanim.StopAction();
                     }
                     else
@@ -1850,8 +1886,7 @@ namespace AdversityRoad.Combat
             // 移动中的上半身动作：把腿还给步态（见上面的快照）。
             // 判据与 Mecanim 那条完全一致，两种骨架的行为才不会分家。
             if (moving && _actualSpeed > UpperBodySpeed &&
-                (Time.time < _upperClipUntil ||
-                 (UpperBodyAttacksOn && IsUpperBodyAction(_pose))))
+                (Time.time < _upperClipUntil || IsUpperBodyAction(_pose)))
             {
                 hipLp = legHipL; hipRp = legHipR;
                 kneeLp = legKneeL; kneeRp = legKneeR;
