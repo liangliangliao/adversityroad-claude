@@ -69,7 +69,11 @@ namespace AdversityRoad.Combat
         /// 这时所有"只写上半身"的努力都是静默失效的——必须看得见。</summary>
         public string DbgMask => !Mecanim ? "遮罩:方块骨骼"
             : !_mecanim.MaskReady ? "遮罩:无(未建)"
+            : _mecanim.MaskUpperCount == 0 ? "遮罩:坏(上半身0根)"
             : (_mecanim.ActionUpperBodyOnly ? "遮罩:开" : "遮罩:关");
+
+        /// <summary>诊断：上半身遮罩把骨架切成了几比几（CI 与 HUD 共用）。</summary>
+        public string DbgMaskSplit => Mecanim ? _mecanim.MaskSplit : "（方块骨骼）";
         /// <summary>调试叠层：当前姿态枚举名（"该播什么"，与上面的"实际在播什么"对照）。</summary>
         public string DbgPose => _pose.ToString();
         /// <summary>最近一次起播的动作片段名（屏幕提示用）。</summary>

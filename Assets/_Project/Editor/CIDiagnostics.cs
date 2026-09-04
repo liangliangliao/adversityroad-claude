@@ -211,6 +211,12 @@ namespace AdversityRoad.EditorTools
                 if (animator == null) animator = model.AddComponent<Animator>();
                 var pa = new AdversityRoad.Combat.PlayableAnimator(animator);
                 sb.Append("[CIDIAG][移动] 动作库有效=").Append(pa.Valid ? "是" : "否").Append('\n');
+                // 上半身遮罩的分割：上半身 0 根 = 这套"跑动中只写上半身"整个失效
+                //（Hips 是全身的根，"下半身"标记一沿层级传播就全军覆没，
+                //  而症状是"动作动画没有了"，不报任何错——必须在构建期核对）。
+                sb.Append("[CIDIAG][遮罩] ").Append(pa.MaskSplit)
+                  .Append("  上半身可用=").Append(pa.MaskUpperCount > 0 ? "是" : "否（坏了）")
+                  .Append('\n');
                 foreach (var line in pa.DescribeDirectionalSet().Split('\n'))
                     if (line.Length > 0) sb.Append("[CIDIAG][移动] ").Append(line).Append('\n');
                 foreach (var line in pa.DescribeActionSet().Split('\n'))

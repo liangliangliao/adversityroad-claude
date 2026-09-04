@@ -1487,9 +1487,13 @@ namespace AdversityRoad.Combat
         // ===== 上半身遮罩 =====
 
         /// <summary>下半身骨骼的规范名。第 1 层遮掉它们＝腿归移动层管。</summary>
+        /// <summary>胯骨：归移动层，但它是全身的根，标记**不许沿层级传播**
+        /// （见 CollectBones）。传下去等于把上半身也一起关掉。</summary>
+        const string HipBone = "hips";
+
+        /// <summary>腿链：这几根以及它们的子骨骼都归移动层。</summary>
         static readonly string[] LowerBones =
         {
-            "hips",
             "leftupleg", "leftleg", "leftfoot", "lefttoebase", "lefttoeend",
             "rightupleg", "rightleg", "rightfoot", "righttoebase", "righttoeend",
         };
@@ -1522,14 +1526,30 @@ namespace AdversityRoad.Combat
 
             _maskFull = new AvatarMask { transformCount = paths.Count };
             _maskUpper = new AvatarMask { transformCount = paths.Count };
+            int up = 0;
             for (int i = 0; i < paths.Count; i++)
             {
                 _maskFull.SetTransformPath(i, paths[i]);
                 _maskFull.SetTransformActive(i, true);
                 _maskUpper.SetTransformPath(i, paths[i]);
                 _maskUpper.SetTransformActive(i, !lower[i]);
+                if (!lower[i]) up++;
             }
+            // 【把分割结果记下来，让它可核对】上半身遮罩曾经把整副骨架都关掉
+            //（Hips 是全身的根，"下半身"标记一传播就全军覆没），而症状是
+            // "动作没有了"而不是报错——从外面完全看不出来。
+            // 记一行摘要，CI 诊断与 HUD 都能读：上半身为 0 就是这套东西坏了。
+            _maskSplit = string.Format("上半身{0}根/下半身{1}根", up, paths.Count - up);
+            _maskUpperCount = up;
         }
+
+        string _maskSplit = "（未建）";
+        int _maskUpperCount;
+
+        /// <summary>诊断：上半身遮罩把骨架切成了几比几。上半身 0 根 = 遮罩坏了。</summary>
+        public string MaskSplit => _maskSplit;
+        /// <summary>诊断：上半身遮罩里还活着几根骨骼。</summary>
+        public int MaskUpperCount => _maskUpperCount;
 
         /// <summary>
         /// 递归收集骨骼路径，并标出哪些属于下半身。
@@ -1547,15 +1567,33 @@ namespace AdversityRoad.Combat
                 var c = t.GetChild(i);
                 string p = path.Length == 0 ? c.name : path + "/" + c.name;
                 bool isLower = parentIsLower;
+                // 【Hips 归下半身，但绝不能把这个标记传下去】
+                //
+                // 这是"只写上半身"整套机制一直似有似无的真正原因，也是玩家刚报的
+                // "跑动中拔刀/收刀已没有相应的动画"的直接来源。
+                //
+                // Mixamo 骨架里 Hips 是**全身的根**：Spine/Neck/Head、两条胳膊
+                // 与两条腿全都挂在它下面。原来的写法一旦在 Hips 上判定为下半身，
+                // 就把 isLower 沿层级一路传下去——于是 _maskUpper 里
+                // **每一根骨骼都是关的**，遮罩一打开，动作层什么都写不出来：
+                // 不是"只写上半身"，是"什么都不写"。
+                // 表现出来就是招式/拔刀动画整个消失，而不是腿归移动层。
+                //
+                // 正确的分工是：胯骨与两条腿归移动层，脊椎以上归动作层。
+                // 所以 Hips 自己标成下半身、但**不传播**；真正要传播的是
+                // 两条腿的链（UpLeg → Leg → Foot → Toe）。
+                bool propagate = parentIsLower;
                 if (!isLower)
                 {
                     string n = NormBone(c.name);
-                    for (int k = 0; k < LowerBones.Length; k++)
-                        if (n == LowerBones[k]) { isLower = true; break; }
+                    if (n == HipBone) { isLower = true; }        // 只此一根，不传播
+                    else
+                        for (int k = 0; k < LowerBones.Length; k++)
+                            if (n == LowerBones[k]) { isLower = true; propagate = true; break; }
                 }
                 paths.Add(p);
                 lower.Add(isLower);
-                CollectBones(c, p, isLower, paths, lower);
+                CollectBones(c, p, propagate, paths, lower);
             }
         }
 

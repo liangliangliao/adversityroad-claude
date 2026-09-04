@@ -116,6 +116,26 @@ namespace AdversityRoad.UI
             art.anchoredPosition = new Vector2(-24f, -298f);
             art.sizeDelta = new Vector2(900f, 40f);
 
+            // 第五行：**最近那个敌人**的动画实况。
+            // 玩家反复报"敌人做动作同时移动会滑行"，而右上角这几行一直只讲玩家自己，
+            // 于是每一轮都只能靠猜敌人那边是哪一条路出的问题。既然玩家自己这一行
+            // 一贴出来就定案了，敌人也该有同样的一行：它在什么状态、在播哪个片段、
+            // 遮罩开没开、腿是不是被定住。
+            var e5 = new GameObject("FoeAnimText");
+            e5.transform.SetParent(go.transform, false);
+            _foe5 = e5.AddComponent<Text>();
+            _foe5.font = _text.font;
+            _foe5.fontSize = 24;
+            _foe5.alignment = TextAnchor.UpperRight;
+            _foe5.color = new Color(1f, 0.85f, 0.6f);
+            _foe5.raycastTarget = false;
+            _foe5.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var ert = _foe5.rectTransform;
+            ert.anchorMin = ert.anchorMax = new Vector2(1f, 1f);
+            ert.pivot = new Vector2(1f, 1f);
+            ert.anchoredPosition = new Vector2(-24f, -334f);
+            ert.sizeDelta = new Vector2(900f, 40f);
+
             // ===== 动作横幅：每做出一个动作，屏幕中下方打出它用的动画 =====
             // 右上角那几行是**状态**（此刻在播什么），密、小、一直在变，
             // 玩的时候没人来得及读。你要的是**事件**：做了一个动作 → 告诉我
@@ -162,7 +182,7 @@ namespace AdversityRoad.UI
             var srt5 = _slip5.rectTransform;
             srt5.anchorMin = srt5.anchorMax = new Vector2(1f, 1f);
             srt5.pivot = new Vector2(1f, 1f);
-            srt5.anchoredPosition = new Vector2(-24f, -334f);
+            srt5.anchoredPosition = new Vector2(-24f, -370f);
             srt5.sizeDelta = new Vector2(900f, 40f);
 
             // 第六行：镜头。**「见自己」是这一行里唯一真正要紧的**——
@@ -179,11 +199,13 @@ namespace AdversityRoad.UI
             var srt6 = _cam6.rectTransform;
             srt6.anchorMin = srt6.anchorMax = new Vector2(1f, 1f);
             srt6.pivot = new Vector2(1f, 1f);
-            srt6.anchoredPosition = new Vector2(-24f, -370f);
+            srt6.anchoredPosition = new Vector2(-24f, -406f);
             srt6.sizeDelta = new Vector2(900f, 40f);
         }
 
         Text _anim4, _slip5, _cam6;
+
+        Text _foe5;
         Text _banner;           // 动作横幅（事件式，播完淡出）
         Image _bannerBg;
         float _bannerUntil;     // 横幅显示到什么时候（unscaledTime）
@@ -316,6 +338,35 @@ namespace AdversityRoad.UI
                     : "";
                 _anim4.color = legsDead ? new Color(1f, 0.35f, 0.3f)
                                         : new Color(0.7f, 1f, 0.7f);
+
+                // ---- 最近那个敌人的同一套读数 ----
+                // 判据与玩家完全一致：真的在移动（>0.8m/s）却没在演走路 = 腿被定住。
+                // 敌人的"移动"用它自己量出来的位移速度（EnemyController.MeasuredSpeed），
+                // 不是寻路速度——被击退、侧闪、绕圈同样算移动。
+                if (_foe5 != null)
+                {
+                    AI.EnemyController near = null;
+                    float best = float.MaxValue;
+                    if (pcx != null)
+                        foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+                        {
+                            if (e == null || e.State == AI.EnemyState.Dead) continue;
+                            float d = (e.transform.position - pcx.transform.position).sqrMagnitude;
+                            if (d < best) { best = d; near = e; }
+                        }
+                    var fa = near != null ? near.poser : null;
+                    if (fa != null)
+                    {
+                        bool fMoving = near.MeasuredSpeed > 0.8f;
+                        bool fDead = fMoving && !fa.LegsWalking;
+                        _foe5.text = string.Format("敌 {0} {1:F1}m/s ｜ {2}{3}  {4}",
+                            near.State, near.MeasuredSpeed, fa.DbgNowPlaying,
+                            fDead ? "  ⚠腿:定住" : "", fa.DbgMask);
+                        _foe5.color = fDead ? new Color(1f, 0.35f, 0.3f)
+                                            : new Color(1f, 0.85f, 0.6f);
+                    }
+                    else _foe5.text = "";
+                }
                 // ---- 动作横幅：起播时刻一变，就是"又做了一个动作" ----
                 // 用「片段名 + 起播时刻」当身份：连按同一招时片段名不变，
                 // 只有时刻在变，光比名字会漏报连段的第二下。
