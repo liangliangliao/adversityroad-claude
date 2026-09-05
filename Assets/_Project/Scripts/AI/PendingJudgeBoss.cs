@@ -46,39 +46,32 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 【"不可击杀"不等于"刀砍不动"】
-            // 方案要的是"打赢他不等于结束"——终结条件在广播室那扇门上，不在他的血条上。
-            // 原来的写法把伤害压到 15%、血线又卡在 35%：两道闸门叠在一起，
-            // 玩家砍十几刀血条纹丝不动，读到的只有"这敌人有问题"。
-            // 现在伤害照常结算，他也照常硬直、照常被打崩——只是打崩他不会让案子结案。
-            _ec.minHpFloor = 0.12f;
-            // 【他不能有血条】方案 8.5.4：屏幕上方是悬案计时器与已延期次数。
-            // 留着一根几乎不动的血条，玩家读到的只会是"这个敌人打不死"——
-            // 而这一关想说的是"打赢他不等于结束"。这两句话差得很远。
-            _ec.emotionOverride = "不结案 · 打赢他不等于结束";
-            GameEvents.RaiseSubtitle("【悬案法官】他不宣判，也不撤案。他只会说「下次再说」——" +
-                "打他没有用（他没有血条，只有悬案计时器）。广播室的门在长廊尽头，一直开着。");
+            // 【方案 8.5.4 的原文，两句都要照做】
+            //   「不可击杀：对他的所有物理攻击只造成硬直，不推进任何进度条。」
+            //   「血条替代：没有传统血条。屏幕上方是悬案计时器与已延期次数。」
+            //
+            // 上一版我只照做了第一句的一半：用 minHpFloor 把血线卡在 12%。
+            // 那等于给了玩家一条会掉 88% 然后突然停住的血条——先教会他"伤害有用"，
+            // 再当场推翻。连续三轮实机反馈说"敌人有无限的生命"，说的就是这根血条。
+            // 血条本身就是那个错误的承诺。所以现在：不画血条，伤害不进血，
+            // 硬直与打击反馈照常（这才是"只造成硬直"）。
+            _ec.undying = true;
+            _ec.undyingHint = "打他只能把他打退，不能让案子结案——他没有血条，只有悬案计时器。" +
+                              "要结案，得你自己走进广播室说一次。";
+            _ec.emotionOverride = "无血条 · 进度看上方悬案计时器";
+            GameEvents.RaiseSubtitle("【悬案法官】他不宣判，也不撤案，只会说「下次再说」。" +
+                "他没有血条——他的进度是屏幕上方那个悬案计时器。" +
+                "广播室的门在长廊尽头，从第一秒起就开着。");
         }
-
-        bool _yielded;
 
         void Update()
         {
             if (_ec == null || _ec.State == EnemyState.Dead || _player == null) return;
 
-            // 打到血线：他不再抵抗了。战斗有了结论——但案子没有。
-            // 这一下是玩家该拿到的反馈；少了它，"打不死"就是唯一的读法。
-            if (!_yielded && _ec.HpRatio <= _ec.minHpFloor + 0.01f)
-            {
-                _yielded = true;
-                _ec.pacified = true;
-                _ec.emotionOverride = "他不还手了 · 案子照样挂着";
-                if (_ec.dialogue != null) _ec.dialogue.Show("……随你怎么打。", 3f);
-                GameEvents.RaiseSubtitle("他坐下了，不再还手——可你手上什么都没多。" +
-                    "案子要结，还得你自己走进广播室。");
-                return;
-            }
-            if (_yielded) return;
+            // 这里原来有一段"打到血线就坐下"的处理，是上一版为了给"打不死"一个交代加的。
+            // 那段现在删掉了：它依赖的正是那条不该存在的血条。
+            // 方案给的终结条件只有一条——玩家走进广播室完成自行陈述，
+            // 那一刻他失去权限、从场景中消失（见 ShameLineController 的结算）。
 
             var timer = PendingCaseTimer.Instance;
             if (timer == null || !timer.Running) return;

@@ -126,6 +126,31 @@ namespace AdversityRoad.AI
         /// <summary>血线保护（0-1）：血量不会被打到该比例以下（旧我必须走整合结局而非击杀）。</summary>
         [HideInInspector] public float minHpFloor = 0f;
 
+        /// <summary>
+        /// 【不可击杀】：伤害只造成硬直与韧性削减，**永远不减血、不显示血条**。
+        ///
+        /// 方案对这四个单位写的是"不可击杀 / 无法直接击杀 / 血量不由伤害决定"：
+        /// 悬案法官（8.5.4）、后排低语者（8.6.4）、讨好回声（8.5.3）、心虚投影（8.6.3）。
+        /// 8.5.4 更进一步写死了表现："没有传统血条。屏幕上方是悬案计时器与已延期次数"，
+        /// 以及"对他的所有物理攻击只造成硬直，**不推进任何进度条**"。
+        ///
+        /// 【为什么不能用 minHpFloor 表达这件事】
+        /// 我之前用血线卡在 12% 来实现它——那是最坏的一种做法：
+        /// 玩家先看着血条掉掉掉（被教会"伤害有用"），到 12% 突然纹丝不动。
+        /// 一条会动又动不完的血条，读出来就是"这敌人有无限的生命"，
+        /// 这也正是连续三轮实机反馈说的那句话。血条本身就是那条错误的承诺。
+        /// 所以这里不是把血锁住，是**根本不给血条**，并且在头顶常驻写清楚什么才推进进度。
+        ///
+        /// 与 pacified 的区别：pacified 是"攻击完全无效"（连硬直都没有）的剧情态；
+        /// undying 照常吃硬直、照常被打断、照常有打击反馈，只是血不掉。
+        /// </summary>
+        [HideInInspector] public bool undying;
+
+        /// <summary>不可击杀单位被打时，隔一段时间提醒一次"什么才推进进度"。</summary>
+        [HideInInspector] public string undyingHint;
+
+        float _lastUndyingHintT = -99f;
+
         /// <summary>当前血量比例（Boss 阶段机 0-1）。</summary>
         public float HpRatio => profile.maxHealth > 0 ? Mathf.Clamp01(_hp / profile.maxHealth) : 0f;
 
@@ -152,6 +177,9 @@ namespace AdversityRoad.AI
             if (p != null) _player = p.transform;
             if (statusBar != null)
             {
+                // 不可击杀单位从一开始就不画血条：血条是一句"打它会有进展"的承诺，
+                // 对这些单位那句承诺是假的（见 undying 的注释）
+                if (undying) statusBar.HideHealthBar();
                 statusBar.SetHealth(_hp, profile.maxHealth);
                 statusBar.SetPosture(_posture, profile.posture);
             }
@@ -959,6 +987,20 @@ namespace AdversityRoad.AI
                 CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.4f, "护体",
                     new Color(0.7f, 0.7f, 0.5f), 1.05f);
 
+            // 不可击杀单位：每一下都要当场说清楚"打得动，但打不倒；进度不在这里"。
+            // 沉默地不掉血是最糟的表现——玩家只会以为这敌人有无限的生命。
+            if (undying)
+            {
+                CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.5f, "打不倒",
+                    new Color(0.85f, 0.8f, 0.7f), 1.1f);
+                if (Time.time - _lastUndyingHintT > 12f)
+                {
+                    _lastUndyingHintT = Time.time;
+                    if (!string.IsNullOrEmpty(undyingHint))
+                        Core.GameEvents.RaiseSubtitle(undyingHint);
+                }
+            }
+
             // ---- 偷袭：敌人未察觉（待机/巡逻）时被打 = 趁其不备，1.8 倍伤害且无法防御 ----
             bool unaware = State == EnemyState.Idle || State == EnemyState.Patrol;
             float sneakMult = 1f;
@@ -1083,8 +1125,13 @@ namespace AdversityRoad.AI
             if (Core.GameDebug.TankyEnemies) final *= Core.GameDebug.TankyDamageScale;
             // Boss 护体倍率：血量与韧性同步受保护（破防要走机制，不能硬磨）
             final *= externalDamageMult;
-            _hp -= final;
-            if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
+            // 不可击杀：伤害不进血。硬直、韧性、打击感全部照常（方案：只造成硬直），
+            // 但"进度条"一格都不动——因为它的进度本来就不在血上。
+            if (!undying)
+            {
+                _hp -= final;
+                if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
+            }
             _posture -= dmg.postureDamage * partPostureMult * externalDamageMult;
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退

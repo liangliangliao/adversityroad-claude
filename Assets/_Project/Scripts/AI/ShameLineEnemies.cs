@@ -99,15 +99,20 @@ namespace AdversityRoad.AI
     {
         EnemyController _ec;
         float _next;
+        bool _dissipating;
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
         void Start()
         {
-            // "降讨好度是唯一削弱方式"（方案 8.5.3）——注意是**削弱**，不是"永远打不死"。
-            // 讨好度还在的时候有血线护着；讨好度归零它就没有护体了，照常能被打倒。
-            _ec.minHpFloor = 0.15f;
-            _ec.emotionOverride = "讨好度归零前砍不动它";
+            // 方案 8.5.3 的原文是"降低讨好度是唯一削弱方式，**无法直接击杀**"。
+            // 上一版我拿血线卡在 15% 来表达它，那是最坏的做法：玩家看着血条掉到 15%
+            // 然后纹丝不动，读出来就是"这敌人有无限的生命"。
+            // 现在它不画血条、伤害不进血（照常吃硬直），头顶常驻写着什么才管用。
+            _ec.undying = true;
+            _ec.undyingHint = "讨好回声不是打倒的——它是你自己的讨好行为变的。" +
+                              "别再顺从应答，讨好度掉下去，它自己就散了。";
+            _ec.emotionOverride = "打不倒 · 讨好度降到 0 它才会散";
             if (_ec.dialogue != null) _ec.dialogue.Show("你刚才不是答应得好好的吗？", 2.6f);
         }
 
@@ -124,21 +129,15 @@ namespace AdversityRoad.AI
             _ec.externalDamageMult = Mathf.Lerp(1.4f, 0.5f, t);
             if (_ec.profile != null)
                 _ec.profile.mentalDamage = Mathf.Lerp(4f, 18f, t);
-            // 讨好度归零 = 它没有力气了，于是停手；但**不是免疫**——
-            // 方案说的是"无法直接击杀"（血线保护），不是"打上去没反应"。
-            if (t <= 0.02f && !_ec.passive)
+            // 讨好度归零 = 它没有来源了，于是**散场**——不是被打死，是没得可依附。
+            // 这是方案给的唯一削弱方式走到底的结果，也是玩家真正能拿到的那个交代：
+            // 场上少一个敌人，而且是靠"不再顺从"换来的。
+            if (t <= 0.02f && !_dissipating)
             {
-                _ec.passive = true;
-                _ec.minHpFloor = 0f;      // 护体没了：这时它是能被打倒的
-                _ec.emotionOverride = "讨好度归零 · 现在打得倒了";
-                GameEvents.RaiseSubtitle("讨好回声安静下来了——它靠的从来不是自己的力气，" +
-                    "现在你打得倒它了。");
-            }
-            else if (t > 0.02f)
-            {
-                _ec.passive = false;
-                _ec.minHpFloor = 0.15f;
-                _ec.emotionOverride = "讨好度归零前砍不动它";
+                _dissipating = true;
+                GameEvents.RaiseSubtitle("讨好回声散了——它靠的从来不是自己的力气。" +
+                    "你停止顺从的那一刻，它就没有东西可以依附了。");
+                Destroy(gameObject, 0.6f);
             }
         }
     }
@@ -361,10 +360,14 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            // 认领成功后它会透明 12 秒（方案 8.6.3）——那 12 秒里它也**打得倒**：
-            // 心虚被认领接住之后本来就没有落点了，这时还砍不动就纯粹是在耗玩家。
-            _ec.minHpFloor = 0.2f;
-            _ec.emotionOverride = "认领之后才打得倒";
+            // 方案 8.6.3 对它写的是"**不可击杀**；认领不终审可使其透明化 12 秒"。
+            // 上一版我给了它 20% 的血线，又在透明期把血线拿掉当作"可以打倒的窗口"——
+            // 那个窗口不在方案里，而那条掉到 20% 就卡住的血条正是"无限生命"的来源。
+            // 现在它不画血条，认领带来的回报是那 12 秒它抢不到你的位。
+            _ec.undying = true;
+            _ec.undyingHint = "心虚投影打不倒——它就是你自己的回避习惯。" +
+                              "用「认领不终审」接住指认，它会透明 12 秒，抢不到你的路线。";
+            _ec.emotionOverride = "打不倒 · 认领可使其透明 12 秒";
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
@@ -386,9 +389,8 @@ namespace AdversityRoad.AI
                 _transparentUntil = Time.time + 12f;
                 if (_ec != null)
                 {
-                    _ec.passive = true;
-                    _ec.minHpFloor = 0f;    // 透明期＝可以被打倒的窗口
-                    _ec.emotionOverride = "透明中 · 这 12 秒能打倒它";
+                    _ec.passive = true;     // 透明期它不再抢位，也不出手
+                    _ec.emotionOverride = "透明中 · 这 12 秒它抢不到你的路线";
                 }
                 GameEvents.RaiseSubtitle("心虚投影透明了 12 秒——认领之后，它没有东西可以预判。");
             }
@@ -421,8 +423,7 @@ namespace AdversityRoad.AI
             {
                 _transparentUntil = -1f;
                 _ec.passive = false;
-                _ec.minHpFloor = 0.2f;
-                _ec.emotionOverride = "认领之后才打得倒";
+                _ec.emotionOverride = "打不倒 · 认领可使其透明 12 秒";
             }
             if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 

@@ -44,17 +44,21 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 【他的血由否认次数维持，但刀是能砍进去的】
-            // 原来伤害被压到 10%，等于两道闸门叠着——玩家砍半天血条不动，
-            // 只会读成"这敌人打不死"。真正的机制是**回血**：每否认一次他回一口气。
-            // 伤害照常结算，于是"停止否认就能把他磨下去"变成一条玩家能自己发现的路，
-            // 而这条路的终点正好是方案要的那句话：他停止发声。
-            _ec.minHpFloor = 0.12f;
-            // 他的血不由伤害决定，而由否认次数与暴露峰值维持（方案 8.6.4）。
-            // 这一条必须写在头顶，否则"砍半天不掉血"只会被读成打不死。
-            _ec.emotionOverride = "血由你的否认维持 · 刀砍不动";
-            GameEvents.RaiseSubtitle("【后排低语者】他不动手。他看、他说、他指——" +
-                "刀砍不动他：他的血由你的否认次数维持，不由伤害决定。");
+            // 【方案 8.6.4：血量不由伤害决定，由否认次数与 Exposure 峰值维持】
+            //
+            // 上一版我把这条实现成"血线卡在 12% + 每次否认回血"，还自己加了一条
+            // 方案里没有的"磨到说不出话"的击杀路径。结果是：玩家看着血条掉到 12%，
+            // 之后无论怎么打都不动，读出来就是"这敌人有无限的生命"——三轮反馈同一句话。
+            //
+            // 既然血量本来就不由伤害决定，那就**不该有血条**。现在伤害只造成硬直，
+            // 血条不画；否认的代价改成看得见的那一种：他指认得更急（见 DenialPressure）。
+            // 击败判定回到方案原文：玩家在阶段三完成目标动作，他停止发声。
+            _ec.undying = true;
+            _ec.undyingHint = "他打不倒——他的血不由伤害决定，由你的否认次数维持。" +
+                              "别再否认；在低语活着的时候把三件事做完，他自己会停。";
+            _ec.emotionOverride = "打不倒 · 完成三个目标动作他才会停";
+            GameEvents.RaiseSubtitle("【后排低语者】他不动手，只做三件事：看、说、指。" +
+                "他没有血条——打不倒他。让他停下来的是你把该做的事做完，不是把他打死。");
             SetPhase(1);
         }
 
@@ -64,11 +68,11 @@ namespace AdversityRoad.AI
             var ctl = ShameLineController.Instance;
             if (ctl == null) return;
 
-            TickBloodFromDenial();
+            DenialPressure();
 
-            // 打到血线：他不再说话了。方案要的"他停止发声"本来就有两条路——
-            // 在阶段三完成目标动作，或者干脆把他磨到说不出话。两条都算数。
-            if (_ec.HpRatio <= _ec.minHpFloor + 0.01f) { Silence(); return; }
+            // 这里原来有一句"打到血线就 Silence"，是上一版自己加的击杀路径，
+            // 方案里没有这条，而且它依赖的正是那根不该存在的血条。已删。
+            // 唯一的击败判定在 ShameLineController：阶段三完成目标动作 → Silence()。
 
             // 阶段随目标动作推进，而不是随血量推进——这一关的进度条是"做完了几件事"
             int want = ctl.ObjectivesDone >= 2 ? 3 : ctl.ObjectivesDone >= 1 ? 2 : 1;
@@ -80,7 +84,8 @@ namespace AdversityRoad.AI
                 _nailCd -= Time.deltaTime;
                 if (_nailCd <= 0f)
                 {
-                    _nailCd = ShameLineController.ChallengeCeilingActive ? 22f : 15f;
+                    _nailCd = (ShameLineController.ChallengeCeilingActive ? 22f : 15f)
+                              - _denialSpeedUp;
                     StartCoroutine(AccusationTriple());
                 }
             }
@@ -89,12 +94,15 @@ namespace AdversityRoad.AI
         int _seenDenials;
 
         /// <summary>
-        /// 血量随否认次数与 Exposure 峰值回复：这是他唯一的"补给线"。
+        /// 否认的代价（方案 8.6.4「玩家的每一次否认都为他续命」）。
         ///
-        /// 只在**玩家刚刚否认过**的时候回——回血必须和那一次否认对得上，
-        /// 否则玩家看到的只是一个莫名其妙一直回血的 Boss，读不出因果。
+        /// 【为什么不是回血】
+        /// 他没有血条——回血这件事在屏幕上根本不可见，玩家只会觉得"怎么打都没用"。
+        /// 「续命」在没有血条的前提下要换成看得见的形态：**他指认得更急**。
+        /// 每否认一次，指认间隔缩短，头顶把否认次数写出来。
+        /// 因果链于是完整了：我否认了 → 他更凶了 → 我停止否认 → 他慢下来。
         /// </summary>
-        void TickBloodFromDenial()
+        void DenialPressure()
         {
             if (Time.time < _nextRegen) return;
             _nextRegen = Time.time + 1.5f;
@@ -102,10 +110,17 @@ namespace AdversityRoad.AI
             if (d.denialCount <= _seenDenials) return;
             _seenDenials = d.denialCount;
 
-            float peak01 = Mathf.Clamp01(d.exposurePeak / 100f);
-            _ec.HealFraction(0.06f + 0.05f * peak01);
-            GameEvents.RaiseSubtitle("他缓过来了——刚才那一次否认，正好是他要的。");
+            // 每次否认让指认周期缩短 1.5 秒（最多累计 9 秒，即 15 → 6 秒一次），
+            // 并把**当前这一次**的倒计时也往前拨——但只能拨快，不能拨慢：
+            // 直接写 Mathf.Max(6, _nailCd - 1.5) 会在剩余不足 6 秒时反而把它推回 6 秒。
+            _denialSpeedUp = Mathf.Min(9f, _denialSpeedUp + 1.5f);
+            _nailCd = Mathf.Max(0f, _nailCd - 1.5f);
+            _ec.emotionOverride = "打不倒 · 你已否认 " + d.denialCount + " 次，他更急了";
+            GameEvents.RaiseSubtitle("刚才那一次否认，正好是他要的——他指得更快了。" +
+                "（否认 " + d.denialCount + " 次）");
         }
+
+        float _denialSpeedUp;
 
         void SetPhase(int phase)
         {

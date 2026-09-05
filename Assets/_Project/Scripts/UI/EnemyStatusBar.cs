@@ -10,6 +10,7 @@ namespace AdversityRoad.UI
     public class EnemyStatusBar : MonoBehaviour
     {
         Image _hpFill;
+        Image _hpBg;
         Image _postureFill;
         Text _nameText;
         Text _emotionText;
@@ -43,7 +44,7 @@ namespace AdversityRoad.UI
                 new Color(1f, 0.75f, 0.5f));
             UiUtil.SetRect(_emotionText, new Vector2(0.5f, 1f), new Vector2(0, -34), new Vector2(220, 20));
 
-            _hpFill = MakeBar(new Vector2(0, -50), new Color(0.85f, 0.2f, 0.2f), out _);
+            _hpFill = MakeBar(new Vector2(0, -50), new Color(0.85f, 0.2f, 0.2f), out _hpBg);
             _postureFill = MakeBar(new Vector2(0, -60), new Color(0.95f, 0.8f, 0.3f), out _);
         }
 
@@ -74,6 +75,22 @@ namespace AdversityRoad.UI
         {
             if (_hpFill != null)
                 _hpFill.rectTransform.anchorMax = new Vector2(max > 0 ? Mathf.Clamp01(cur / max) : 0, 1);
+        }
+
+        /// <summary>
+        /// 收掉血条（连底槽一起），只留名字、情绪与韧性条。
+        ///
+        /// 【为什么要有这个】
+        /// 有些单位的进度**根本不在血上**——方案 8.5.4 对悬案法官写的原话就是
+        /// 「没有传统血条。屏幕上方是悬案计时器与已延期次数」。
+        /// 给这种单位挂一条会掉一半然后卡死的血条，是游戏能给出的最强的
+        /// "这东西坏了"的信号：玩家先被教会"伤害有用"，再被这条卡住的血条推翻。
+        /// 与其解释，不如不画。
+        /// </summary>
+        public void HideHealthBar()
+        {
+            if (_hpFill != null) _hpFill.gameObject.SetActive(false);
+            if (_hpBg != null) _hpBg.gameObject.SetActive(false);
         }
 
         public void SetPosture(float cur, float max)
