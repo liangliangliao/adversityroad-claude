@@ -50,6 +50,9 @@ namespace AdversityRoad.Core
 
             ApplyComfortAndPerformance();
             EnsureSystems();
+            // 先于任何几何体建出来：警示圈/视线锥这类无光材质都要经它兜底，
+            // 少了这一句它们只能靠 Shader.Find，而那条路在真机包里会掉进洋红。
+            World.SafeShader.Init(baseMaterial);
             CombatFeedback.Init(baseMaterial);
 
             _world = new WorldContext { mat = baseMaterial };

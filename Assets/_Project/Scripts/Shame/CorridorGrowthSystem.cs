@@ -134,16 +134,43 @@ namespace AdversityRoad.Shame
                 new Vector3(0.4f, 3.8f, SegmentLength), new Color(0.26f, 0.24f, 0.28f), true);
             Piece(seg, "Corridor_Wall", baseP - right * 4.6f + Vector3.up * 1.9f,
                 new Vector3(0.4f, 3.8f, SegmentLength), new Color(0.26f, 0.24f, 0.28f), true);
-            Piece(seg, "Corridor_Ceiling", baseP + Vector3.up * 3.9f,
+            // 名字里必须带 Pan：ZoneBuilder.Paint 按名字关键词选贴图，"Ceiling" 一个词都不命中，
+            // 长出来的吊顶会是没贴图的纯色板，和基础段的吊顶明显不是一个材质。
+            Piece(seg, "Corridor_CeilingPan", baseP + Vector3.up * 3.9f,
                 new Vector3(9.4f, 0.3f, SegmentLength), new Color(0.22f, 0.21f, 0.24f), false);
+
+            // 细节层：踢脚、顶压条、吊顶梁、管线。基础长廊有这几样，长出来的段也必须有，
+            // 否则每隐瞒一次，走廊就多出一节明显更廉价的空盒子。
+            Color trim = new Color(0.19f, 0.18f, 0.21f);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Piece(seg, "Corridor_WallBase", baseP + right * (side * 4.4f) + Vector3.up * 0.16f,
+                    new Vector3(0.22f, 0.32f, SegmentLength), trim, false);
+                Piece(seg, "Corridor_WallBase", baseP + right * (side * 4.4f) + Vector3.up * 3.62f,
+                    new Vector3(0.18f, 0.16f, SegmentLength), trim, false);
+            }
+            for (int b = 0; b < 2; b++)
+                Piece(seg, "Corridor_BeamPan",
+                    baseP + growDirection * (-SegmentLength * 0.25f + b * SegmentLength * 0.5f)
+                          + Vector3.up * 3.68f,
+                    new Vector3(9.2f, 0.26f, 0.5f), new Color(0.17f, 0.16f, 0.19f), false);
+            Piece(seg, "Corridor_PipePole", baseP + right * 4.2f + Vector3.up * 3.15f,
+                new Vector3(0.22f, 0.22f, SegmentLength - 0.4f),
+                new Color(0.42f, 0.4f, 0.36f), false);
+            Piece(seg, "Corridor_FloorSeg", baseP + Vector3.up * 0.03f,
+                new Vector3(0.14f, 0.04f, SegmentLength), new Color(0.24f, 0.23f, 0.26f), false);
 
             var door = new GameObject("WeeklyDoor_" + index);
             door.transform.SetParent(seg.transform, true);
             door.transform.position = baseP + growDirection * (SegmentLength * 0.5f - 0.4f);
-            Piece(door, "WeeklyDoorFrame", door.transform.position + right * 1.5f + Vector3.up * 1.5f,
+            // 同上：ZoneBuilder.Paint 把带 "Frame" 的名字判成"不贴图"（那是给玻璃窗框用的），
+            // 基础段的门柱已经改叫 Post，这里漏了，于是长出来的门柱是一根纯色木条。
+            Piece(door, "WeeklyDoorPost", door.transform.position + right * 1.5f + Vector3.up * 1.5f,
                 new Vector3(0.3f, 3f, 0.3f), new Color(0.44f, 0.36f, 0.26f), true);
-            Piece(door, "WeeklyDoorFrame", door.transform.position - right * 1.5f + Vector3.up * 1.5f,
+            Piece(door, "WeeklyDoorPost", door.transform.position - right * 1.5f + Vector3.up * 1.5f,
                 new Vector3(0.3f, 3f, 0.3f), new Color(0.44f, 0.36f, 0.26f), true);
+            Piece(door, "WeeklyDoorLintel", door.transform.position + Vector3.up * 3.1f,
+                new Vector3(3.4f, 0.25f, 0.3f), new Color(0.4f, 0.33f, 0.24f), false);
             var gate = door.AddComponent<WeeklyDoor>();
             gate.doorIndex = index + 1;
             var col = door.AddComponent<BoxCollider>();
@@ -151,8 +178,22 @@ namespace AdversityRoad.Shame
             col.size = new Vector3(3.2f, 3f, 1.4f);
             col.center = Vector3.up * 1.5f;
 
-            ZoneBuilder.AddCeilingLight(baseP + Vector3.up * 3.4f,
-                new Color(0.8f, 0.82f, 0.9f), 16f);
+            // 一段 14 米只挂一盏灯的话，段与段接缝处会掉到照度门槛以下，
+            // 表现成"每隔十几米有一段黑"。改成两盏 + 一个能看见的灯体。
+            for (int l = 0; l < 2; l++)
+            {
+                Vector3 at = baseP + growDirection * (-SegmentLength * 0.25f + l * SegmentLength * 0.5f);
+                ZoneBuilder.AddCeilingLight(at + Vector3.up * 3.4f, new Color(0.8f, 0.82f, 0.9f), 14f);
+                Piece(seg, "Corridor_LampRail", at + Vector3.up * 3.62f,
+                    new Vector3(1.5f, 0.12f, 0.3f), new Color(0.3f, 0.29f, 0.32f), false);
+                var bulb = ZoneBuilder.Decoration(ctx, "Corridor_LampGlow", at + Vector3.up * 3.5f,
+                    new Vector3(1.2f, 0.1f, 0.22f), new Color(0.95f, 0.93f, 0.85f));
+                if (bulb != null)
+                {
+                    OpenWorld.VillaKit.Emit(bulb, new Color(0.95f, 0.93f, 0.85f), 1.5f);
+                    bulb.transform.SetParent(seg.transform, true);
+                }
+            }
 
             _segments.Add(seg);
 

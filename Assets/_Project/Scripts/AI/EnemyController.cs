@@ -187,10 +187,16 @@ namespace AdversityRoad.AI
             // 一圈几乎看不见的深褐色——玩家反馈的"看不清敌人的状况、突然就掉血"
             // 有一半是这么来的：警示确实亮了，只是在那种光照下看不见。
             // Unlit 不受光照影响，白天黑夜一样醒目；再关掉投影与接收阴影，避免它自己发黑。
-            Material m = new Material(
-                Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-            m.color = TeleNormal;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
+            //
+            // 【为什么不能直接 Shader.Find("Universal Render Pipeline/Unlit")】
+            // 那个名字在编辑器里找得到，打进安卓包以后是 null——URP/Unlit 既不在
+            // Always Included 名单里，也没有任何随包材质引用它，于是 shader 根本没进包。
+            // 备选的 Unlit/Color 同理。两个都拿不到时 new Material(null) 的结果是一块洋红，
+            // 表现出来就是"每个起手的敌人脚下亮起一坨洋红椭圆"。
+            // SafeShader 会优先用确定进包的 Sprites/Default，并且永远兜得住。
+            // SafeShader 返回的是按颜色缓存的共享材质，而红圈要按招式逐个染色
+            //（见下面 SetTelegraph 里对 _dangerRingMat.color 的写入），所以复制一份自己的。
+            Material m = new Material(World.SafeShader.Unlit(TeleNormal, "tele"));
             rr.sharedMaterial = m;
             rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             rr.receiveShadows = false;

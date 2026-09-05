@@ -191,7 +191,9 @@ namespace AdversityRoad.Shame
                 lr.startWidth = 0.05f;
                 lr.endWidth = 0.05f;
                 lr.useWorldSpace = true;
-                lr.material = GazeConeSystem.ConeMaterial();
+                // 不再复用视线锥的材质：锥体材质本身带 alpha 0.16（地面大面积铺开时才合适），
+                // 传给线条等于把低语链压到几乎看不见。这里要的是同一套无光兜底、不同的底色。
+                lr.material = World.SafeShader.Unlit(Color.white, "whisper");
                 lr.startColor = new Color(0.85f, 0.8f, 0.95f, 0.55f);
                 lr.endColor = new Color(0.65f, 0.6f, 0.85f, 0.35f);
                 lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;

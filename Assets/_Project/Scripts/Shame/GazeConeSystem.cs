@@ -317,17 +317,10 @@ namespace AdversityRoad.Shame
         public static Material ConeMaterial()
         {
             if (_mat != null) return _mat;
-            var sh = Shader.Find("Sprites/Default");
-            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Transparent");
-            if (sh == null) sh = Shader.Find("Standard");
-            _mat = new Material(sh) { name = "GazeCone" };
-            _mat.color = ConeColor;
-            if (_mat.HasProperty("_BaseColor")) _mat.SetColor("_BaseColor", ConeColor);
-            if (_mat.HasProperty("_Surface")) _mat.SetFloat("_Surface", 1f);
-            if (_mat.HasProperty("_ZWrite")) _mat.SetInt("_ZWrite", 0);
-            _mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            _mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            // 兜底链交给 SafeShader：这里原来自己写了一条 Shader.Find 链，最后一档是
+            // Standard——URP 下不受支持，真机包里也根本没有这个 shader，落到那一档就是洋红。
+            _mat = World.SafeShader.Unlit(ConeColor, "gaze");
+            _mat.name = "GazeCone";
             return _mat;
         }
     }

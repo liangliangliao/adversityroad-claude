@@ -289,13 +289,9 @@ namespace AdversityRoad.Shame
         {
             var r = go.GetComponent<MeshRenderer>();
             if (r == null) return;
-            var sh = Shader.Find("Universal Render Pipeline/Lit");
-            if (sh == null) sh = Shader.Find("Standard");
-            if (sh == null) return;
-            var m = new Material(sh);
-            m.color = c;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-            r.sharedMaterial = m;
+            // 走统一兜底：SafeShader 按颜色缓存，钉子挂三枚也只有三份材质，
+            // 而且找不到 URP/Lit 时还有随包基础材质接着，不会静默地不上色。
+            r.sharedMaterial = World.SafeShader.Lit(c);
         }
     }
 }
