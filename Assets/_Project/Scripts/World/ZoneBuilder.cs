@@ -2321,7 +2321,7 @@ namespace AdversityRoad.World
                     new Vector3(0.14f, 3.1f, 1.2f), new Color(0.38f, 0.36f, 0.33f));
             Decoration(ctx, "Shop_ShelfPlank", o + new Vector3(ShelfX, 1.55f, ShelfZ + 0.62f),
                 new Vector3(6f, 3.1f, 0.1f), new Color(0.33f, 0.32f, 0.3f));
-            AddCeilingLight(o + new Vector3(0, 3.6f, -42), new Color(0.95f, 0.9f, 0.8f), 22);
+            AddCeilingLight(o + new Vector3(0, 3.6f, -42), new Color(0.95f, 0.9f, 0.8f), 22, true);
 
             // 欠条台：分期偿还入口。每还一期就要被问一次
             // y=1.2：柜台面在 1.1，台板厚 0.2，正好压在台面上不留缝
@@ -2359,9 +2359,11 @@ namespace AdversityRoad.World
             Player.CameraOcclusionFade.RegisterOccluder(wallW.GetComponent<Renderer>());
             Decoration(ctx, "Corridor_CeilingPan", o + new Vector3(0, 3.9f, -6),
                 new Vector3(9.4f, 0.3f, 48), new Color(0.22f, 0.21f, 0.24f));
+            // 只有中间两盏投影：四盏全开在手机上不划算，两盏已经足够让门框、
+            // 每周门的柱子和地面之间出现接触暗部——形体是靠这个读出来的
             for (int i = 0; i < 4; i++)
                 AddCeilingLight(o + new Vector3(0, 3.4f, -24 + i * 12),
-                    new Color(0.8f, 0.82f, 0.9f), 16);
+                    new Color(0.8f, 0.82f, 0.9f), 16, i == 1 || i == 2);
 
             // 每周门：每扇代表一次追问，必须逐一通过，不可跳过
             for (int i = 0; i < 3; i++)
@@ -2472,7 +2474,7 @@ namespace AdversityRoad.World
             dt.isTrigger = true;
             dt.size = new Vector3(4.2f, 3f, 1.6f);
             doorTrigger.AddComponent<Shame.BroadcastDoor>();
-            AddCeilingLight(o + new Vector3(0, 4f, 26), new Color(0.85f, 0.85f, 0.95f), 20);
+            AddCeilingLight(o + new Vector3(0, 4f, 26), new Color(0.85f, 0.85f, 0.95f), 20, true);
 
             // 长廊延长系统：起点在基础长廊的末端，往 +Z 生长，广播室整体后退
             var growth = Shame.CorridorGrowthSystem.Ensure();
@@ -2541,8 +2543,8 @@ namespace AdversityRoad.World
                 new Vector3(30.4f, 0.3f, 40), new Color(0.2f, 0.2f, 0.23f));
 
             // 夜间半开灯：只开前半边。后排是暗的——低语正是从暗处来的
-            AddCeilingLight(o + new Vector3(0, 3.9f, 10), new Color(0.9f, 0.9f, 0.85f), 24);
-            AddCeilingLight(o + new Vector3(0, 3.9f, -2), new Color(0.85f, 0.86f, 0.82f), 20);
+            AddCeilingLight(o + new Vector3(0, 3.9f, 10), new Color(0.9f, 0.9f, 0.85f), 24, true);
+            AddCeilingLight(o + new Vector3(0, 3.9f, -2), new Color(0.85f, 0.86f, 0.82f), 20, true);
 
             // 课桌组：前排四列 × 后排三排
             for (int row = 0; row < 5; row++)
@@ -2918,11 +2920,12 @@ namespace AdversityRoad.World
             if (go != null && parent != null) go.transform.SetParent(parent.transform, true);
         }
 
-        public static void AddCeilingLight(Vector3 pos, Color color, float range)
+        public static void AddCeilingLight(Vector3 pos, Color color, float range,
+            bool castShadows = false)
         {
             // 强度不再是写死的 1.0：range=40 的顶灯配 intensity=1，10 米外照度只有 1/100，
             // 摆了等于没摆——"拖延线之后的关卡一片黑"最直接的成因。统一走照明口径换算。
-            SceneLighting.MakePoint("Court_Light", pos, color, range);
+            SceneLighting.MakePoint("Court_Light", pos, color, range, null, 1f, castShadows);
         }
 
         /// <summary>责任天平托盘（作为天平根的子物件，便于回正动画）。</summary>
@@ -3557,8 +3560,18 @@ namespace AdversityRoad.World
             // 同 (颜色, 类别, 平铺) 共享一份材质：既上纹理又不炸材质数（移动端友好，
             // 保持 SRP Batcher 生效，不用 MaterialPropertyBlock）。
             SurfaceKind kind = KindOf(go.name);
-            int tile = kind == SurfaceKind.None ? 0 : TileFor(go.transform.localScale);
-            string key = ColorKey(c) + "|" + (int)kind + "|" + tile;
+            Vector2 tile = kind == SurfaceKind.None ? Vector2.one : TileFor(go.transform.localScale);
+
+            // 【同色同类的物件不能长得一模一样】
+            // 一个区里几十块同色墙板共享同一份材质时，它们在屏幕上是像素级相同的——
+            // 人眼对这种重复极其敏感，读出来就是"一堆复制粘贴的盒子"。
+            // 按世界坐标散列出 3 档明度（-5% / 0 / +5%），材质数最多翻三倍，
+            // 但整面墙终于有了深浅。
+            int shade = kind == SurfaceKind.None ? 1 : ShadeBucket(go.transform.position);
+            Color painted = kind == SurfaceKind.None ? c : Vary(c, shade);
+
+            string key = ColorKey(painted) + "|" + (int)kind + "|" +
+                         Mathf.RoundToInt(tile.x) + "x" + Mathf.RoundToInt(tile.y);
 
             if (!MatCache.TryGetValue(key, out var m) || m == null)
             {
@@ -3569,22 +3582,25 @@ namespace AdversityRoad.World
                     if (sh == null) sh = Shader.Find("Standard");
                     m = new Material(sh);
                 }
-                m.color = c;
-                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c);
-                // 轻度光滑度：让表面在天光/主光下有微弱高光与反射，摆脱"纯哑光塑料"观感
-                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", 0.18f);
-                if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", 0.18f);
-                if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", 0f);
+                m.color = painted;
+                if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", painted);
 
-                // 程序化细节纹理（灰度）作为 _BaseMap 与颜色相乘：保留分区配色，叠加真实表面
+                // 【按类别给各自的 PBR 响应】
+                // 上一版所有表面一律 metallic=0 / smoothness=0.18——于是钢管、木桌、抹灰墙
+                // 对光的反应完全一样，材质之间只剩下颜色差别。金属该反光就得让它反光。
+                ProceduralTextures.Response(kind, out float metallic, out float smooth);
+                if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smooth);
+                if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smooth);
+                if (m.HasProperty("_Metallic")) m.SetFloat("_Metallic", metallic);
+
+                // 程序化细节纹理（灰度，已烘进定向浮雕）作为 _BaseMap 与颜色相乘
                 if (kind != SurfaceKind.None)
                 {
                     var alb = ProceduralTextures.Albedo(kind);
                     if (alb != null)
                     {
-                        var sc = new Vector2(tile, tile);
-                        if (m.HasProperty("_BaseMap")) { m.SetTexture("_BaseMap", alb); m.SetTextureScale("_BaseMap", sc); }
-                        if (m.HasProperty("_MainTex")) { m.SetTexture("_MainTex", alb); m.SetTextureScale("_MainTex", sc); }
+                        if (m.HasProperty("_BaseMap")) { m.SetTexture("_BaseMap", alb); m.SetTextureScale("_BaseMap", tile); }
+                        if (m.HasProperty("_MainTex")) { m.SetTexture("_MainTex", alb); m.SetTextureScale("_MainTex", tile); }
                     }
                 }
                 MatCache[key] = m;
@@ -3592,18 +3608,48 @@ namespace AdversityRoad.World
             r.sharedMaterial = m;
         }
 
+        /// <summary>按世界坐标散列出 0/1/2 三档明度分组（同一物件每次进游戏都落在同一档）。</summary>
+        static int ShadeBucket(Vector3 p)
+        {
+            unchecked
+            {
+                int h = Mathf.RoundToInt(p.x * 7f) * 73856093
+                      ^ Mathf.RoundToInt(p.y * 7f) * 19349663
+                      ^ Mathf.RoundToInt(p.z * 7f) * 83492791;
+                return ((h % 3) + 3) % 3;
+            }
+        }
+
+        /// <summary>把颜色按分档轻微提亮/压暗。幅度刻意小：要的是层次，不是花。</summary>
+        static Color Vary(Color c, int bucket)
+        {
+            float k = bucket == 0 ? 0.95f : bucket == 2 ? 1.05f : 1f;
+            return new Color(Mathf.Clamp01(c.r * k), Mathf.Clamp01(c.g * k),
+                             Mathf.Clamp01(c.b * k), c.a);
+        }
+
         /// <summary>颜色量化为稳定字符串键（0..255）。</summary>
         static string ColorKey(Color c) =>
             (int)(c.r * 255) + "," + (int)(c.g * 255) + "," + (int)(c.b * 255);
 
-        /// <summary>按物体尺寸估算平铺次数（约每 3 世界单位一格），限幅避免过密/过疏。</summary>
-        static int TileFor(Vector3 s)
+        /// <summary>
+        /// 按物体尺寸算平铺次数，**两个轴分开算**（约每 2.5 世界单位一格）。
+        ///
+        /// 上一版两轴共用一个数：一面 48×3.8 的长墙拿到的是 9×9，
+        /// 于是纹理在水平方向被拉长到 12 倍——砖不是砖，木纹不是木纹，
+        /// 什么图案铺上去都会糊成一片方向不明的噪声。
+        /// 立方体的默认 UV 是每个面各自 0..1，一份缩放管所有面，
+        /// 所以这里按**最大的两条边**定 U/V：主视面的比例对了，
+        /// 剩下那两个窄端面（本作里基本都是几十厘米）看不出来。
+        /// </summary>
+        static Vector2 TileFor(Vector3 s)
         {
             float a = Mathf.Abs(s.x), b = Mathf.Abs(s.y), c = Mathf.Abs(s.z);
             float max = Mathf.Max(a, Mathf.Max(b, c));
             float min = Mathf.Min(a, Mathf.Min(b, c));
-            float mid = a + b + c - max - min;             // 取两个较大边的均值定平铺
-            return Mathf.Clamp(Mathf.RoundToInt((max + mid) * 0.5f / 3f), 1, 24);
+            float mid = a + b + c - max - min;
+            return new Vector2(Mathf.Clamp(Mathf.RoundToInt(max / 2.5f), 1, 40),
+                               Mathf.Clamp(Mathf.RoundToInt(mid / 2.5f), 1, 40));
         }
 
         /// <summary>按 GameObject 名称把表面归类到对应纹理（发光/玻璃/标牌等保持无纹理）。</summary>

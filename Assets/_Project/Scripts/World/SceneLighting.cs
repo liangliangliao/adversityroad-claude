@@ -54,7 +54,7 @@ namespace AdversityRoad.World
 
         /// <summary>建一盏点光源（强度按 range 自动换算，不再各处手写 1.0）。</summary>
         public static Light MakePoint(string name, Vector3 pos, Color color, float range,
-            Transform parent = null, float intensityScale = 1f)
+            Transform parent = null, float intensityScale = 1f, bool castShadows = false)
         {
             var go = new GameObject(name);
             if (parent != null) go.transform.SetParent(parent, false);
@@ -64,7 +64,20 @@ namespace AdversityRoad.World
             l.range = range;
             l.intensity = PointIntensity(range) * intensityScale;
             l.color = color;
-            l.shadows = LightShadows.None;   // 运行时补光不投影：省性能，也避免自遮挡变黑
+            // 【默认不投影，但可以按盏开】
+            // 全场补光一律不投影是对的——几十盏点光源全开阴影，手机直接跪。
+            // 但"一盏都不投影"的代价同样具体：室内没有任何遮挡关系，桌子底下和桌面一样亮，
+            // 墙角和墙面一样亮，物件与地面之间没有接触暗部。再多的道具摆进去，
+            // 读出来还是一堆漂在均匀光里的盒子——这就是"质感"垮掉的技术原因之一。
+            // 所以给主灯开一个口子：每个室内只让两三盏关键灯投影，形体就回来了，
+            // 而开销仍然是有界的。
+            l.shadows = castShadows ? LightShadows.Soft : LightShadows.None;
+            if (castShadows)
+            {
+                l.shadowStrength = 0.72f;   // 不要全黑的硬阴影：室内还有大量间接反弹
+                l.shadowBias = 0.06f;
+                l.shadowNormalBias = 0.5f;
+            }
             return l;
         }
 
