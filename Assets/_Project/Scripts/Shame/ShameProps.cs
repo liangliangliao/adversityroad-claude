@@ -29,7 +29,7 @@ namespace AdversityRoad.Shame
             string[] options, System.Action<int> onPick)
         {
             if (_open != null) return;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) { if (onPick != null) onPick(-1); return; }
 
             var go = new GameObject("ShameChoicePanel");
@@ -335,7 +335,7 @@ namespace AdversityRoad.Shame
 
         void Build()
         {
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
             _panel = UiUtil.MakePanel(canvas.transform, "WeeklyInquiryPanel",
                 new Vector2(700, 210), new Color(0.07f, 0.07f, 0.09f, 0.94f));

@@ -47,7 +47,7 @@ namespace AdversityRoad.Shame
         public static void Show(string levelId)
         {
             if (_open != null) { _open.Close(); return; }
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
             var go = new GameObject("ShameBriefPanel");
             _open = go.AddComponent<ShameBriefPanel>();

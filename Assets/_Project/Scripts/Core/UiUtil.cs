@@ -7,6 +7,38 @@ namespace AdversityRoad.Core
     /// <summary>运行时 UI 构建工具：字体、文本、面板、按钮、输入框。</summary>
     public static class UiUtil
     {
+        /// <summary>
+        /// 主界面画布（HUD_Canvas）。
+        ///
+        /// 【为什么不能用 FindObjectOfType&lt;Canvas&gt;()】
+        /// 场上同时存在很多 Canvas：HUD、触屏操作层、性能读数、目标板，
+        /// 以及**每一个敌人头顶都有一个世界空间 Canvas**（EnemyStatusBar，
+        /// localScale 0.012）。FindObjectOfType 返回的是任意一个，
+        /// 战场上有敌人时极可能抽中某个敌人的头顶血条。
+        /// 面板于是被挂到那块 1.2% 缩放的世界空间画布上——代码全跑通了、
+        /// 面板也真的建出来了，但它在敌人脑袋上只有几个像素大，玩家看到的是
+        /// "按了没反应"。第八章的欠条台、抽屉、陈述面板、规则卡全踩了这一条。
+        ///
+        /// 这里按名字与渲染模式确定地取那一个：屏幕空间 + 名字为 HUD_Canvas。
+        /// 找不到时退回任意一个屏幕空间画布，仍然不碰世界空间的头顶血条。
+        /// </summary>
+        public static Canvas MainCanvas()
+        {
+            if (_main != null) return _main;
+            var all = Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            Canvas fallback = null;
+            foreach (var c in all)
+            {
+                if (c == null || c.renderMode == RenderMode.WorldSpace) continue;
+                if (c.name == "HUD_Canvas") { _main = c; return _main; }
+                if (fallback == null) fallback = c;
+            }
+            _main = fallback;
+            return _main;
+        }
+
+        static Canvas _main;
+
         public static Font DefaultFont() =>
             Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 

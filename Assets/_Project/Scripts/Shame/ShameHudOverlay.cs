@@ -37,7 +37,7 @@ namespace AdversityRoad.Shame
         public static ShameHudOverlay Ensure()
         {
             if (Instance != null) return Instance;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return null;
             Instance = canvas.gameObject.AddComponent<ShameHudOverlay>();
             Instance.Build(canvas.transform);

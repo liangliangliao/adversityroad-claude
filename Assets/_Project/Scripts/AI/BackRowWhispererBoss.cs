@@ -53,18 +53,36 @@ namespace AdversityRoad.AI
             // 既然血量本来就不由伤害决定，那就**不该有血条**。现在伤害只造成硬直，
             // 血条不画；否认的代价改成看得见的那一种：他指认得更急（见 DenialPressure）。
             // 击败判定回到方案原文：玩家在阶段三完成目标动作，他停止发声。
-            _ec.undying = true;
-            _ec.undyingHint = "他打不倒——他的血不由伤害决定，由你的否认次数维持。" +
-                              "别再否认；在低语活着的时候把三件事做完，他自己会停。";
-            _ec.emotionOverride = "打不倒 · 完成三个目标动作他才会停";
-            GameEvents.RaiseSubtitle("【后排低语者】他不动手，只做三件事：看、说、指。" +
-                "他没有血条——打不倒他。让他停下来的是你把该做的事做完，不是把他打死。");
+            // 【产品决定：他是一个能打死的 Boss】
+            // 方案 8.6.4 原本写的是"血量不由伤害决定，由否认次数与 Exposure 峰值维持"。
+            // 现在口径由产品定：**和其他关卡一样，有血条、会动、打得死**。
+            // 保留的是这一关真正的命题——打死他不等于通关：
+            // 三个目标动作仍然要在低语链活着的时候做完，然后正常步行离场。
+            // 否认仍然为他续命，只是形态换成"他指认得更急"（见 DenialPressure）。
+            _ec.emotionOverride = "打得死 · 但通关靠做完三件事";
+            GameEvents.RaiseSubtitle("【后排低语者】他看、他说、他指。他打得死——" +
+                "但打死他不会让这一关结束：三件事仍然要在低语活着的时候做完，然后走出去。");
             SetPhase(1);
         }
 
+        bool _deathNoted;
+
         void Update()
         {
-            if (_ec == null || _ec.State == EnemyState.Dead || _player == null || _silenced) return;
+            if (_ec == null || _player == null || _silenced) return;
+            if (_ec.State == EnemyState.Dead)
+            {
+                if (!_deathNoted)
+                {
+                    _deathNoted = true;
+                    // 低语链不会因为他倒下就散——链上还有侧目者与放大镜围观者。
+                    // 这一句要说清楚，否则玩家会以为打死 Boss 就该通关了。
+                    GameEvents.RaiseSubtitle("他倒下了。可低语没有停——链上还有别人。" +
+                        "这一关要的仍然是：把三件事做完，然后正常走出去。");
+                    EvaluateNemesis();
+                }
+                return;
+            }
             var ctl = ShameLineController.Instance;
             if (ctl == null) return;
 

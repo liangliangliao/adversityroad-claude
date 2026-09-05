@@ -109,10 +109,11 @@ namespace AdversityRoad.AI
             // 上一版我拿血线卡在 15% 来表达它，那是最坏的做法：玩家看着血条掉到 15%
             // 然后纹丝不动，读出来就是"这敌人有无限的生命"。
             // 现在它不画血条、伤害不进血（照常吃硬直），头顶常驻写着什么才管用。
-            _ec.undying = true;
-            _ec.undyingHint = "讨好回声不是打倒的——它是你自己的讨好行为变的。" +
-                              "别再顺从应答，讨好度掉下去，它自己就散了。";
-            _ec.emotionOverride = "打不倒 · 讨好度降到 0 它才会散";
+            // 【产品决定：它打得死】方案 8.5.3 原写"无法直接击杀"，
+            // 现在口径统一成"和其他关卡一样有血条、打得死"。
+            // 方案给的那条路仍然留着，而且更划算：讨好度归零它会自己散场，
+            // 不用打——两条路都通。
+            _ec.emotionOverride = "打得死 · 讨好度归零它也会自己散";
             if (_ec.dialogue != null) _ec.dialogue.Show("你刚才不是答应得好好的吗？", 2.6f);
         }
 
@@ -377,14 +378,11 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            // 方案 8.6.3 对它写的是"**不可击杀**；认领不终审可使其透明化 12 秒"。
-            // 上一版我给了它 20% 的血线，又在透明期把血线拿掉当作"可以打倒的窗口"——
-            // 那个窗口不在方案里，而那条掉到 20% 就卡住的血条正是"无限生命"的来源。
-            // 现在它不画血条，认领带来的回报是那 12 秒它抢不到你的位。
-            _ec.undying = true;
-            _ec.undyingHint = "心虚投影打不倒——它就是你自己的回避习惯。" +
-                              "用「认领不终审」接住指认，它会透明 12 秒，抢不到你的路线。";
-            _ec.emotionOverride = "打不倒 · 认领可使其透明 12 秒";
+            // 【产品决定：它打得死】方案 8.6.3 原写"不可击杀"，
+            // 现在口径统一成"和其他关卡一样有血条、打得死"。
+            // 认领不终审的回报仍在：命中后它透明 12 秒，抢不到你的路线，
+            // 那 12 秒也正好是安全把它打掉的窗口。
+            _ec.emotionOverride = "打得死 · 认领后它会透明 12 秒";
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
@@ -440,7 +438,7 @@ namespace AdversityRoad.AI
             {
                 _transparentUntil = -1f;
                 _ec.passive = false;
-                _ec.emotionOverride = "打不倒 · 认领可使其透明 12 秒";
+                _ec.emotionOverride = "打得死 · 认领后它会透明 12 秒";
             }
             if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 

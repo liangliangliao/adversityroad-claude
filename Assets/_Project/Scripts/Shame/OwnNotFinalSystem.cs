@@ -345,7 +345,7 @@ namespace AdversityRoad.Shame
         void EnsurePanel()
         {
             if (_panel != null) return;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
 
             // 摆在屏幕正下方偏上：指认是要正面接住的动作，提示不该躲在角落里。
