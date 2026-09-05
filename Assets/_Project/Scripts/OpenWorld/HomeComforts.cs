@@ -70,15 +70,12 @@ namespace AdversityRoad.OpenWorld
             s.canLie = canLie || lieOnly;
             s.lieOnly = lieOnly;
             s.label = label;
+            // 量家具本体：顶面 = 座面，中心 = 骨盆落点
+            var b = Measure(go);
             // 【交互距离必须短】原来床是 3.6 米、椅子 2.8 米——站在三米开外按下去，
             // 人要么被拖过去（那就是"漂移"），要么原地坐在半空。
             // 坐这件事本来就要求站到跟前，所以按家具尺寸算：贴到边上再多留半米。
-            var b = Measure(go);
-            float halfSpan = Mathf.Max(b.extents.x, b.extents.z);
-            s.range = halfSpan + 0.9f;
-
-            // 量家具本体：顶面 = 座面，中心 = 骨盆落点
-            var b = Measure(go);
+            s.range = Mathf.Max(b.extents.x, b.extents.z) + 0.9f;
             s.SurfaceY = b.max.y + surfaceLift;
             s.SurfaceCenter = new Vector3(b.center.x, s.SurfaceY, b.center.z);
             s.SurfaceExtents = b.extents;

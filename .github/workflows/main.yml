@@ -9,11 +9,16 @@ on:
 
 jobs:
   # 静态检查：六条自制 linter，专打 Unity 构建要跑二十分钟才报出来的编译错。
-  # 覆盖 CS8641 / CS0136 / CS1010 / CS0103 / CS0619 / CS1061 六类——
+  # 覆盖 CS8641 / CS0136 / CS1010 / CS0103 / CS0619 / CS1061 / CS0128 七类——
   # 它们全都出现过在这个仓库的 CI 红上，每次都是等一次完整 Android 构建才知道。
   # 这个作业不到一分钟，放在最前面，红了就不必再等后面两个。
   # 另加一条动画链路审计（tools/animchain.py）：片段掉引用是无声的，
   # 编译器不会管，只有跑起来才发现"这个动作没动画"。
+  #
+  # csdup 是为一次真实的红 CI 补的（215d646）：往方法中间插了一段 `var b = ...`，
+  # 而这个方法下面本来就有一个同名的 `var b`。error CS0128，而当时全套 lint 全绿——
+  # csshadow 查的是"局部遮蔽字段"，查不到同作用域重复声明。它按花括号维护作用域栈，
+  # 兄弟作用域各自压弹，所以并列的两个 if 块里各声明一个同名变量不会误报。
   #
   # csshadow 曾因 46 条误报被踢出门禁：它把 for/foreach 头部声明的变量记在了
   # 外层块上，而 C# 给它们的作用域只是那条语句本身。修正作用域模型后全库 0 误报，
@@ -25,7 +30,7 @@ jobs:
       - name: C# 静态检查
         run: |
           set -e
-          for t in cslint csquote csident csobsolete csmember csmissing csshadow uioverlap; do
+          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup uioverlap; do
             echo "===== $t ====="
             python3 tools/$t.py
           done
