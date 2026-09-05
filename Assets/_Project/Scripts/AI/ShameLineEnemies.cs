@@ -265,7 +265,16 @@ namespace AdversityRoad.AI
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
-        void Start() => gameObject.AddComponent<Shame.WhisperNode>().rank = 2;
+        void Start()
+        {
+            // 方案 8.6.3 给它的行为只有一条：「把任意一次玩家失误放大为全场事件，
+            // Exposure +15」，反制是「在其读条完成前完成目标动作」。**没有近战**。
+            // 上一版没设 passive，于是它一边读条一边追着玩家打——
+            // 而玩家这时正需要站定长按目标动作，等于被逼着二选一。
+            _ec.passive = true;
+            _ec.emotionOverride = "读条中 · 在它说完之前把事做完";
+            gameObject.AddComponent<Shame.WhisperNode>().rank = 2;
+        }
 
         void Update()
         {
@@ -315,7 +324,15 @@ namespace AdversityRoad.AI
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
-        void Start() => gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
+        void Start()
+        {
+            // 方案 8.6.3：「双人单位，**交替发声**；击倒其一，另一人接管并加速」。
+            // 它的招式是发声，不是动手——所以 passive（不追不打），
+            // 但照常掉血、照常能被击倒，"击倒其一"这条机制才成立。
+            _ec.passive = true;
+            _ec.emotionOverride = "交替发声 · 击倒其一，另一人会接管";
+            gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
+        }
 
         void Update()
         {

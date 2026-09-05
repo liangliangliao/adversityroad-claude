@@ -118,6 +118,15 @@ namespace AdversityRoad.Player
             // 上限只压【单次】，连续挨打照样会死——惩罚仍在，只是变得可读。
             dmg = Mathf.Min(dmg, maxHp * MaxSingleHitRatio);
 
+            // 【第八章目标动作的长按保护】
+            // 8-2 的三个目标动作要求站定按住 3~5 秒，方案写死的失败条件只有一条：
+            // 中途松手。它考的是"被注视、被说话时还能不能把手按住"，
+            // 不是"挨揍的时候还能不能把手按住"——8.7 也把本章 Physical 上限压到 15%。
+            // 没有这一条，玩家站着按键的那几秒会被围殴致死，于是三个目标动作
+            // 一个都做不完，整套规则在实机上等于不存在。
+            // 章外恒为 1（Holding 只有第八章的目标物会置位），对前七章零影响。
+            if (Shame.ObjectiveStation.Holding) dmg *= 0.25f;
+
             float before = hp;
             hp = Mathf.Max(0, hp - dmg);
 
