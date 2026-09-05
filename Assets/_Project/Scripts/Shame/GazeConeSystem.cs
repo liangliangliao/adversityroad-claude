@@ -140,6 +140,8 @@ namespace AdversityRoad.Shame
         void Update()
         {
             if (_visual == null) return;
+            // 玩家不在本章时锥体不必每帧转向与刷材质（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position, 80f)) return;
             // 锥体贴着地面转：只取水平朝向，不跟着抬头低头翻上天
             _visual.rotation = Quaternion.LookRotation(Facing(), Vector3.up);
 

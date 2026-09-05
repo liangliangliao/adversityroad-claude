@@ -160,6 +160,30 @@ namespace AdversityRoad.Shame
             World.ZoneBuilder.CurrentZoneId == "corridor" ||
             World.ZoneBuilder.CurrentZoneId == "classroom";
 
+        /// <summary>
+        /// 这个第八章物件此刻该不该动。
+        ///
+        /// 【为什么每一个第八章组件都必须先问这一句】
+        /// 全部区域是在进游戏时**一次性建好**的（ZoneBuilder.BuildAll），
+        /// 所以第 25/26 区里的每一个敌人、每一个系统，从主菜单进游戏的那一刻起
+        /// 就在跑自己的 Update——不管玩家人在哪。
+        ///
+        /// 后果不是"多跑几行代码"这么轻：
+        ///   · 放大镜围观者每 16 秒播一次"开始读条"的字幕——玩家在自己家里也会看到；
+        ///   · 后排低语组每 4.5~7 秒给玩家加 3 点暴露度——序章就开始涨，一路涨到显形。
+        /// 玩家的原话是"这个提示为什么在任何场所都会提示，包括我的住所中"。
+        ///
+        /// 判断分两层：**玩家在不在这一章**（不在就一律不动），
+        /// 以及**离得够不够近**（两关同属一章，走廊里的单位不该被教室的事情惊动）。
+        /// </summary>
+        public static bool ActiveNear(Vector3 pos, float radius = 60f)
+        {
+            if (!InChapter) return false;
+            var p = AdversityRoad.Core.ActorRegistry.Player;
+            if (p == null) return false;
+            return (p.transform.position - pos).sqrMagnitude <= radius * radius;
+        }
+
         /// <summary>当前在哪一关（不在章内返回空串）。</summary>
         public static string CurrentLevelId =>
             World.ZoneBuilder.CurrentZoneId == "corridor" ? LevelDebtCorridor :

@@ -69,6 +69,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _player == null || _silenced) return;
             if (_ec.State == EnemyState.Dead)
             {

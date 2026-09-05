@@ -95,7 +95,7 @@ namespace AdversityRoad.UI
             // 挪到 -650 与 -822 之间那段空档里。
             // -560 这一档是空的：上一颗在 -470（占到 -505），下一对在 -650（从 -615 起）。
             // 性能读数原来根本没有开关，只能靠改代码关掉——它盖住右半个屏幕。
-            _perfBtn = MakeToggle("性能读数（FPS / 帧时 / 移动诊断，默认关）", -560, () =>
+            _perfBtn = MakeToggle("调试数据（FPS / 帧时 / 穿墙位移 / 漂移 / 动画状态）", -560, () =>
             {
                 PerfHud.Enabled = !PerfHud.Enabled;
                 Refresh();

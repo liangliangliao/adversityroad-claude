@@ -35,6 +35,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead || _player == null) return;
             if (_fired >= maxAccusations) return;
             if (Vector3.Distance(transform.position, _player.position) > 16f) return;
@@ -81,6 +84,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             _cd -= Time.deltaTime;
             if (_cd > 0f) return;
@@ -119,6 +125,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             if (Time.time < _next) return;
             _next = Time.time + 1f;
@@ -170,6 +179,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_player == null || _ec == null || _ec.State == EnemyState.Dead) return;
             if (Vector3.Distance(transform.position, _player.position) > radius) return;
             var ex = ExposureSystem.Instance;
@@ -229,6 +241,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null) return;
 
             // 被打倒了：这道视线不是消失，是移开一会儿。20 秒后有人从别处补上。
@@ -279,6 +294,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             var ctl = ShameLineController.Instance;
 
@@ -337,6 +355,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null) return;
             if (_ec.State == EnemyState.Dead) return;
 
@@ -432,6 +453,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _player == null || _ec.State == EnemyState.Dead) return;
 
             if (_transparentUntil > 0f && Time.time >= _transparentUntil)
@@ -505,6 +529,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_hostile || _ec == null || _player == null) return;
 
             if (_revealAt < 0f)
@@ -558,6 +585,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _player == null) return;
             var pc = _player.GetComponent<PlayerController>();
 
