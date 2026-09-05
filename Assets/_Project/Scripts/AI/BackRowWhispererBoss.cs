@@ -44,9 +44,12 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 伤害推不动他：他的血由玩家的否认与暴露峰值维持，不由刀剑决定
-            _ec.externalDamageMult = 0.1f;
-            _ec.minHpFloor = 0.05f;
+            // 【他的血由否认次数维持，但刀是能砍进去的】
+            // 原来伤害被压到 10%，等于两道闸门叠着——玩家砍半天血条不动，
+            // 只会读成"这敌人打不死"。真正的机制是**回血**：每否认一次他回一口气。
+            // 伤害照常结算，于是"停止否认就能把他磨下去"变成一条玩家能自己发现的路，
+            // 而这条路的终点正好是方案要的那句话：他停止发声。
+            _ec.minHpFloor = 0.12f;
             // 他的血不由伤害决定，而由否认次数与暴露峰值维持（方案 8.6.4）。
             // 这一条必须写在头顶，否则"砍半天不掉血"只会被读成打不死。
             _ec.emotionOverride = "血由你的否认维持 · 刀砍不动";
@@ -62,6 +65,10 @@ namespace AdversityRoad.AI
             if (ctl == null) return;
 
             TickBloodFromDenial();
+
+            // 打到血线：他不再说话了。方案要的"他停止发声"本来就有两条路——
+            // 在阶段三完成目标动作，或者干脆把他磨到说不出话。两条都算数。
+            if (_ec.HpRatio <= _ec.minHpFloor + 0.01f) { Silence(); return; }
 
             // 阶段随目标动作推进，而不是随血量推进——这一关的进度条是"做完了几件事"
             int want = ctl.ObjectivesDone >= 2 ? 3 : ctl.ObjectivesDone >= 1 ? 2 : 1;

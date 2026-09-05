@@ -104,8 +104,10 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.minHpFloor = 0.15f;   // 无法直接击杀（方案 8.5.3）——但打得动，会硬直
-            _ec.emotionOverride = "砍不死 · 降讨好度才削得动";
+            // "降讨好度是唯一削弱方式"（方案 8.5.3）——注意是**削弱**，不是"永远打不死"。
+            // 讨好度还在的时候有血线护着；讨好度归零它就没有护体了，照常能被打倒。
+            _ec.minHpFloor = 0.15f;
+            _ec.emotionOverride = "讨好度归零前砍不动它";
             if (_ec.dialogue != null) _ec.dialogue.Show("你刚才不是答应得好好的吗？", 2.6f);
         }
 
@@ -127,9 +129,17 @@ namespace AdversityRoad.AI
             if (t <= 0.02f && !_ec.passive)
             {
                 _ec.passive = true;
-                GameEvents.RaiseSubtitle("讨好回声安静下来了——它靠的从来不是自己的力气。");
+                _ec.minHpFloor = 0f;      // 护体没了：这时它是能被打倒的
+                _ec.emotionOverride = "讨好度归零 · 现在打得倒了";
+                GameEvents.RaiseSubtitle("讨好回声安静下来了——它靠的从来不是自己的力气，" +
+                    "现在你打得倒它了。");
             }
-            else if (t > 0.02f) _ec.passive = false;
+            else if (t > 0.02f)
+            {
+                _ec.passive = false;
+                _ec.minHpFloor = 0.15f;
+                _ec.emotionOverride = "讨好度归零前砍不动它";
+            }
         }
     }
 
@@ -351,8 +361,10 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.minHpFloor = 0.2f;      // 不可击杀（方案 8.6.3）——认领成功后它会透明 12 秒
-            _ec.emotionOverride = "砍不死 · 认领后它会透明";
+            // 认领成功后它会透明 12 秒（方案 8.6.3）——那 12 秒里它也**打得倒**：
+            // 心虚被认领接住之后本来就没有落点了，这时还砍不动就纯粹是在耗玩家。
+            _ec.minHpFloor = 0.2f;
+            _ec.emotionOverride = "认领之后才打得倒";
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
@@ -372,7 +384,12 @@ namespace AdversityRoad.AI
             {
                 _lastOwnCount = ShameLine.Data.ownCount;
                 _transparentUntil = Time.time + 12f;
-                if (_ec != null) _ec.passive = true;
+                if (_ec != null)
+                {
+                    _ec.passive = true;
+                    _ec.minHpFloor = 0f;    // 透明期＝可以被打倒的窗口
+                    _ec.emotionOverride = "透明中 · 这 12 秒能打倒它";
+                }
                 GameEvents.RaiseSubtitle("心虚投影透明了 12 秒——认领之后，它没有东西可以预判。");
             }
         }
@@ -404,6 +421,8 @@ namespace AdversityRoad.AI
             {
                 _transparentUntil = -1f;
                 _ec.passive = false;
+                _ec.minHpFloor = 0.2f;
+                _ec.emotionOverride = "认领之后才打得倒";
             }
             if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 

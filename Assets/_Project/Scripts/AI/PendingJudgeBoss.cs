@@ -46,9 +46,12 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 不可击杀：打他只会硬直。血线保护把"打赢"这条路直接关掉
-            _ec.minHpFloor = 0.35f;
-            _ec.externalDamageMult = 0.15f;
+            // 【"不可击杀"不等于"刀砍不动"】
+            // 方案要的是"打赢他不等于结束"——终结条件在广播室那扇门上，不在他的血条上。
+            // 原来的写法把伤害压到 15%、血线又卡在 35%：两道闸门叠在一起，
+            // 玩家砍十几刀血条纹丝不动，读到的只有"这敌人有问题"。
+            // 现在伤害照常结算，他也照常硬直、照常被打崩——只是打崩他不会让案子结案。
+            _ec.minHpFloor = 0.12f;
             // 【他不能有血条】方案 8.5.4：屏幕上方是悬案计时器与已延期次数。
             // 留着一根几乎不动的血条，玩家读到的只会是"这个敌人打不死"——
             // 而这一关想说的是"打赢他不等于结束"。这两句话差得很远。
@@ -57,9 +60,26 @@ namespace AdversityRoad.AI
                 "打他没有用（他没有血条，只有悬案计时器）。广播室的门在长廊尽头，一直开着。");
         }
 
+        bool _yielded;
+
         void Update()
         {
             if (_ec == null || _ec.State == EnemyState.Dead || _player == null) return;
+
+            // 打到血线：他不再抵抗了。战斗有了结论——但案子没有。
+            // 这一下是玩家该拿到的反馈；少了它，"打不死"就是唯一的读法。
+            if (!_yielded && _ec.HpRatio <= _ec.minHpFloor + 0.01f)
+            {
+                _yielded = true;
+                _ec.pacified = true;
+                _ec.emotionOverride = "他不还手了 · 案子照样挂着";
+                if (_ec.dialogue != null) _ec.dialogue.Show("……随你怎么打。", 3f);
+                GameEvents.RaiseSubtitle("他坐下了，不再还手——可你手上什么都没多。" +
+                    "案子要结，还得你自己走进广播室。");
+                return;
+            }
+            if (_yielded) return;
+
             var timer = PendingCaseTimer.Instance;
             if (timer == null || !timer.Running) return;
             if (_busy || _ec.State == EnemyState.Stagger) return;

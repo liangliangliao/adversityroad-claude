@@ -237,7 +237,10 @@ namespace AdversityRoad.Shame
         readonly List<PendingRelay> _relays = new List<PendingRelay>();
 
         /// <summary>侧目者被打倒后，多久有人从别处补上这道视线。</summary>
-        public const float RelayDelay = 20f;
+        public const float RelayDelay = 45f;
+
+        /// <summary>补位的下限：场上少于这么多道注视时才会有人接上。</summary>
+        public const int MinGaze = 2;
 
         /// <summary>
         /// 登记一次"注视补位"。
@@ -269,8 +272,21 @@ namespace AdversityRoad.Shame
             }
         }
 
+        /// <summary>场上还活着几道注视。</summary>
+        int LiveCones()
+        {
+            int n = 0;
+            foreach (var c in _cones) if (c != null && c.isActiveAndEnabled) n++;
+            return n;
+        }
+
         void Respawn(PendingRelay r)
         {
+            // 【补位要克制】不断刷新的敌人是最容易被读成"打不死"的东西。
+            // 只有当场上注视已经少于两道时才补一个回来——玩家清掉一两个侧目者
+            // 必须换来实打实的喘息，而不是"刚打完又站起来一个"。
+            if (LiveCones() >= MinGaze) return;
+
             // 从**别处**站出来：沿原位横向挪开几米，读作"有人换了个位置继续看"
             Vector3 side = Vector3.Cross(Vector3.up, (r.lookAt - r.at).normalized);
             if (side.sqrMagnitude < 0.01f) side = Vector3.right;
