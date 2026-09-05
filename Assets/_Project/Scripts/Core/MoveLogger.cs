@@ -38,8 +38,14 @@ namespace AdversityRoad.Core
     /// </summary>
     public class MoveLogger : MonoBehaviour
     {
-        /// <summary>总开关（设置面板可切）。关掉即停止采样，已写的内容保留。</summary>
-        public static bool Enabled = true;
+        /// <summary>
+        /// 总开关（设置面板可切）。关掉即停止采样，已写的内容保留。
+        ///
+        /// 【默认改为关闭】它每帧采样并往磁盘写状态行，是给开发排查移动问题用的。
+        /// 默认开着等于每个玩家的包都在后台写诊断日志——没有收益，只有开销。
+        /// 需要排查时在设置面板里打开。
+        /// </summary>
+        public static bool Enabled;
 
         /// <summary>当前日志文件的完整路径（设置面板显示用）。</summary>
         public static string CurrentPath { get; private set; } = "";

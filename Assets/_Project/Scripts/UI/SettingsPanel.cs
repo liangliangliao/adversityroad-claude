@@ -17,7 +17,7 @@ namespace AdversityRoad.UI
         GameObject _panel;
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
-        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn;
+        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn;
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
@@ -93,6 +93,13 @@ namespace AdversityRoad.UI
             // 【-560 这一行本来是三个控件叠在一起】骨骼后处理/单片段两颗 545 宽的
             // 按钮在 -564，把这颗 760 宽的整个盖住了——"调试模式"一直点不到。
             // 挪到 -650 与 -822 之间那段空档里。
+            // -560 这一档是空的：上一颗在 -470（占到 -505），下一对在 -650（从 -615 起）。
+            // 性能读数原来根本没有开关，只能靠改代码关掉——它盖住右半个屏幕。
+            _perfBtn = MakeToggle("性能读数（FPS / 帧时 / 移动诊断，默认关）", -560, () =>
+            {
+                PerfHud.Enabled = !PerfHud.Enabled;
+                Refresh();
+            });
             _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -736, () =>
             {
                 GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
@@ -391,6 +398,8 @@ namespace AdversityRoad.UI
                 _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
             if (_debugBtn != null)
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
+            if (_perfBtn != null)
+                _perfBtn.GetComponent<Image>().color = PerfHud.Enabled ? On : Off;
             if (_lockModeBtn != null)
             {
                 _lockModeBtn.GetComponentInChildren<Text>().text =
