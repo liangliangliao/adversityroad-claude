@@ -1204,6 +1204,8 @@ namespace AdversityRoad.Core
             sysMenu.Add("角色", "角色", characterPanel.Toggle);
             sysMenu.Add("角色", "画像", profilePanel.Toggle);
             sysMenu.Add("角色", "逆境图谱", advProfilePanel.Toggle);
+            var msTodoPanel = UI.MsTodoPanel.Create(canvasGo.transform);
+            sysMenu.Add("目标", "To Do 同步", msTodoPanel.Toggle);
             sysMenu.Add("系统", "设置", settingsPanel.Toggle);
             sysMenu.Add("系统", "电视", tvPanel.Toggle);
             sysMenu.Add("系统", "悬浮小窗", () => Platform.PipMode.Enter());
