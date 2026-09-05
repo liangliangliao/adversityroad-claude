@@ -550,7 +550,22 @@ namespace AdversityRoad.Shame
     /// </summary>
     public class ClassroomExit : MonoBehaviour
     {
-        void OnTriggerEnter(Collider other)
+        float _nextTry;
+        float _lastNag = -99f;
+
+        // OnTriggerEnter 只在"踏进来的那一帧"响一次。玩家如果是**站在门口那块地上**
+        // 把最后一个目标动作做完的，进入事件早就用掉了，之后站着不动门不会有任何反应——
+        // 那就是一个"人已经在门口却通不了关"的死角。加一条 Stay（每 0.5 秒一次）兜住它。
+        void OnTriggerStay(Collider other)
+        {
+            if (Time.time < _nextTry) return;
+            _nextTry = Time.time + 0.5f;
+            TryExit(other);
+        }
+
+        void OnTriggerEnter(Collider other) => TryExit(other);
+
+        void TryExit(Collider other)
         {
             var player = other.transform.root.GetComponentInChildren<PlayerController>();
             if (player == null) return;
@@ -558,7 +573,14 @@ namespace AdversityRoad.Shame
             if (ctl == null) return;
             if (!ctl.WalkOutReady)
             {
-                GameEvents.RaiseSubtitle("还有事没做完。门在这里，但今天不是从这里跑掉的日子。");
+                // 这句话每 6 秒最多说一次：加了 OnTriggerStay 之后，
+                // 站在门口不动会把它每半秒重播一遍，字幕直接被刷屏。
+                if (Time.time - _lastNag > 6f)
+                {
+                    _lastNag = Time.time;
+                    GameEvents.RaiseSubtitle("还有事没做完（" + ctl.ObjectivesDone +
+                        "/3）。门在这里，但今天不是从这里跑掉的日子。");
+                }
                 return;
             }
             // 用「有没有在冲刺/翻滚」判定：这是动作层面的事实，不是玩家的自述

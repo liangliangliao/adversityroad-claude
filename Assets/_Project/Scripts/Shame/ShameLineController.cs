@@ -420,6 +420,11 @@ namespace AdversityRoad.Shame
             }
             else
             {
+                // 跑出去也是走出去了：方案 8.6.1 说的是"奔跑离场判定为回避，
+                // **本关记为普通结算**"——是结算降级，不是没完成。
+                // 这里同样要记完成，否则 HUD 那行目标永远停在 2/3，
+                // 玩家已经通关了却以为自己失败了。
+                CompleteObjective(ObjWalkOut);
                 d.outcomeRank = "normal";
                 GameEvents.RaiseSubtitle("你跑出去了。也算走出去了——只是这一次，是躲出去的。");
                 Adversity.AdversityProfile.Observe("公开注视", "撤退 / 绕行概率上升", true,
