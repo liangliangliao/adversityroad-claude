@@ -129,6 +129,14 @@ namespace AdversityRoad.Shame
         /// <summary>已偿还比例 0-1。</summary>
         public float Repaid { get; private set; }
 
+        /// <summary>本关欠条台的偿还进度（HUD 目标行读这个；没有台子时为 0）。</summary>
+        public static float Progress => _live != null ? _live.Repaid : 0f;
+
+        static DebtDesk _live;
+
+        void OnEnable() { _live = this; }
+        void OnDisable() { if (_live == this) _live = null; }
+
         int _tier = 1;   // 0 低 / 1 中 / 2 高
         static readonly float[] Amounts = { 8f, 16f, 28f };
         static readonly string[] TierNames = { "低额", "中额", "高额" };

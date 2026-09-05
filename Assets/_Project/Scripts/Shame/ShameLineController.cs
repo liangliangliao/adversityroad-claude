@@ -71,7 +71,47 @@ namespace AdversityRoad.Shame
             if (string.IsNullOrEmpty(_levelId)) return;
 
             TickSelfWorthZero();
+            TickObjectiveLine();
         }
+
+        float _nextObjectiveTick;
+
+        /// <summary>
+        /// HUD 顶部那行「还差什么」。
+        ///
+        /// 【为什么必须常驻】
+        /// 上一版这两关一个字都没往 HUDController.SetObjective 里写——那个接口全场只有
+        /// 开放世界的 SiteGate 在用。玩家进关看到的还是主线任务行（"前往训练武馆"），
+        /// 于是"我不知道这关要我干什么"是必然结果，不是玩家的问题。
+        ///
+        /// 【8-1 的措辞边界】
+        /// 方案 8.5 禁止用任务提示把玩家推进广播室的门。所以 8-1 这一行只报**进度与事实**
+        /// （还了几期、长廊几段、门是开着的），不写"前往广播室"，不给方向，不催。
+        /// </summary>
+        void TickObjectiveLine()
+        {
+            if (Time.unscaledTime < _nextObjectiveTick) return;
+            _nextObjectiveTick = Time.unscaledTime + 0.4f;
+
+            if (_levelId == ShameLine.LevelDebtCorridor)
+            {
+                int repaid = Mathf.RoundToInt(DebtDesk.Progress * 100f);
+                UI.HUDController.SetObjective(
+                    "◆ 8-1 欠条长廊　已还 " + repaid + "%　长廊 " +
+                    (ShameLine.Data.corridorSegments + 4) + " 段　" +
+                    "广播室的门一直开着——何时进去做自行陈述，由你决定");
+            }
+            else if (_levelId == ShameLine.LevelEchoClassroom)
+            {
+                UI.HUDController.SetObjective(
+                    "◆ 8-2 回声教室　目标 " + _objectivesDone.Count + "/3　" +
+                    Mark(ObjReturn) + "归还　" + Mark(ObjOwnWork) + "完成本职　" +
+                    Mark(ObjWalkOut) + "步行离场（不要冲刺）　" +
+                    "低语不会停，被看着也要做完");
+            }
+        }
+
+        string Mark(string id) => _objectivesDone.Contains(id) ? "✓" : "·";
 
         void EnterLevel(string levelId)
         {
@@ -104,6 +144,7 @@ namespace AdversityRoad.Shame
                 WhisperChainSystem.Ensure().EnableForLevel(false);
                 GameEvents.RaiseSubtitle("【8-1 欠条长廊 / 未播出的广播室】" +
                     "偿还需要钱，说明真相需要暴露，隐瞒可以解决当下——代价是长廊变长。");
+                ShameBriefPanel.ShowOnEnter(levelId);
             }
             else if (levelId == ShameLine.LevelEchoClassroom)
             {
@@ -113,11 +154,13 @@ namespace AdversityRoad.Shame
                 GameEvents.RaiseSubtitle("【8-2 二十元回声教室】" +
                     "指控是成立的。不能靠否认通关，也不能靠让所有人闭嘴通关——" +
                     "在低语活着的时候，把三件事做完，然后正常走出去。");
+                ShameBriefPanel.ShowOnEnter(levelId);
             }
         }
 
         void ExitLevel(string levelId)
         {
+            UI.HUDController.SetObjective("");
             var exposure = ExposureSystem.Instance;
             if (exposure != null) exposure.CarryToNextLevel();
             var whisper = WhisperChainSystem.Instance;
