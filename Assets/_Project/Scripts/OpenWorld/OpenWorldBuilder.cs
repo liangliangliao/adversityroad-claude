@@ -418,7 +418,9 @@ namespace AdversityRoad.OpenWorld
         {
             var go = new GameObject("Sign_" + text);
             go.transform.position = pos;
-            World.WorldText.Attach(go, text, 52, 0.08f, new Color(0.95f, 0.92f, 0.8f));
+            // 同上：区域名是悬空的，必须配底板才读得出来
+            World.WorldText.Plate(
+                World.WorldText.Attach(go, text, 52, 0.08f, new Color(0.95f, 0.92f, 0.8f)));
             go.AddComponent<FaceCamera>();
         }
     }

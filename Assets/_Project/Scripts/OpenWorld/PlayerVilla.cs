@@ -418,16 +418,23 @@ namespace AdversityRoad.OpenWorld
 
             // —— 一整面墙的目标看板 ——
             // 看板挂在客厅南墙、面朝北——大门在北侧，一进屋抬头就是它
-            var frame = VillaKit.Box("GoalBoard_Frame", c + new Vector3(0, 2.3f, -11.6f),
-                new Vector3(17f, 4.6f, 0.34f), Dark);
-            VillaKit.Deco("GoalBoard_Screen", c + new Vector3(0, 2.3f, -11.4f),
-                new Vector3(16.2f, 4.0f, 0.1f), new Color(0.07f, 0.11f, 0.17f));
+            // 【铺满整面墙】上一版是 17×4.6 挂在 y=2.3——4.6 米高的板子在净高 3.6 的房间里
+            // 上下都戳出去了（顶进吊顶、底沉进地板），看起来反而不像一整面墙，
+            // 而像一块尺寸不对的板。现在按房间真实净高来：
+            // 边框 y 从 0.10 到 3.62（高 3.52、中心 1.86），宽度从 17 拉到 21.4——
+            // 客厅沙发在 x=±7.4，21.4 的板子两侧各留出一米多，不会捅进侧墙。
+            const float BoardW = 21.4f, BoardH = 3.52f, BoardY = 1.86f;
+            var frame = VillaKit.Box("GoalBoard_Frame", c + new Vector3(0, BoardY, -11.6f),
+                new Vector3(BoardW, BoardH, 0.34f), Dark);
+            VillaKit.Deco("GoalBoard_Screen", c + new Vector3(0, BoardY, -11.4f),
+                new Vector3(BoardW - 0.7f, BoardH - 0.5f, 0.1f), new Color(0.07f, 0.11f, 0.17f));
             var gb = frame.AddComponent<Combat.GoalBoard>();
             gb.interactRange = 9f;
             HomeFixture.Attach(frame, HomeFixtureKind.GoalBoard);
-            GoalBoardDisplay.Attach(frame, c + new Vector3(0, 2.3f, -11.35f), 16.2f, 4.0f, true);
-            for (int i = -7; i <= 7; i++)
-                VillaKit.Deco("BoardLed", c + new Vector3(i * 1.1f, 0.28f, -11.3f),
+            GoalBoardDisplay.Attach(frame, c + new Vector3(0, BoardY, -11.35f),
+                BoardW - 0.7f, BoardH - 0.5f, true);
+            for (int i = -9; i <= 9; i++)
+                VillaKit.Deco("BoardLed", c + new Vector3(i * 1.1f, 0.06f, -11.3f),
                     new Vector3(0.5f, 0.06f, 0.2f), new Color(0.35f, 0.75f, 1f));
 
             // 看板旁边的兵器架：出门取剑、回家放下（见 WeaponRack）
@@ -1206,14 +1213,12 @@ namespace AdversityRoad.OpenWorld
                 0.28f, 0.05f, Metal, Vector3.zero), Metal);
         }
 
-        static void Plant(WorldContext ctx, Vector3 at)
-        {
-            VillaKit.Cyl("PlantPot", at, 0.36f, 0.55f, new Color(0.52f, 0.36f, 0.28f), true);
-            VillaKit.Cyl("PlantPotLip", at + new Vector3(0, 0.5f, 0), 0.4f, 0.08f, new Color(0.46f, 0.31f, 0.24f));
-            VillaKit.Sph("PlantLeaf", at + new Vector3(0, 1.15f, 0), 1.25f, new Color(0.22f, 0.46f, 0.26f));
-            VillaKit.Sph("PlantLeaf", at + new Vector3(0.3f, 1.62f, -0.18f), 0.8f, new Color(0.28f, 0.54f, 0.31f));
-            VillaKit.Sph("PlantLeaf", at + new Vector3(-0.28f, 1.5f, 0.22f), 0.66f, new Color(0.20f, 0.42f, 0.24f));
-        }
+        /// <summary>
+        /// 盆栽。原来是三颗固定的绿球，从头到尾不会变；
+        /// 现在交给 <see cref="PottedPlant"/>：靠近按【用】/ E 浇水，
+        /// 幼苗 → 长叶 → 枝繁叶茂 → 开花 → 结果，进度存本机。
+        /// </summary>
+        static void Plant(WorldContext ctx, Vector3 at) => PottedPlant.Create(at);
 
         static void FloorLamp(WorldContext ctx, Vector3 at)
         {

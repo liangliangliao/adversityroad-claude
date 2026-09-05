@@ -1163,7 +1163,7 @@ namespace AdversityRoad.World
 
             var tmGo = new GameObject("EchoCaseLabel");
             tmGo.transform.position = basePos + new Vector3(0, 3.9f, 0);
-            WorldText.Attach(tmGo, label, 44, 0.05f, new Color(0.8f, 0.82f, 0.95f));
+            WorldText.Plate(WorldText.Attach(tmGo, label, 44, 0.05f, new Color(0.8f, 0.82f, 0.95f)));
             tmGo.AddComponent<FaceCamera>();
 
             var echoCase = pedestal.AddComponent<Combat.EchoDisplayCase>();
@@ -1659,7 +1659,7 @@ namespace AdversityRoad.World
                     new Vector3(0.3f, 4f, 2.6f), new Color(0.22f, 0.2f, 0.24f));
                 var tmGo = new GameObject("PayDoorSign");
                 tmGo.transform.position = o + new Vector3(side * 6.9f, 3.2f, z);
-                WorldText.Attach(tmGo, doors[i], 44, 0.045f, new Color(0.85f, 0.9f, 0.85f));
+                WorldText.Plate(WorldText.Attach(tmGo, doors[i], 44, 0.045f, new Color(0.85f, 0.9f, 0.85f)));
                 tmGo.AddComponent<FaceCamera>();
             }
 
@@ -3515,7 +3515,9 @@ namespace AdversityRoad.World
             var signGo = new GameObject("PortalSign");
             signGo.transform.SetParent(root.transform, false);
             signGo.transform.position = basePos + new Vector3(0, 4.2f, 0);
+            // 门楣标牌：底板 + FaceCamera 的让位，才不会被门框自己挡住
             var tm = WorldText.Attach(signGo, "", 56, 0.07f, new Color(0.7f, 0.95f, 1f));
+            WorldText.Plate(tm, 0.2f, new Color(0.05f, 0.10f, 0.16f, 0.85f));
             signGo.AddComponent<FaceCamera>();
 
             // 【门前地台】——每扇门下面都保证有实地可站。
@@ -3545,7 +3547,7 @@ namespace AdversityRoad.World
         {
             var go = new GameObject("Plaque");
             go.transform.position = pos;
-            WorldText.Attach(go, text, 44, 0.05f, color);
+            WorldText.Plate(WorldText.Attach(go, text, 44, 0.05f, color));
             go.AddComponent<FaceCamera>();
         }
 
@@ -3682,11 +3684,41 @@ namespace AdversityRoad.World
     /// <summary>3D 文字朝向镜头。</summary>
     public class FaceCamera : MonoBehaviour
     {
+        /// <summary>朝镜头方向让开多少米。0 = 不让（贴着原位转）。</summary>
+        public float standoff = 0.25f;
+
+        // 【记的是本地坐标，不是世界坐标】
+        // 广播室会整体后退（长廊每延长一段就挪一次），门上的 ON AIR 牌是它的子物体。
+        // 如果这里记的是 Awake 那一刻的世界坐标，房子搬走了牌子会留在原地。
+        Vector3 _homeLocal;
+        bool _hasHome;
+
+        void Awake() { _homeLocal = transform.localPosition; _hasHome = true; }
+
+        Vector3 Home()
+        {
+            var p = transform.parent;
+            return p != null ? p.TransformPoint(_homeLocal) : _homeLocal;
+        }
+
         void LateUpdate()
         {
-            if (Camera.main != null)
-                transform.rotation = Quaternion.LookRotation(
-                    transform.position - Camera.main.transform.position);
+            var cam = Camera.main;
+            if (cam == null) return;
+            if (!_hasHome) { _homeLocal = transform.localPosition; _hasHome = true; }
+
+            Vector3 home = Home();
+            Vector3 toCam = home - cam.transform.position;
+            if (toCam.sqrMagnitude < 0.0001f) return;
+            transform.rotation = Quaternion.LookRotation(toCam);
+
+            // 【为什么要往镜头这边让一点】
+            // 这些牌子多半就挂在它所标注的那面墙／那个门框上。字与面同深度时，
+            // 镜头一斜，字就有一半沉进墙里被裁掉——玩家截图里半截的「店铺」「任务挑战」
+            // 就是这么来的。沿着"从镜头到牌子"的方向退 25 厘米，任何角度都不再被自己挡住。
+            // 退的是**相对原位**，不是每帧累加，所以不会越飘越远。
+            if (standoff > 0f)
+                transform.position = home - toCam.normalized * standoff;
         }
     }
 

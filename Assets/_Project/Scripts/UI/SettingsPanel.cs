@@ -14,7 +14,8 @@ namespace AdversityRoad.UI
     /// </summary>
     public class SettingsPanel : MonoBehaviour
     {
-        GameObject _panel;
+        GameObject _panel;    // 滚动内容（1720 高）
+        GameObject _frame;    // 外框（装得下屏幕的那一层，显示/隐藏与置顶都走它）
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
         Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn;
@@ -42,8 +43,51 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "SettingsPanel", new Vector2(1100, 1720),
+            // 【为什么必须做成可滚动的】
+            // 这个面板高 1720，而手机上可见的画布高度只有 950 上下
+            //（参考分辨率 1920×1080，CanvasScaler 的 match=0.5 在宽屏手机上算出来的
+            // 有效高度比 1080 还小）。也就是说面板有四成内容**永远在屏幕外**：
+            // 上面的标题与强度按钮被切掉，下面的"一键返回安全屋""删除全部数据"够不到，
+            // 中间新加的"调试数据"开关玩家自然也找不到——玩家的原话就是"没看到"。
+            //
+            // 结构：frame（固定，装得下屏幕）→ viewport（裁剪）→ _panel（内容，1720 高）。
+            // 内容仍然是 _panel，所以下面几百行 SetRect 的坐标一行都不用改。
+            // 关闭按钮挂在 frame 上而不是内容上，滚到哪儿都点得到。
+            var frame = UiUtil.MakePanel(canvas, "SettingsFrame", new Vector2(1140, 860),
+                new Color(0.06f, 0.06f, 0.09f, 0.98f));
+
+            var viewGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewGo.transform.SetParent(frame.transform, false);
+            var viewRt = viewGo.GetComponent<RectTransform>();
+            viewRt.anchorMin = new Vector2(0f, 0f);
+            viewRt.anchorMax = new Vector2(1f, 1f);
+            viewRt.offsetMin = new Vector2(8f, 8f);
+            viewRt.offsetMax = new Vector2(-8f, -78f);   // 顶部让出关闭按钮那一条
+
+            _panel = UiUtil.MakePanel(viewGo.transform, "SettingsPanel", new Vector2(1100, 1720),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
+            var contentRt = _panel.GetComponent<RectTransform>();
+            contentRt.anchorMin = new Vector2(0.5f, 1f);
+            contentRt.anchorMax = new Vector2(0.5f, 1f);
+            contentRt.pivot = new Vector2(0.5f, 1f);
+            contentRt.anchoredPosition = Vector2.zero;
+            contentRt.sizeDelta = new Vector2(1100, 1720);
+
+            var scroll = frame.AddComponent<ScrollRect>();
+            scroll.content = contentRt;
+            scroll.viewport = viewRt;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+
+            UiUtil.MakeButton(frame.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -40),
+                new Vector2(140, 60), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
+            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 上下拖动查看全部设置", 20,
+                TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.5f));
+            UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(230, -40), new Vector2(420, 30));
+
+            _frame = frame;
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
@@ -332,11 +376,9 @@ namespace AdversityRoad.UI
                 20, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
             UiUtil.SetRect(note, new Vector2(0.5f, 1f), new Vector2(0, -1620), new Vector2(900, 32));
 
-            // 关闭移到右上角：底部空间让给新增的操作偏好行
-            UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -46),
-                new Vector2(140, 60), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
+            // 关闭按钮已经挂在 frame 上（滚到哪儿都点得到），这里不再重复放一个
 
-            _panel.SetActive(false);
+            _frame.SetActive(false);
         }
 
         Button MakeToggle(string label, float y, UnityEngine.Events.UnityAction onClick) =>
@@ -511,17 +553,17 @@ namespace AdversityRoad.UI
 
         public void Toggle()
         {
-            if (_panel.activeSelf) { Hide(); return; }
+            if (_frame.activeSelf) { Hide(); return; }
             _deleteArmed = false;
             Refresh();
-            _panel.SetActive(true);
-            _panel.transform.SetAsLastSibling();
+            _frame.SetActive(true);
+            _frame.transform.SetAsLastSibling();
             Time.timeScale = 0f;
         }
 
         void Hide()
         {
-            _panel.SetActive(false);
+            _frame.SetActive(false);
             Time.timeScale = 1f;
         }
     }
