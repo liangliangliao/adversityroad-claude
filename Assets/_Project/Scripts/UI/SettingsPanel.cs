@@ -93,9 +93,18 @@ namespace AdversityRoad.UI
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(700, 52));
 
+            // 【调试数据放在最上面】这颗开关我先后放过两个位置，玩家两次都说"没显示出来"。
+            // 与其继续猜是滚动没生效还是他没翻到，不如把它挪到标题正下方——
+            // 面板一打开、一行都不用滚就在眼前。同时暂停菜单里也有一条直达的开关。
+            _perfBtn = MakeToggle("调试数据（FPS / 帧时 / 穿墙位移 / 漂移 / 动画状态）", -108, () =>
+            {
+                PerfHud.Enabled = !PerfHud.Enabled;
+                Refresh();
+            });
+
             var l1 = UiUtil.MakeText(_panel.transform, "L1", "心理攻击强度", 26,
                 TextAnchor.MiddleLeft, Color.white);
-            UiUtil.SetRect(l1, new Vector2(0.5f, 1f), new Vector2(-300, -120), new Vector2(400, 40));
+            UiUtil.SetRect(l1, new Vector2(0.5f, 1f), new Vector2(-300, -170), new Vector2(400, 40));
             (string, MentalIntensity)[] levels =
             {
                 ("轻度", MentalIntensity.Light),
@@ -106,7 +115,7 @@ namespace AdversityRoad.UI
             {
                 var lv = levels[i];
                 var btn = UiUtil.MakeButton(_panel.transform, lv.Item1, new Vector2(0.5f, 1f),
-                    new Vector2(-220 + i * 240, -190), new Vector2(220, 70), Off, () =>
+                    new Vector2(-220 + i * 240, -222), new Vector2(220, 70), Off, () =>
                     {
                         if (Safety != null) Safety.intensity = lv.Item2;
                         Refresh();
@@ -137,13 +146,6 @@ namespace AdversityRoad.UI
             // 【-560 这一行本来是三个控件叠在一起】骨骼后处理/单片段两颗 545 宽的
             // 按钮在 -564，把这颗 760 宽的整个盖住了——"调试模式"一直点不到。
             // 挪到 -650 与 -822 之间那段空档里。
-            // -560 这一档是空的：上一颗在 -470（占到 -505），下一对在 -650（从 -615 起）。
-            // 性能读数原来根本没有开关，只能靠改代码关掉——它盖住右半个屏幕。
-            _perfBtn = MakeToggle("调试数据（FPS / 帧时 / 穿墙位移 / 漂移 / 动画状态）", -560, () =>
-            {
-                PerfHud.Enabled = !PerfHud.Enabled;
-                Refresh();
-            });
             _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -736, () =>
             {
                 GameDebug.TankyEnemies = !GameDebug.TankyEnemies;

@@ -107,87 +107,143 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
-        static readonly Color Stem = new Color(0.29f, 0.42f, 0.22f);
-        static readonly Color LeafA = new Color(0.22f, 0.46f, 0.26f);
-        static readonly Color LeafB = new Color(0.28f, 0.54f, 0.31f);
-        static readonly Color LeafC = new Color(0.19f, 0.40f, 0.23f);
-        static readonly Color Petal = new Color(0.94f, 0.72f, 0.80f);
-        static readonly Color Core = new Color(0.96f, 0.86f, 0.42f);
-        static readonly Color Fruit = new Color(0.82f, 0.26f, 0.20f);
+        static readonly Color Bark = new Color(0.34f, 0.26f, 0.17f);
+        static readonly Color Stem = new Color(0.31f, 0.44f, 0.23f);
+        static readonly Color LeafA = new Color(0.20f, 0.44f, 0.23f);
+        static readonly Color LeafB = new Color(0.29f, 0.56f, 0.30f);
+        static readonly Color LeafC = new Color(0.16f, 0.36f, 0.20f);
+        static readonly Color Petal = new Color(0.96f, 0.78f, 0.84f);
+        static readonly Color Core = new Color(0.97f, 0.87f, 0.42f);
+        static readonly Color Fruit = new Color(0.80f, 0.22f, 0.17f);
 
         void Under(GameObject go) { if (go != null && _crown != null) go.transform.SetParent(_crown, true); }
 
-        /// <summary>幼苗：一截细茎，两片小叶。刚种下的样子。</summary>
+        /// <summary>
+        /// 一片叶子：压扁的椭球 + 一根叶柄，按给定的朝向与俯仰张开。
+        ///
+        /// 【为什么不能用球】上一版每片叶子是一颗正球——球没有朝向，一堆球堆在一起
+        /// 只能读成"一坨绿色的泡泡"，这就是"一点也不真实"最直接的来源。
+        /// 叶子必须是**扁的、有长短轴、并且朝某个方向张开**，一眼就能看出哪是叶面。
+        /// </summary>
+        void Leaf(Vector3 at, float yawDeg, float pitchDeg, float len, Color c)
+        {
+            var rot = new Vector3(pitchDeg, yawDeg, 0f);
+            Vector3 dir = Quaternion.Euler(rot) * Vector3.forward;
+            // 叶柄：从枝上伸出去半片叶长
+            Under(VillaKit.CylAxis("LeafStalk", at + dir * (len * 0.28f), 0.012f, len * 0.55f,
+                Stem, new Vector3(pitchDeg + 90f, yawDeg, 0f)));
+            // 叶面：长 len、宽 0.55len、厚 0.12len 的扁椭球
+            var blade = VillaKit.Sph("LeafBlade", at + dir * (len * 0.72f), 1f, c);
+            if (blade != null)
+            {
+                blade.transform.localScale = new Vector3(len * 0.55f, len * 0.12f, len);
+                blade.transform.rotation = Quaternion.Euler(rot);
+                Under(blade);
+            }
+        }
+
+        /// <summary>渐细的主干：分几段，每一段比上一段细。等粗的圆柱一看就是根管子。</summary>
+        void Trunk(float bottomY, float topY, float r0, float r1, Color c)
+        {
+            const int Seg = 4;
+            for (int i = 0; i < Seg; i++)
+            {
+                float t0 = i / (float)Seg, t1 = (i + 1) / (float)Seg;
+                float y0 = Mathf.Lerp(bottomY, topY, t0), y1 = Mathf.Lerp(bottomY, topY, t1);
+                float r = Mathf.Lerp(r0, r1, (t0 + t1) * 0.5f);
+                // 每一节稍微歪一点：笔直的杆子不像长出来的
+                float lean = Mathf.Sin(i * 1.7f) * 0.018f;
+                Under(VillaKit.Cyl("Trunk", _base + new Vector3(lean * i, y0, lean * i * 0.6f),
+                    r, y1 - y0, c));
+            }
+        }
+
+        /// <summary>幼苗：一截细芽，两片子叶朝相反方向张开。</summary>
         void BuildSprout(Transform _)
         {
-            Under(VillaKit.Cyl("Stem", _base + new Vector3(0, 0.55f, 0), 0.022f, 0.28f, Stem));
-            for (int i = -1; i <= 1; i += 2)
-                Under(VillaKit.Sph("Leaf", _base + new Vector3(i * 0.09f, 0.80f, 0), 0.16f, LeafA));
+            Trunk(0.55f, 0.82f, 0.020f, 0.014f, Stem);
+            Leaf(_base + new Vector3(0, 0.80f, 0), 0f, -28f, 0.20f, LeafB);
+            Leaf(_base + new Vector3(0, 0.78f, 0), 180f, -28f, 0.18f, LeafA);
         }
 
-        /// <summary>长叶：茎抽高，四片叶张开。</summary>
+        /// <summary>长叶：茎抽高，六片叶沿螺旋排开（自然界的叶序是螺旋，不是十字）。</summary>
         void BuildLeafy(Transform _)
         {
-            Under(VillaKit.Cyl("Stem", _base + new Vector3(0, 0.55f, 0), 0.03f, 0.62f, Stem));
-            for (int i = 0; i < 4; i++)
+            Trunk(0.55f, 1.28f, 0.028f, 0.018f, Stem);
+            for (int i = 0; i < 6; i++)
             {
-                float a = i * 90f * Mathf.Deg2Rad;
-                Vector3 o = new Vector3(Mathf.Cos(a) * 0.20f, 0.92f + (i % 2) * 0.16f, Mathf.Sin(a) * 0.20f);
-                Under(VillaKit.Sph("Leaf", _base + o, 0.30f, i % 2 == 0 ? LeafA : LeafB));
+                float t = i / 5f;
+                Leaf(_base + new Vector3(0, 0.78f + t * 0.46f, 0),
+                     i * 137.5f, -34f + t * 12f, 0.26f + t * 0.06f, i % 2 == 0 ? LeafA : LeafB);
             }
         }
 
-        /// <summary>枝繁叶茂：主干 + 三根分枝 + 一大丛叶。</summary>
+        /// <summary>枝繁叶茂：木质化的主干 + 六根斜向分枝，每根分枝末端一簇叶。</summary>
         void BuildBushy(Transform _)
         {
-            Under(VillaKit.Cyl("Stem", _base + new Vector3(0, 0.55f, 0), 0.045f, 0.95f, Stem));
-            for (int i = 0; i < 3; i++)
+            Trunk(0.55f, 1.45f, 0.055f, 0.030f, Bark);
+            for (int i = 0; i < 6; i++)
             {
-                float a = i * 120f * Mathf.Deg2Rad;
-                Vector3 dir = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
-                Under(VillaKit.CylAxis("Branch", _base + new Vector3(0, 1.18f, 0) + dir * 0.20f,
-                    0.022f, 0.44f, Stem, new Vector3(58f, -i * 120f, 0)));
+                float yaw = i * 60f + 12f;
+                float tier = i < 3 ? 0f : 1f;
+                float y = 1.05f + tier * 0.30f;
+                float len = 0.52f - tier * 0.10f;
+                Vector3 from = _base + new Vector3(0, y, 0);
+                Vector3 dir = Quaternion.Euler(-38f, yaw, 0f) * Vector3.forward;
+
+                Under(VillaKit.CylAxis("Branch", from + dir * (len * 0.5f), 0.018f, len, Bark,
+                    new Vector3(-38f + 90f, yaw, 0f)));
+
+                Vector3 tip = from + dir * len;
+                for (int l = 0; l < 4; l++)
+                    Leaf(tip, yaw + l * 90f, -20f - l * 8f, 0.30f,
+                         l % 2 == 0 ? LeafA : (l == 1 ? LeafB : LeafC));
             }
-            Under(VillaKit.Sph("Leaf", _base + new Vector3(0, 1.42f, 0), 0.86f, LeafA));
-            for (int i = 0; i < 5; i++)
-            {
-                float a = i * 72f * Mathf.Deg2Rad;
-                Vector3 o = new Vector3(Mathf.Cos(a) * 0.36f, 1.30f + (i % 3) * 0.17f, Mathf.Sin(a) * 0.36f);
-                Under(VillaKit.Sph("Leaf", _base + o, 0.46f, i % 2 == 0 ? LeafB : LeafC));
-            }
+            // 顶芽：树冠顶上收一个尖，轮廓才不是一个球
+            Leaf(_base + new Vector3(0, 1.46f, 0), 40f, -70f, 0.24f, LeafB);
+            Leaf(_base + new Vector3(0, 1.44f, 0), 220f, -70f, 0.22f, LeafA);
         }
 
-        /// <summary>开花：在枝繁的基础上点上花——五瓣一芯，不是一颗糖豆。</summary>
+        /// <summary>开花：枝繁的基础上挂花——五片扁花瓣围一个花芯，不是一颗糖豆。</summary>
         void BuildFlowering(Transform _)
         {
             BuildBushy(_);
-            for (int f = 0; f < 4; f++)
+            for (int f = 0; f < 5; f++)
             {
-                float a = f * 90f * Mathf.Deg2Rad + 0.4f;
-                Vector3 at = _base + new Vector3(Mathf.Cos(a) * 0.42f, 1.62f + (f % 2) * 0.14f,
-                                                 Mathf.Sin(a) * 0.42f);
+                float yaw = f * 72f + 30f;
+                Vector3 at = _base + new Vector3(0, 1.16f + (f % 2) * 0.22f, 0)
+                           + Quaternion.Euler(-30f, yaw, 0f) * Vector3.forward * 0.56f;
                 for (int p = 0; p < 5; p++)
                 {
-                    float pa = p * 72f * Mathf.Deg2Rad;
-                    Under(VillaKit.Sph("Petal",
-                        at + new Vector3(Mathf.Cos(pa) * 0.07f, 0f, Mathf.Sin(pa) * 0.07f),
-                        0.10f, Petal));
+                    var petal = VillaKit.Sph("Petal", at, 1f, Petal);
+                    if (petal == null) continue;
+                    float pa = p * 72f;
+                    petal.transform.localScale = new Vector3(0.055f, 0.018f, 0.10f);
+                    petal.transform.rotation = Quaternion.Euler(-20f, pa, 0f);
+                    petal.transform.position = at + Quaternion.Euler(-20f, pa, 0f) * Vector3.forward * 0.055f;
+                    Under(petal);
                 }
-                Under(VillaKit.Sph("FlowerCore", at, 0.07f, Core));
+                Under(VillaKit.Sph("FlowerCore", at, 0.055f, Core));
             }
         }
 
-        /// <summary>结果：花谢了，挂果。这是最后一级。</summary>
+        /// <summary>结果：花谢挂果——果柄弯下来，果子有点垂感，不是贴在枝上的球。</summary>
         void BuildFruiting(Transform _)
         {
             BuildBushy(_);
             for (int f = 0; f < 5; f++)
             {
-                float a = f * 72f * Mathf.Deg2Rad + 0.7f;
-                Vector3 at = _base + new Vector3(Mathf.Cos(a) * 0.40f, 1.48f - (f % 2) * 0.16f,
-                                                 Mathf.Sin(a) * 0.40f);
-                Under(VillaKit.Cyl("FruitStalk", at + new Vector3(0, 0.06f, 0), 0.012f, 0.08f, Stem));
-                Under(VillaKit.Sph("Fruit", at, 0.19f, Fruit));
+                float yaw = f * 72f + 18f;
+                Vector3 hang = _base + new Vector3(0, 1.10f + (f % 2) * 0.20f, 0)
+                             + Quaternion.Euler(-26f, yaw, 0f) * Vector3.forward * 0.52f;
+                Under(VillaKit.Cyl("FruitStalk", hang + new Vector3(0, -0.02f, 0), 0.010f, 0.10f, Stem));
+                var fr = VillaKit.Sph("Fruit", hang + new Vector3(0, -0.14f, 0), 1f, Fruit);
+                if (fr != null)
+                {
+                    // 略扁略长 = 果实的重量感；正球读起来像塑料珠子
+                    fr.transform.localScale = new Vector3(0.17f, 0.20f, 0.17f);
+                    Under(fr);
+                }
             }
         }
 

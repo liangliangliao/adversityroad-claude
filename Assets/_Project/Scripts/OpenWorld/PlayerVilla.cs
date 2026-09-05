@@ -26,8 +26,13 @@ namespace AdversityRoad.OpenWorld
     {
         // ---- 主体尺寸 ----
         public const float W = 84f, D = 60f;      // 一层外墙尺寸
-        public const float FloorH = 3.9f;         // 层高（净高 ≈3.6）
-        public const float SlabY = 4.1f;          // 二层楼板顶面
+        // 【层高】3.9 抬到 5.0（净高 ≈4.6）。
+        // 3.9 米层高配上 84×60 的平面，比例是错的——房间又大又矮，站进去像地下车库，
+        // 而且一整面墙的目标看板根本立不起来（4.6 米的板子在 3.6 净高里上下都戳出去）。
+        // 真实的大平层客厅普遍 3.2~3.6，这栋房子的平面接近别墅尺度，5.0 才撑得住。
+        public const float FloorH = 5.0f;
+        /// <summary>二层楼板顶面 = 一层层高 + 楼板厚。跟着 FloorH 走，不再各写各的。</summary>
+        public const float SlabY = FloorH + 0.2f;
         const float WallT = 0.28f;
         const float DoorW = 3.0f, DoorH = 2.6f;
 
@@ -166,6 +171,12 @@ namespace AdversityRoad.OpenWorld
             // 二层天花 + 屋顶
             VillaKit.Deco("Ceil_2F", h + new Vector3(0, SlabY + FloorH - 0.12f, 0),
                 new Vector3(W - 0.6f, 0.16f, D - 0.6f), Ceil);
+
+            // 两层的天花都做吊顶：石膏线 + 回字造型 + 灯槽。
+            // 上一版两层的天花都是一整块素板——一抬头就是一张白纸，
+            // 房间再大也读不出"这是装修过的房子"。
+            CeilingFinish(h, SlabY - 0.22f);              // 一层：吊在楼板下面
+            CeilingFinish(h, SlabY + FloorH - 0.34f);     // 二层：吊在屋面板下面
             VillaKit.Box("Roof", h + new Vector3(0, SlabY + FloorH + 0.2f, 0),
                 new Vector3(W + 2.2f, 0.4f, D + 2.2f), WallWarm);
             // 两坡顶：两块斜板搭在女儿墙里侧。轴对齐的平屋顶正是"像方块"的一大来源
@@ -235,7 +246,46 @@ namespace AdversityRoad.OpenWorld
             // 中挺：一整块玻璃看着像洞，加一竖一横就像窗
             Vector3 mull = alongZ ? new Vector3(0.14f, 2.4f, 0.12f) : new Vector3(0.12f, 2.4f, 0.14f);
             VillaKit.Deco("Mullion", at, mull, WoodLight);
+            // 横挺（窗台上方那一道）：只有竖中挺时，窗户仍然读成"一块被切开的玻璃"
+            Vector3 rail = alongZ ? new Vector3(0.14f, 0.11f, width) : new Vector3(width, 0.11f, 0.14f);
+            VillaKit.Deco("Mullion", at + new Vector3(0, 0.42f, 0), rail, WoodLight);
+
+            // 窗台板：窗下没有台子，窗就是墙上一个洞
+            Vector3 sillIn = alongZ ? new Vector3(0.34f, 0.10f, width + 0.6f)
+                                    : new Vector3(width + 0.6f, 0.10f, 0.34f);
+            VillaKit.Deco("WindowSill", at + new Vector3(0, -1.28f, 0), sillIn,
+                new Color(0.90f, 0.88f, 0.84f));
+
+            // 窗帘：两幅落地帘 + 一根帘杆 + 顶部帘头。
+            // 【为什么窗帘对"真实感"的性价比最高】室内空间里最大的软装面积就是窗帘，
+            // 它同时给出布料、褶皱与垂坠三样硬表面给不了的信息；
+            // 少了它，再多的家具也压不住"一屋子硬盒子"的观感。
+            Vector3 curtainAx = alongZ ? Vector3.forward : Vector3.right;
+            float half = width / 2f + 0.34f;
+            VillaKit.Deco("CurtainRodPole", at + new Vector3(0, 1.46f, 0),
+                alongZ ? new Vector3(0.07f, 0.07f, width + 1.1f) : new Vector3(width + 1.1f, 0.07f, 0.07f),
+                new Color(0.32f, 0.29f, 0.26f));
+            VillaKit.Deco("CurtainValance", at + new Vector3(0, 1.30f, 0),
+                alongZ ? new Vector3(0.13f, 0.30f, width + 1.0f) : new Vector3(width + 1.0f, 0.30f, 0.13f),
+                CurtainC);
+            for (int s2 = -1; s2 <= 1; s2 += 2)
+            {
+                // 每幅帘子由三条竖料拼成，宽窄错开 —— 这就是褶皱在低模里的做法
+                for (int f = 0; f < 3; f++)
+                {
+                    float off = half - 0.10f - f * 0.26f;
+                    float w = 0.30f - f * 0.05f;
+                    Vector3 size = alongZ ? new Vector3(0.15f + f * 0.02f, 2.5f, w)
+                                          : new Vector3(w, 2.5f, 0.15f + f * 0.02f);
+                    VillaKit.Deco("CurtainCloth",
+                        at + curtainAx * (s2 * off) + new Vector3(0, -0.05f, 0), size,
+                        f == 1 ? CurtainD : CurtainC);
+                }
+            }
         }
+
+        static readonly Color CurtainC = new Color(0.72f, 0.66f, 0.58f);
+        static readonly Color CurtainD = new Color(0.62f, 0.56f, 0.49f);
 
         // ================= 墙与门（真的有门扇） =================
 
@@ -423,7 +473,9 @@ namespace AdversityRoad.OpenWorld
             // 而像一块尺寸不对的板。现在按房间真实净高来：
             // 边框 y 从 0.10 到 3.62（高 3.52、中心 1.86），宽度从 17 拉到 21.4——
             // 客厅沙发在 x=±7.4，21.4 的板子两侧各留出一米多，不会捅进侧墙。
-            const float BoardW = 21.4f, BoardH = 3.52f, BoardY = 1.86f;
+            // 层高抬到 5.0 之后（吊顶底面约 4.7），看板跟着长高：
+            // y 从 0.10 到 4.42，高 4.32——真正的一整面墙，而不是墙上挂了块板。
+            const float BoardW = 21.4f, BoardH = 4.32f, BoardY = 2.26f;
             var frame = VillaKit.Box("GoalBoard_Frame", c + new Vector3(0, BoardY, -11.6f),
                 new Vector3(BoardW, BoardH, 0.34f), Dark);
             VillaKit.Deco("GoalBoard_Screen", c + new Vector3(0, BoardY, -11.4f),
@@ -1219,6 +1271,63 @@ namespace AdversityRoad.OpenWorld
         /// 幼苗 → 长叶 → 枝繁叶茂 → 开花 → 结果，进度存本机。
         /// </summary>
         static void Plant(WorldContext ctx, Vector3 at) => PottedPlant.Create(at);
+
+        /// <summary>
+        /// 一层楼的吊顶装修：顶角石膏线 + 回字形叠级 + 藏在叠级里的灯槽。
+        ///
+        /// 【为什么这三样就够】
+        /// 素板天花之所以假，不是因为面数少，是因为**墙与顶之间没有交代**：
+        /// 现实里这条缝一定有东西——石膏线、阴角线、或者一圈叠级。
+        /// 有了这条线，眼睛才认得出"墙到这里为止，上面是顶"。
+        /// 回字叠级再给天花一个中心，灯槽让这个中心自己发光——
+        /// 三样都是纯几何，不需要任何美术资源。
+        /// </summary>
+        static void CeilingFinish(Vector3 h, float ceilY)
+        {
+            float hw = W / 2f - 0.5f, hd = D / 2f - 0.5f;
+
+            // ① 顶角石膏线：沿四边一圈，断面做两级（上宽下窄），侧看有层次
+            for (int s = -1; s <= 1; s += 2)
+            {
+                VillaKit.Deco("Cornice", h + new Vector3(0, ceilY - 0.10f, s * hd),
+                    new Vector3(W - 1f, 0.20f, 0.34f), Ceil);
+                VillaKit.Deco("CorniceLip", h + new Vector3(0, ceilY - 0.26f, s * (hd - 0.06f)),
+                    new Vector3(W - 1f, 0.12f, 0.22f), new Color(0.86f, 0.85f, 0.82f));
+                VillaKit.Deco("Cornice", h + new Vector3(s * hw, ceilY - 0.10f, 0),
+                    new Vector3(0.34f, 0.20f, D - 1f), Ceil);
+                VillaKit.Deco("CorniceLip", h + new Vector3(s * (hw - 0.06f), ceilY - 0.26f, 0),
+                    new Vector3(0.22f, 0.12f, D - 1f), new Color(0.86f, 0.85f, 0.82f));
+            }
+
+            // ② 回字叠级：比天花低 18 厘米的一圈框，框内再吊一块平顶
+            float iw = W * 0.62f, id = D * 0.62f;
+            for (int s = -1; s <= 1; s += 2)
+            {
+                VillaKit.Deco("CoffBand", h + new Vector3(0, ceilY - 0.20f, s * (id / 2f)),
+                    new Vector3(iw + 0.9f, 0.18f, 0.9f), new Color(0.90f, 0.89f, 0.86f));
+                VillaKit.Deco("CoffBand", h + new Vector3(s * (iw / 2f), ceilY - 0.20f, 0),
+                    new Vector3(0.9f, 0.18f, id + 0.9f), new Color(0.90f, 0.89f, 0.86f));
+            }
+            VillaKit.Deco("CoffPan", h + new Vector3(0, ceilY - 0.05f, 0),
+                new Vector3(iw, 0.12f, id), new Color(0.95f, 0.94f, 0.92f));
+
+            // ③ 灯槽：藏在叠级内侧的一圈暖光条。天花有了自己的光，才不是一张白纸
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var a = VillaKit.Deco("CoveGlow", h + new Vector3(0, ceilY - 0.30f, s * (id / 2f - 0.5f)),
+                    new Vector3(iw - 0.4f, 0.07f, 0.22f), new Color(1f, 0.92f, 0.76f));
+                VillaKit.Emit(a, new Color(1f, 0.88f, 0.66f), 1.5f);
+                var b = VillaKit.Deco("CoveGlow", h + new Vector3(s * (iw / 2f - 0.5f), ceilY - 0.30f, 0),
+                    new Vector3(0.22f, 0.07f, id - 0.4f), new Color(1f, 0.92f, 0.76f));
+                VillaKit.Emit(b, new Color(1f, 0.88f, 0.66f), 1.5f);
+            }
+            // 灯槽要真的照亮天花附近，否则只是四条发亮的贴纸
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sz = -1; sz <= 1; sz += 2)
+                    SceneLighting.MakePoint("Cove_Light",
+                        h + new Vector3(sx * iw * 0.3f, ceilY - 0.6f, sz * id * 0.3f),
+                        new Color(1f, 0.93f, 0.8f), 16f, null, 0.55f);
+        }
 
         static void FloorLamp(WorldContext ctx, Vector3 at)
         {
