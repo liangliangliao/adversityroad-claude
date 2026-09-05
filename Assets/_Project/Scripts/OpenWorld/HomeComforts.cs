@@ -70,7 +70,12 @@ namespace AdversityRoad.OpenWorld
             s.canLie = canLie || lieOnly;
             s.lieOnly = lieOnly;
             s.label = label;
-            s.range = canLie || lieOnly ? 3.6f : 2.8f;
+            // 【交互距离必须短】原来床是 3.6 米、椅子 2.8 米——站在三米开外按下去，
+            // 人要么被拖过去（那就是"漂移"），要么原地坐在半空。
+            // 坐这件事本来就要求站到跟前，所以按家具尺寸算：贴到边上再多留半米。
+            var b = Measure(go);
+            float halfSpan = Mathf.Max(b.extents.x, b.extents.z);
+            s.range = halfSpan + 0.9f;
 
             // 量家具本体：顶面 = 座面，中心 = 骨盆落点
             var b = Measure(go);
@@ -119,7 +124,7 @@ namespace AdversityRoad.OpenWorld
             {
                 _lastHint = Time.time;
                 GameEvents.RaiseSubtitle("【" + label + "】" +
-                    (lieOnly ? "躺下休息" : canLie ? "坐下（再按一次躺下）" : "坐下歇一会儿") +
+                    (canLie ? "躺下休息" : "坐下歇一会儿") +
                     "——" + Mobile.MobileInput.UseHint + "。");
             }
             if (Input.GetKeyDown(KeyCode.E) || Mobile.MobileInput.GetDown("Interact"))
@@ -174,12 +179,8 @@ namespace AdversityRoad.OpenWorld
         float _loopAt;           // 下一次重播循环段的时刻（坐稳/睡着之后）
         float _inputLock;        // 刚坐下的一小段时间不接受"起身"，否则一按就弹起来
         Quaternion _turnFrom, _turnTo;   // 坐→躺的转身（沙发要顺着长边躺）
-        Vector3 _moveFrom, _moveTo;      // 入座的短距离位移（瞬移到床中间太假）
-        float _moveT;
         bool _moveReleased;      // 坐下后是否松过前后键（否则"按着 W 走过来"会立刻起身）
-        const float ApproachDur = 0.45f;
         const float SeatInset = 0.35f;    // 落点离家具边沿至少留这么多，免得坐悬空
-        const float MaxApproach = 1.2f;   // 入座位移上限（米）：再远就不是"坐下"了
 
         public static void Sit(PlayerController player, Sittable seat)
         {
@@ -211,16 +212,18 @@ namespace AdversityRoad.OpenWorld
             // 所以把角色原点放到座面中心，人就正好坐在座位上。
             // 高度保持站立时的高度：模型的升降由骨盆锚定负责，角色胶囊别乱动。
             if (_cc != null) _cc.enabled = false;
-            _moveFrom = _standPos;
-            _moveTo = ApproachPoint(seat, _standPos);
-            _moveT = 0f;
+            // 【不再做 0.45 秒的插值滑行】插值期间 CharacterController 是关掉的，
+            // 移动系统认为人一动不动，坐标却在走——那正是玩家看到的"滑动、漂移"。
+            // 交互距离收紧之后这段距离只有几十厘米，直接落位，肉眼看不出跳变，
+            // 剩下的观感由"坐下"动作自带的位移承担。
+            player.transform.position = ApproachPoint(seat, _standPos);
             _moveReleased = false;
             Vector3 face = new Vector3(seat.faceDir.x, 0f, seat.faceDir.z);
             if (face.sqrMagnitude > 0.001f)
                 player.transform.rotation = Quaternion.LookRotation(face.normalized);
             player.enabled = false;   // 停掉移动/重力，人稳稳待在座位上
 
-            _animated = _anim != null && _anim.HasClip(seat.lieOnly ? FloorLieClip : "sitting");
+            _animated = _anim != null && _anim.HasClip(seat.canLie ? FloorLieClip : "sitting");
             if (_anim != null)
             {
                 // 移动层归零：控制器停了就不再喂速度，残留的走路权重会在坐姿下面透出来
@@ -232,7 +235,11 @@ namespace AdversityRoad.OpenWorld
                 _visualRot = _visual.localRotation;
             }
 
-            if (seat.lieOnly) EnterLie();
+            // 【床和沙发直接躺，椅子只坐】
+            // 原来所有能躺的家具都要走"先坐 → 再按一次 → 才躺"，
+            // 于是躺到床上要按两次，而椅子的提示里也挂着一句"再按一次躺下"。
+            // 玩家的要求很明确：床和沙发按一次就躺，椅子凳子只坐。
+            if (seat.canLie) EnterLie();
             else EnterSit();
         }
 
@@ -253,9 +260,7 @@ namespace AdversityRoad.OpenWorld
                 _phaseDur = 0.25f;
             }
             _phaseT = 0f;
-            GameEvents.RaiseSubtitle(_seat.canLie
-                ? "你坐了下来。" + Mobile.MobileInput.UseHint + "躺下。"
-                : "你坐了下来。" + Mobile.MobileInput.UseHint + "起身。");
+            GameEvents.RaiseSubtitle("你坐了下来。" + Mobile.MobileInput.UseHint + "起身。");
         }
 
         void EnterLie()
@@ -275,11 +280,12 @@ namespace AdversityRoad.OpenWorld
                 else _anim.BeginRest(_seat.SurfaceY + LiePelvisRise);
                 // 床/沙发：Lying Down 本来就是"从床沿的坐姿往后躺进去"，接在坐姿后面正好；
                 // 地上的垫子：没有对应片段，用 Getting Up 倒放 = 站着躺下去。
-                _phaseDur = _seat.lieOnly
-                    ? _anim.PlayRestClip(FloorLieClip, true, true, LieSpeed, 0.4f)
-                    : _anim.PlayRestClip("lying down", false, true, LieSpeed, 0.4f);
+                // 现在是**从站姿直接躺**（不再先坐）。"lying down" 那一段本身是
+                // 从床沿坐姿往后躺，单独播会缺前半程，所以统一先用 Getting Up 倒放
+                // （= 站着躺下去），拿不到才退回 lying down。
+                _phaseDur = _anim.PlayRestClip(FloorLieClip, true, true, LieSpeed, 0.4f);
                 if (_phaseDur <= 0f)
-                    _phaseDur = _anim.PlayRestClip(FloorLieClip, true, true, LieSpeed, 0.4f);
+                    _phaseDur = _anim.PlayRestClip("lying down", false, true, LieSpeed, 0.4f);
             }
             else
             {
@@ -345,9 +351,10 @@ namespace AdversityRoad.OpenWorld
             Vector3 to = new Vector3(
                 Mathf.Clamp(from.x, c.x - ex, c.x + ex), from.y,
                 Mathf.Clamp(from.z, c.z - ez, c.z + ez));
-            Vector3 d = to - from; d.y = 0f;
-            float len = d.magnitude;
-            if (len > MaxApproach) to = from + d / len * MaxApproach;
+            // 【不再按 MaxApproach 截断】截断的后果是"坐在家具旁边的空气里"——
+            // 玩家的要求是"坐下或躺下必须作用在相应的物体上"。
+            // 距离由交互范围保证（见 Sittable.Attach 里按家具尺寸算的 range），
+            // 走到跟前才按得动，所以这里放心地把人放到表面上。
             return to;
         }
 
@@ -368,14 +375,6 @@ namespace AdversityRoad.OpenWorld
                             ? Mathf.SmoothStep(0f, 1f, k)
                             : 1f;
                 _anim.SetRestWeight(w);
-            }
-
-            // 入座位移：坐下的动作前半段人还站着，这段时间正好把人挪到座位上
-            if (_moveT < ApproachDur && _pc != null)
-            {
-                _moveT += dt;
-                _pc.transform.position = Vector3.Lerp(_moveFrom, _moveTo,
-                    Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_moveT / ApproachDur)));
             }
 
             Restore(dt);
@@ -415,8 +414,9 @@ namespace AdversityRoad.OpenWorld
                 return;
             }
             if (!(Input.GetKeyDown(KeyCode.E) || Mobile.MobileInput.GetDown("Interact"))) return;
-            if (_phase == Phase.Seated && _seat != null && _seat.canLie) EnterLie();
-            else BeginRise(lying);
+            // 坐着时再按一次就是起身。能躺的家具进来时已经直接躺下了，
+            // 不存在"坐着的床"这个中间态，所以这里不再有分支。
+            BeginRise(lying);
         }
 
         /// <summary>坐稳之后循环播片段末段：完全静止的末帧看着像死机，末段里有细微起伏。</summary>
@@ -461,11 +461,20 @@ namespace AdversityRoad.OpenWorld
             _pc.Stats.RestoreMental(rate * dt);
             var st = _pc.Stats;
             st.hp = Mathf.Min(st.maxHp, st.hp + rate * 0.5f * dt);
+            // 【不要每帧广播】休息可以持续好几分钟，而这个事件下游挂着 HUD、
+            // 垂危提示等一串监听者。每帧广播一次等于让它们空转几万次，
+            // 手机上是白白烧掉的帧。四分之一秒一次足够看出血条在涨。
+            if (Time.time - _lastHpBroadcast < 0.25f) return;
+            _lastHpBroadcast = Time.time;
             GameEvents.RaisePlayerHpChanged(st.hp, st.maxHp);
         }
 
         void Finish(bool stepAside, bool movePlayer = true)
         {
+            // 不可重入：Finish 里会改 enabled 与坐标，而这些又可能触发别的回调；
+            // 递归进来第二次会把还没还原完的状态又还原一遍，状态就散了。
+            if (_finishing) return;
+            _finishing = true;
             if (_anim != null) _anim.EndRest();
             if (_visual != null)
             {
@@ -488,13 +497,49 @@ namespace AdversityRoad.OpenWorld
                     side = _seat.SurfaceCenter + f * reach;
                     side.y = _standPos.y;
                 }
-                _pc.transform.position = side;
+                _pc.transform.position = SafeStandPoint(side);
             }
             if (_cc != null) _cc.enabled = true;
             if (_pc != null) _pc.NotifyTeleported();
             _seat = null;
             _phase = Phase.None;
+            _finishing = false;
         }
+
+        bool _finishing;
+        float _lastHpBroadcast;
+
+        /// <summary>
+        /// 起身落点的安全校验。
+        ///
+        /// 【为什么必须校验】起身时 CharacterController 是关着的，这里直接改
+        /// transform.position——如果落点在墙里、在家具里、或者脚下根本没有地板，
+        /// 下一行 `_cc.enabled = true` 就会让胶囊在深度穿插的状态下被解算：
+        /// 轻则被弹飞，重则一路掉出世界，坐标涨到很大之后精度崩掉，物理求解卡住。
+        /// 玩家报的"起身离开时卡住然后闪退"，这是最合得上的一条路径。
+        ///
+        /// 三道检查，任何一道不过就退回坐下前那个**确定站得住**的位置：
+        /// ① 数值有效（不是 NaN/Inf）；② 落点没有嵌在实体里；③ 脚下有地板。
+        /// </summary>
+        Vector3 SafeStandPoint(Vector3 want)
+        {
+            if (!IsFinite(want)) return IsFinite(_standPos) ? _standPos : Vector3.zero;
+
+            float r = _cc != null ? Mathf.Max(0.2f, _cc.radius) : 0.35f;
+            Vector3 chest = want + Vector3.up * 1.0f;
+            bool blocked = Physics.CheckSphere(chest, r * 0.9f, ~0, QueryTriggerInteraction.Ignore);
+            bool grounded = Physics.Raycast(want + Vector3.up * 1.2f, Vector3.down,
+                                            2.6f, ~0, QueryTriggerInteraction.Ignore);
+            if (!blocked && grounded) return want;
+
+            // 退回坐下前的位置：那里刚刚还站着人，一定是站得住的
+            if (IsFinite(_standPos)) return _standPos;
+            return want;
+        }
+
+        static bool IsFinite(Vector3 v) =>
+            !(float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) ||
+              float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
     }
 
     /// <summary>
