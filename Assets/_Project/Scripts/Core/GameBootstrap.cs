@@ -1206,6 +1206,10 @@ namespace AdversityRoad.Core
             sysMenu.Add("角色", "逆境图谱", advProfilePanel.Toggle);
             var msTodoPanel = UI.MsTodoPanel.Create(canvasGo.transform);
             sysMenu.Add("目标", "To Do 同步", msTodoPanel.Toggle);
+            // 开局就把同步服务拉起来，不等玩家去开面板：它在 Awake 里读本机缓存，
+            // 住所的目标看板才会一进门就有内容；自动同步的计时也才有人在跑。
+            // 没配置或没登录时 Update 里第一行就返回，等于不存在。
+            Integrations.MsTodoService.Ensure();
             sysMenu.Add("系统", "设置", settingsPanel.Toggle);
             sysMenu.Add("系统", "电视", tvPanel.Toggle);
             sysMenu.Add("系统", "悬浮小窗", () => Platform.PipMode.Enter());

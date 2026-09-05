@@ -18,6 +18,8 @@ namespace AdversityRoad.UI
         InputField _authority, _tenant, _clientId, _package, _sha1, _graph, _scopes, _interval;
         Toggle _autoSync;
         Text _redirect, _status, _body;
+        float _bodyTop;
+        RectTransform _contentRt;
         Button _signBtn;
 
         public static MsTodoPanel Create(Transform canvas)
@@ -44,6 +46,7 @@ namespace AdversityRoad.UI
             _content = UiUtil.MakePanel(viewGo.transform, "MsTodoContent", new Vector2(1200, 2280),
                 new Color(0.08f, 0.09f, 0.13f, 0.97f));
             var crt = _content.GetComponent<RectTransform>();
+            _contentRt = crt;
             crt.anchorMin = crt.anchorMax = crt.pivot = new Vector2(0.5f, 1f);
             crt.anchoredPosition = Vector2.zero;
             crt.sizeDelta = new Vector2(1200, 2280);
@@ -74,7 +77,7 @@ namespace AdversityRoad.UI
             _autoSync = Check("自动同步（应用运行期间按间隔同步，回到前台补一次）",
                 MsTodoConfig.Current.autoSync, ref y);
 
-            _redirect = Note("", ref y);
+            _redirect = Note("", ref y, 21, 3);
             UiUtil.MakeButton(_content.transform, "保存参数", new Vector2(0.5f, 1f),
                 new Vector2(-300, y - 34), new Vector2(340, 62),
                 new Color(0.24f, 0.42f, 0.56f, 0.95f), SaveConfig, 24);
@@ -84,7 +87,7 @@ namespace AdversityRoad.UI
             y -= 86f;
 
             y = Section("② 授权与登录", y);
-            _status = Note("", ref y);
+            _status = Note("", ref y, 21, 8);
             _signBtn = UiUtil.MakeButton(_content.transform, "登录", new Vector2(0.5f, 1f),
                 new Vector2(-300, y - 34), new Vector2(340, 62),
                 new Color(0.22f, 0.5f, 0.34f, 0.95f), OnSign, 24);
@@ -97,6 +100,12 @@ namespace AdversityRoad.UI
             y -= 86f;
 
             var howto = Note(
+                "【Azure 里要先注册一个应用，五分钟，免费】\n" +
+                "1. portal.azure.com → 应用注册 → 新注册，账户类型选\"任何组织目录 + 个人 Microsoft 账户\"。\n" +
+                "2. 概述页的\"应用程序(客户端) ID\"填到上面的 Client ID。\n" +
+                "3. 身份验证页最下方，把\"允许公共客户端流\"打开——**这一步不做登录必失败**，\n" +
+                "   微软会回 AADSTS7000218，因为它默认要求应用带密钥，而手机应用不能存密钥。\n" +
+                "4. API 权限页添加 Microsoft Graph 委托权限：Tasks.ReadWrite、User.Read、offline_access。\n\n" +
                 "登录用的是设备码流程：点「登录」后这里会显示一串短码，\n" +
                 "在任意一台设备的浏览器打开 microsoft.com/devicelogin 输入它即可。\n" +
                 "这条流程不需要重定向 URI，因此包名与签名哈希不是登录的必填项——\n" +
@@ -108,9 +117,11 @@ namespace AdversityRoad.UI
             y -= 8f;
 
             y = Section("③ 同步内容（按 To Do 原结构：清单 → 任务 → 步骤）", y);
+            _bodyTop = y;
             _body = Note("", ref y, 22);
-            _body.rectTransform.sizeDelta = new Vector2(1130, 1000);
-            _body.rectTransform.anchoredPosition = new Vector2(0, y - 500);
+            // 同步内容有多长取决于玩家的清单，这里先给个底，真实高度在 Refresh 里按行数定，
+            // 内容区高度也跟着一起长——否则清单一多就顶出容器，滚也滚不到底。
+            LayoutBody(600f);
 
             _frame.SetActive(false);
             Refresh();
@@ -164,14 +175,24 @@ namespace AdversityRoad.UI
             return tg;
         }
 
-        Text Note(string text, ref float y, int size = 21)
+        /// <summary>
+        /// 说明文字。高度按**行数**算，不写死。
+        /// 写死高度的后果是文字溢出到下一节标题上——面板越写越长，溢出越攒越多，
+        /// 最后就是玩家看到的"字压在字上"。reserveLines 给那些创建时还是空、
+        /// 之后才填内容的说明（状态、重定向 URI）预留位置：它们的行数在这里还不知道。
+        /// </summary>
+        Text Note(string text, ref float y, int size = 21, int reserveLines = 0)
         {
             var t = UiUtil.MakeText(_content.transform, "N", text, size,
                 TextAnchor.UpperLeft, new Color(0.78f, 0.80f, 0.86f));
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.verticalOverflow = VerticalWrapMode.Overflow;
-            UiUtil.SetRect(t, new Vector2(0.5f, 1f), new Vector2(0, y - 70), new Vector2(1130, 150));
-            y -= 160f;
+            int lines = 1;
+            for (int i = 0; i < text.Length; i++) if (text[i] == '\n') lines++;
+            if (reserveLines > lines) lines = reserveLines;
+            float h = lines * (size + 8f) + 14f;
+            UiUtil.SetRect(t, new Vector2(0.5f, 1f), new Vector2(0, y - h * 0.5f), new Vector2(1130, h));
+            y -= h + 16f;
             return t;
         }
 
@@ -208,6 +229,16 @@ namespace AdversityRoad.UI
         {
             SaveConfig();
             MsTodoService.Ensure().SignIn();
+        }
+
+        /// <summary>同步内容那块的高度与内容区总高一起定，让滚动条真的能滚到最后一行。</summary>
+        void LayoutBody(float h)
+        {
+            if (_body == null) return;
+            _body.rectTransform.sizeDelta = new Vector2(1130, h);
+            _body.rectTransform.anchoredPosition = new Vector2(0, _bodyTop - h * 0.5f);
+            if (_contentRt != null)
+                _contentRt.sizeDelta = new Vector2(1200, Mathf.Max(1200f, -_bodyTop + h + 40f));
         }
 
         void Refresh()
@@ -252,7 +283,14 @@ namespace AdversityRoad.UI
                     lab.text = svc != null && svc.Status == MsTodoService.State.WaitingForCode
                         ? "等待授权中…" : "登录";
             }
-            if (_body != null) _body.text = Render(svc);
+            if (_body != null)
+            {
+                string body = Render(svc);
+                _body.text = body;
+                int lines = 1;
+                for (int i = 0; i < body.Length; i++) if (body[i] == '\n') lines++;
+                LayoutBody(Mathf.Max(600f, lines * 30f + 24f));
+            }
         }
 
         /// <summary>按 To Do 的原结构铺开：清单 → 任务 → 步骤，完成状态与截止日期都带上。</summary>
