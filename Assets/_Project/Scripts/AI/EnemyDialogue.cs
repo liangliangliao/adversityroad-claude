@@ -54,7 +54,9 @@ namespace AdversityRoad.AI
         {
             if (_tm == null) return;
             _tm.text = Wrap(line, 12);
-            _hideAt = Time.time + duration;
+            // 停留时长取"调用方给的"与"按字数算出来的"里更长的那个：
+            // 头顶气泡和底部字幕是同一个问题——一句四十字的台词给 2.6 秒，读不完。
+            _hideAt = Time.time + Mathf.Max(duration, 1.2f + (line != null ? line.Length : 0) / 6f);
         }
 
         static string Wrap(string s, int perLine)

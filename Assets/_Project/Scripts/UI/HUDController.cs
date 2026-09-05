@@ -429,11 +429,29 @@ namespace AdversityRoad.UI
             questText.text = "";
         }
 
+        /// <summary>
+        /// 字幕停留时长：按**字数**算，不再是所有句子一律 3.5 秒。
+        ///
+        /// 【为什么必须按长度】
+        /// 这一版很多提示是完整的机制说明（"按住【用】/R 3.4 秒。按住期间大幅减免
+        /// 物理伤害，站定把它做完——它就在视线里，绕不开。"，四十多个字），
+        /// 而 3.5 秒对中文大约只够读 12~14 个字：玩家读到一半字就没了。
+        ///
+        /// 口径取常见的中文阅读速度下限（每秒约 5 个字，比正常读速留了余量，
+        /// 因为玩家是一边打一边看），再加 1.6 秒的"看到它出现 + 视线移过去"的起步时间。
+        /// 下限 3.5 秒（短句不至于一闪而过），上限 12 秒（再长也不该一直占着屏幕底部）。
+        /// </summary>
+        public static float SubtitleSeconds(string text)
+        {
+            int n = string.IsNullOrEmpty(text) ? 0 : text.Length;
+            return Mathf.Clamp(1.6f + n / 5f, 3.5f, 12f);
+        }
+
         void OnSubtitle(string text)
         {
             if (subtitleText == null) return;
             subtitleText.text = text;
-            _subtitleHideAt = Time.unscaledTime + 3.5f;
+            _subtitleHideAt = Time.unscaledTime + SubtitleSeconds(text);
         }
     }
 }

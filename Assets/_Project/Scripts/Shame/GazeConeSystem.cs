@@ -83,26 +83,54 @@ namespace AdversityRoad.Shame
             _renderer.sharedMaterial = GazeConeSystem.ConeMaterial();
         }
 
+        // 环带的半径比例与各自的不透明度。
+        // 【为什么要分环，而不是一个三角扇】
+        // 上一版是 18 个三角形共用一个中心点的扇面：整片一个颜色、边缘是刀切的直线，
+        // 铺在地上就是一块硬邦邦的梯形色块——玩家说的"类似光照的效果做得太差"就是它。
+        // 真正让一束光看起来像光的是**衰减**：近处亮、远处淡、边缘化开。
+        // 这里用同心环把衰减做进顶点色（Sprites/Default 吃顶点色，不需要写 shader，
+        // 也就不需要冒任何"着色器没进包"的风险）。
+        // 0.90 那一圈刻意比相邻两圈亮：给注视一个读得出的**边界**，
+        // 玩家要能一眼判断"我站的地方在不在锥里"，这是 8.7.1 的硬要求。
+        static readonly float[] RingR = { 0f, 0.30f, 0.58f, 0.80f, 0.90f, 0.97f, 1f };
+        static readonly float[] RingA = { 0.95f, 0.78f, 0.55f, 0.36f, 0.62f, 0.22f, 0f };
+
         static Mesh BuildFanMesh(float angleDeg, float range)
         {
-            const int Seg = 18;
-            var verts = new Vector3[Seg + 2];
-            var tris = new int[Seg * 3];
-            verts[0] = Vector3.zero;
-            for (int i = 0; i <= Seg; i++)
-            {
-                float t = (float)i / Seg;
-                float a = (-angleDeg * 0.5f + angleDeg * t) * Mathf.Deg2Rad;
-                verts[i + 1] = new Vector3(Mathf.Sin(a) * range, 0f, Mathf.Cos(a) * range);
-            }
-            for (int i = 0; i < Seg; i++)
-            {
-                tris[i * 3] = 0;
-                tris[i * 3 + 1] = i + 1;
-                tris[i * 3 + 2] = i + 2;
-            }
+            const int Seg = 40;                 // 40 段：弧边看不出多边形折线
+            int rings = RingR.Length;
+            var verts = new Vector3[Seg + 1 == 0 ? 0 : (Seg + 1) * rings];
+            var cols = new Color[verts.Length];
+            var tris = new int[Seg * (rings - 1) * 6];
+
+            for (int r = 0; r < rings; r++)
+                for (int i = 0; i <= Seg; i++)
+                {
+                    float t = (float)i / Seg;
+                    float a = (-angleDeg * 0.5f + angleDeg * t) * Mathf.Deg2Rad;
+                    float rad = RingR[r] * range;
+                    int vi = r * (Seg + 1) + i;
+                    verts[vi] = new Vector3(Mathf.Sin(a) * rad, 0f, Mathf.Cos(a) * rad);
+
+                    // 两侧也要化开：|t-0.5| 越接近 0.5（越靠边）越透，
+                    // 否则两条笔直的边缘会把"光"重新变回一块几何图形。
+                    float edge = 1f - Mathf.Pow(Mathf.Abs(t - 0.5f) * 2f, 3f);
+                    cols[vi] = new Color(1f, 1f, 1f, RingA[r] * Mathf.Clamp01(edge));
+                }
+
+            int k = 0;
+            for (int r = 0; r < rings - 1; r++)
+                for (int i = 0; i < Seg; i++)
+                {
+                    int a0 = r * (Seg + 1) + i, a1 = a0 + 1;
+                    int b0 = (r + 1) * (Seg + 1) + i, b1 = b0 + 1;
+                    tris[k++] = a0; tris[k++] = b0; tris[k++] = a1;
+                    tris[k++] = a1; tris[k++] = b0; tris[k++] = b1;
+                }
+
             var m = new Mesh { name = "GazeConeFan" };
             m.vertices = verts;
+            m.colors = cols;
             m.triangles = tris;
             m.RecalculateNormals();
             m.RecalculateBounds();
@@ -138,7 +166,10 @@ namespace AdversityRoad.Shame
     {
         public static GazeConeSystem Instance { get; private set; }
 
-        public static readonly Color ConeColor = new Color(0.95f, 0.86f, 0.55f, 0.16f);
+        // 基础透明度从 0.16 提到 0.34：上一版整片是均匀的 0.16，现在近处亮、远处淡、
+        // 两侧化开（见 BuildFanMesh 的顶点色），平均下来反而更淡——
+        // 峰值要跟着提上去，注视才既看得清又不糊住地面。
+        public static readonly Color ConeColor = new Color(1f, 0.88f, 0.58f, 0.34f);
 
         readonly List<GazeCone> _cones = new List<GazeCone>();
         static Material _mat;

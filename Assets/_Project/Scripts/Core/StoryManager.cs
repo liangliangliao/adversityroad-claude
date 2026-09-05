@@ -24,6 +24,17 @@ namespace AdversityRoad.Core
         public string victory;
         /// <summary>Boss 出生点覆盖（相对区域原点）。零向量 = 使用区域默认敌人出生点。</summary>
         public UnityEngine.Vector3 spawnOffset;
+
+        /// <summary>
+        /// 击杀本章 Boss 是否推进章节。默认 true（前七章：打倒心魔即通关）。
+        ///
+        /// 第八章两关设为 false：Boss 现在**打得死**（产品决定），但打死它
+        /// **不是通过条件**——8-1 要走进广播室完成自行陈述，8-2 要在低语链活着的时候
+        /// 完成三个目标动作并正常步行离场。少了这个开关，Boss 一改成可击杀，
+        /// StoryManager.HandleEnemyKilled 就会在它倒下的那一刻直接推进章节，
+        /// 于是"打死 Boss 通关"又回来了，两关的全部机制随之作废。
+        /// </summary>
+        public bool advanceOnKill = true;
     }
 
     /// <summary>
@@ -313,9 +324,10 @@ namespace AdversityRoad.Core
                 enemyType = EnemyType.PendingJudge, enemyTier = EnemyTier.Chief,
                 enemyId = "boss_pending_judge",
                 title = "羞耻线 其一 · 欠条长廊 / 未播出的广播室",
-                intro = "住宅区的小商店，走廊，尽头一间广播室。\n【悬案法官】不追求打倒你——他追求的是永远不结案。\n他的每一招都是延期：改期、追加、宣布一次当众说明再临时取消。\n\n这一关的敌人不是他，是三件事：\n· 隐瞒可以解决当下——每用一次抽屉，长廊就真的长一段；\n· 讨好确实少挨打——代价是他更确认这个把柄有效；\n· 打赢他不等于结束——对他的攻击只造成硬直，不推进任何进度。\n\n注意门上那盏 ON AIR：它永远不会亮。\n但广播室的门从第一秒起就是开着的。什么时候走进去，由你决定。",
+                intro = "住宅区的小商店，走廊，尽头一间广播室。\n【悬案法官】不追求打倒你——他追求的是永远不结案。\n他的每一招都是延期：改期、追加、宣布一次当众说明再临时取消。\n\n这一关的敌人不是他，是三件事：\n· 隐瞒可以解决当下——每用一次抽屉，长廊就真的长一段；\n· 讨好确实少挨打——代价是他更确认这个把柄有效；\n· 打赢他不等于结束——他打得死，但案子不会因为他倒下就结了。\n\n注意门上那盏 ON AIR：它永远不会亮。\n但广播室的门从第一秒起就是开着的。什么时候走进去，由你决定。",
                 victory = "陈述完成的那一刻，法官失去了权限——没有战斗，没有宣判，他就是不在了。\n你没有洗清什么。你只是自己决定了何时说、对谁说、用什么措辞说。\n\n下一站：二十元回声教室。\n在那里，把柄不在别人手里——是你自己制造的。",
-                spawnOffset = new UnityEngine.Vector3(0, 1.1f, 6)
+                spawnOffset = new UnityEngine.Vector3(0, 1.1f, 6),
+                advanceOnKill = false
             },
             new ChapterInfo
             {
@@ -323,9 +335,10 @@ namespace AdversityRoad.Core
                 enemyType = EnemyType.BackRowWhisperer, enemyTier = EnemyTier.Chief,
                 enemyId = "boss_back_row_whisperer",
                 title = "羞耻线 终局 · 二十元回声教室",
-                intro = "夜里的自习室，灯只开了一半。地上有可见的视线锥，随头部朝向移动。\n后排传来一句听不清的话，前排有人侧过头——低语链连起来了。\n\n【后排低语者】不与你正面战斗。他只做三件事：看、说、指。\n他的血不由伤害决定，由你的否认次数维持——每否认一次，他回一口气。\n\n本关不存在「让低语停止」的胜利条件：\n打断任意一节，8 秒后它从另一处重建。\n通关条件是——在低语链活着的时候，完成三个目标动作：\n归还（前排，主视线锥中心）／完成本职（座位，交叉视线区）／步行离场（穿过全场）。\n\n三个交互物全部在视线锥内，绕开无法通关。\n离场时不要冲刺：跑出去也算走出去，只是那一次是躲出去的。",
+                intro = "夜里的自习室，灯只开了一半。地上有可见的视线锥，随头部朝向移动。\n后排传来一句听不清的话，前排有人侧过头——低语链连起来了。\n\n【后排低语者】看、说、指。\n他打得死，但打死他不会让这一关结束；而你每否认一次，他就指认得更急。\n\n本关不存在「让低语停止」的胜利条件：\n打断任意一节，8 秒后它从另一处重建。\n通关条件是——在低语链活着的时候，完成三个目标动作：\n归还（前排，主视线锥中心）／完成本职（座位，交叉视线区）／步行离场（穿过全场）。\n\n三个交互物全部在视线锥内，绕开无法通关。\n离场时不要冲刺：跑出去也算走出去，只是那一次是躲出去的。",
                 victory = "他停止发声了。没有击杀动画，没有道歉，也没有「他其实一直误会你」。\n你得到的不是清白，是行动能力：事实成立、注视仍在，你依然把事情做完并正常走了出去。\n\n【第八章 · 完成】把柄可以在别人手里，事实可以站在对方那一边，注视可以一直存在。\n唯一不可让渡的是裁判权。\n\n【主线完结】八条主题线全部走完。自由修炼模式已开启：\n可用「敌人+」在任意区域添加不同类型与难度的心魔挑战；\n安全屋各面板（复盘/成长/装备/图鉴/档案/目标/传送）持续可用。",
-                spawnOffset = new UnityEngine.Vector3(6, 1.1f, 14)
+                spawnOffset = new UnityEngine.Vector3(6, 1.1f, 14),
+                advanceOnKill = false
             }
         };
 
@@ -354,6 +367,8 @@ namespace AdversityRoad.Core
         {
             var cur = Current;
             if (cur == null || enemyId != cur.enemyId) return;
+            // 非击杀型章节（第八章）：打倒它不推进进度，通关条件另有其事
+            if (!cur.advanceOnKill) return;
             Advance();
         }
 
@@ -368,10 +383,10 @@ namespace AdversityRoad.Core
         /// <summary>
         /// 非击杀型章节的推进入口（第八章专用）。
         ///
-        /// 第八章两个 Boss 都**不可击杀**：悬案法官在自行陈述完成的瞬间失去权限，
-        /// 后排低语者在玩家于阶段三完成目标动作时停止发声。
-        /// 它们不会抛 OnEnemyKilled，所以推进不能挂在击杀事件上——
-        /// 也不该伪造一次击杀（那会在图鉴里记下一笔根本没发生的战果）。
+        /// 第八章两个 Boss 现在**打得死**（产品决定），但打死它们**不是通过条件**：
+        /// 悬案法官要在玩家走进广播室完成自行陈述时才失去权限，
+        /// 后排低语者要在玩家于阶段三完成目标动作时才停止发声。
+        /// 所以这两章的 ChapterInfo 关掉了 advanceOnKill，推进只走这个入口。
         /// </summary>
         public void CompleteChapterByObjective(string enemyId)
         {
