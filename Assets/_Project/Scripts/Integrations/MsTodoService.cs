@@ -192,6 +192,7 @@ namespace AdversityRoad.Integrations
             VerificationUrl = string.IsNullOrEmpty(dc.verification_uri)
                 ? "https://microsoft.com/devicelogin" : dc.verification_uri;
             Raise();
+            OpenVerificationPage();
 
             // 轮询取令牌。interval 是微软给的最小间隔，抢着问会被 slow_down 惩罚。
             float interval = Mathf.Max(3, dc.interval);
@@ -226,6 +227,16 @@ namespace AdversityRoad.Integrations
                     // authorization_pending = 玩家还没在浏览器里输码，继续等，这不是错误
                     if (tok.error == "authorization_pending") continue;
                     if (tok.error == "slow_down") { interval += 5f; continue; }
+                    if (tok.error == "expired_token")
+                    {
+                        Fail("短码已过期（有效期 15 分钟）。重新点一次登录会拿到新的码。");
+                        yield break;
+                    }
+                    if (tok.error == "authorization_declined")
+                    {
+                        Fail("你在浏览器里拒绝了授权。要用的话重新点登录。");
+                        yield break;
+                    }
                     if (!string.IsNullOrEmpty(tok.error))
                     {
                         Fail("登录失败：" + tok.error + " " + tok.error_description);
@@ -234,6 +245,36 @@ namespace AdversityRoad.Integrations
                 }
             }
             Fail("登录超时——短码过期了，重新点一次登录。");
+        }
+
+        /// <summary>
+        /// 带着短码打开系统浏览器，并把短码复制到剪贴板。
+        ///
+        /// 【为什么是"带着码"而不是一键免输】微软的设备码接口不返回
+        /// verification_uri_complete（RFC 8628 里那个可选字段），只给 verification_uri，
+        /// 所以做不到点一下就登录。能做的是把码拼成 ?otc= 交给页面预填——
+        /// 这是微软自家客户端用的参数，页面认；万一哪天不认了，也只是退化成一个空白的
+        /// 输码页，不会报错。剪贴板是这条退路的退路：预填没生效，粘贴总归能用。
+        ///
+        /// 【打开浏览器意味着游戏被切到后台】Unity 会暂停，轮询协程跟着停；
+        /// 玩家授权完切回来，协程继续跑，下一轮就拿到令牌。所以这里不需要做别的处理，
+        /// 但服务端那 900 秒是真实时间在走——授权拖太久会拿到 expired_token，
+        /// 那种情况下的提示单独写了一句。
+        /// </summary>
+        public void OpenVerificationPage()
+        {
+            if (string.IsNullOrEmpty(VerificationUrl)) return;
+            CopyCode();
+            string url = VerificationUrl;
+            if (!string.IsNullOrEmpty(UserCode))
+                url += (url.Contains("?") ? "&" : "?") + "otc=" + UnityWebRequest.EscapeURL(UserCode);
+            try { Application.OpenURL(url); } catch { }
+        }
+
+        public void CopyCode()
+        {
+            if (string.IsNullOrEmpty(UserCode)) return;
+            try { GUIUtility.systemCopyBuffer = UserCode; } catch { }
         }
 
         void StoreToken(GToken tok)

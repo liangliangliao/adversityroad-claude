@@ -105,7 +105,17 @@ namespace AdversityRoad.UI
             UiUtil.MakeButton(_content.transform, "退出登录", new Vector2(0.5f, 1f),
                 new Vector2(420, y - 34), new Vector2(260, 62),
                 new Color(0.45f, 0.26f, 0.24f, 0.95f), () => MsTodoService.Ensure().SignOut(), 24);
-            y -= 86f;
+
+            // 第二排：自动打开浏览器是默认行为，但它会被系统拦（没有默认浏览器、
+            // 从后台切回来页面被关掉、误触返回键），所以留两个手动兜底。
+            UiUtil.MakeButton(_content.transform, "重新打开浏览器", new Vector2(0.5f, 1f),
+                new Vector2(-300, y - 106), new Vector2(340, 62),
+                new Color(0.28f, 0.38f, 0.5f, 0.95f),
+                () => MsTodoService.Ensure().OpenVerificationPage(), 24);
+            UiUtil.MakeButton(_content.transform, "复制短码", new Vector2(0.5f, 1f),
+                new Vector2(60, y - 106), new Vector2(340, 62),
+                new Color(0.32f, 0.32f, 0.4f, 0.95f), CopyCode, 24);
+            y -= 158f;
 
             var howto = Note(
                 "【Azure 里要先注册一个应用，五分钟，免费】\n" +
@@ -224,6 +234,18 @@ namespace AdversityRoad.UI
 
         // ---- 行为 ----
 
+        void CopyCode()
+        {
+            var svc = MsTodoService.Ensure();
+            if (string.IsNullOrEmpty(svc.UserCode))
+            {
+                GameEvents.RaiseSubtitle("现在没有短码——先点「登录」。");
+                return;
+            }
+            svc.CopyCode();
+            GameEvents.RaiseSubtitle("短码 " + svc.UserCode + " 已复制，粘贴到浏览器里即可。");
+        }
+
         void SaveConfig()
         {
             var c = MsTodoConfig.Current;
@@ -301,8 +323,11 @@ namespace AdversityRoad.UI
                 {
                     case MsTodoService.State.SignedOut: sb.Append("状态：未登录"); break;
                     case MsTodoService.State.WaitingForCode:
-                        sb.Append("状态：等待授权\n\n在浏览器打开 ").Append(svc.VerificationUrl)
-                          .Append("\n输入这个短码： ").Append(svc.UserCode);
+                        sb.Append("状态：等待授权\n\n已自动打开浏览器并带上短码，短码也复制到剪贴板了。\n")
+                          .Append("短码： ").Append(svc.UserCode)
+                          .Append("\n没跳转就点下面「重新打开浏览器」，或手动开 ")
+                          .Append(svc.VerificationUrl)
+                          .Append("\n授权完切回游戏，这里会自动变成已登录。");
                         break;
                     case MsTodoService.State.SignedIn:
                         sb.Append("状态：已登录").Append(string.IsNullOrEmpty(svc.Account)
