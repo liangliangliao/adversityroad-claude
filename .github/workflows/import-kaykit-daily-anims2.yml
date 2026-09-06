@@ -26,7 +26,8 @@ jobs:
           set -euo pipefail
           DEST="Assets/_Project/Resources/Characters/Anims2"
           REF="8742b69b6d965f369e7b8a87cee570a81184c403"
-          BASE="https://raw.githubusercontent.com/ArtjomSchwenk/Koy/${REF}/Assets/Character/KayKit_Character_Animations_1.1/KayKit_Character_Animations_1.1/Animations/fbx/Rig_Medium"
+          FBX_BASE="https://raw.githubusercontent.com/ArtjomSchwenk/Koy/${REF}/Assets/Character/KayKit_Character_Animations_1.1/KayKit_Character_Animations_1.1/Animations/fbx/Rig_Medium"
+          GLB_BASE="https://raw.githubusercontent.com/ArtjomSchwenk/Koy/${REF}/Assets/Character/KayKit_Character_Animations_1.1/KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium"
           mkdir -p "$DEST"
 
           files=(
@@ -40,13 +41,11 @@ jobs:
           for file in "${files[@]}"; do
             echo "Downloading $file"
             curl --fail --location --retry 3 --retry-delay 2 \
-              "${BASE}/${file}" \
+              "${FBX_BASE}/${file}" \
               --output "${DEST}/KayKit_${file}"
             test -s "${DEST}/KayKit_${file}"
           done
 
-          # The existing Quaternius license file is the verbatim generic CC0 1.0
-          # legal code, so reuse it under a KayKit-specific filename.
           cp "${DEST}/QUATERNIUS_UAL_CC0_LICENSE.txt" \
              "${DEST}/KAYKIT_CHARACTER_ANIMATIONS_CC0_LICENSE.txt"
 
@@ -93,6 +92,8 @@ jobs:
 
           SHA-256 hashes of the imported binaries are recorded in `KAYKIT_CHARACTER_ANIMATIONS_SHA256.txt`.
 
+          Exact animation names are enumerated from the matching GLB files in `KAYKIT_DAILY_CLIPS.txt`; the GLB files are used only for inspection and are not committed.
+
           ## Scope note
 
           This commit adds animation assets only. It does **not** modify runtime C#, Animator state machines, `PlayableAnimator`, animation mappings or gameplay code.
@@ -108,19 +109,37 @@ jobs:
             KayKit_Rig_Medium_Tools.fbx \
             > KAYKIT_CHARACTER_ANIMATIONS_SHA256.txt)
 
-          # Best-effort audit: record visible FBX animation-stack strings when present.
-          : > "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
-          for file in "${files[@]}"; do
-            target="${DEST}/KayKit_${file}"
-            echo "## KayKit_${file}" >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
-            strings -a "$target" \
-              | grep -E 'AnimStack::|AnimationStack::' \
-              | sed -E 's/.*(AnimStack::|AnimationStack::)//' \
-              | sed -E 's/[[:cntrl:]].*$//' \
-              | sed '/^[[:space:]]*$/d' \
-              | sort -u \
-              >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt" || true
-            echo >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
+          rm -f "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
+          : > "${DEST}/KAYKIT_DAILY_CLIPS.txt"
+
+          for fbx in "${files[@]}"; do
+            glb="${fbx%.fbx}.glb"
+            tmp="/tmp/${glb}"
+            curl --fail --location --retry 3 --retry-delay 2 \
+              "${GLB_BASE}/${glb}" \
+              --output "$tmp"
+
+            python3 - "$tmp" "$glb" >> "${DEST}/KAYKIT_DAILY_CLIPS.txt" <<'PY'
+          import json
+          import struct
+          import sys
+
+          path, label = sys.argv[1], sys.argv[2]
+          with open(path, "rb") as f:
+              magic, version, total_length = struct.unpack("<4sII", f.read(12))
+              if magic != b"glTF" or version != 2:
+                  raise SystemExit(f"Unexpected GLB header in {path}")
+              chunk_length, chunk_type = struct.unpack("<II", f.read(8))
+              if chunk_type != 0x4E4F534A:
+                  raise SystemExit(f"First GLB chunk is not JSON in {path}")
+              payload = f.read(chunk_length).decode("utf-8").rstrip(" \t\r\n\0")
+          doc = json.loads(payload)
+          animations = doc.get("animations", [])
+          print(f"## {label} ({len(animations)} clips)")
+          for anim in animations:
+              print(anim.get("name", "<unnamed>"))
+          print()
+          PY
           done
 
       - name: Commit imported assets
@@ -134,5 +153,5 @@ jobs:
             echo "No asset changes to commit"
             exit 0
           fi
-          git commit -m "assets: add KayKit daily behaviour animation sets"
+          git commit -m "assets: audit KayKit daily animation clips"
           git push origin HEAD:asset/import-kaykit-daily-anims2
