@@ -417,12 +417,16 @@ namespace AdversityRoad.Integrations
         static string Hint(string raw)
         {
             if (!string.IsNullOrEmpty(raw) && raw.Contains("AADSTS50059"))
-                return "\n\n→ 这个 Client ID 的\"受支持的账户类型\"和端点对不上，已自动换 " +
-                       "consumers / organizations / common 各试过一遍，都没通。" +
-                       "去 portal.azure.com → 应用注册 → 你的应用 → \"清单\"看 signInAudience：" +
-                       "个人账号要 AzureADandPersonalMicrosoftAccount（注册时选\"任何组织目录 + " +
-                       "个人 Microsoft 账户\"那一项）。改不动就重新注册一个，账户类型选对，" +
-                       "把新的 Client ID 填回来。";
+                return "\n\n→ consumers / organizations / common 都试过了，都不认这个 Client ID。" +
+                       "这说明该应用注册是【仅此组织目录】的单租户应用——单租户只认它自己的租户地址。\n" +
+                       "最省事：重新注册一个应用，在\"新注册\"那一页把账户类型直接选成" +
+                       "\"任何组织目录 + 个人 Microsoft 账户\"（新建时能选，建完再改会被门户挡下来，" +
+                       "报 requestedAccessTokenVersion is invalid），把新的 Client ID 填回上面。\n" +
+                       "要救现有的那个：门户 → 你的应用 → \"清单\"，先把 requestedAccessTokenVersion " +
+                       "（旧版清单里叫 accessTokenAcceptedVersion）改成 2 并保存，再改账户类型。\n" +
+                       "另一条路：把上面的 Tenant 换成你的\"目录(租户) ID\"（概述页可复制），" +
+                       "单租户应用配自己的租户地址是能登的——但个人 Microsoft 账号的待办数据不在组织租户里，" +
+                       "登进去可能看不到清单，所以还是推荐重新注册。";
             if (string.IsNullOrEmpty(raw)) return "";
             if (raw.Contains("AADSTS70002") || raw.Contains("AADSTS7000218") ||
                 raw.Contains("must be marked as"))

@@ -110,6 +110,9 @@ namespace AdversityRoad.UI
             var howto = Note(
                 "【Azure 里要先注册一个应用，五分钟，免费】\n" +
                 "1. portal.azure.com → 应用注册 → 新注册，账户类型选\"任何组织目录 + 个人 Microsoft 账户\"。\n" +
+                "   ※ 这一项只有新建时能选。建完再回去改，门户会报 requestedAccessTokenVersion\n" +
+                "   is invalid 并拒绝保存——要先在\"清单\"里把它改成 2 才能改账户类型。\n" +
+                "   选错了（默认是\"仅此组织目录\"）就重新注册一个，比改现有的快。\n" +
                 "2. 概述页的\"应用程序(客户端) ID\"填到上面的 Client ID。\n" +
                 "3. 身份验证页最下方，把\"允许公共客户端流\"打开——**这一步不做登录必失败**，\n" +
                 "   微软会回 AADSTS70002 或 AADSTS7000218：它默认把应用当成带密钥的服务端应用，\n" +
