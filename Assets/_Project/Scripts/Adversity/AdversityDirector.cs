@@ -71,6 +71,8 @@ namespace AdversityRoad.Adversity
         {
             if (Time.time < _next) return;
             _next = Time.time + Random.Range(85f, 150f);
+            // 玩家回到住所时，导演停手：安全区的意义就是"这里不加压"
+            if (OpenWorld.Sanctuary.AtHome) return;
 
             var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null || player.Stats == null || player.Stats.IsDead) return;

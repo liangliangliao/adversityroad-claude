@@ -373,8 +373,7 @@ namespace AdversityRoad.OpenWorld
 
                 // 非普通 NPC 头顶挂一个可读标签：敌人识别必须清晰、公平
                 if (kinds[i] != NpcKind.Ordinary)
-                    HomeSign(go.transform.position + new Vector3(0, 2.2f, 0),
-                        CityNpc.KindLabel(kinds[i]));
+                    FollowSign(go.transform, new Vector3(0, 2.2f, 0), CityNpc.KindLabel(kinds[i]));
             }
 
             // 街边的固定摊位与人群感（不动的生活痕迹）
@@ -414,6 +413,22 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>世界内文字标牌（面向镜头，零美术资源）。</summary>
+        /// <summary>
+        /// 跟着物体走的标签。市民会走动，而标签必须挂在他头上——
+        /// 上一版是在出生点建一个独立物体，市民一走开，标签就留在原地，
+        /// 玩家看到的正是"空地上飘着两个字"。挂成子物体之后它自然跟着人。
+        /// </summary>
+        public static void FollowSign(Transform parent, Vector3 localOffset, string text)
+        {
+            var go = new GameObject("Sign_" + text);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localOffset;
+            World.WorldText.Plate(
+                World.WorldText.Attach(go, text, 52, 0.08f, new Color(0.95f, 0.92f, 0.8f)));
+            var fc = go.AddComponent<FaceCamera>();
+            fc.maxDistance = 42f;   // 人头顶的小牌子，远了就是噪点
+        }
+
         public static void HomeSign(Vector3 pos, string text)
         {
             var go = new GameObject("Sign_" + text);
@@ -421,7 +436,9 @@ namespace AdversityRoad.OpenWorld
             // 同上：区域名是悬空的，必须配底板才读得出来
             World.WorldText.Plate(
                 World.WorldText.Attach(go, text, 52, 0.08f, new Color(0.95f, 0.92f, 0.8f)));
-            go.AddComponent<FaceCamera>();
+            var fc = go.AddComponent<FaceCamera>();
+            // 楼顶的招牌本来就是给远处看的，用默认的 70 米会在半路上突然消失
+            fc.maxDistance = pos.y > 6f ? 220f : 70f;
         }
     }
 }

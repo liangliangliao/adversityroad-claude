@@ -3690,10 +3690,25 @@ namespace AdversityRoad.World
         // 【记的是本地坐标，不是世界坐标】
         // 广播室会整体后退（长廊每延长一段就挪一次），门上的 ON AIR 牌是它的子物体。
         // 如果这里记的是 Awake 那一刻的世界坐标，房子搬走了牌子会留在原地。
+        /// <summary>超过这个距离就不显示。远处的牌子只会挤成一团噪点，读不出内容。</summary>
+        public float maxDistance = 70f;
+
+        /// <summary>被建筑挡住时是否隐藏。牌子挂在自己那面墙上时留 0.6 米余量，避免掠射角自遮挡。</summary>
+        public bool hideWhenBlocked = true;
+
         Vector3 _homeLocal;
         bool _hasHome;
+        Renderer[] _rends;
+        bool _visible = true;
+        float _nextCheck;
 
-        void Awake() { _homeLocal = transform.localPosition; _hasHome = true; }
+        void Awake()
+        {
+            _homeLocal = transform.localPosition; _hasHome = true;
+            _rends = GetComponentsInChildren<Renderer>(true);
+            // 各自错开检查相位：几十块牌子同一帧一起打射线会是一个明显的卡顿峰
+            _nextCheck = Time.time + Random.value * 0.25f;
+        }
 
         Vector3 Home()
         {
@@ -3719,6 +3734,34 @@ namespace AdversityRoad.World
             // 退的是**相对原位**，不是每帧累加，所以不会越飘越远。
             if (standoff > 0f)
                 transform.position = home - toCam.normalized * standoff;
+
+            // 【为什么要判可见性】玩家反复反馈"文字飘在空中"。除了牌子本身没跟着物体走
+            // （那是各自的建法问题），还有两种情况：太远——远处的牌子挤成一团谁也读不出；
+            // 以及被墙挡住——牌子没有碰撞体，屋里的标签会直接透过外墙浮在街上，
+            // 看上去就是一块凭空悬着的字。这两种都在这里统一挡掉。
+            if (Time.time >= _nextCheck)
+            {
+                _nextCheck = Time.time + 0.25f;
+                float dist = toCam.magnitude;
+                bool show = dist <= maxDistance;
+                if (show && hideWhenBlocked && dist > 1.5f)
+                {
+                    // 留 0.6 米余量：牌子本来就贴在它标注的那面墙上，
+                    // 掠射角下射线会打到自己那面墙，不留余量会一直闪。
+                    // 注意 toCam 这个名字是反的：它是 home - camPos，指向**牌子**，不是指向镜头。
+                    // 射线要从镜头打向牌子，方向就是 toCam 本身。
+                    if (Physics.Raycast(cam.transform.position, toCam.normalized,
+                            out var hit, dist - 0.6f, ~0, QueryTriggerInteraction.Ignore))
+                        show = false;
+                }
+                if (show != _visible)
+                {
+                    _visible = show;
+                    if (_rends != null)
+                        for (int i = 0; i < _rends.Length; i++)
+                            if (_rends[i] != null) _rends[i].enabled = show;
+                }
+            }
         }
     }
 

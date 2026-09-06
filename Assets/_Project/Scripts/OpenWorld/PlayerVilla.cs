@@ -30,11 +30,15 @@ namespace AdversityRoad.OpenWorld
         // 3.9 米层高配上 84×60 的平面，比例是错的——房间又大又矮，站进去像地下车库，
         // 而且一整面墙的目标看板根本立不起来（4.6 米的板子在 3.6 净高里上下都戳出去）。
         // 真实的大平层客厅普遍 3.2~3.6，这栋房子的平面接近别墅尺度，5.0 才撑得住。
-        public const float FloorH = 5.0f;
+        public const float FloorH = 7.5f;
         /// <summary>二层楼板顶面 = 一层层高 + 楼板厚。跟着 FloorH 走，不再各写各的。</summary>
         public const float SlabY = FloorH + 0.2f;
         const float WallT = 0.28f;
-        const float DoorW = 3.0f, DoorH = 2.6f;
+        // 门高跟着层高走。7.5 米的房间配 2.6 米的门，门看起来像给小孩开的——
+        // 层高一改就必须改门，这两个数字是绑在一起的。
+        const float DoorW = 3.2f, DoorH = 3.9f;
+        /// <summary>入户大门：比室内门再高一档，进门第一眼的尺度由它定。</summary>
+        const float EntryH = 4.6f;
 
         // ---- 配色 ----
         static readonly Color Wall = new Color(0.88f, 0.86f, 0.82f);
@@ -57,9 +61,24 @@ namespace AdversityRoad.OpenWorld
         /// <summary>整栋宅子（含院子）的世界包围盒——用来把 NPC 挡在外面。</summary>
         public static Bounds Lot { get; private set; }
 
+        /// <summary>宅子原点（Build 时记下）。挂件要知道自己在哪一层，就得知道地面在哪。</summary>
+        public static Vector3 Origin { get; private set; }
+
+        /// <summary>
+        /// 给定一个屋内高度，返回它所在那一层的天花高度。
+        /// 挂件的高度一律由它推出来，不再写死数字——写死的下场是层高一改，
+        /// 空调和吊灯全停在半空中，而那正是"悬空物"投诉的来源。
+        /// </summary>
+        public static float CeilingYAt(float worldY)
+        {
+            float local = worldY - Origin.y;
+            return Origin.y + (local >= SlabY - 0.5f ? SlabY + FloorH : FloorH);
+        }
+
         public static void Build(WorldContext ctx, Vector3 h)
         {
             // 宅基地：房子 + 前院 + 泳池院 + 车库，卡在主干道以南那块新地里
+            Origin = h;
             Lot = new Bounds(h + new Vector3(4f, 4f, 0f), new Vector3(150f, 20f, 74f));
 
             VillaKit.Begin(ctx, h);
@@ -147,10 +166,13 @@ namespace AdversityRoad.OpenWorld
                         new Vector3(hw - 4.2f, FloorH, WallT), Wall);
                     VillaKit.Box("Wall_N_R", h + new Vector3((hw + 4.2f) / 2f, y + FloorH / 2f, hd),
                         new Vector3(hw - 4.2f, FloorH, WallT), Wall);
-                    VillaKit.Box("Wall_N_Head", h + new Vector3(0, y + FloorH - 0.55f, hd),
-                        new Vector3(8.4f, 1.1f, WallT), Wall);
-                    VillaKit.Doorway(h + new Vector3(0, y, hd), 8.4f, 3.0f, true, WoodLight, Wood);
-                    VillaKit.WallSign(h + new Vector3(0, 3.6f, hd + 0.35f), "入 口", Vector3.forward, 3.2f);
+                    // 门楣从门顶一直补到天花。上一版是"门高 3.0 + 一条 1.1 的门楣"，
+                    // 中间 3.0~3.9 是空的——层高越高，这条缝越大，等于大门上方有个通天的洞。
+                    VillaKit.Box("Wall_N_Head", h + new Vector3(0, y + (FloorH + EntryH) / 2f, hd),
+                        new Vector3(8.4f, FloorH - EntryH, WallT), Wall);
+                    VillaKit.Doorway(h + new Vector3(0, y, hd), 8.4f, EntryH, true, WoodLight, Wood);
+                    VillaKit.WallSign(h + new Vector3(0, EntryH + 0.8f, hd + 0.35f), "入 口",
+                        Vector3.forward, 3.2f);
                 }
 
                 // 窗：南北各三扇、东西各两扇（带窗框，室内看得见外面）
@@ -175,8 +197,11 @@ namespace AdversityRoad.OpenWorld
             // 两层的天花都做吊顶：石膏线 + 回字造型 + 灯槽。
             // 上一版两层的天花都是一整块素板——一抬头就是一张白纸，
             // 房间再大也读不出"这是装修过的房子"。
-            CeilingFinish(h, SlabY - 0.22f);              // 一层：吊在楼板下面
-            CeilingFinish(h, SlabY + FloorH - 0.34f);     // 二层：吊在屋面板下面
+            // 一层吊顶必须在楼梯井这块挖空。上一版这块回字板整块横铺，
+            // x 到 26 米、z 到 18.6 米，正好盖住 x∈[17,27]、z∈[14,23] 的井口一半——
+            // 上楼时人从这块板里穿过去，看到的就是"楼梯被天花板堵死了"。
+            CeilingFinish(h, SlabY - 0.22f, true);        // 一层：吊在楼板下面
+            CeilingFinish(h, SlabY + FloorH - 0.34f, false); // 二层：吊在屋面板下面
             VillaKit.Box("Roof", h + new Vector3(0, SlabY + FloorH + 0.2f, 0),
                 new Vector3(W + 2.2f, 0.4f, D + 2.2f), WallWarm);
             // 两坡顶：两块斜板搭在女儿墙里侧。轴对齐的平屋顶正是"像方块"的一大来源
@@ -395,7 +420,10 @@ namespace AdversityRoad.OpenWorld
         static void Stairs(WorldContext ctx, Vector3 h)
         {
             const float startZ = 23f, endZ = 14f;     // 与楼板井口（z 14~23）严格对齐
-            const int steps = 22;
+            // 级数不能写死：CharacterController 的迈步上限是 0.3 米，
+            // 层高从 5.0 提到 7.5 之后，原来的 22 级会变成每级 0.35——一级都迈不上去。
+            // 按"每级不超过 0.24"反算级数，层高再怎么改楼梯都还能走。
+            int steps = Mathf.Max(20, Mathf.CeilToInt(SlabY / 0.24f));
             float run = (startZ - endZ) / steps, rise = SlabY / steps;
             Vector3 axis = h + new Vector3(22f, 0, 0);
 
@@ -413,7 +441,7 @@ namespace AdversityRoad.OpenWorld
             // 两侧扶手：立柱按级排，扶手是一根斜着的圆柱
             for (int s2 = -1; s2 <= 1; s2 += 2)
             {
-                for (int i = 0; i < steps; i += 3)
+                for (int i = 0; i < steps; i += Mathf.Max(3, steps / 8))
                 {
                     float y = rise * (i + 1);
                     float z = startZ - (i + 0.5f) * run;
@@ -475,7 +503,12 @@ namespace AdversityRoad.OpenWorld
             // 客厅沙发在 x=±7.4，21.4 的板子两侧各留出一米多，不会捅进侧墙。
             // 层高抬到 5.0 之后（吊顶底面约 4.7），看板跟着长高：
             // y 从 0.10 到 4.42，高 4.32——真正的一整面墙，而不是墙上挂了块板。
-            const float BoardW = 21.4f, BoardH = 4.32f, BoardY = 2.26f;
+            // 尺寸跟着层高算，不写死：上一版按净高 3.6 定了 4.32 米，层高一提到 7.5，
+            // 这块板就又退回成"半面墙"，而"铺满整面墙"是明确要求过的。
+            // 上下各留 10 厘米，顶不进吊顶、底不沉进地板。
+            float BoardH = FloorH - 0.9f;          // 吊顶占掉约 0.7，再留 0.2 的余量
+            float BoardY = 0.10f + BoardH / 2f;
+            const float BoardW = 21.4f;
             var frame = VillaKit.Box("GoalBoard_Frame", c + new Vector3(0, BoardY, -11.6f),
                 new Vector3(BoardW, BoardH, 0.34f), Dark);
             VillaKit.Deco("GoalBoard_Screen", c + new Vector3(0, BoardY, -11.4f),
@@ -1282,9 +1315,46 @@ namespace AdversityRoad.OpenWorld
         /// 回字叠级再给天花一个中心，灯槽让这个中心自己发光——
         /// 三样都是纯几何，不需要任何美术资源。
         /// </summary>
-        static void CeilingFinish(Vector3 h, float ceilY)
+        /// <summary>楼梯井在宅子本地坐标里的范围（楼板、吊顶、灯槽都要避开它）。</summary>
+        static Rect StairWell(Vector3 h) => new Rect(h.x + 17f, h.z + 14f, 10f, 9f);
+
+        /// <summary>
+        /// 一块水平板，挖掉一个矩形洞：在 XZ 上切成最多四块绕着洞走。
+        /// 需要发光的（灯槽）把 emit 传进来，切出来的每一块各自发光。
+        /// </summary>
+        static void DecoHole(string name, Vector3 center, Vector3 size, Color c,
+            Rect hole, Color? emit = null)
+        {
+            float x0 = center.x - size.x / 2f, x1 = center.x + size.x / 2f;
+            float z0 = center.z - size.z / 2f, z1 = center.z + size.z / 2f;
+            float hx0 = Mathf.Max(x0, hole.xMin), hx1 = Mathf.Min(x1, hole.xMax);
+            float hz0 = Mathf.Max(z0, hole.yMin), hz1 = Mathf.Min(z1, hole.yMax);
+            if (hx0 >= hx1 || hz0 >= hz1)   // 压根不重叠，整块铺
+            {
+                var whole = VillaKit.Deco(name, center, size, c);
+                if (emit.HasValue) VillaKit.Emit(whole, emit.Value, 1.5f);
+                return;
+            }
+            Slice(name, x0, x1, z0, hz0, center.y, size.y, c, emit);
+            Slice(name, x0, x1, hz1, z1, center.y, size.y, c, emit);
+            Slice(name, x0, hx0, hz0, hz1, center.y, size.y, c, emit);
+            Slice(name, hx1, x1, hz0, hz1, center.y, size.y, c, emit);
+        }
+
+        static void Slice(string name, float x0, float x1, float z0, float z1,
+            float y, float th, Color c, Color? emit)
+        {
+            if (x1 - x0 < 0.03f || z1 - z0 < 0.03f) return;
+            var go = VillaKit.Deco(name, new Vector3((x0 + x1) / 2f, y, (z0 + z1) / 2f),
+                new Vector3(x1 - x0, th, z1 - z0), c);
+            if (emit.HasValue) VillaKit.Emit(go, emit.Value, 1.5f);
+        }
+
+        static void CeilingFinish(Vector3 h, float ceilY, bool cutStairWell)
         {
             float hw = W / 2f - 0.5f, hd = D / 2f - 0.5f;
+            // 不挖洞时给一个空矩形，下面所有 DecoHole 就退化成整块铺
+            Rect well = cutStairWell ? StairWell(h) : new Rect(0, 0, 0, 0);
 
             // ① 顶角石膏线：沿四边一圈，断面做两级（上宽下窄），侧看有层次
             for (int s = -1; s <= 1; s += 2)
@@ -1303,23 +1373,23 @@ namespace AdversityRoad.OpenWorld
             float iw = W * 0.62f, id = D * 0.62f;
             for (int s = -1; s <= 1; s += 2)
             {
-                VillaKit.Deco("CoffBand", h + new Vector3(0, ceilY - 0.20f, s * (id / 2f)),
-                    new Vector3(iw + 0.9f, 0.18f, 0.9f), new Color(0.90f, 0.89f, 0.86f));
-                VillaKit.Deco("CoffBand", h + new Vector3(s * (iw / 2f), ceilY - 0.20f, 0),
-                    new Vector3(0.9f, 0.18f, id + 0.9f), new Color(0.90f, 0.89f, 0.86f));
+                DecoHole("CoffBand", h + new Vector3(0, ceilY - 0.20f, s * (id / 2f)),
+                    new Vector3(iw + 0.9f, 0.18f, 0.9f), new Color(0.90f, 0.89f, 0.86f), well);
+                DecoHole("CoffBand", h + new Vector3(s * (iw / 2f), ceilY - 0.20f, 0),
+                    new Vector3(0.9f, 0.18f, id + 0.9f), new Color(0.90f, 0.89f, 0.86f), well);
             }
-            VillaKit.Deco("CoffPan", h + new Vector3(0, ceilY - 0.05f, 0),
-                new Vector3(iw, 0.12f, id), new Color(0.95f, 0.94f, 0.92f));
+            DecoHole("CoffPan", h + new Vector3(0, ceilY - 0.05f, 0),
+                new Vector3(iw, 0.12f, id), new Color(0.95f, 0.94f, 0.92f), well);
 
             // ③ 灯槽：藏在叠级内侧的一圈暖光条。天花有了自己的光，才不是一张白纸
             for (int s = -1; s <= 1; s += 2)
             {
-                var a = VillaKit.Deco("CoveGlow", h + new Vector3(0, ceilY - 0.30f, s * (id / 2f - 0.5f)),
-                    new Vector3(iw - 0.4f, 0.07f, 0.22f), new Color(1f, 0.92f, 0.76f));
-                VillaKit.Emit(a, new Color(1f, 0.88f, 0.66f), 1.5f);
-                var b = VillaKit.Deco("CoveGlow", h + new Vector3(s * (iw / 2f - 0.5f), ceilY - 0.30f, 0),
-                    new Vector3(0.22f, 0.07f, id - 0.4f), new Color(1f, 0.92f, 0.76f));
-                VillaKit.Emit(b, new Color(1f, 0.88f, 0.66f), 1.5f);
+                DecoHole("CoveGlow", h + new Vector3(0, ceilY - 0.30f, s * (id / 2f - 0.5f)),
+                    new Vector3(iw - 0.4f, 0.07f, 0.22f), new Color(1f, 0.92f, 0.76f),
+                    well, new Color(1f, 0.88f, 0.66f));
+                DecoHole("CoveGlow", h + new Vector3(s * (iw / 2f - 0.5f), ceilY - 0.30f, 0),
+                    new Vector3(0.22f, 0.07f, id - 0.4f), new Color(1f, 0.92f, 0.76f),
+                    well, new Color(1f, 0.88f, 0.66f));
             }
             // 灯槽要真的照亮天花附近，否则只是四条发亮的贴纸
             for (int sx = -1; sx <= 1; sx += 2)
@@ -1359,10 +1429,33 @@ namespace AdversityRoad.OpenWorld
         /// 上一版是"在房间某个高度放一个白盒子"，于是它悬在半空中。
         /// 现在按墙面位置 + 朝向摆：机身紧贴墙、导风板朝屋里、指示灯亮着。
         /// </summary>
+        /// <summary>
+        /// 沿 dir 找最近的实体表面，把挂件贴上去；找不到就原样返回。
+        ///
+        /// 【为什么要射线，而不是把坐标填对】墙的位置会变——层高改了、房间挪了、
+        /// 隔墙加了一道，手填的"应该在墙上"就变成了悬空。挂件贴不贴墙这件事
+        /// 应该由几何当场决定，而不是由写代码时的记忆决定。
+        /// 起点往回退 0.6 米，是为了让射线能从墙内侧出发也照样打到墙面。
+        /// </summary>
+        static Vector3 SnapToWall(Vector3 from, Vector3 dir, float maxDist)
+        {
+            // 墙是这一帧刚建出来的，物理场景还没同步过；不同步射线打不到任何东西
+            Physics.SyncTransforms();
+            if (Physics.Raycast(from - dir * 0.6f, dir, out var hit, maxDist + 0.6f,
+                    ~0, QueryTriggerInteraction.Ignore))
+                return hit.point - dir * 0.02f;
+            return from;
+        }
+
         static void AirConditioner(WorldContext ctx, Vector3 wallAt, Vector3 faceDir)
         {
             faceDir = faceDir.normalized;
             float yaw = Quaternion.LookRotation(faceDir).eulerAngles.y;
+            // 高度按本层天花往下 1.5 米算：挂机本来就装在墙的高处，
+            // 而写死的 2.9 在 7.5 米层高的房间里会停在半墙腰上。
+            wallAt.y = CeilingYAt(wallAt.y) - 1.5f;
+            // 真正贴到墙面上（出风朝室内，所以墙在 -faceDir 方向）
+            wallAt = SnapToWall(wallAt, -faceDir, 3.5f);
             Vector3 at = wallAt + faceDir * 0.3f;    // 机身厚度的一半，紧贴墙面
             VillaKit.Deco("AC", at, new Vector3(2.3f, 0.68f, 0.5f), new Color(0.96f, 0.96f, 0.97f),
                 new Vector3(0, yaw, 0));

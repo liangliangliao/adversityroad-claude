@@ -530,6 +530,9 @@ namespace AdversityRoad.Core
             cc.height = 2f;
             cc.center = Vector3.zero;
             cc.radius = 0.4f;
+            // 迈步上限写明确：住所的楼梯按这个值反算级数（见 PlayerVilla.Stairs）。
+            // 靠 Unity 的默认值等于两边各记各的，默认值一变楼梯就上不去。
+            cc.stepOffset = 0.3f;
 
             _player = root.AddComponent<PlayerController>();
             var fsm = root.AddComponent<CombatStateMachine>();

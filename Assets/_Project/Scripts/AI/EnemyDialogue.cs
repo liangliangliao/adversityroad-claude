@@ -45,6 +45,7 @@ namespace AdversityRoad.AI
         /// <summary>喊出一句针对弱点轴的恶意低语（气泡 + 底部字幕）。</summary>
         public void Taunt(WeaknessAxis axis, string zoneId, bool major)
         {
+            if (OpenWorld.Sanctuary.AtHome) return;   // 家里不挨骂
             string line = DialogueLibrary.GetTaunt(axis, zoneId);
             Show(line, major ? 3.5f : 2.5f);
             if (major) GameEvents.RaiseSubtitle("『" + displayName + "』：" + line);
