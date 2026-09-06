@@ -24,9 +24,25 @@ namespace AdversityRoad.Combat
     public class InnerVoiceSystem : MonoBehaviour
     {
         [Header("触发")]
-        public float ruminationTrigger = 0.55f;   // 反刍比例触发线
-        public float baseInterval = 16f;           // 反刍刚过线时的触发间隔（秒）
-        public float minInterval = 8f;             // 反刍拉满时的最短间隔
+        /// <summary>
+        /// 三个条件**同时**满足才会出现内部言语攻击：反刍很高、自尊很低、意志很低。
+        ///
+        /// 【为什么改成"与"，而不是原来的"反刍过线就发"】
+        /// 原条件是 反刍≥55% 或（内心敌人在场且反刍≥35%）。反刍在正常战斗里很容易
+        /// 到五成以上，于是脑内回声在状态还很好的时候就一直冒出来——玩家读到的是
+        /// "随机出现"，而不是"我现在真的撑不住了"。
+        ///
+        /// 这三条同时成立才是它该出现的时刻：脑子里转不停（反刍高）、
+        /// 觉得自己不行（自尊低）、快撑不住了（意志低）。三者缺一，
+        /// 脑内那个声音就不该有说服力——它插进来只会变成噪音。
+        /// 这也让它变成一个**状态信号**：一旦响起来，玩家就知道自己进了危险区，
+        /// 而不是"又随机响了一次"。
+        /// </summary>
+        public float ruminationTrigger = 0.70f;    // 反刍比例：高于此
+        public float selfWorthCeiling = 0.40f;     // 自尊比例：低于此
+        public float willCeiling = 0.40f;          // 意志比例：低于此
+        public float baseInterval = 16f;           // 刚进入触发区时的间隔（秒）
+        public float minInterval = 8f;             // 三项都到极端时的最短间隔
 
         PlayerController _player;
         float _nextAllowed;
@@ -68,16 +84,26 @@ namespace AdversityRoad.Combat
 
             var s = _player.Stats;
             float rumRatio = s.maxRumination > 0 ? s.rumination / s.maxRumination : 0f;
+            float swRatio = s.maxSelfWorth > 0 ? s.selfWorth / s.maxSelfWorth : 1f;
+            float willRatio = s.maxWill > 0 ? s.will / s.maxWill : 1f;
             bool innerNear = InnerEnemyNearby();
 
-            // 反刍过线 → 触发；或有内心敌人逼近且反刍已有一定积累（≥35%）
-            bool trigger = rumRatio >= ruminationTrigger || (innerNear && rumRatio >= 0.35f);
+            // 三条同时成立才发：脑子转不停 + 觉得自己不行 + 快撑不住了。
+            // 内心敌人在场只把门槛放宽一档（反刍 -10%、自尊/意志各 +10%），
+            // 不再是"绕过条件直接发"——它是加压的，不是另一套触发。
+            float rumGate = innerNear ? ruminationTrigger - 0.10f : ruminationTrigger;
+            float swGate = innerNear ? selfWorthCeiling + 0.10f : selfWorthCeiling;
+            float willGate = innerNear ? willCeiling + 0.10f : willCeiling;
+            bool trigger = rumRatio >= rumGate && swRatio <= swGate && willRatio <= willGate;
             if (!trigger) { _nextAllowed = Time.unscaledTime + 2f; return; }
 
             if (Fire(s, rumRatio, innerNear))
             {
-                // 反刍越高、内心敌人在场，下一次来得越快
-                float t = Mathf.InverseLerp(ruminationTrigger, 1f, rumRatio);
+                // 越深入危险区，下一次来得越快：三项各自的"越界程度"取平均
+                float tr = Mathf.InverseLerp(rumGate, 1f, rumRatio);
+                float ts = 1f - Mathf.InverseLerp(0f, Mathf.Max(0.01f, swGate), swRatio);
+                float tw = 1f - Mathf.InverseLerp(0f, Mathf.Max(0.01f, willGate), willRatio);
+                float t = Mathf.Clamp01((tr + ts + tw) / 3f);
                 float interval = Mathf.Lerp(baseInterval, minInterval, t) * (innerNear ? 0.75f : 1f);
                 _nextAllowed = Time.unscaledTime + interval;
             }

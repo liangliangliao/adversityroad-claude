@@ -85,7 +85,7 @@ namespace AdversityRoad.UI
 
             UiUtil.MakeButton(frame.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -40),
                 new Vector2(140, 60), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
-            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 上下拖动查看全部设置", 20,
+            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 下方可上下拖动 · 调试开关常驻在这里", 20,
                 TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.5f));
             UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(230, -40), new Vector2(420, 30));
 
@@ -103,23 +103,36 @@ namespace AdversityRoad.UI
             // 放到外框上之后，滚动位置、兄弟层级、视口裁剪这三个可能原因一次全排除：
             // 它和关闭按钮一样是固定的，面板一打开必然在眼前。
             // 状态也不再只靠颜色区分——颜色在不同屏幕上未必读得出来，直接写"开/关"。
+            // 第一行两个并排：调试数据 | 动作库
             _perfBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -112), new Vector2(1020, 58), Off, () =>
+                new Vector2(-256, -112), new Vector2(500, 58), Off, () =>
                 {
                     PerfHud.Enabled = !PerfHud.Enabled;
                     Refresh();
-                }, 24);
-
-            // 第二条固定行：动作库优先级。和上面同理，调动画要随手切，不能埋在滚动区里。
+                }, 22);
             _ualBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -174), new Vector2(1020, 58), Off, () =>
+                new Vector2(256, -112), new Vector2(500, 58), Off, () =>
                 {
                     Core.GameDebug.PreferUalClips = !Core.GameDebug.PreferUalClips;
                     // 立刻重建：映射表是在构造里读的，不重建这颗开关就是个摆设
                     int n = Combat.HumanoidAnimator.RebuildAllMecanim();
                     GameEvents.RaiseSubtitle("动作库已切换（重建了 " + n + " 个角色的动画层）。");
                     Refresh();
-                }, 24);
+                }, 22);
+
+            // 第二行整宽：调试模式（敌人耐揍）
+            //
+            // 【它原来在滚动内容的 y=-736】视口只有 640 高，也就是说面板一打开它就在
+            // 可视区**下面**，必须往下滚才看得到；而它上下两排按钮各只隔 16 像素，
+            // 夹在中间更挑不出来。玩家说"被其他按钮遮挡"——几何上并没有叠在一起，
+            // 但读起来就是这个感受，而结论一样：看不到。
+            // 三个都是调试开关，一起钉在固定区，两行放下，不占额外高度。
+            _debugBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -174), new Vector2(1020, 58), Off, () =>
+                {
+                    GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
+                    Refresh();
+                }, 22);
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
@@ -146,12 +159,12 @@ namespace AdversityRoad.UI
                 _intensityBtns.Add((btn, lv.Item2));
             }
 
-            _softenBtn = MakeToggle("台词柔化（降低攻击性表达）", -290, () =>
+            _softenBtn = MakeToggle("台词柔化（降低攻击性表达）", -300, () =>
             {
                 if (Safety != null) Safety.softenDialogue = !Safety.softenDialogue;
                 Refresh();
             });
-            _recoveryBtn = MakeToggle("恢复模式（停止一切心理攻击）", -380, () =>
+            _recoveryBtn = MakeToggle("恢复模式（停止一切心理攻击）", -390, () =>
             {
                 if (Safety != null)
                 {
@@ -160,18 +173,10 @@ namespace AdversityRoad.UI
                 }
                 Refresh();
             });
-            _followBtn = MakeToggle("镜头自动跟随", -470, () =>
+            _followBtn = MakeToggle("镜头自动跟随", -480, () =>
             {
                 var cam = FindObjectOfType<ThirdPersonCamera>();
                 if (cam != null) cam.autoFollow = !cam.autoFollow;
-                Refresh();
-            });
-            // 【-560 这一行本来是三个控件叠在一起】骨骼后处理/单片段两颗 545 宽的
-            // 按钮在 -564，把这颗 760 宽的整个盖住了——"调试模式"一直点不到。
-            // 挪到 -650 与 -822 之间那段空档里。
-            _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -736, () =>
-            {
-                GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
                 Refresh();
             });
 
@@ -464,14 +469,20 @@ namespace AdversityRoad.UI
             if (_followBtn != null)
                 _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
             if (_debugBtn != null)
+            {
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
+                var dl = _debugBtn.GetComponentInChildren<Text>();
+                if (dl != null)
+                    dl.text = GameDebug.TankyEnemies
+                        ? "■ 调试模式：开　敌人耐揍（受到伤害 ×0.1，不易被打死）"
+                        : "□ 调试模式：关　敌人正常受伤";
+            }
             if (_perfBtn != null)
             {
                 _perfBtn.GetComponent<Image>().color = PerfHud.Enabled ? On : Off;
                 var pl = _perfBtn.GetComponentInChildren<Text>();
                 if (pl != null)
-                    pl.text = (PerfHud.Enabled ? "■ 调试数据：开" : "□ 调试数据：关")
-                              + "　（FPS / 帧时 / 穿墙 / 漂移 / 动画状态）";
+                    pl.text = PerfHud.Enabled ? "■ 调试数据：开" : "□ 调试数据：关";
             }
             if (_ualBtn != null)
             {
@@ -479,8 +490,7 @@ namespace AdversityRoad.UI
                 _ualBtn.GetComponent<Image>().color = ual ? On : Off;
                 var ul = _ualBtn.GetComponentInChildren<Text>();
                 if (ul != null)
-                    ul.text = ual ? "■ 动作库：UAL 优先（33 个新动作全部生效，用来对比）"
-                                  : "□ 动作库：主库优先（默认；UAL 只在主库缺片段时顶上）";
+                    ul.text = ual ? "■ 动作库：UAL 优先" : "□ 动作库：主库优先";
             }
             if (_lockModeBtn != null)
             {
