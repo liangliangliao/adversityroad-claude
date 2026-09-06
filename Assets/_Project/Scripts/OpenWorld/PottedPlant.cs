@@ -284,14 +284,6 @@ namespace AdversityRoad.OpenWorld
 
         void Water()
         {
-            // 浇水是蹲下去摆弄一盆花：Fixing_Kneeling 正是这个动作；
-            // 拿不到就退回通用的 Interact（站着伸手）。
-            // 直接用本类已有的 _player（Update 里已取好）。
-            // 注意别写成 Core.ActorRegistry——这个类里有个叫 Core 的 Color 字段
-            //（花芯的颜色），那样会被解析成"在 Color 上找 ActorRegistry"。
-            var ha = _player != null
-                ? _player.GetComponentInChildren<AdversityRoad.Combat.HumanoidAnimator>() : null;
-            if (ha != null) ha.PlayFirstClip(1f, 0.25f, "fixing_kneeling", "interact");
             if (_stage >= StageNames.Length - 1)
             {
                 GameEvents.RaiseSubtitle("它已经结果了。剩下的事不是浇水能加快的。");
@@ -306,6 +298,18 @@ namespace AdversityRoad.OpenWorld
             _watered++;
             GameAudio.Play(GameAudio.Sfx.Cast, 0.45f);
             Splash();
+
+            // 【动作放在这里，不能放在方法开头】上一版我插在所有拦截条件之前，
+            // 结果"土还是湿的，过一会儿再来"这种**没浇成**的情况也照样蹲下去摆弄一通，
+            // 玩家看到的就是"这个动画用错地方了"。动作要跟着真正发生的事走。
+            // 倍速 2.2：原片段 6.5 秒，那是"跪着修东西"的完整长度；
+            // 浇一次水就是弯腰一下，播完整段会把人钉在原地六秒。
+            // 直接用本类已有的 _player（Update 里已取好）。
+            // 注意别写成 Core.ActorRegistry——这个类里有个叫 Core 的 Color 字段
+            //（花芯的颜色），那样会被解析成"在 Color 上找 ActorRegistry"。
+            var ha = _player != null
+                ? _player.GetComponentInChildren<AdversityRoad.Combat.HumanoidAnimator>() : null;
+            if (ha != null) ha.PlayFirstClip(2.2f, 0.2f, "fixing_kneeling", "interact");
 
             if (_watered >= NeedWater[_stage])
             {

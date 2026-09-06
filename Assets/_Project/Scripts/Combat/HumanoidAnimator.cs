@@ -185,8 +185,36 @@ namespace AdversityRoad.Combat
         /// <summary>切到动捕模式：成功接管返回 true；失败保持程序化骨骼。
         /// animsFolder 可指定角色专属动作库目录（如 Characters/Anims2），
         /// 该目录无效时自动回退默认动作库（Mixamo 标准骨架通用）。</summary>
+        Animator _mecAnimator;
+        string _mecFolder;
+
+        /// <summary>
+        /// 重建动捕层（切换动作库优先级后调用）。
+        ///
+        /// 姿态映射表是在 PlayableAnimator 的构造里读的，改了开关不重建等于没改——
+        /// 而"改了要重启游戏才生效"的开关，在调动画时基本没人会用。
+        /// 重建会丢掉当前正在播的姿态，对一个调试开关来说可以接受。
+        /// </summary>
+        public bool RebuildMecanim()
+        {
+            if (_mecAnimator == null) return false;
+            if (_mecanim != null) { _mecanim.Destroy(); _mecanim = null; }
+            return TryEnableMecanim(_mecAnimator, _mecFolder);
+        }
+
+        /// <summary>场上所有角色一起重建：玩家、敌人、路人共用同一张映射表。</summary>
+        public static int RebuildAllMecanim()
+        {
+            int n = 0;
+            foreach (var h in FindObjectsByType<HumanoidAnimator>(FindObjectsInactive.Include))
+                if (h != null && h.RebuildMecanim()) n++;
+            return n;
+        }
+
         public bool TryEnableMecanim(Animator animator, string animsFolder = null)
         {
+            _mecAnimator = animator;
+            _mecFolder = animsFolder;
             _mecanim = new PlayableAnimator(animator, animsFolder);
             if (!_mecanim.Valid && !string.IsNullOrEmpty(animsFolder))
             {

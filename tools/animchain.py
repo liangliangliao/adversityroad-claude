@@ -109,7 +109,7 @@ def parse_map_full(name):
         out.append((pose, keys, sp, st, en, hold, kind == "AP"))
     return out
 
-armed_rows   = parse_map_full("ActionMap")
+armed_rows   = parse_map_full("ActionMap") + parse_map_full("UalMap")
 unarmed_rows = parse_map_full("UnarmedMap")
 action_rows  = armed_rows + unarmed_rows
 
@@ -128,7 +128,10 @@ for m in re.finditer(r'Add\(\s*(?:PickFile\(\s*byName\s*,\s*"([^"]+)"\s*,\s*"([^
     disp = m.group(2) or m.group(3)
     ring_rows.append((m.group(4), m.group(5), key, disp))
 
-action_map  = parse_map("ActionMap")
+# UalMap 是与主表并列的第二张姿态表，先后由 GameDebug.PreferUalClips 决定。
+# 默认顺序是主库在前，所以 UAL 的条目在默认下几乎都赢不了——这不是问题，
+# 是那个开关存在的理由；但它们必须被解析进来，否则会被当成"加载了没人用"。
+action_map  = parse_map("ActionMap") + parse_map("UalMap")
 unarmed_map = parse_map("UnarmedMap")
 
 # 方向环槽位（Add(PickFile(...)) 与 Add(walk/run,...)）

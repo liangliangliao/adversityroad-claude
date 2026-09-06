@@ -172,16 +172,25 @@ namespace AdversityRoad.Combat
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
+        };
 
-            // ===== 通用动作库（Quaternius UAL）补位 =====
-            //
-            // 【为什么整块放在最后】上面那句 `if (!_actionIndex.ContainsKey(pose))`
-            // 决定了**先注册的赢**：只要主库那条候选真的找到了片段，这里就不会生效。
-            // 所以这一块是纯补位——原来有的一条不动，原来空着的才由 UAL 顶上。
-            // 这也是为什么不去改上面每一行的候选链：改了就有可能挤掉调了很久的片段。
-            //
-            // 片段名来自 UalRetargetBaker 的产物（Armature| 前缀已剥掉），
-            // 都是重定向到本工程 Mixamo 骨架的普通 Generic 曲线。
+        /// <summary>
+        /// 通用动作库（Quaternius UAL）的姿态映射，与主库分开成一张表。
+        ///
+        /// 【为什么必须分开，而不是拼在主表尾巴上】运行时是
+        /// `if (!_actionIndex.ContainsKey(pose))`——**先注册的赢**。
+        /// 主库 84 条几乎盖满了所有姿态，所以拼在尾巴上的 UAL 条目
+        /// **一条都永远赢不了**：它们被加载、在每个角色的 Playable 图里各占一个槽位、
+        /// 每帧都要过一遍，却永远播不到。玩家的原话是"没看到其在某些地方实际生效"——
+        /// 就是这个意思，而我当初把它们叫作"补位"，等于给"永远不生效"起了个好听的名字。
+        ///
+        /// 分成两张表之后，谁排在前面由开关决定（见 GameDebug.PreferUalClips）：
+        /// 默认仍是主库优先（那 84 条是调了很久的），打开开关则 UAL 优先，
+        /// 于是这 33 个动作全都真的能在游戏里看到、能和主库逐个对比。
+        /// 调动画本来就需要 A/B，而不是"信我说接进去了"。
+        /// </summary>
+        static readonly ActionDef[] UalMap =
+        {
             A(PoseState.PunchJab,    1.9f,  0.12f, 0.70f, false, "punch_jab"),
             A(PoseState.PunchCross,  1.85f, 0.12f, 0.70f, false, "punch_cross"),
             A(PoseState.Attack,      1.7f,  0.15f, 0.72f, false, "sword_attack", "sword_attack_rm"),
@@ -198,12 +207,19 @@ namespace AdversityRoad.Combat
             A(PoseState.Land,        1.3f,  0f,    0.85f, false, "jump_land"),
             A(PoseState.LandHard,    1.1f,  0f,    0.92f, false, "jump_land"),
             A(PoseState.CrouchIdle,  1.0f,  0f,    1f,    true,  "crouch_idle_loop"),
-            // 施法三段：本工程本来就有蓄力→循环→掷出的三个位，UAL 的简易法术正好对上
             A(PoseState.Charge,      1.0f,  0f,    1f,    false, "spell_simple_enter"),
             A(PoseState.ChargeLoop,  1.0f,  0f,    1f,    true,  "spell_simple_idle_loop"),
             A(PoseState.CastProjectile, 1.3f, 0.08f, 0.82f, false, "spell_simple_shoot"),
             A(PoseState.Cast,        1.0f,  0f,    1f,    false, "spell_simple_exit", "spell_simple_shoot"),
         };
+
+        /// <summary>按开关决定两张表的先后：先注册的赢。</summary>
+        static IEnumerable<ActionDef> OrderedActionMap =>
+            Core.GameDebug.PreferUalClips
+                ? System.Linq.Enumerable.Concat(UalMap, ActionMap)
+                : System.Linq.Enumerable.Concat(ActionMap, UalMap);
+
+
 
         /// <summary>
         /// 由帧数据反推播放速度的【可读性上限】。
@@ -634,7 +650,7 @@ namespace AdversityRoad.Combat
             var actionList =
                 new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start, float end)>();
             var connected = new HashSet<AnimationClip>();
-            foreach (var m in ActionMap)
+            foreach (var m in OrderedActionMap)
             {
                 if (m.pool)
                 {

@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
         GameObject _frame;    // 外框（装得下屏幕的那一层，显示/隐藏与置顶都走它）
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
-        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn;
+        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn, _ualBtn;
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
@@ -64,7 +64,7 @@ namespace AdversityRoad.UI
             viewRt.anchorMax = new Vector2(1f, 1f);
             viewRt.offsetMin = new Vector2(8f, 8f);
             // 顶部让出两条固定区：关闭按钮那一行，再加下面那条常驻的调试开关
-            viewRt.offsetMax = new Vector2(-8f, -172f);
+            viewRt.offsetMax = new Vector2(-8f, -212f);
 
             _panel = UiUtil.MakePanel(viewGo.transform, "SettingsPanel", new Vector2(1100, 1720),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
@@ -104,9 +104,20 @@ namespace AdversityRoad.UI
             // 它和关闭按钮一样是固定的，面板一打开必然在眼前。
             // 状态也不再只靠颜色区分——颜色在不同屏幕上未必读得出来，直接写"开/关"。
             _perfBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -118), new Vector2(1020, 64), Off, () =>
+                new Vector2(0, -112), new Vector2(1020, 58), Off, () =>
                 {
                     PerfHud.Enabled = !PerfHud.Enabled;
+                    Refresh();
+                }, 24);
+
+            // 第二条固定行：动作库优先级。和上面同理，调动画要随手切，不能埋在滚动区里。
+            _ualBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -174), new Vector2(1020, 58), Off, () =>
+                {
+                    Core.GameDebug.PreferUalClips = !Core.GameDebug.PreferUalClips;
+                    // 立刻重建：映射表是在构造里读的，不重建这颗开关就是个摆设
+                    int n = Combat.HumanoidAnimator.RebuildAllMecanim();
+                    GameEvents.RaiseSubtitle("动作库已切换（重建了 " + n + " 个角色的动画层）。");
                     Refresh();
                 }, 24);
 
@@ -461,6 +472,15 @@ namespace AdversityRoad.UI
                 if (pl != null)
                     pl.text = (PerfHud.Enabled ? "■ 调试数据：开" : "□ 调试数据：关")
                               + "　（FPS / 帧时 / 穿墙 / 漂移 / 动画状态）";
+            }
+            if (_ualBtn != null)
+            {
+                bool ual = Core.GameDebug.PreferUalClips;
+                _ualBtn.GetComponent<Image>().color = ual ? On : Off;
+                var ul = _ualBtn.GetComponentInChildren<Text>();
+                if (ul != null)
+                    ul.text = ual ? "■ 动作库：UAL 优先（33 个新动作全部生效，用来对比）"
+                                  : "□ 动作库：主库优先（默认；UAL 只在主库缺片段时顶上）";
             }
             if (_lockModeBtn != null)
             {
