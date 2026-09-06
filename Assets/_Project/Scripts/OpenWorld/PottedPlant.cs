@@ -286,8 +286,11 @@ namespace AdversityRoad.OpenWorld
         {
             // 浇水是蹲下去摆弄一盆花：Fixing_Kneeling 正是这个动作；
             // 拿不到就退回通用的 Interact（站着伸手）。
-            var pa = Core.ActorRegistry.Player;
-            var ha = pa != null ? pa.GetComponentInChildren<Combat.HumanoidAnimator>() : null;
+            // 直接用本类已有的 _player（Update 里已取好）。
+            // 注意别写成 Core.ActorRegistry——这个类里有个叫 Core 的 Color 字段
+            //（花芯的颜色），那样会被解析成"在 Color 上找 ActorRegistry"。
+            var ha = _player != null
+                ? _player.GetComponentInChildren<AdversityRoad.Combat.HumanoidAnimator>() : null;
             if (ha != null) ha.PlayFirstClip(1f, 0.25f, "fixing_kneeling", "interact");
             if (_stage >= StageNames.Length - 1)
             {
