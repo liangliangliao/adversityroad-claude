@@ -41,8 +41,15 @@ namespace AdversityRoad.Integrations
         public int syncMinutes = 15;
 
         // ---- 派生 ----
-        public string DeviceCodeUrl => $"{authority.TrimEnd('/')}/{tenant}/oauth2/v2.0/devicecode";
-        public string TokenUrl => $"{authority.TrimEnd('/')}/{tenant}/oauth2/v2.0/token";
+        public string DeviceCodeUrl => DeviceCodeUrlFor(tenant);
+        public string TokenUrl => TokenUrlFor(tenant);
+
+        // 取设备码时可能要换着租户试（见 MsTodoService.DeviceCodeRoutine），
+        // 而换完之后取令牌、刷新令牌都必须用同一个租户——所以按租户拼地址的能力要露出来。
+        public string DeviceCodeUrlFor(string t) =>
+            $"{authority.TrimEnd('/')}/{t}/oauth2/v2.0/devicecode";
+        public string TokenUrlFor(string t) =>
+            $"{authority.TrimEnd('/')}/{t}/oauth2/v2.0/token";
         public string ListsUrl => $"{graphBase.TrimEnd('/')}/me/todo/lists";
 
         /// <summary>Android 重定向 URI（授权码流程用；设备码流程不需要）。</summary>

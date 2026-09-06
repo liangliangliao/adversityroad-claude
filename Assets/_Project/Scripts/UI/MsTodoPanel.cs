@@ -115,7 +115,10 @@ namespace AdversityRoad.UI
                 "   微软会回 AADSTS70002 或 AADSTS7000218：它默认把应用当成带密钥的服务端应用，\n" +
                 "   而手机应用不能存密钥。同一页的\"平台\"只加\"移动和桌面应用程序\"，\n" +
                 "   加成 Web 或单页应用程序照样会被拒。\n" +
-                "4. API 权限页添加 Microsoft Graph 委托权限：Tasks.ReadWrite、User.Read、offline_access。\n\n" +
+                "4. API 权限页添加 Microsoft Graph 委托权限：Tasks.ReadWrite、User.Read、offline_access。\n" +
+                "※ 账户类型必须和 Tenant 对上：多租户+个人账户用 common，仅个人账户用 consumers，\n" +
+                "   仅本组织用你的租户 ID。对不上会回 AADSTS50059——登录时会自动换着试一遍，\n" +
+                "   试通了就把 Tenant 存下来，通常不用你操心。\n\n" +
                 "登录用的是设备码流程：点「登录」后这里会显示一串短码，\n" +
                 "在任意一台设备的浏览器打开 microsoft.com/devicelogin 输入它即可。\n" +
                 "这条流程不需要重定向 URI，因此包名与签名哈希不是登录的必填项——\n" +

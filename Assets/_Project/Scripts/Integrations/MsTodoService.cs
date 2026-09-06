@@ -136,25 +136,56 @@ namespace AdversityRoad.Integrations
             Status = State.WaitingForCode;
             Raise();
 
-            var form = new WWWForm();
-            form.AddField("client_id", cfg.clientId);
-            form.AddField("scope", cfg.scopes);
+            // 租户要换着试。原因：/common 只对"多租户 + 个人账户"的应用注册有效，
+            // 注册时账户类型选成"仅个人 Microsoft 账户"要用 consumers，
+            // 选成"仅此组织目录"要用组织的租户 ID——而玩家没有义务知道自己当初选了哪一项，
+            // 更没法从报错 AADSTS50059 反推。所以先用配置里的，失败且是"租户解析不了"这一类
+            // 错误时，依次换 consumers / organizations / common 再试。
+            // 试通的那个要存回配置：后面取令牌、刷新令牌必须走同一个租户端点。
+            var tries = new List<string> { cfg.tenant };
+            foreach (var alt in new[] { "consumers", "organizations", "common" })
+                if (!tries.Contains(alt)) tries.Add(alt);
 
             GDeviceCode dc = null;
-            using (var req = UnityWebRequest.Post(cfg.DeviceCodeUrl, form))
+            string useTenant = cfg.tenant;
+            string lastErr = "";
+            foreach (string t in tries)
             {
-                yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success)
+                var form = new WWWForm();
+                form.AddField("client_id", cfg.clientId);
+                form.AddField("scope", cfg.scopes);
+                using (var req = UnityWebRequest.Post(cfg.DeviceCodeUrlFor(t), form))
                 {
-                    Fail("取设备码失败：" + Describe(req));
-                    yield break;
+                    yield return req.SendWebRequest();
+                    if (req.result == UnityWebRequest.Result.Success)
+                    {
+                        dc = Parse<GDeviceCode>(req.downloadHandler.text);
+                        if (dc != null && !string.IsNullOrEmpty(dc.device_code))
+                        {
+                            useTenant = t;
+                            break;
+                        }
+                        lastErr = "返回内容看不懂（租户 " + t + "）。";
+                        continue;
+                    }
+                    lastErr = Describe(req) + "\n请求地址：" + cfg.DeviceCodeUrlFor(t);
+                    dc = null;
+                    // 只有"认不出租户"这一类才值得换个租户重试；
+                    // 没开公共客户端流、Client ID 不存在这些换几次都是一样的结果。
+                    if (!TenantIssue(lastErr)) break;
                 }
-                dc = Parse<GDeviceCode>(req.downloadHandler.text);
             }
+
             if (dc == null || string.IsNullOrEmpty(dc.device_code))
             {
-                Fail("取设备码失败：返回内容看不懂。检查 Tenant 与 Client ID。");
+                Fail("取设备码失败：" + lastErr);
                 yield break;
+            }
+
+            if (useTenant != cfg.tenant)
+            {
+                cfg.tenant = useTenant;
+                cfg.Save();
             }
 
             UserCode = dc.user_code;
@@ -175,7 +206,7 @@ namespace AdversityRoad.Integrations
                 tf.AddField("client_id", cfg.clientId);
                 tf.AddField("device_code", dc.device_code);
 
-                using (var req = UnityWebRequest.Post(cfg.TokenUrl, tf))
+                using (var req = UnityWebRequest.Post(cfg.TokenUrlFor(useTenant), tf))
                 {
                     yield return req.SendWebRequest();
                     var tok = Parse<GToken>(req.downloadHandler != null
@@ -376,8 +407,22 @@ namespace AdversityRoad.Integrations
         /// 这些码全都指向 Azure 应用注册的配置，没有一个是游戏这边能改掉的，
         /// 所以提示必须说清楚是去门户改，而不是让人反复点「登录」。
         /// </summary>
+        /// <summary>这条报错是不是"认不出租户"——只有这一类换个租户重试才有意义。</summary>
+        static bool TenantIssue(string raw) =>
+            !string.IsNullOrEmpty(raw) &&
+            (raw.Contains("AADSTS50059") || raw.Contains("AADSTS90002") ||
+             raw.Contains("AADSTS900023") || raw.Contains("AADSTS700016") ||
+             raw.Contains("AADSTS50194") || raw.Contains("tenant"));
+
         static string Hint(string raw)
         {
+            if (!string.IsNullOrEmpty(raw) && raw.Contains("AADSTS50059"))
+                return "\n\n→ 这个 Client ID 的\"受支持的账户类型\"和端点对不上，已自动换 " +
+                       "consumers / organizations / common 各试过一遍，都没通。" +
+                       "去 portal.azure.com → 应用注册 → 你的应用 → \"清单\"看 signInAudience：" +
+                       "个人账号要 AzureADandPersonalMicrosoftAccount（注册时选\"任何组织目录 + " +
+                       "个人 Microsoft 账户\"那一项）。改不动就重新注册一个，账户类型选对，" +
+                       "把新的 Client ID 填回来。";
             if (string.IsNullOrEmpty(raw)) return "";
             if (raw.Contains("AADSTS70002") || raw.Contains("AADSTS7000218") ||
                 raw.Contains("must be marked as"))
