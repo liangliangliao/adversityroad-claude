@@ -169,8 +169,10 @@ namespace AdversityRoad.EditorTools
         /// 也验不了，唯一能给出真实结果的地方就是这里。把"清单要几个 / 实际烤出几个 /
         /// 能不能按名字取到"打进日志，对不上一眼就能看见，而不是等装到手机上发现人不动。
         /// </summary>
-        static void DiagUal(StringBuilder sb)
+        /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>
+        static bool DiagUal(StringBuilder sb)
         {
+            bool ok = true;
             sb.Append("\n--- UAL 通用动作库 ---\n");
             const string list = "Assets/_Project/Animations/UAL/UAL_CLIPS.txt";
             int want = 0;
@@ -188,8 +190,17 @@ namespace AdversityRoad.EditorTools
             }
 
             var baked = Resources.LoadAll<AnimationClip>("Characters/AnimsUAL");
+            int got = baked != null ? baked.Length : 0;
             sb.Append("  清单 ").Append(want).Append(" 个 / 实际烤出 ")
-              .Append(baked != null ? baked.Length : 0).Append(" 个\n");
+              .Append(got).Append(" 个\n");
+            // 【为什么这里必须让作业变红】上一版只是把"烤出 0 个"打出来，作业照样是绿的，
+            // 于是一个"45 个动作全都没生效"的版本一路通过、打成 APK。
+            // 诊断查出来的问题不让流程停下来，等于没查。
+            if (want > 0 && got < want)
+            {
+                ok = false;
+                sb.Append("  [严重] 烤出的数量少于清单——这些动作在游戏里不会出现。\n");
+            }
             if (baked != null)
             {
                 int empty = 0;
@@ -217,11 +228,16 @@ namespace AdversityRoad.EditorTools
                     sb.Append("  抽查 ").Append(c.name).Append("：首条绑定路径 ")
                       .Append(binds[0].path).Append('\n');
                     if (!binds[0].path.Contains("mixamorig"))
+                    {
+                        ok = false;
                         sb.Append("  [严重] 绑定路径不是 mixamorig——重定向没生效，" +
                                   "这些片段在角色身上不会动\n");
+                    }
                     break;
                 }
+                if (empty > 0) ok = false;
             }
+            return ok;
         }
 
         public static void Run()
@@ -235,7 +251,10 @@ namespace AdversityRoad.EditorTools
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
-                DiagUal(sb);
+                // 显式烘焙：batchmode 下 InitializeOnLoad 的 delayCall 永远不会触发，
+                // 不在这里调一次，下面查到的就永远是"烤出 0 个"
+                UalRetargetBaker.Bake(false);
+                if (!DiagUal(sb)) exit = 1;
             }
             catch (System.Exception e)
             {

@@ -54,11 +54,36 @@ namespace AdversityRoad.EditorTools
 
         const int Fps = 30;
 
+        /// <summary>
+        /// 交互式编辑器里的自动烘焙。延迟一帧是因为 InitializeOnLoad 阶段
+        /// AssetDatabase 还可能在导入中。
+        ///
+        /// 【但 CI 里靠不住，别再指望它】batchmode 下 Unity 跑完 -executeMethod
+        /// 就退出，delayCall 排的那一帧**永远不会到来**——第一版就是这么
+        /// "烤出 0 个"的：日志里连一行 [CIDIAG][UAL] 都没有，因为 Bake 压根没被调用。
+        /// 所以 CI 的两条路各自显式调用：诊断作业在 CIDiagnostics.Run 开头调，
+        /// 安卓构建走下面的 BuildHook。
+        /// </summary>
         [InitializeOnLoadMethod]
         static void AutoBake()
         {
-            // 延迟一帧：InitializeOnLoad 阶段 AssetDatabase 还可能在导入中
-            EditorApplication.delayCall += () => Bake(false);
+            // batchmode 下直接调用，不排队。多跑几次不要紧：Stamp 一致就整段跳过，
+            // 而"少跑一次"的代价是整包动作全都没有。
+            if (Application.isBatchMode) Bake(false);
+            else EditorApplication.delayCall += () => Bake(false);
+        }
+
+        /// <summary>
+        /// 出包前烘焙。安卓构建走的是 game-ci 的默认构建方法，没有我们自己的入口，
+        /// 只能挂在构建前回调上。callbackOrder 取很小的负数，
+        /// 保证在别的构建前处理（可能会收集资源）之前跑完。
+        /// </summary>
+        public class BuildHook : UnityEditor.Build.IPreprocessBuildWithReport
+        {
+            public int callbackOrder => -10000;
+
+            public void OnPreprocessBuild(UnityEditor.Build.Reporting.BuildReport report)
+                => Bake(false);
         }
 
         [MenuItem("逆境之路/重新烘焙 UAL 动作库")]
