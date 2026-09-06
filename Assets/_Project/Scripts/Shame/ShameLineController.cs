@@ -71,7 +71,47 @@ namespace AdversityRoad.Shame
             if (string.IsNullOrEmpty(_levelId)) return;
 
             TickSelfWorthZero();
+            TickObjectiveLine();
         }
+
+        float _nextObjectiveTick;
+
+        /// <summary>
+        /// HUD 顶部那行「还差什么」。
+        ///
+        /// 【为什么必须常驻】
+        /// 上一版这两关一个字都没往 HUDController.SetObjective 里写——那个接口全场只有
+        /// 开放世界的 SiteGate 在用。玩家进关看到的还是主线任务行（"前往训练武馆"），
+        /// 于是"我不知道这关要我干什么"是必然结果，不是玩家的问题。
+        ///
+        /// 【8-1 的措辞边界】
+        /// 方案 8.5 禁止用任务提示把玩家推进广播室的门。所以 8-1 这一行只报**进度与事实**
+        /// （还了几期、长廊几段、门是开着的），不写"前往广播室"，不给方向，不催。
+        /// </summary>
+        void TickObjectiveLine()
+        {
+            if (Time.unscaledTime < _nextObjectiveTick) return;
+            _nextObjectiveTick = Time.unscaledTime + 0.4f;
+
+            if (_levelId == ShameLine.LevelDebtCorridor)
+            {
+                int repaid = Mathf.RoundToInt(DebtDesk.Progress * 100f);
+                UI.HUDController.SetObjective(
+                    "◆ 8-1 欠条长廊　已还 " + repaid + "%　长廊 " +
+                    (ShameLine.Data.corridorSegments + 4) + " 段　" +
+                    "广播室的门一直开着——何时进去做自行陈述，由你决定");
+            }
+            else if (_levelId == ShameLine.LevelEchoClassroom)
+            {
+                UI.HUDController.SetObjective(
+                    "◆ 8-2 回声教室　目标 " + _objectivesDone.Count + "/3　" +
+                    Mark(ObjReturn) + "归还　" + Mark(ObjOwnWork) + "完成本职　" +
+                    Mark(ObjWalkOut) + "步行离场（不要冲刺）　" +
+                    "低语不会停，被看着也要做完");
+            }
+        }
+
+        string Mark(string id) => _objectivesDone.Contains(id) ? "✓" : "·";
 
         void EnterLevel(string levelId)
         {
@@ -104,6 +144,7 @@ namespace AdversityRoad.Shame
                 WhisperChainSystem.Ensure().EnableForLevel(false);
                 GameEvents.RaiseSubtitle("【8-1 欠条长廊 / 未播出的广播室】" +
                     "偿还需要钱，说明真相需要暴露，隐瞒可以解决当下——代价是长廊变长。");
+                ShameBriefPanel.ShowOnEnter(levelId);
             }
             else if (levelId == ShameLine.LevelEchoClassroom)
             {
@@ -113,11 +154,13 @@ namespace AdversityRoad.Shame
                 GameEvents.RaiseSubtitle("【8-2 二十元回声教室】" +
                     "指控是成立的。不能靠否认通关，也不能靠让所有人闭嘴通关——" +
                     "在低语活着的时候，把三件事做完，然后正常走出去。");
+                ShameBriefPanel.ShowOnEnter(levelId);
             }
         }
 
         void ExitLevel(string levelId)
         {
+            UI.HUDController.SetObjective("");
             var exposure = ExposureSystem.Instance;
             if (exposure != null) exposure.CarryToNextLevel();
             var whisper = WhisperChainSystem.Instance;
@@ -142,6 +185,11 @@ namespace AdversityRoad.Shame
 
         // ================= 失败态 =================
 
+        /// <summary>两次"羞耻状态回落"之间的最短间隔。</summary>
+        public const float RetreatCooldown = 60f;
+
+        float _nextRetreatAt = -999f;
+
         void TickSelfWorthZero()
         {
             var player = AdversityRoad.Core.ActorRegistry.Player;
@@ -152,7 +200,12 @@ namespace AdversityRoad.Shame
                 _selfWorthZeroHandled = true;
                 OnSelfWorthZero(player);
             }
-            else if (!zero && _selfWorthZeroHandled && player.Stats.selfWorth > 8f)
+            // 【重新武装的门槛要高于回补量】
+            // 原来回补 26 点、超过 8 点就重新武装：在这一章里暴露度 ≥60 时
+            // 自尊伤害 ×1.5、≥85 时 ×2.0，26 点几秒就被打光，于是"归零→搬人"
+            // 每隔几秒触发一次，玩家被反复拽走。现在回补到四分之一上限以上才重新武装。
+            else if (!zero && _selfWorthZeroHandled &&
+                     player.Stats.selfWorth > player.Stats.maxSelfWorth * 0.25f)
                 _selfWorthZeroHandled = false;
         }
 
@@ -165,15 +218,49 @@ namespace AdversityRoad.Shame
         {
             ShameBreakdown.Enter();
             NoteFailure();
-            player.Stats.RestoreAxis(Personalization.WeaknessAxis.Shame, 26f);
-            TeleportTo(_lastRecoveryPoint);
-            GameEvents.RaiseSubtitle("你退到了一处没人看的地方。进度一点没丢——" +
+
+            // 回补到三分之一上限：原来固定回 26 点，而本章暴露度高时自尊伤害翻倍，
+            // 26 点撑不过几秒——回补量必须和这一章的伤害量级对得上，
+            // 否则玩家一睁眼就又归零。
+            float want = player.Stats.maxSelfWorth * 0.34f - player.Stats.selfWorth;
+            if (want > 0f)
+                player.Stats.RestoreAxis(Personalization.WeaknessAxis.Shame, want);
+            // 注视也松一口气：退开的这一下如果暴露度原封不动，回来立刻又是双倍伤害
+            var exposure = ExposureSystem.Instance;
+            if (exposure != null) exposure.Add(-20f, null);
+
+            // 冷却内不再搬人：只进羞耻状态、回一点自尊。
+            // "反复回到关卡最开始的位置"就是这里缺一道闸门造成的。
+            if (Time.time < _nextRetreatAt)
+            {
+                GameEvents.RaiseSubtitle("又撑不住了——但这次你没有退开。" +
+                    "完成任意一次与目标相关的行动，事实之刃就回来。");
+                return;
+            }
+            _nextRetreatAt = Time.time + RetreatCooldown;
+
+            // 「最近恢复点」是真的最近的那一个，不是关卡入口
+            Vector3 to = ShameRecoverySpot.Nearest(player.transform.position, out Vector3 near)
+                ? near : _lastRecoveryPoint;
+            TeleportTo(to);
+            GameEvents.RaiseSubtitle("你退到了最近一处没人看的地方。进度一点没丢——" +
                 "完成任意一次与目标相关的行动，事实之刃就回来了。");
         }
+
+        float _nextLoopBackAt = -999f;
 
         /// <summary>悬案计时器耗尽（8.5.5 失败）：长廊闭环回到起点，长度与欠条全部保留。</summary>
         public void OnCaseTimerExpired()
         {
+            // 计时器耗尽本来就该重新开始，但两次之间必须隔开——
+            // 否则任何让计时器瞬间见底的组合都会把玩家连续甩回起点。
+            if (Time.time < _nextLoopBackAt)
+            {
+                var t = PendingCaseTimer.Instance;
+                if (t != null) t.StartCase();
+                return;
+            }
+            _nextLoopBackAt = Time.time + RetreatCooldown;
             NoteFailure();
             GameEvents.RaiseSubtitle("计时器到头了。长廊在这里闭合，又把你送回起点——" +
                 "欠条还在，长廊也还是那么长。学到的技能、情报与复盘资源一样都没少。");
@@ -215,7 +302,7 @@ namespace AdversityRoad.Shame
             player.NotifyTeleported();
         }
 
-        /// <summary>路过恢复点时登记（羞耻状态回落点）。</summary>
+        /// <summary>兜底回落点（场上一个恢复点都没有时才会用到）。</summary>
         public void NoteRecoveryPoint(Vector3 pos) => _lastRecoveryPoint = pos;
 
         // ================= 8-1 结算 =================
@@ -281,6 +368,10 @@ namespace AdversityRoad.Shame
             NoteProgress();
             ShameBreakdown.ResolveByAction("完成了「" + id + "」");
             ShameComboTracker.Push(ShameComboTracker.TagObjective);
+            // 完成目标相关行动 → 暴露度下降（方案 8.3 下降来源之一）：
+            // 做完一件事，被看着这件事本身的分量就轻了。
+            var exposureDrop = ExposureSystem.Instance;
+            if (exposureDrop != null) exposureDrop.Add(-15f, null);
             Adversity.AdversityProfile.ObserveStrength("锥内完成率", ShameLine.LevelEchoClassroom);
             // 8.10.4 本章 Resolve Window 触发条件之一：
             // 在视线锥内完成一次完整的目标交互而未回避
@@ -329,6 +420,11 @@ namespace AdversityRoad.Shame
             }
             else
             {
+                // 跑出去也是走出去了：方案 8.6.1 说的是"奔跑离场判定为回避，
+                // **本关记为普通结算**"——是结算降级，不是没完成。
+                // 这里同样要记完成，否则 HUD 那行目标永远停在 2/3，
+                // 玩家已经通关了却以为自己失败了。
+                CompleteObjective(ObjWalkOut);
                 d.outcomeRank = "normal";
                 GameEvents.RaiseSubtitle("你跑出去了。也算走出去了——只是这一次，是躲出去的。");
                 Adversity.AdversityProfile.Observe("公开注视", "撤退 / 绕行概率上升", true,
@@ -392,10 +488,17 @@ namespace AdversityRoad.Shame
             return result.ToString();
         }
 
-        /// <summary>复盘页要用的一段本章记录（8.11.1 Adversity History 记录项）。</summary>
+        /// <summary>
+        /// 本章写进 Adversity History 的一行（方案 8.11.1 记录项）。
+        /// 没进过这一章时返回空串——逆境史面板据此决定要不要占这一行版面。
+        /// </summary>
         public static string HistorySummary()
         {
             var d = ShameLine.Data;
+            bool touched = d.ownCount > 0 || d.denialCount > 0 ||
+                           d.exposurePeak > 0.5f || d.statementHistory.Count > 0 ||
+                           !string.IsNullOrEmpty(d.firstNailTag);
+            if (!touched) return "";
             var sb = new System.Text.StringBuilder();
             sb.Append("首次被钉：").Append(string.IsNullOrEmpty(d.firstNailTag) ? "无" : d.firstNailTag);
             sb.Append("　否认 ").Append(d.denialCount).Append(" 次 / 认领 ").Append(d.ownCount).Append(" 次");

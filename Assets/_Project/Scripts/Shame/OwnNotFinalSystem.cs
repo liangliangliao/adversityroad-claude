@@ -321,6 +321,10 @@ namespace AdversityRoad.Shame
                 if (gm != null && gm.safety != null) dmg *= gm.safety.MentalDamageMultiplier();
                 p.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Shame, dmg);
             }
+            // 被指认招式命中 → 暴露度上升（方案 8.3 上升来源之一）。
+            // 一句话落在身上，本来就是"更多人知道了"。
+            var ex = ExposureSystem.Instance;
+            if (ex != null) ex.Add(10f, null);
             if (mountNail)
             {
                 var nails = IdentityNailSystem.Instance;
@@ -341,7 +345,7 @@ namespace AdversityRoad.Shame
         void EnsurePanel()
         {
             if (_panel != null) return;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
 
             // 摆在屏幕正下方偏上：指认是要正面接住的动作，提示不该躲在角落里。

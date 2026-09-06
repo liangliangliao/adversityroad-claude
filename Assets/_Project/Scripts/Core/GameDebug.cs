@@ -1,14 +1,24 @@
 namespace AdversityRoad.Core
 {
     /// <summary>
-    /// 调试开关（全局静态，运行时可切换）。默认开启"敌人耐揍"便于测试各种招式、
-    /// 镜头、动画表现而不被敌人秒杀。正式发布把 TankyEnemies 设为 false 即可。
-    /// 设置面板里有一个开关驱动它（见 SettingsPanel）。
+    /// 调试开关（全局静态，运行时可切换）。设置面板里有一个开关驱动它（见 SettingsPanel）。
+    ///
+    /// 【TankyEnemies 默认必须是 false】
+    /// 这个开关把敌人受到的伤害乘以 0.1——**全工程每一个敌人，每一关**。
+    /// 它原本默认是 true，注释里写着"正式发布把 TankyEnemies 设为 false 即可"，
+    /// 而这一步从来没有做过。于是每一个新装的包，敌人实际血量都是设计值的十倍。
+    ///
+    /// 连续几轮实机反馈"敌人打不死""敌人有无限的生命"，根因就在这一行。
+    /// 我此前几轮一直在第八章的 Boss 血线里找原因，方向从一开始就是错的：
+    /// 那两个 Boss 确实有问题（血条不该存在，已另行修掉），但"所有敌人都打不死"
+    /// 这件事和第八章无关，是这个默认值。
+    ///
+    /// 要调试时在设置面板里手动打开，不要再改这个默认值。
     /// </summary>
     public static class GameDebug
     {
-        /// <summary>敌人耐揍模式：大幅削减敌人受到的伤害，让其不易被打死（方便测试）。</summary>
-        public static bool TankyEnemies = true;
+        /// <summary>敌人耐揍模式：大幅削减敌人受到的伤害（仅供调试，默认关闭）。</summary>
+        public static bool TankyEnemies;
 
         /// <summary>耐揍时敌人实际承受的伤害系数（越小越耐揍）。</summary>
         public const float TankyDamageScale = 0.1f;

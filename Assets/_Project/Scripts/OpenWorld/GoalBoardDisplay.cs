@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -32,7 +33,7 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         const float PixelsPerMeter = 260f;
 
-        Text _head, _left, _mid, _right;
+        Text _head, _left, _mid, _right, _todoA, _todoB;
         float _next;
 
         public static GoalBoardDisplay Attach(GameObject board, Vector3 center, float width,
@@ -68,25 +69,98 @@ namespace AdversityRoad.OpenWorld
                 new Vector2(0, height * PixelsPerMeter / 2f - 3f);
 
             float w = width * PixelsPerMeter, hgt = height * PixelsPerMeter;
-            d._head = d.Label(rt, "Head", new Vector2(0, hgt * 0.40f), new Vector2(w * 0.94f, hgt * 0.16f),
-                Mathf.RoundToInt(hgt * 0.115f), new Color(1f, 0.86f, 0.42f), TextAnchor.MiddleCenter);
-            d._left = d.Label(rt, "Left", new Vector2(-w * 0.325f, -hgt * 0.06f),
-                new Vector2(w * 0.30f, hgt * 0.72f), Mathf.RoundToInt(hgt * 0.052f),
-                new Color(0.95f, 0.96f, 0.99f), TextAnchor.UpperLeft);
-            d._mid = d.Label(rt, "Mid", new Vector2(0, -hgt * 0.06f),
-                new Vector2(w * 0.30f, hgt * 0.72f), Mathf.RoundToInt(hgt * 0.052f),
-                new Color(0.78f, 0.95f, 0.85f), TextAnchor.UpperLeft);
-            d._right = d.Label(rt, "Right", new Vector2(w * 0.325f, -hgt * 0.06f),
-                new Vector2(w * 0.30f, hgt * 0.72f), Mathf.RoundToInt(hgt * 0.052f),
-                new Color(0.86f, 0.90f, 1f), TextAnchor.UpperLeft);
+            d._head = d.Label(rt, "Head", new Vector2(0, hgt * 0.42f), new Vector2(w * 0.94f, hgt * 0.14f),
+                Mathf.RoundToInt(hgt * 0.100f), new Color(1f, 0.86f, 0.42f), TextAnchor.MiddleCenter);
 
-            // 分栏竖线：三栏之间要有分隔，否则一屏字挤在一起没法读
-            for (int i = -1; i <= 1; i += 2)
-                d.Panel(rt, "Divider", new Vector2(i * w * 0.163f, -hgt * 0.06f),
-                    new Vector2(2.5f, hgt * 0.70f), new Color(0.25f, 0.45f, 0.65f, 0.55f));
+            // 【五栏：目标 / 计划 / 路线 / To Do ×2】
+            // To Do 同步进来的是**三层结构**（清单 → 任务 → 步骤），条目数远多于目标那三栏，
+            // 挤在一栏里必然截断。所以给它整整右边两栏，并且用更小的字号——
+            // 玩家的要求是"腾出足够空间，让所有内容都展示出来"，那就得真的按内容量分配宽度。
+            // 栏心按 0.20 的步距排：-0.40 / -0.20 / 0 / +0.20 / +0.40（相对半宽）。
+            float colW = w * 0.185f, colY = -hgt * 0.05f, colH = hgt * 0.76f;
+            int mainSize = Mathf.RoundToInt(hgt * 0.046f);
+            int todoSize = Mathf.RoundToInt(hgt * 0.036f);   // To Do 条目多，字更小才装得下
+
+            d._left = d.Label(rt, "Left", new Vector2(-w * 0.400f, colY),
+                new Vector2(colW, colH), mainSize, new Color(0.95f, 0.96f, 0.99f), TextAnchor.UpperLeft);
+            d._mid = d.Label(rt, "Mid", new Vector2(-w * 0.200f, colY),
+                new Vector2(colW, colH), mainSize, new Color(0.78f, 0.95f, 0.85f), TextAnchor.UpperLeft);
+            d._right = d.Label(rt, "Right", new Vector2(0f, colY),
+                new Vector2(colW, colH), mainSize, new Color(0.86f, 0.90f, 1f), TextAnchor.UpperLeft);
+            d._todoA = d.Label(rt, "TodoA", new Vector2(w * 0.200f, colY),
+                new Vector2(colW, colH), todoSize, new Color(0.98f, 0.92f, 0.80f), TextAnchor.UpperLeft);
+            d._todoB = d.Label(rt, "TodoB", new Vector2(w * 0.400f, colY),
+                new Vector2(colW, colH), todoSize, new Color(0.98f, 0.92f, 0.80f), TextAnchor.UpperLeft);
+
+            // 分栏竖线：四道，把五栏分开
+            for (int i = -3; i <= 3; i += 2)
+                d.Panel(rt, "Divider", new Vector2(i * w * 0.10f, colY),
+                    new Vector2(2.5f, colH * 0.96f), new Color(0.25f, 0.45f, 0.65f, 0.55f));
+            // To Do 那半边给一块更深的底，一眼看得出"这半边是同步进来的"
+            d.Panel(rt, "TodoBg", new Vector2(w * 0.30f, colY),
+                new Vector2(w * 0.395f, colH * 1.02f), new Color(0.10f, 0.14f, 0.10f, 0.55f))
+                .transform.SetAsFirstSibling();
 
             d.Refresh();
             return d;
+        }
+
+        /// <summary>
+        /// 把同步进来的 To Do 铺到右边两栏。
+        ///
+        /// 【为什么按"行数"而不是"清单数"来分栏】
+        /// 清单的大小差别很大——有的十几条任务，有的空的。按清单数对半分，
+        /// 常见结果是一栏塞满溢出、另一栏空着。这里先把每个清单渲染成一段文本、
+        /// 数出它占多少行，再贪心地往两栏里填，让两栏的行数尽量接近。
+        /// </summary>
+        void FillTodo()
+        {
+            if (_todoA == null || _todoB == null) return;
+            var svc = Integrations.MsTodoService.Instance;
+            if (svc == null || svc.Data == null || svc.Data.lists.Count == 0)
+            {
+                _todoA.text = "【Microsoft To Do】\n\n还没有同步内容。\n\n菜单 → 目标 → To Do 同步\n填好 Client ID，登录一次即可。";
+                _todoB.text = "";
+                return;
+            }
+
+            var blocks = new List<string>();
+            var costs = new List<int>();
+            foreach (var l in svc.Data.lists)
+            {
+                var b = new StringBuilder();
+                b.Append("▍").Append(l.displayName);
+                if (l.isShared) b.Append(" [共享]");
+                b.Append("  ").Append(l.OpenCount).Append('/').Append(l.tasks.Count).Append('\n');
+                foreach (var t in l.tasks)
+                {
+                    b.Append(t.Done ? " ☑ " : " ☐ ").Append(t.title);
+                    if (t.importance == "high") b.Append(" ★");
+                    if (!string.IsNullOrEmpty(t.dueDate)) b.Append(' ').Append(t.dueDate);
+                    b.Append('\n');
+                    foreach (var st in t.steps)
+                        b.Append("     ").Append(st.isChecked ? "▪ " : "▫ ")
+                         .Append(st.displayName).Append('\n');
+                }
+                b.Append('\n');
+                string text = b.ToString();
+                blocks.Add(text);
+                int lines = 1;
+                foreach (char ch in text) if (ch == '\n') lines++;
+                costs.Add(lines);
+            }
+
+            var a = new StringBuilder("【Microsoft To Do】 ");
+            a.Append(svc.Data.syncedAt).Append('\n');
+            var c2 = new StringBuilder();
+            int ca = 2, cb = 0;
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                if (ca <= cb) { a.Append(blocks[i]); ca += costs[i]; }
+                else { c2.Append(blocks[i]); cb += costs[i]; }
+            }
+            _todoA.text = a.ToString();
+            _todoB.text = c2.ToString();
         }
 
         Image Panel(RectTransform parent, string name, Vector2 pos, Vector2 size, Color color)
@@ -136,6 +210,7 @@ namespace AdversityRoad.OpenWorld
         public void Refresh()
         {
             if (_head == null) return;
+            FillTodo();
             var g = GoalOS.Active;
             if (g == null)
             {

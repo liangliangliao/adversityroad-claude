@@ -22,7 +22,18 @@ namespace AdversityRoad.UI
     /// </summary>
     public class PerfHud : MonoBehaviour
     {
-        public static bool Enabled = true;
+        /// <summary>
+        /// 【默认必须是关的】
+        /// 这一整块诊断读数有六行，画布 sortingOrder=5000（压在所有面板之上），
+        /// 在手机上会盖住右半个屏幕——玩家截图里那一片彩色的
+        /// "FPS / 推杆 / 姿态 / 敌 Idle / 镜头 吊杆" 就是它。
+        /// 它是给开发定位掉帧、穿墙、搓杆问题用的工具，不是玩家该看到的东西。
+        ///
+        /// 上一版这里写死 true，而且**全工程没有任何一处能把它关掉**——
+        /// 和 GameDebug.TankyEnemies 是同一类问题：调试工具默认进了发布包。
+        /// 现在默认关闭，设置面板里有开关（需要报帧率时打开）。
+        /// </summary>
+        public static bool Enabled;
 
         Text _text;
         Text _move;              // 第二行：移动诊断

@@ -60,6 +60,8 @@ namespace AdversityRoad.OpenWorld
         {
             if (Time.time < _next) return;
             _next = Time.time + Random.Range(minGap, maxGap);
+            // 家里不加戏。住所是玩家自己的地方，随机社会事件在这儿只是噪音
+            if (Sanctuary.AtHome) return;
             if (!DistrictCatalog.Ready) return;
 
             var player = AdversityRoad.Core.ActorRegistry.Player;

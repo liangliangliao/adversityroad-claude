@@ -46,16 +46,54 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 不可击杀：打他只会硬直。血线保护把"打赢"这条路直接关掉
-            _ec.minHpFloor = 0.35f;
-            _ec.externalDamageMult = 0.15f;
-            GameEvents.RaiseSubtitle("【悬案法官】他不宣判，也不撤案。他只会说「下次再说」——" +
-                "打他没有用，广播室的门在长廊尽头，一直开着。");
+            // 【方案 8.5.4 的原文，两句都要照做】
+            //   「不可击杀：对他的所有物理攻击只造成硬直，不推进任何进度条。」
+            //   「血条替代：没有传统血条。屏幕上方是悬案计时器与已延期次数。」
+            //
+            // 上一版我只照做了第一句的一半：用 minHpFloor 把血线卡在 12%。
+            // 那等于给了玩家一条会掉 88% 然后突然停住的血条——先教会他"伤害有用"，
+            // 再当场推翻。连续三轮实机反馈说"敌人有无限的生命"，说的就是这根血条。
+            // 血条本身就是那个错误的承诺。所以现在：不画血条，伤害不进血，
+            // 硬直与打击反馈照常（这才是"只造成硬直"）。
+            // 【产品决定：他是一个能打死的 Boss】
+            // 方案 8.5.4 原本写的是"不可击杀 / 没有传统血条"，上面那段注释解释了
+            // 我此前怎么把它实现成了一条掉到 12% 就卡死的血条。
+            // 现在的口径由产品定：**和其他关卡一样，有血条、会动、打得死**。
+            // 保留的是方案真正的那条命题——打死他不等于结案：
+            // 案子照样挂着，要结案仍然得自己走进广播室做一次自行陈述。
+            // 这一条写在他的头顶，也写在他倒下时那句话里。
+            _ec.emotionOverride = "打得死 · 但打死他不等于结案";
+            GameEvents.RaiseSubtitle("【悬案法官】他不宣判，也不撤案，只会说「下次再说」。" +
+                "他打得死——但案子不会因为他倒下就结了。" +
+                "广播室的门在长廊尽头，从第一秒起就开着。");
         }
+
+        bool _deathNoted;
 
         void Update()
         {
-            if (_ec == null || _ec.State == EnemyState.Dead || _player == null) return;
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
+            if (_ec == null || _player == null) return;
+            if (_ec.State == EnemyState.Dead)
+            {
+                // 打死他是有意义的：追问停了，压力源没了。但案子还挂着——
+                // 这一句必须当场说清楚，否则玩家会以为"Boss 死了怎么还没通关"。
+                if (!_deathNoted)
+                {
+                    _deathNoted = true;
+                    GameEvents.RaiseSubtitle("他倒下了。追问停了——可案子还挂着。" +
+                        "要结案，还得你自己走进长廊尽头那间广播室，做一次自行陈述。");
+                }
+                return;
+            }
+
+            // 这里原来有一段"打到血线就坐下"的处理，是上一版为了给"打不死"一个交代加的。
+            // 那段现在删掉了：它依赖的正是那条不该存在的血条。
+            // 方案给的终结条件只有一条——玩家走进广播室完成自行陈述，
+            // 那一刻他失去权限、从场景中消失（见 ShameLineController 的结算）。
+
             var timer = PendingCaseTimer.Instance;
             if (timer == null || !timer.Running) return;
             if (_busy || _ec.State == EnemyState.Stagger) return;

@@ -73,6 +73,10 @@ namespace AdversityRoad.Shame
                 GameEvents.RaiseSubtitle("他记下了这一次的顺从：这个把柄，对你是有效的。");
 
             ApplySignals();
+            // 讨好度上升 → 暴露度上升（方案 8.3 上升来源之一）：
+            // 你越顺从，对方越确认这个把柄有效，也就越愿意让更多人知道。
+            var exposure = ExposureSystem.Instance;
+            if (exposure != null) exposure.Add(amount * 0.4f, null);
             var timer = PendingCaseTimer.Instance;
             if (timer != null) timer.OnAppeasementChanged();
             Adversity.AdversityProfile.Observe("长期悬案", "讨好类交互使用频率上升", true,

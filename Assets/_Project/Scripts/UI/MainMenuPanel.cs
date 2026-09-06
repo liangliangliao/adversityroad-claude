@@ -179,6 +179,11 @@ namespace AdversityRoad.UI
             MakeEntry("操作说明", i++, ShowHelp, Normal);
             if (_settings != null)
                 MakeEntry("设置", i++, () => { Close(); _settings.Toggle(); }, Normal);
+            // 调试数据直达：这颗开关在设置面板里放过两个位置，玩家两次都说找不到。
+            // 排查用的东西不该需要先翻设置——暂停菜单里给一条一按就切的。
+            MakeEntry(PerfHud.Enabled ? "调试数据：开（FPS/帧时/穿墙/漂移）"
+                                      : "调试数据：关（点开可看 FPS/帧时/穿墙/漂移）",
+                i++, () => { PerfHud.Enabled = !PerfHud.Enabled; Close(); ShowPause(); }, Normal);
             MakeEntry("返回标题", i++, ShowTitle, Normal);
             MakeEntry("退出游戏", i++, Quit, Danger);
 

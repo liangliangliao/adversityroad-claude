@@ -159,7 +159,7 @@ namespace AdversityRoad.Shame
         void Build()
         {
             if (_panel != null) return;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
 
             _panel = UiUtil.MakePanel(canvas.transform, "StatementPanel",

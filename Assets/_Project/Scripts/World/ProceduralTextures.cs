@@ -3,58 +3,126 @@ using UnityEngine;
 
 namespace AdversityRoad.World
 {
-    /// <summary>表面材质类别：决定运行时生成哪种可平铺纹理。</summary>
+    /// <summary>表面材质类别：决定运行时生成哪种可平铺纹理与哪套 PBR 响应。</summary>
     public enum SurfaceKind { None, Plaster, Concrete, Wood, Metal, Ground, Fabric, Brick }
 
     /// <summary>
-    /// 运行时程序化贴图（零美术资产、兼容 CI 无头打包）：
-    /// 为每种表面类别生成一张"灰度细节 Albedo"——可无缝平铺、带 mipmap。
-    /// 它作为 _BaseMap 与区域配色（_BaseColor）相乘：既保留分区色彩脚本，
-    /// 又给墙/地/木/砖/金属加上真实的颗粒、纹理与图案，摆脱"纯哑光塑料"。
-    /// 只做 Albedo 细节（安全、跨平台可靠），不做运行时法线贴图（格式风险）。
+    /// 运行时程序化表面（零美术资产、兼容 CI 无头打包）。
+    ///
+    /// 【为什么不做法线贴图，又怎么把凹凸做出来】
+    /// 运行时 new 出来的 Texture2D 打不上 Import Settings 的「Normal map」标记，
+    /// 于是它的通道布局到底按 RGB 解还是按 DXT5nm 的 AG 解，取决于目标平台是否定义
+    /// UNITY_NO_DXT5nm——安卓包和编辑器（Windows/Mac）在这一点上结论相反。
+    /// 猜错的结果不是"效果差一点"，是整面墙的法线指向错误、光照全乱。
+    /// 这个风险不值得冒，所以这里**不出法线贴图**。
+    ///
+    /// 取而代之的是把浮雕**烘进 Albedo**：先算出这个类别的高度场，再按高度场的梯度
+    /// 做一次定向着色（光从左上来），凹缝的一侧压暗、另一侧提亮。
+    /// 这是没有法线贴图时的通行做法，格式上零风险，而且在本作这种大平面盒子上读得非常清楚。
+    ///
+    /// 【为什么值域要拉开】
+    /// 上一版每个类别的灰度都挤在 0.85±0.06 这种范围里——那点差别在屏幕上等于没有，
+    /// 于是不管贴不贴图，看到的都是一块纯色。现在各类别按材质本身该有的对比度给值，
+    /// 并且配一套自己的金属度/光滑度（见 <see cref="Response"/>）：
+    /// 金属反光、木头半哑、抹灰全哑，光一打上去就分得出来。
     /// </summary>
     public static class ProceduralTextures
     {
-        const int Res = 256;
+        const int Res = 512;
         static readonly Dictionary<SurfaceKind, Texture2D> _cache = new Dictionary<SurfaceKind, Texture2D>();
+
+        /// <summary>某个表面类别的 PBR 响应：金属度与光滑度。</summary>
+        public static void Response(SurfaceKind k, out float metallic, out float smoothness)
+        {
+            switch (k)
+            {
+                // 拉丝金属：真的按金属算，才会有环境反射而不是一块灰塑料
+                // 金属度不敢给满：环境反射走的是天空盒探针（reflectionIntensity 0.7），
+                // 0.8 以上的金属在夜间室内会变成一面映着白天天空的镜子。
+                // 0.62/0.48 已经足够让钢管、储物柜、灯具与木头、抹灰明显分开。
+                case SurfaceKind.Metal:    metallic = 0.62f; smoothness = 0.48f; break;
+                // 上过漆的木面：不反射环境，但有一层薄高光
+                case SurfaceKind.Wood:     metallic = 0f;    smoothness = 0.34f; break;
+                // 水磨/自流平地面：湿冷的一点反光
+                case SurfaceKind.Concrete: metallic = 0f;    smoothness = 0.20f; break;
+                case SurfaceKind.Ground:   metallic = 0f;    smoothness = 0.13f; break;
+                case SurfaceKind.Brick:    metallic = 0f;    smoothness = 0.09f; break;
+                // 抹灰墙与织物：几乎全哑光
+                case SurfaceKind.Plaster:  metallic = 0f;    smoothness = 0.07f; break;
+                case SurfaceKind.Fabric:   metallic = 0f;    smoothness = 0.03f; break;
+                default:                   metallic = 0f;    smoothness = 0.16f; break;
+            }
+        }
+
+        /// <summary>浮雕强度：高度场梯度参与着色的比例。缝越深的材质给得越高。</summary>
+        static float Relief(SurfaceKind k)
+        {
+            switch (k)
+            {
+                case SurfaceKind.Brick:    return 3.2f;
+                case SurfaceKind.Wood:     return 2.0f;
+                case SurfaceKind.Concrete: return 1.7f;
+                case SurfaceKind.Ground:   return 2.4f;
+                case SurfaceKind.Fabric:   return 1.4f;
+                case SurfaceKind.Plaster:  return 1.1f;
+                case SurfaceKind.Metal:    return 1.6f;
+                default:                   return 0f;
+            }
+        }
 
         public static Texture2D Albedo(SurfaceKind kind)
         {
             if (kind == SurfaceKind.None) return null;
             if (_cache.TryGetValue(kind, out var t) && t != null) return t;
 
+            // 第一遍：算出高度场。它同时是明暗底色，也是下面算梯度的依据。
+            var h = new float[Res * Res];
+            for (int y = 0; y < Res; y++)
+            {
+                float v = (y + 0.5f) / Res;
+                for (int x = 0; x < Res; x++)
+                    h[y * Res + x] = ValueOf(kind, (x + 0.5f) / Res, v);
+            }
+
+            // 第二遍：按梯度做定向着色。光从左上方来（-u, +v），
+            // 于是每一道缝、每一块砖的边缘都会一侧亮一侧暗——平面因此有了厚度。
+            float relief = Relief(kind);
+            var px = new Color32[Res * Res];
+            for (int y = 0; y < Res; y++)
+                for (int x = 0; x < Res; x++)
+                {
+                    int i = y * Res + x;
+                    float du = h[y * Res + Wrap(x + 1)] - h[y * Res + Wrap(x - 1)];
+                    float dv = h[Wrap(y + 1) * Res + x] - h[Wrap(y - 1) * Res + x];
+                    float shade = 1f + (dv - du) * relief;
+                    byte b = (byte)(Mathf.Clamp01(h[i] * shade) * 255f);
+                    px[i] = new Color32(b, b, b, 255);
+                }
+
             var tex = new Texture2D(Res, Res, TextureFormat.RGBA32, true, false)
             {
                 name = "ProcTex_" + kind,
                 wrapMode = TextureWrapMode.Repeat,
                 filterMode = FilterMode.Trilinear,
-                anisoLevel = 4
+                anisoLevel = 8
             };
-            var px = new Color32[Res * Res];
-            for (int y = 0; y < Res; y++)
-            {
-                float v = (y + 0.5f) / Res;
-                for (int x = 0; x < Res; x++)
-                {
-                    float u = (x + 0.5f) / Res;
-                    float g = Mathf.Clamp01(ValueOf(kind, u, v));
-                    byte b = (byte)(g * 255f);
-                    px[y * Res + x] = new Color32(b, b, b, 255);
-                }
-            }
             tex.SetPixels32(px);
-            tex.Apply(true);
+            // 传第二个参数释放 CPU 端副本：8 张 512² 各 1MB，留着没有任何用处。
+            // 不走 Texture2D.Compress——运行时压缩对灰度细节图的收益抵不上它的不确定性。
+            tex.Apply(true, true);
             _cache[kind] = tex;
             return tex;
         }
 
-        // ===== 每类别的灰度值函数（输出约 0.55..1.0，作为颜色的乘子）=====
+        static int Wrap(int i) => ((i % Res) + Res) % Res;
+
+        // ===== 每类别的高度/明度场。值域要真的拉开，否则贴不贴图都是一块纯色 =====
 
         static float ValueOf(SurfaceKind k, float u, float v)
         {
             switch (k)
             {
-                case SurfaceKind.Plaster:  return 0.90f + (Fbm(u, v, 11) - 0.5f) * 0.14f;
+                case SurfaceKind.Plaster:  return Plaster(u, v);
                 case SurfaceKind.Concrete: return Concrete(u, v);
                 case SurfaceKind.Wood:     return Wood(u, v);
                 case SurfaceKind.Metal:    return Metal(u, v);
@@ -65,68 +133,102 @@ namespace AdversityRoad.World
             }
         }
 
-        static float Concrete(float u, float v)
+        /// <summary>抹灰墙：批刀留下的斜向刮痕 + 沿墙面缓慢起伏的脏色。</summary>
+        static float Plaster(float u, float v)
         {
-            float baseN = 0.82f + (Fbm(u, v, 23) - 0.5f) * 0.22f;
-            // 偶发的暗色麻点/气孔
-            float pit = TN(u, v, 40, 40, 71);
-            if (pit > 0.93f) baseN -= (pit - 0.93f) * 6f;
-            return baseN;
-        }
-
-        static float Wood(float u, float v)
-        {
-            // 沿 u 的木纹（各向异性：v 方向格子密、u 方向疏），沿 v 的板缝
-            float grain = TN(u, v, 5, 34, 41) * 0.5f + TN(u, v, 3, 70, 42) * 0.5f;
-            float val = 0.80f + (grain - 0.5f) * 0.26f;
-            float planks = Mathf.Repeat(v * 6f, 1f);       // 6 条木板无缝平铺
-            float seam = Mathf.Min(planks, 1f - planks);
-            if (seam < 0.03f) val -= (0.03f - seam) * 6f;   // 板缝压暗
+            float trowel = TN(u + v * 0.35f, v, 9, 5, 11);      // 斜向刮痕
+            float stain = Fbm(u, v, 13);                         // 大尺度污渍
+            float val = 0.88f + (trowel - 0.5f) * 0.30f + (stain - 0.5f) * 0.20f;
+            // 零星的鼓包/剥落
+            float chip = TN(u, v, 24, 24, 29);
+            if (chip > 0.90f) val -= (chip - 0.90f) * 3.0f;
             return val;
         }
 
-        static float Metal(float u, float v)
+        /// <summary>混凝土：模板留下的分格缝 + 气孔麻点。分格缝是它最好认的特征。</summary>
+        static float Concrete(float u, float v)
         {
-            // 拉丝金属：横向细纹，整体较均匀
-            float brush = TN(u, v, 4, 96, 51);
-            return 0.88f + (brush - 0.5f) * 0.1f;
+            float baseN = 0.80f + (Fbm(u, v, 23) - 0.5f) * 0.34f;
+            // 模板分格：横竖各 4 格的浅凹缝
+            float gu = Mathf.Repeat(u * 4f, 1f), gv = Mathf.Repeat(v * 4f, 1f);
+            float joint = Mathf.Min(Mathf.Min(gu, 1f - gu), Mathf.Min(gv, 1f - gv));
+            if (joint < 0.018f) baseN -= (0.018f - joint) * 9f;
+            // 气孔
+            float pit = TN(u, v, 56, 56, 71);
+            if (pit > 0.90f) baseN -= (pit - 0.90f) * 5.5f;
+            return baseN;
         }
 
+        /// <summary>木：沿板长的木纹 + 压暗的板缝 + 每块板各自的深浅。</summary>
+        static float Wood(float u, float v)
+        {
+            const float Planks = 5f;
+            float pv = v * Planks;
+            int plank = Mathf.FloorToInt(pv);
+            float fv = pv - plank;
+            // 每块板一个自己的底色，木地板才不会是一整片同色
+            float tone = 0.86f + (Vlat(plank, 0, (int)Planks, 1, 97) - 0.5f) * 0.22f;
+            // 木纹沿 u 拉长（各向异性）
+            float grain = TN(u, v * 3f, 4, 40, 41) * 0.55f + TN(u, v * 3f, 2, 88, 42) * 0.45f;
+            float val = tone + (grain - 0.5f) * 0.30f;
+            // 板缝：比上一版深得多，浮雕才咬得住
+            float seam = Mathf.Min(fv, 1f - fv);
+            if (seam < 0.022f) val -= (0.022f - seam) * 13f;
+            return val;
+        }
+
+        /// <summary>金属：竖向拉丝 + 分块钣金缝 + 一排铆钉。</summary>
+        static float Metal(float u, float v)
+        {
+            float brush = TN(u, v, 3, 140, 51);
+            float val = 0.84f + (brush - 0.5f) * 0.16f;
+            // 钣金缝：每 3 格一道竖缝
+            float su = Mathf.Repeat(u * 3f, 1f);
+            float seam = Mathf.Min(su, 1f - su);
+            if (seam < 0.012f) val -= (0.012f - seam) * 14f;
+            // 铆钉：沿缝两侧的小凸点
+            float rv = Mathf.Repeat(v * 12f, 1f);
+            if (seam < 0.055f && seam > 0.02f && rv > 0.36f && rv < 0.64f)
+                val += 0.12f;
+            return val;
+        }
+
+        /// <summary>沥青/土地：粗骨料 + 砂砾暗点。</summary>
         static float Ground(float u, float v)
         {
-            // 沥青/土地：粗颗粒 + 细砂砾暗点
-            float coarse = 0.68f + (Fbm(u, v, 31) - 0.5f) * 0.26f;
-            float grit = TN(u, v, 64, 64, 88);
-            if (grit > 0.88f) coarse -= (grit - 0.88f) * 2.2f;
+            float coarse = 0.66f + (Fbm(u, v, 31) - 0.5f) * 0.34f;
+            float grit = TN(u, v, 80, 80, 88);
+            if (grit > 0.84f) coarse -= (grit - 0.84f) * 2.6f;
+            if (grit < 0.10f) coarse += (0.10f - grit) * 1.8f;
             return coarse;
         }
 
+        /// <summary>织物/地毯：经纬编织 + 起绒的不匀。</summary>
         static float Fabric(float u, float v)
         {
-            // 织物/地毯：细密经纬编织
-            float weave = 0.5f + 0.5f * (Mathf.Sin(u * Mathf.PI * 2f * 32f) *
-                                          Mathf.Sin(v * Mathf.PI * 2f * 32f));
+            float weave = 0.5f + 0.5f * (Mathf.Sin(u * Mathf.PI * 2f * 40f) *
+                                          Mathf.Sin(v * Mathf.PI * 2f * 40f));
             float n = Fbm(u, v, 61);
-            return 0.84f + (weave - 0.5f) * 0.12f + (n - 0.5f) * 0.06f;
+            return 0.82f + (weave - 0.5f) * 0.22f + (n - 0.5f) * 0.14f;
         }
 
+        /// <summary>砖：错缝排布 + 每块砖各自的窑变色 + 压暗的灰浆缝。</summary>
         static float Brick(float u, float v)
         {
-            const int rows = 7;          // 7 排砖无缝
-            const int bricks = 4;        // 每排 4 块
-            float ry = v * rows;
+            const int Rows = 8, Bricks = 4;
+            float ry = v * Rows;
             int row = Mathf.FloorToInt(ry);
             float fy = ry - row;
             float offset = (row % 2 == 0) ? 0f : 0.5f;
-            float rx = Mathf.Repeat(u * bricks + offset, 1f);
-            float fx = rx;
-            // 灰浆缝（横 + 竖）
-            float mortarV = Mathf.Min(fy, 1f - fy);
-            float mortarH = Mathf.Min(fx, 1f - fx);
-            float mortar = Mathf.Min(mortarV, mortarH);
-            float brickFace = 0.86f + (Fbm(u, v, 17) - 0.5f) * 0.16f;
-            if (mortar < 0.06f) return 0.62f + Fbm(u, v, 19) * 0.06f;  // 缝：偏暗
-            return brickFace;
+            float rx = Mathf.Repeat(u * Bricks + offset, 1f);
+            int col = Mathf.FloorToInt(u * Bricks + offset);
+
+            float mortar = Mathf.Min(Mathf.Min(fy, 1f - fy), Mathf.Min(rx, 1f - rx));
+            if (mortar < 0.055f) return 0.58f + Fbm(u, v, 19) * 0.08f;   // 灰浆缝
+
+            // 每块砖一个自己的色（窑变），砖墙才不是一张重复的图案
+            float kiln = Vlat(col, row, Bricks, Rows, 83);
+            return 0.78f + (kiln - 0.5f) * 0.26f + (Fbm(u, v, 17) - 0.5f) * 0.14f;
         }
 
         // ===== 可无缝平铺的值噪声（整数格子取模回绕）=====

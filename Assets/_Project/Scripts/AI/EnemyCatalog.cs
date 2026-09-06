@@ -822,20 +822,23 @@ namespace AdversityRoad.AI
                         aggression = 0.55f, defense = 7, moveSpeed = 3.5f, attackRange = 1.9f, detectRange = 14
                     };
                     break;
+                // 两个 Boss 的血量与攻击性按"真的要打一场"重给：
+                // 原来是 130/120，和一个精英杂兵一样——那是按"不可击杀、只做压迫"设计的，
+                // 现在它们要能被打死，就得有 Boss 该有的厚度和存在感，否则两刀就没了。
                 case EnemyType.PendingJudge:
                     p = new EnemyProfile
                     {
                         targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
-                        maxHealth = 130, posture = 48, physicalDamage = 8, mentalDamage = 16,
-                        aggression = 0.4f, defense = 12, moveSpeed = 2.9f, attackRange = 2.1f, detectRange = 18
+                        maxHealth = 340, posture = 96, physicalDamage = 9, mentalDamage = 16,
+                        aggression = 0.6f, defense = 14, moveSpeed = 3.4f, attackRange = 2.2f, detectRange = 22
                     };
                     break;
                 case EnemyType.BackRowWhisperer:
                     p = new EnemyProfile
                     {
                         targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
-                        maxHealth = 120, posture = 44, physicalDamage = 6, mentalDamage = 18,
-                        aggression = 0.35f, defense = 10, moveSpeed = 2.8f, attackRange = 2f, detectRange = 22
+                        maxHealth = 300, posture = 88, physicalDamage = 8, mentalDamage = 18,
+                        aggression = 0.55f, defense = 12, moveSpeed = 3.3f, attackRange = 2.1f, detectRange = 24
                     };
                     break;
                 default:

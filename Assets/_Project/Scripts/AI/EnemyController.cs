@@ -105,11 +105,51 @@ namespace AdversityRoad.AI
         /// </summary>
         [HideInInspector] public bool holdPosition;
 
+        /// <summary>
+        /// 被动单位（第八章的注视 / 低语 / 追问类）：不主动出手、不追击、不喊话，
+        /// 但**照常吃伤害、照常会被打倒**。
+        ///
+        /// 【为什么不能用 pacified】
+        /// pacified 是剧情态，连伤害都免疫（旧我整合阶段"无需再战"）。
+        /// 侧目者、旁观耳语者、每周追问者只是不动手——玩家挥刀过去必须有反应，
+        /// 否则整关读作"敌人打不死"。
+        ///
+        /// 【与 holdPosition 的区别】
+        /// 候场是临时的，挨一下就入场；这个是这类单位的常态，被打也不还手——
+        /// 它们的威胁本来就不是拳脚，是那道视线。
+        /// </summary>
+        [HideInInspector] public bool passive;
+
         /// <summary>玩家主动打过它：从此不再被排进候场队列（打了就得认真打完）。</summary>
         [HideInInspector] public bool provoked;
 
         /// <summary>血线保护（0-1）：血量不会被打到该比例以下（旧我必须走整合结局而非击杀）。</summary>
         [HideInInspector] public float minHpFloor = 0f;
+
+        /// <summary>
+        /// 【不可击杀】：伤害只造成硬直与韧性削减，**永远不减血、不显示血条**。
+        ///
+        /// 方案对这四个单位写的是"不可击杀 / 无法直接击杀 / 血量不由伤害决定"：
+        /// 悬案法官（8.5.4）、后排低语者（8.6.4）、讨好回声（8.5.3）、心虚投影（8.6.3）。
+        /// 8.5.4 更进一步写死了表现："没有传统血条。屏幕上方是悬案计时器与已延期次数"，
+        /// 以及"对他的所有物理攻击只造成硬直，**不推进任何进度条**"。
+        ///
+        /// 【为什么不能用 minHpFloor 表达这件事】
+        /// 我之前用血线卡在 12% 来实现它——那是最坏的一种做法：
+        /// 玩家先看着血条掉掉掉（被教会"伤害有用"），到 12% 突然纹丝不动。
+        /// 一条会动又动不完的血条，读出来就是"这敌人有无限的生命"，
+        /// 这也正是连续三轮实机反馈说的那句话。血条本身就是那条错误的承诺。
+        /// 所以这里不是把血锁住，是**根本不给血条**，并且在头顶常驻写清楚什么才推进进度。
+        ///
+        /// 与 pacified 的区别：pacified 是"攻击完全无效"（连硬直都没有）的剧情态；
+        /// undying 照常吃硬直、照常被打断、照常有打击反馈，只是血不掉。
+        /// </summary>
+        [HideInInspector] public bool undying;
+
+        /// <summary>不可击杀单位被打时，隔一段时间提醒一次"什么才推进进度"。</summary>
+        [HideInInspector] public string undyingHint;
+
+        float _lastUndyingHintT = -99f;
 
         /// <summary>当前血量比例（Boss 阶段机 0-1）。</summary>
         public float HpRatio => profile.maxHealth > 0 ? Mathf.Clamp01(_hp / profile.maxHealth) : 0f;
@@ -137,6 +177,9 @@ namespace AdversityRoad.AI
             if (p != null) _player = p.transform;
             if (statusBar != null)
             {
+                // 不可击杀单位从一开始就不画血条：血条是一句"打它会有进展"的承诺，
+                // 对这些单位那句承诺是假的（见 undying 的注释）
+                if (undying) statusBar.HideHealthBar();
                 statusBar.SetHealth(_hp, profile.maxHealth);
                 statusBar.SetPosture(_posture, profile.posture);
             }
@@ -172,10 +215,16 @@ namespace AdversityRoad.AI
             // 一圈几乎看不见的深褐色——玩家反馈的"看不清敌人的状况、突然就掉血"
             // 有一半是这么来的：警示确实亮了，只是在那种光照下看不见。
             // Unlit 不受光照影响，白天黑夜一样醒目；再关掉投影与接收阴影，避免它自己发黑。
-            Material m = new Material(
-                Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-            m.color = TeleNormal;
-            if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", m.color);
+            //
+            // 【为什么不能直接 Shader.Find("Universal Render Pipeline/Unlit")】
+            // 那个名字在编辑器里找得到，打进安卓包以后是 null——URP/Unlit 既不在
+            // Always Included 名单里，也没有任何随包材质引用它，于是 shader 根本没进包。
+            // 备选的 Unlit/Color 同理。两个都拿不到时 new Material(null) 的结果是一块洋红，
+            // 表现出来就是"每个起手的敌人脚下亮起一坨洋红椭圆"。
+            // SafeShader 会优先用确定进包的 Sprites/Default，并且永远兜得住。
+            // SafeShader 返回的是按颜色缓存的共享材质，而红圈要按招式逐个染色
+            //（见下面 SetTelegraph 里对 _dangerRingMat.color 的写入），所以复制一份自己的。
+            Material m = new Material(World.SafeShader.Unlit(TeleNormal, "tele"));
             rr.sharedMaterial = m;
             rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             rr.receiveShadows = false;
@@ -356,6 +405,34 @@ namespace AdversityRoad.AI
                 return;
             }
 
+            // 【不可击杀 ⇒ 必然不近战】
+            // 上一轮我把这四个单位改成 undying（不掉血、不画血条），却没有关掉它们的
+            // 追击与近战——结果比改之前更糟：以前还能把它们磨到血线让它们停手，
+            // 现在既打不倒、又一直追着打，玩家躲不开也清不掉，站着长按目标动作必死。
+            //
+            // 而方案对这四个的描述里根本没有近战：
+            //   悬案法官「他不追求击败玩家」，四招是改期/追加/要求当众/身份钉·轻；
+            //   后排低语者「他不与玩家正面战斗。他只做三件事：看、说、指」；
+            //   讨好回声是玩家讨好行为的具象化；心虚投影「抢占回避路线」而不是打人。
+            // 它们的压力全部走各自的组件（视线、指认、抢位），不走这套近战 AI。
+            //
+            // 所以这里把它写成结构性的一条：**undying 一定 passive**，
+            // 不再依赖每个单位各自记得去设一次——那正是上一轮漏掉的地方。
+            if ((passive || undying) && State != EnemyState.Stagger)
+            {
+                if (State == EnemyState.Chase || State == EnemyState.Attack ||
+                    State == EnemyState.MentalAttack)
+                {
+                    Combat.CombatDirector.Release(this);
+                    ShowTelegraph(false);
+                    if (attackHitbox != null) attackHitbox.DisableHitbox();
+                    StopMoving();
+                    State = EnemyState.Idle;
+                }
+                UpdateEmotion("旁观");
+                return;
+            }
+
             // 候场：还没轮到上场的那几个，站在自己那一带，不追不打不喊话。
             // 硬直中不打断——被打飞的那一下要播完，否则会看到人被打中却瞬间站直。
             if (holdPosition && State != EnemyState.Stagger)
@@ -482,9 +559,21 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>
+        /// 头顶那行字的常驻覆盖（非空时压过每帧的情绪文本）。
+        ///
+        /// 给"打不死是设计、不是 Bug"的那几个用：悬案法官没有血条、
+        /// 后排低语者的血由否认次数维持、讨好回声只能靠降讨好度削。
+        /// 不写在头顶的话，玩家读到的只有"砍半天不掉血"——那是同一个画面，
+        /// 却是完全相反的两句话。
+        /// 破绽 / 语塞这类**即时反馈**仍然直接写 statusBar，压在覆盖之上一闪而过。
+        /// </summary>
+        [HideInInspector] public string emotionOverride;
+
         void UpdateEmotion(string emotion)
         {
-            if (statusBar != null) statusBar.SetEmotion(emotion);
+            if (statusBar == null) return;
+            statusBar.SetEmotion(string.IsNullOrEmpty(emotionOverride) ? emotion : emotionOverride);
         }
 
         void PatrolTick()
@@ -909,6 +998,20 @@ namespace AdversityRoad.AI
                 CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.4f, "护体",
                     new Color(0.7f, 0.7f, 0.5f), 1.05f);
 
+            // 不可击杀单位：每一下都要当场说清楚"打得动，但打不倒；进度不在这里"。
+            // 沉默地不掉血是最糟的表现——玩家只会以为这敌人有无限的生命。
+            if (undying)
+            {
+                CombatFeedback.DamageNumber(transform.position + Vector3.up * 0.5f, "打不倒",
+                    new Color(0.85f, 0.8f, 0.7f), 1.1f);
+                if (Time.time - _lastUndyingHintT > 12f)
+                {
+                    _lastUndyingHintT = Time.time;
+                    if (!string.IsNullOrEmpty(undyingHint))
+                        Core.GameEvents.RaiseSubtitle(undyingHint);
+                }
+            }
+
             // ---- 偷袭：敌人未察觉（待机/巡逻）时被打 = 趁其不备，1.8 倍伤害且无法防御 ----
             bool unaware = State == EnemyState.Idle || State == EnemyState.Patrol;
             float sneakMult = 1f;
@@ -1033,8 +1136,13 @@ namespace AdversityRoad.AI
             if (Core.GameDebug.TankyEnemies) final *= Core.GameDebug.TankyDamageScale;
             // Boss 护体倍率：血量与韧性同步受保护（破防要走机制，不能硬磨）
             final *= externalDamageMult;
-            _hp -= final;
-            if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
+            // 不可击杀：伤害不进血。硬直、韧性、打击感全部照常（方案：只造成硬直），
+            // 但"进度条"一格都不动——因为它的进度本来就不在血上。
+            if (!undying)
+            {
+                _hp -= final;
+                if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
+            }
             _posture -= dmg.postureDamage * partPostureMult * externalDamageMult;
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退

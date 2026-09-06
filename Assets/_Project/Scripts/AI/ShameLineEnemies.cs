@@ -35,6 +35,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead || _player == null) return;
             if (_fired >= maxAccusations) return;
             if (Vector3.Distance(transform.position, _player.position) > 16f) return;
@@ -81,6 +84,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             _cd -= Time.deltaTime;
             if (_cd > 0f) return;
@@ -99,17 +105,29 @@ namespace AdversityRoad.AI
     {
         EnemyController _ec;
         float _next;
+        bool _dissipating;
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
         void Start()
         {
-            _ec.minHpFloor = 0.15f;
+            // 方案 8.5.3 的原文是"降低讨好度是唯一削弱方式，**无法直接击杀**"。
+            // 上一版我拿血线卡在 15% 来表达它，那是最坏的做法：玩家看着血条掉到 15%
+            // 然后纹丝不动，读出来就是"这敌人有无限的生命"。
+            // 现在它不画血条、伤害不进血（照常吃硬直），头顶常驻写着什么才管用。
+            // 【产品决定：它打得死】方案 8.5.3 原写"无法直接击杀"，
+            // 现在口径统一成"和其他关卡一样有血条、打得死"。
+            // 方案给的那条路仍然留着，而且更划算：讨好度归零它会自己散场，
+            // 不用打——两条路都通。
+            _ec.emotionOverride = "打得死 · 讨好度归零它也会自己散";
             if (_ec.dialogue != null) _ec.dialogue.Show("你刚才不是答应得好好的吗？", 2.6f);
         }
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             if (Time.time < _next) return;
             _next = Time.time + 1f;
@@ -121,12 +139,16 @@ namespace AdversityRoad.AI
             _ec.externalDamageMult = Mathf.Lerp(1.4f, 0.5f, t);
             if (_ec.profile != null)
                 _ec.profile.mentalDamage = Mathf.Lerp(4f, 18f, t);
-            if (t <= 0.02f && !_ec.pacified)
+            // 讨好度归零 = 它没有来源了，于是**散场**——不是被打死，是没得可依附。
+            // 这是方案给的唯一削弱方式走到底的结果，也是玩家真正能拿到的那个交代：
+            // 场上少一个敌人，而且是靠"不再顺从"换来的。
+            if (t <= 0.02f && !_dissipating)
             {
-                _ec.pacified = true;
-                GameEvents.RaiseSubtitle("讨好回声安静下来了——它靠的从来不是自己的力气。");
+                _dissipating = true;
+                GameEvents.RaiseSubtitle("讨好回声散了——它靠的从来不是自己的力气。" +
+                    "你停止顺从的那一刻，它就没有东西可以依附了。");
+                Destroy(gameObject, 0.6f);
             }
-            else if (t > 0.02f) _ec.pacified = false;
         }
     }
 
@@ -147,8 +169,9 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;      // 它不打人，也打不动
-            _ec.holdPosition = true;
+            // 它不打人——但**打得动**。用 passive 而不是 pacified：
+            // pacified 连伤害都免疫，玩家挥刀过去只会看到"无需再战"，读作敌人打不死。
+            _ec.passive = true;
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
@@ -156,6 +179,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_player == null || _ec == null || _ec.State == EnemyState.Dead) return;
             if (Vector3.Distance(transform.position, _player.position) > radius) return;
             var ex = ExposureSystem.Instance;
@@ -189,8 +215,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;
-            _ec.holdPosition = true;
+            _ec.passive = true;      // 不主动攻击，但可以被打倒（见 EnemyController.passive）
             _base = transform.rotation;
 
             var go = new GameObject("GazeCone");
@@ -212,9 +237,28 @@ namespace AdversityRoad.AI
             gameObject.AddComponent<Shame.WhisperNode>().rank = 1;
         }
 
+        bool _relayScheduled;
+
         void Update()
         {
-            if (_ec == null || _ec.State == EnemyState.Dead) return;
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
+            if (_ec == null) return;
+
+            // 被打倒了：这道视线不是消失，是移开一会儿。20 秒后有人从别处补上。
+            if (_ec.State == EnemyState.Dead)
+            {
+                if (_relayScheduled) return;
+                _relayScheduled = true;
+                var gaze = GazeConeSystem.Instance;
+                if (gaze != null)
+                    gaze.ScheduleRelay(transform.position,
+                        transform.position + transform.forward * coneRange);
+                if (_cone != null) _cone.gameObject.SetActive(false);
+                return;
+            }
+
             _phase += Time.deltaTime * 0.35f;
             transform.rotation = _base * Quaternion.Euler(0f, Mathf.Sin(_phase) * sweep, 0f);
         }
@@ -237,10 +281,22 @@ namespace AdversityRoad.AI
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
-        void Start() => gameObject.AddComponent<Shame.WhisperNode>().rank = 2;
+        void Start()
+        {
+            // 方案 8.6.3 给它的行为只有一条：「把任意一次玩家失误放大为全场事件，
+            // Exposure +15」，反制是「在其读条完成前完成目标动作」。**没有近战**。
+            // 上一版没设 passive，于是它一边读条一边追着玩家打——
+            // 而玩家这时正需要站定长按目标动作，等于被逼着二选一。
+            _ec.passive = true;
+            _ec.emotionOverride = "读条中 · 在它说完之前把事做完";
+            gameObject.AddComponent<Shame.WhisperNode>().rank = 2;
+        }
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _ec.State == EnemyState.Dead) return;
             var ctl = ShameLineController.Instance;
 
@@ -287,10 +343,21 @@ namespace AdversityRoad.AI
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
-        void Start() => gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
+        void Start()
+        {
+            // 方案 8.6.3：「双人单位，**交替发声**；击倒其一，另一人接管并加速」。
+            // 它的招式是发声，不是动手——所以 passive（不追不打），
+            // 但照常掉血、照常能被击倒，"击倒其一"这条机制才成立。
+            _ec.passive = true;
+            _ec.emotionOverride = "交替发声 · 击倒其一，另一人会接管";
+            gameObject.AddComponent<Shame.WhisperNode>().rank = 0;
+        }
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null) return;
             if (_ec.State == EnemyState.Dead) return;
 
@@ -332,7 +399,11 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.minHpFloor = 0.2f;      // 不可击杀
+            // 【产品决定：它打得死】方案 8.6.3 原写"不可击杀"，
+            // 现在口径统一成"和其他关卡一样有血条、打得死"。
+            // 认领不终审的回报仍在：命中后它透明 12 秒，抢不到你的路线，
+            // 那 12 秒也正好是安全把它打掉的窗口。
+            _ec.emotionOverride = "打得死 · 认领后它会透明 12 秒";
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
             _readTag = TopAvoidanceTag();
@@ -352,7 +423,11 @@ namespace AdversityRoad.AI
             {
                 _lastOwnCount = ShameLine.Data.ownCount;
                 _transparentUntil = Time.time + 12f;
-                if (_ec != null) _ec.pacified = true;
+                if (_ec != null)
+                {
+                    _ec.passive = true;     // 透明期它不再抢位，也不出手
+                    _ec.emotionOverride = "透明中 · 这 12 秒它抢不到你的路线";
+                }
                 GameEvents.RaiseSubtitle("心虚投影透明了 12 秒——认领之后，它没有东西可以预判。");
             }
         }
@@ -378,12 +453,16 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _player == null || _ec.State == EnemyState.Dead) return;
 
             if (_transparentUntil > 0f && Time.time >= _transparentUntil)
             {
                 _transparentUntil = -1f;
-                _ec.pacified = false;
+                _ec.passive = false;
+                _ec.emotionOverride = "打得死 · 认领后它会透明 12 秒";
             }
             if (Time.time < _transparentUntil) { _dodgePrev = false; return; }
 
@@ -440,8 +519,9 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;
-            _ec.holdPosition = true;
+            // 还没敌化时是路人：不动手、也不被排进战斗，但**可以被打**——
+            // 玩家先动手时它必须当场给出识别信号并敌化，而不是回一句"无需再战"。
+            _ec.passive = true;
             if (_ec.statusBar != null) _ec.statusBar.gameObject.SetActive(false);
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
@@ -449,11 +529,17 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_hostile || _ec == null || _player == null) return;
 
             if (_revealAt < 0f)
             {
-                if (Vector3.Distance(transform.position, _player.position) > revealRange) return;
+                // 玩家先动手：立刻走识别信号，不让"我打了它却没反应"这一秒出现
+                bool struck = _ec.HpRatio < 0.999f;
+                if (!struck && Vector3.Distance(transform.position, _player.position) > revealRange)
+                    return;
                 _revealAt = Time.time + revealLead;
                 if (_ec.dialogue != null) _ec.dialogue.Show("……我一直都知道。", revealLead);
                 if (_ec.statusBar != null) _ec.statusBar.gameObject.SetActive(true);
@@ -463,7 +549,7 @@ namespace AdversityRoad.AI
             }
             if (Time.time < _revealAt) return;
             _hostile = true;
-            _ec.pacified = false;
+            _ec.passive = false;
             _ec.holdPosition = false;
             _ec.provoked = true;
         }
@@ -491,7 +577,7 @@ namespace AdversityRoad.AI
 
         void Start()
         {
-            _ec.pacified = true;         // 追问本身就是攻击，不需要动手
+            _ec.passive = true;          // 追问本身就是攻击，不需要动手——但它挨得住打
             _anchor = transform.position;
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
@@ -499,6 +585,9 @@ namespace AdversityRoad.AI
 
         void Update()
         {
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
             if (_ec == null || _player == null) return;
             var pc = _player.GetComponent<PlayerController>();
 

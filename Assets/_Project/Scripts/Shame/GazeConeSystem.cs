@@ -83,26 +83,54 @@ namespace AdversityRoad.Shame
             _renderer.sharedMaterial = GazeConeSystem.ConeMaterial();
         }
 
+        // 环带的半径比例与各自的不透明度。
+        // 【为什么要分环，而不是一个三角扇】
+        // 上一版是 18 个三角形共用一个中心点的扇面：整片一个颜色、边缘是刀切的直线，
+        // 铺在地上就是一块硬邦邦的梯形色块——玩家说的"类似光照的效果做得太差"就是它。
+        // 真正让一束光看起来像光的是**衰减**：近处亮、远处淡、边缘化开。
+        // 这里用同心环把衰减做进顶点色（Sprites/Default 吃顶点色，不需要写 shader，
+        // 也就不需要冒任何"着色器没进包"的风险）。
+        // 0.90 那一圈刻意比相邻两圈亮：给注视一个读得出的**边界**，
+        // 玩家要能一眼判断"我站的地方在不在锥里"，这是 8.7.1 的硬要求。
+        static readonly float[] RingR = { 0f, 0.30f, 0.58f, 0.80f, 0.90f, 0.97f, 1f };
+        static readonly float[] RingA = { 0.95f, 0.78f, 0.55f, 0.36f, 0.62f, 0.22f, 0f };
+
         static Mesh BuildFanMesh(float angleDeg, float range)
         {
-            const int Seg = 18;
-            var verts = new Vector3[Seg + 2];
-            var tris = new int[Seg * 3];
-            verts[0] = Vector3.zero;
-            for (int i = 0; i <= Seg; i++)
-            {
-                float t = (float)i / Seg;
-                float a = (-angleDeg * 0.5f + angleDeg * t) * Mathf.Deg2Rad;
-                verts[i + 1] = new Vector3(Mathf.Sin(a) * range, 0f, Mathf.Cos(a) * range);
-            }
-            for (int i = 0; i < Seg; i++)
-            {
-                tris[i * 3] = 0;
-                tris[i * 3 + 1] = i + 1;
-                tris[i * 3 + 2] = i + 2;
-            }
+            const int Seg = 40;                 // 40 段：弧边看不出多边形折线
+            int rings = RingR.Length;
+            var verts = new Vector3[Seg + 1 == 0 ? 0 : (Seg + 1) * rings];
+            var cols = new Color[verts.Length];
+            var tris = new int[Seg * (rings - 1) * 6];
+
+            for (int r = 0; r < rings; r++)
+                for (int i = 0; i <= Seg; i++)
+                {
+                    float t = (float)i / Seg;
+                    float a = (-angleDeg * 0.5f + angleDeg * t) * Mathf.Deg2Rad;
+                    float rad = RingR[r] * range;
+                    int vi = r * (Seg + 1) + i;
+                    verts[vi] = new Vector3(Mathf.Sin(a) * rad, 0f, Mathf.Cos(a) * rad);
+
+                    // 两侧也要化开：|t-0.5| 越接近 0.5（越靠边）越透，
+                    // 否则两条笔直的边缘会把"光"重新变回一块几何图形。
+                    float edge = 1f - Mathf.Pow(Mathf.Abs(t - 0.5f) * 2f, 3f);
+                    cols[vi] = new Color(1f, 1f, 1f, RingA[r] * Mathf.Clamp01(edge));
+                }
+
+            int k = 0;
+            for (int r = 0; r < rings - 1; r++)
+                for (int i = 0; i < Seg; i++)
+                {
+                    int a0 = r * (Seg + 1) + i, a1 = a0 + 1;
+                    int b0 = (r + 1) * (Seg + 1) + i, b1 = b0 + 1;
+                    tris[k++] = a0; tris[k++] = b0; tris[k++] = a1;
+                    tris[k++] = a1; tris[k++] = b0; tris[k++] = b1;
+                }
+
             var m = new Mesh { name = "GazeConeFan" };
             m.vertices = verts;
+            m.colors = cols;
             m.triangles = tris;
             m.RecalculateNormals();
             m.RecalculateBounds();
@@ -112,6 +140,8 @@ namespace AdversityRoad.Shame
         void Update()
         {
             if (_visual == null) return;
+            // 玩家不在本章时锥体不必每帧转向与刷材质（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position, 80f)) return;
             // 锥体贴着地面转：只取水平朝向，不跟着抬头低头翻上天
             _visual.rotation = Quaternion.LookRotation(Facing(), Vector3.up);
 
@@ -138,7 +168,10 @@ namespace AdversityRoad.Shame
     {
         public static GazeConeSystem Instance { get; private set; }
 
-        public static readonly Color ConeColor = new Color(0.95f, 0.86f, 0.55f, 0.16f);
+        // 基础透明度从 0.16 提到 0.34：上一版整片是均匀的 0.16，现在近处亮、远处淡、
+        // 两侧化开（见 BuildFanMesh 的顶点色），平均下来反而更淡——
+        // 峰值要跟着提上去，注视才既看得清又不糊住地面。
+        public static readonly Color ConeColor = new Color(1f, 0.88f, 0.58f, 0.34f);
 
         readonly List<GazeCone> _cones = new List<GazeCone>();
         static Material _mat;
@@ -226,6 +259,81 @@ namespace AdversityRoad.Shame
             }
         }
 
+        // ---- 注视的补位（侧目者被打倒之后）----
+        struct PendingRelay
+        {
+            public Vector3 at;
+            public Vector3 lookAt;
+            public float dueAt;
+        }
+
+        readonly List<PendingRelay> _relays = new List<PendingRelay>();
+
+        /// <summary>侧目者被打倒后，多久有人从别处补上这道视线。</summary>
+        public const float RelayDelay = 45f;
+
+        /// <summary>补位的下限：场上少于这么多道注视时才会有人接上。</summary>
+        public const int MinGaze = 2;
+
+        /// <summary>
+        /// 登记一次"注视补位"。
+        ///
+        /// 【为什么打倒侧目者不能一劳永逸】
+        /// 这一章的命题是"被看见的同时仍能行动"，不是"把看你的人清干净"。
+        /// 低语链断了 8 秒后从另一处重建，注视同理：打倒它换来的是
+        /// 20 秒的空窗（真实的战术回报，够做完一次长按目标动作），
+        /// 而不是永远没人看你——那会让三个目标物"全在锥内"这条布局失效。
+        /// </summary>
+        public void ScheduleRelay(Vector3 deadAt, Vector3 lookAt)
+        {
+            _relays.Add(new PendingRelay
+            {
+                at = deadAt,
+                lookAt = lookAt,
+                dueAt = Time.time + RelayDelay,
+            });
+        }
+
+        void Update()
+        {
+            for (int i = _relays.Count - 1; i >= 0; i--)
+            {
+                if (Time.time < _relays[i].dueAt) continue;
+                var r = _relays[i];
+                _relays.RemoveAt(i);
+                Respawn(r);
+            }
+        }
+
+        /// <summary>场上还活着几道注视。</summary>
+        int LiveCones()
+        {
+            int n = 0;
+            foreach (var c in _cones) if (c != null && c.isActiveAndEnabled) n++;
+            return n;
+        }
+
+        void Respawn(PendingRelay r)
+        {
+            // 【补位要克制】不断刷新的敌人是最容易被读成"打不死"的东西。
+            // 只有当场上注视已经少于两道时才补一个回来——玩家清掉一两个侧目者
+            // 必须换来实打实的喘息，而不是"刚打完又站起来一个"。
+            if (LiveCones() >= MinGaze) return;
+
+            // 从**别处**站出来：沿原位横向挪开几米，读作"有人换了个位置继续看"
+            Vector3 side = Vector3.Cross(Vector3.up, (r.lookAt - r.at).normalized);
+            if (side.sqrMagnitude < 0.01f) side = Vector3.right;
+            Vector3 want = r.at + side.normalized * (Random.value > 0.5f ? 4.5f : -4.5f);
+
+            var go = AI.EnemySpawnHook.SpawnNear(AI.EnemyType.SideGlancer, AI.EnemyTier.Novice, want);
+            if (go == null) return;
+            Vector3 dir = r.lookAt - go.transform.position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 0.01f)
+                go.transform.rotation = Quaternion.LookRotation(dir.normalized, Vector3.up);
+            Core.GameEvents.RaiseSubtitle("另一个人抬起了头——注视换了个位置，没有消失。");
+        }
+
         /// <summary>
         /// 统一设置全场锥体的可见度（压力阶段映射用，见 ShameStressMapping）。
         /// 真正的下限由 GazeCone 自己兜住：注视可以更清楚，但不可能变成隐形。
@@ -242,17 +350,10 @@ namespace AdversityRoad.Shame
         public static Material ConeMaterial()
         {
             if (_mat != null) return _mat;
-            var sh = Shader.Find("Sprites/Default");
-            if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
-            if (sh == null) sh = Shader.Find("Unlit/Transparent");
-            if (sh == null) sh = Shader.Find("Standard");
-            _mat = new Material(sh) { name = "GazeCone" };
-            _mat.color = ConeColor;
-            if (_mat.HasProperty("_BaseColor")) _mat.SetColor("_BaseColor", ConeColor);
-            if (_mat.HasProperty("_Surface")) _mat.SetFloat("_Surface", 1f);
-            if (_mat.HasProperty("_ZWrite")) _mat.SetInt("_ZWrite", 0);
-            _mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            _mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            // 兜底链交给 SafeShader：这里原来自己写了一条 Shader.Find 链，最后一档是
+            // Standard——URP 下不受支持，真机包里也根本没有这个 shader，落到那一档就是洋红。
+            _mat = World.SafeShader.Unlit(ConeColor, "gaze");
+            _mat.name = "GazeCone";
             return _mat;
         }
     }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using AdversityRoad.AI;
@@ -28,7 +29,7 @@ namespace AdversityRoad.Shame
             string[] options, System.Action<int> onPick)
         {
             if (_open != null) return;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) { if (onPick != null) onPick(-1); return; }
 
             var go = new GameObject("ShameChoicePanel");
@@ -127,6 +128,14 @@ namespace AdversityRoad.Shame
 
         /// <summary>已偿还比例 0-1。</summary>
         public float Repaid { get; private set; }
+
+        /// <summary>本关欠条台的偿还进度（HUD 目标行读这个；没有台子时为 0）。</summary>
+        public static float Progress => _live != null ? _live.Repaid : 0f;
+
+        static DebtDesk _live;
+
+        void OnEnable() { _live = this; }
+        void OnDisable() { if (_live == this) _live = null; }
 
         int _tier = 1;   // 0 低 / 1 中 / 2 高
         static readonly float[] Amounts = { 8f, 16f, 28f };
@@ -326,7 +335,7 @@ namespace AdversityRoad.Shame
 
         void Build()
         {
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return;
             _panel = UiUtil.MakePanel(canvas.transform, "WeeklyInquiryPanel",
                 new Vector2(700, 210), new Color(0.07f, 0.07f, 0.09f, 0.94f));
@@ -446,6 +455,21 @@ namespace AdversityRoad.Shame
         float _lastHint = -99f;
         float _nextTick;
 
+        /// <summary>
+        /// 场上是否有人正在长按某个目标动作。
+        ///
+        /// 【为什么要把这件事告诉伤害系统】
+        /// 这三个目标动作要求玩家**站定按住 3~5 秒**，而且方案写死了失败条件只有一条：
+        /// 中途松手。也就是说这是一次"承诺型动作"——它考的是能不能在被注视、
+        /// 被说话的状态下把手按住，不是能不能在挨揍的时候把手按住。
+        /// 8.7 也把本章的 Physical 上限压到 15%。
+        /// 所以长按期间大幅减免物理伤害：压力仍在（暴露度照涨、心理攻击照打），
+        /// 但玩家不会因为"站着按键的这几秒被人围殴"而直接死掉、从而根本无法通关。
+        /// </summary>
+        public static bool Holding { get; private set; }
+
+        void OnDisable() { if (Holding && _held > 0f) Holding = false; }
+
         void Update()
         {
             if (_done) return;
@@ -459,16 +483,10 @@ namespace AdversityRoad.Shame
                 if (_held > 0f)
                 {
                     _held = 0f;
+                    Holding = false;
                     GameEvents.RaiseSubtitle("手松开了，进度归零——" + objectiveId + "得一次做完。");
                 }
                 return;
-            }
-
-            if (Time.time - _lastHint > 3f)
-            {
-                _lastHint = Time.time;
-                GameEvents.RaiseSubtitle("「" + objectiveId + "」：按住【用】/ R " +
-                    holdSeconds.ToString("0.0") + " 秒。它就在视线里，绕不开。");
             }
 
             bool holding = Input.GetKey(KeyCode.R) || MobileInput.GetHeld("Interact");
@@ -477,10 +495,26 @@ namespace AdversityRoad.Shame
                 if (_held > 0.2f)
                     GameEvents.RaiseSubtitle("松手了。被看着的时候，手最容易先松。");
                 _held = 0f;
+                Holding = false;
+                if (Time.time - _lastHint > 3f)
+                {
+                    _lastHint = Time.time;
+                    GameEvents.RaiseSubtitle("「" + objectiveId + "」：按住【用】/ R " +
+                        holdSeconds.ToString("0.0") + " 秒。按住期间大幅减免物理伤害，" +
+                        "站定把它做完——它就在视线里，绕不开。");
+                }
                 return;
             }
 
             _held += Time.deltaTime;
+            Holding = true;
+            // 进度要看得见：读秒比一句"按住"有用得多，玩家才知道还差多久、值不值得再撑一下
+            if (Time.time - _lastHint > 0.5f)
+            {
+                _lastHint = Time.time;
+                GameEvents.RaiseSubtitle("「" + objectiveId + "」进行中……还需 " +
+                    Mathf.Max(0f, holdSeconds - _held).ToString("0.0") + " 秒（松手归零）");
+            }
 
             if (underMentalAttack && Time.time >= _nextTick)
             {
@@ -488,12 +522,21 @@ namespace AdversityRoad.Shame
                 float dmg = 7f;
                 var gm = GameManager.Instance;
                 if (gm != null && gm.safety != null) dmg *= gm.safety.MentalDamageMultiplier();
-                player.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Shame, dmg);
+                // 【这一下不能把玩家打到自尊归零】
+                // 方案 8.6.2 要的是"期间承受 Mental Attack Move"——是代价，不是死刑。
+                // 而本章暴露度 ≥85 时自尊伤害 ×2，5.2 秒的长按会挨到 4~5 下，
+                // 叠起来足以把自尊一次清空：那样这个目标动作就是**做完即失败**，
+                // 玩家永远通不了关。所以留一条下限：这一下最多把自尊压到四分之一，
+                // 再低就不扣了。别的来源照常扣，这一条只管它自己。
+                float floor = player.Stats.maxSelfWorth * 0.25f;
+                if (player.Stats.selfWorth > floor)
+                    player.Stats.TakeMentalDamage(Personalization.WeaknessAxis.Shame, dmg);
             }
 
             if (_held >= holdSeconds)
             {
                 _done = true;
+                Holding = false;
                 GameAudio.Play(GameAudio.Sfx.Parry, 0.8f);
                 CombatFeedback.ShockRing(transform.position, new Color(0.9f, 0.88f, 0.6f), 2.6f);
                 if (ctl != null) ctl.CompleteObjective(objectiveId);
@@ -507,7 +550,22 @@ namespace AdversityRoad.Shame
     /// </summary>
     public class ClassroomExit : MonoBehaviour
     {
-        void OnTriggerEnter(Collider other)
+        float _nextTry;
+        float _lastNag = -99f;
+
+        // OnTriggerEnter 只在"踏进来的那一帧"响一次。玩家如果是**站在门口那块地上**
+        // 把最后一个目标动作做完的，进入事件早就用掉了，之后站着不动门不会有任何反应——
+        // 那就是一个"人已经在门口却通不了关"的死角。加一条 Stay（每 0.5 秒一次）兜住它。
+        void OnTriggerStay(Collider other)
+        {
+            if (Time.time < _nextTry) return;
+            _nextTry = Time.time + 0.5f;
+            TryExit(other);
+        }
+
+        void OnTriggerEnter(Collider other) => TryExit(other);
+
+        void TryExit(Collider other)
         {
             var player = other.transform.root.GetComponentInChildren<PlayerController>();
             if (player == null) return;
@@ -515,7 +573,14 @@ namespace AdversityRoad.Shame
             if (ctl == null) return;
             if (!ctl.WalkOutReady)
             {
-                GameEvents.RaiseSubtitle("还有事没做完。门在这里，但今天不是从这里跑掉的日子。");
+                // 这句话每 6 秒最多说一次：加了 OnTriggerStay 之后，
+                // 站在门口不动会把它每半秒重播一遍，字幕直接被刷屏。
+                if (Time.time - _lastNag > 6f)
+                {
+                    _lastNag = Time.time;
+                    GameEvents.RaiseSubtitle("还有事没做完（" + ctl.ObjectivesDone +
+                        "/3）。门在这里，但今天不是从这里跑掉的日子。");
+                }
                 return;
             }
             // 用「有没有在冲刺/翻滚」判定：这是动作层面的事实，不是玩家的自述
@@ -569,14 +634,39 @@ namespace AdversityRoad.Shame
         }
     }
 
-    /// <summary>恢复点：站上去即登记为羞耻状态的回落点（不回退关卡进度）。</summary>
+    /// <summary>
+    /// 恢复点：羞耻状态（SelfWorth 归零）的回落处。
+    ///
+    /// 【为什么改成登记而不是"站上去才记"】
+    /// 方案 8.5.5 写的是"回到长廊**最近**恢复点"。原来的写法是"最后踩过的那一个"，
+    /// 而全关只有入口那一个恢复点——于是"最近恢复点"事实上永远等于关卡起点，
+    /// 玩家每次自尊归零都被拽回门口，反复几次就成了"一直回到关卡最开始的位置"。
+    /// 现在全场恢复点自己登记进表，回落时按**离玩家当前位置最近**的那个算。
+    /// </summary>
     public class ShameRecoverySpot : MonoBehaviour
     {
-        void OnTriggerStay(Collider other)
+        static readonly List<ShameRecoverySpot> All = new List<ShameRecoverySpot>();
+
+        void OnEnable() { if (!All.Contains(this)) All.Add(this); }
+        void OnDisable() { All.Remove(this); }
+
+        /// <summary>离给定位置最近的恢复点；场上一个都没有时返回 false。</summary>
+        public static bool Nearest(Vector3 from, out Vector3 pos)
         {
-            if (other.transform.root.GetComponentInChildren<PlayerController>() == null) return;
-            var ctl = ShameLineController.Instance;
-            if (ctl != null) ctl.NoteRecoveryPoint(transform.position);
+            pos = from;
+            float best = float.MaxValue;
+            ShameRecoverySpot found = null;
+            foreach (var s in All)
+            {
+                if (s == null) continue;
+                float d = (s.transform.position - from).sqrMagnitude;
+                if (d >= best) continue;
+                best = d;
+                found = s;
+            }
+            if (found == null) return false;
+            pos = found.transform.position;
+            return true;
         }
     }
 }

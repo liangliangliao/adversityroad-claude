@@ -44,21 +44,56 @@ namespace AdversityRoad.AI
             var p = AdversityRoad.Core.ActorRegistry.Player;
             if (p != null) _player = p.transform;
 
-            // 伤害推不动他：他的血由玩家的否认与暴露峰值维持，不由刀剑决定
-            _ec.externalDamageMult = 0.1f;
-            _ec.minHpFloor = 0.05f;
-            GameEvents.RaiseSubtitle("【后排低语者】他不动手。他看、他说、他指——" +
-                "你每否认一次，他就回一口气。");
+            // 【方案 8.6.4：血量不由伤害决定，由否认次数与 Exposure 峰值维持】
+            //
+            // 上一版我把这条实现成"血线卡在 12% + 每次否认回血"，还自己加了一条
+            // 方案里没有的"磨到说不出话"的击杀路径。结果是：玩家看着血条掉到 12%，
+            // 之后无论怎么打都不动，读出来就是"这敌人有无限的生命"——三轮反馈同一句话。
+            //
+            // 既然血量本来就不由伤害决定，那就**不该有血条**。现在伤害只造成硬直，
+            // 血条不画；否认的代价改成看得见的那一种：他指认得更急（见 DenialPressure）。
+            // 击败判定回到方案原文：玩家在阶段三完成目标动作，他停止发声。
+            // 【产品决定：他是一个能打死的 Boss】
+            // 方案 8.6.4 原本写的是"血量不由伤害决定，由否认次数与 Exposure 峰值维持"。
+            // 现在口径由产品定：**和其他关卡一样，有血条、会动、打得死**。
+            // 保留的是这一关真正的命题——打死他不等于通关：
+            // 三个目标动作仍然要在低语链活着的时候做完，然后正常步行离场。
+            // 否认仍然为他续命，只是形态换成"他指认得更急"（见 DenialPressure）。
+            _ec.emotionOverride = "打得死 · 但通关靠做完三件事";
+            GameEvents.RaiseSubtitle("【后排低语者】他看、他说、他指。他打得死——" +
+                "但打死他不会让这一关结束：三件事仍然要在低语活着的时候做完，然后走出去。");
             SetPhase(1);
         }
 
+        bool _deathNoted;
+
         void Update()
         {
-            if (_ec == null || _ec.State == EnemyState.Dead || _player == null || _silenced) return;
+            // 玩家不在本章（或离得远）时一律不动：这些区域在进游戏时就建好了，
+            // 不加这一句，教室里的单位会在玩家家里播字幕、加暴露度（见 ShameLine.ActiveNear）
+            if (!ShameLine.ActiveNear(transform.position)) return;
+            if (_ec == null || _player == null || _silenced) return;
+            if (_ec.State == EnemyState.Dead)
+            {
+                if (!_deathNoted)
+                {
+                    _deathNoted = true;
+                    // 低语链不会因为他倒下就散——链上还有侧目者与放大镜围观者。
+                    // 这一句要说清楚，否则玩家会以为打死 Boss 就该通关了。
+                    GameEvents.RaiseSubtitle("他倒下了。可低语没有停——链上还有别人。" +
+                        "这一关要的仍然是：把三件事做完，然后正常走出去。");
+                    EvaluateNemesis();
+                }
+                return;
+            }
             var ctl = ShameLineController.Instance;
             if (ctl == null) return;
 
-            TickBloodFromDenial();
+            DenialPressure();
+
+            // 这里原来有一句"打到血线就 Silence"，是上一版自己加的击杀路径，
+            // 方案里没有这条，而且它依赖的正是那根不该存在的血条。已删。
+            // 唯一的击败判定在 ShameLineController：阶段三完成目标动作 → Silence()。
 
             // 阶段随目标动作推进，而不是随血量推进——这一关的进度条是"做完了几件事"
             int want = ctl.ObjectivesDone >= 2 ? 3 : ctl.ObjectivesDone >= 1 ? 2 : 1;
@@ -70,7 +105,8 @@ namespace AdversityRoad.AI
                 _nailCd -= Time.deltaTime;
                 if (_nailCd <= 0f)
                 {
-                    _nailCd = ShameLineController.ChallengeCeilingActive ? 22f : 15f;
+                    _nailCd = (ShameLineController.ChallengeCeilingActive ? 22f : 15f)
+                              - _denialSpeedUp;
                     StartCoroutine(AccusationTriple());
                 }
             }
@@ -79,12 +115,15 @@ namespace AdversityRoad.AI
         int _seenDenials;
 
         /// <summary>
-        /// 血量随否认次数与 Exposure 峰值回复：这是他唯一的"补给线"。
+        /// 否认的代价（方案 8.6.4「玩家的每一次否认都为他续命」）。
         ///
-        /// 只在**玩家刚刚否认过**的时候回——回血必须和那一次否认对得上，
-        /// 否则玩家看到的只是一个莫名其妙一直回血的 Boss，读不出因果。
+        /// 【为什么不是回血】
+        /// 他没有血条——回血这件事在屏幕上根本不可见，玩家只会觉得"怎么打都没用"。
+        /// 「续命」在没有血条的前提下要换成看得见的形态：**他指认得更急**。
+        /// 每否认一次，指认间隔缩短，头顶把否认次数写出来。
+        /// 因果链于是完整了：我否认了 → 他更凶了 → 我停止否认 → 他慢下来。
         /// </summary>
-        void TickBloodFromDenial()
+        void DenialPressure()
         {
             if (Time.time < _nextRegen) return;
             _nextRegen = Time.time + 1.5f;
@@ -92,10 +131,17 @@ namespace AdversityRoad.AI
             if (d.denialCount <= _seenDenials) return;
             _seenDenials = d.denialCount;
 
-            float peak01 = Mathf.Clamp01(d.exposurePeak / 100f);
-            _ec.HealFraction(0.06f + 0.05f * peak01);
-            GameEvents.RaiseSubtitle("他缓过来了——刚才那一次否认，正好是他要的。");
+            // 每次否认让指认周期缩短 1.5 秒（最多累计 9 秒，即 15 → 6 秒一次），
+            // 并把**当前这一次**的倒计时也往前拨——但只能拨快，不能拨慢：
+            // 直接写 Mathf.Max(6, _nailCd - 1.5) 会在剩余不足 6 秒时反而把它推回 6 秒。
+            _denialSpeedUp = Mathf.Min(9f, _denialSpeedUp + 1.5f);
+            _nailCd = Mathf.Max(0f, _nailCd - 1.5f);
+            _ec.emotionOverride = "打不倒 · 你已否认 " + d.denialCount + " 次，他更急了";
+            GameEvents.RaiseSubtitle("刚才那一次否认，正好是他要的——他指得更快了。" +
+                "（否认 " + d.denialCount + " 次）");
         }
+
+        float _denialSpeedUp;
 
         void SetPhase(int phase)
         {

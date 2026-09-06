@@ -202,6 +202,8 @@ namespace AdversityRoad.Adversity
         void Announce()
         {
             _announced = true;
+            // 住所里不出现任何敌人的挑衅台词——哪怕真有敌人溜进了院子
+            if (OpenWorld.Sanctuary.AtHome) return;
             string name = _enemy.profile != null ? _enemy.profile.displayName : "它";
             string line;
             switch (tactic)

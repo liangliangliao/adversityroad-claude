@@ -496,7 +496,8 @@ namespace AdversityRoad.OpenWorld
             go.transform.localScale = new Vector3(1.2f, 1.4f, 1.2f);
             go.GetComponent<MeshRenderer>().sharedMaterial =
                 Combat.CombatFeedback.EnergyMaterial(color, 0.5f);
-            OpenWorldBuilder.HomeSign(pos + Vector3.up * 2.2f, label);
+            // 挂成道具的子物体：道具将来若被挪动，标签跟着走，不会留在原地飘着
+            OpenWorldBuilder.FollowSign(go.transform, new Vector3(0, 1.5f, 0), label);
 
             var p = go.AddComponent<ChapterProp>();
             p.label = label;

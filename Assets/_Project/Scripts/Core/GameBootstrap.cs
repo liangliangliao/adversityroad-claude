@@ -50,6 +50,9 @@ namespace AdversityRoad.Core
 
             ApplyComfortAndPerformance();
             EnsureSystems();
+            // 先于任何几何体建出来：警示圈/视线锥这类无光材质都要经它兜底，
+            // 少了这一句它们只能靠 Shader.Find，而那条路在真机包里会掉进洋红。
+            World.SafeShader.Init(baseMaterial);
             CombatFeedback.Init(baseMaterial);
 
             _world = new WorldContext { mat = baseMaterial };
@@ -196,7 +199,8 @@ namespace AdversityRoad.Core
             SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Novice, o[25] + new Vector3(-3, 1.1f, -30), true);
             SpawnEnemy(EnemyType.DebtMessenger, EnemyTier.Standard, o[25] + new Vector3(3, 1.1f, -14), true);
             SpawnEnemy(EnemyType.WeeklyInquirer, EnemyTier.Standard, o[25] + new Vector3(0, 1.1f, -2), true);
-            SpawnEnemy(EnemyType.AppeaseEcho, EnemyTier.Standard, o[25] + new Vector3(-2.5f, 1.1f, 12), true);
+            // 等级按方案附录对位：讨好回声 T3 → 精英
+            SpawnEnemy(EnemyType.AppeaseEcho, EnemyTier.Elite, o[25] + new Vector3(-2.5f, 1.1f, 12), true);
             SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(3.4f, 1.1f, -22), true);
             SpawnEnemy(EnemyType.BystanderWhisper, EnemyTier.Novice, o[25] + new Vector3(-3.4f, 1.1f, 4), true);
 
@@ -210,15 +214,16 @@ namespace AdversityRoad.Core
             FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
                 o[26] + new Vector3(-11, 1.1f, -6), o[26] + new Vector3(0, 1.1f, -18));
 
+            // 等级按方案 8.6.3 对位：放大镜围观者 T2 / 身份钉兵 T3 / 心虚投影 T4 / 伪装同学 T2
             SpawnEnemy(EnemyType.MagnifierOnlooker, EnemyTier.Standard, o[26] + new Vector3(6, 1.1f, -2), true);
-            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Standard, o[26] + new Vector3(-6, 1.1f, 9), true);
-            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Standard, o[26] + new Vector3(2, 1.1f, -8), true);
-            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Novice, o[26] + new Vector3(-2, 1.1f, -12), true);
+            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Elite, o[26] + new Vector3(-6, 1.1f, 9), true);
+            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Elite, o[26] + new Vector3(2, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Standard, o[26] + new Vector3(-2, 1.1f, -12), true);
 
             // 后排低语组：双人单位，互相登记为搭档
-            var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+            var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
                 o[26] + new Vector3(-4, 1.1f, 12), true);
-            var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Novice,
+            var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
                 o[26] + new Vector3(4, 1.1f, 12), true);
             var pa = a != null ? a.GetComponent<BackRowPair>() : null;
             var pb = b != null ? b.GetComponent<BackRowPair>() : null;
@@ -525,6 +530,9 @@ namespace AdversityRoad.Core
             cc.height = 2f;
             cc.center = Vector3.zero;
             cc.radius = 0.4f;
+            // 迈步上限写明确：住所的楼梯按这个值反算级数（见 PlayerVilla.Stairs）。
+            // 靠 Unity 的默认值等于两边各记各的，默认值一变楼梯就上不去。
+            cc.stepOffset = 0.3f;
 
             _player = root.AddComponent<PlayerController>();
             var fsm = root.AddComponent<CombatStateMachine>();
@@ -1199,6 +1207,12 @@ namespace AdversityRoad.Core
             sysMenu.Add("角色", "角色", characterPanel.Toggle);
             sysMenu.Add("角色", "画像", profilePanel.Toggle);
             sysMenu.Add("角色", "逆境图谱", advProfilePanel.Toggle);
+            var msTodoPanel = UI.MsTodoPanel.Create(canvasGo.transform);
+            sysMenu.Add("目标", "To Do 同步", msTodoPanel.Toggle);
+            // 开局就把同步服务拉起来，不等玩家去开面板：它在 Awake 里读本机缓存，
+            // 住所的目标看板才会一进门就有内容；自动同步的计时也才有人在跑。
+            // 没配置或没登录时 Update 里第一行就返回，等于不存在。
+            Integrations.MsTodoService.Ensure();
             sysMenu.Add("系统", "设置", settingsPanel.Toggle);
             sysMenu.Add("系统", "电视", tvPanel.Toggle);
             sysMenu.Add("系统", "悬浮小窗", () => Platform.PipMode.Enter());

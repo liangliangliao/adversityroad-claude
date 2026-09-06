@@ -37,7 +37,7 @@ namespace AdversityRoad.Shame
         public static ShameHudOverlay Ensure()
         {
             if (Instance != null) return Instance;
-            var canvas = FindObjectOfType<Canvas>();
+            var canvas = UiUtil.MainCanvas();
             if (canvas == null) return null;
             Instance = canvas.gameObject.AddComponent<ShameHudOverlay>();
             Instance.Build(canvas.transform);
@@ -123,7 +123,20 @@ namespace AdversityRoad.Shame
                 new Color(0.3f, 0.26f, 0.3f, 0.92f), OnRefuse, 18);
             _refuseLabel = _refuseBtn.GetComponentInChildren<Text>();
 
+            // ---- 本关规则：随时能把规则卡叫回来 ----
+            // 进关那张卡只自动弹一次，但"这关到底要我干什么"是随时可能忘的。
+            // 按钮 3 x∈[428,628]：接在「不上庭」右缘 396 之后，留 32 的间隙。
+            UiUtil.MakeButton(_root.transform, "本关规则", new Vector2(0f, 1f),
+                new Vector2(528f, Top - 96f), new Vector2(200f, 46f),
+                new Color(0.24f, 0.3f, 0.3f, 0.92f), OnRules, 18);
+
             _root.SetActive(false);
+        }
+
+        void OnRules()
+        {
+            string id = ShameLine.CurrentLevelId;
+            if (!string.IsNullOrEmpty(id)) ShameBriefPanel.Show(id);
         }
 
         void OnSpotlight() { var s = ShameSkills.Instance; if (s != null) s.CastSpotlight(); }

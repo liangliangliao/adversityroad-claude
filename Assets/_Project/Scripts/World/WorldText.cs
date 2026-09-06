@@ -52,6 +52,40 @@ namespace AdversityRoad.World
             return tm;
         }
 
+        /// <summary>
+        /// 给一段世界文字配一块底板，并让它稍微离开被标注的那个面。
+        ///
+        /// 【为什么必须有底板】
+        /// 没有底板的字就是几个悬在空中的字形：背景一花就读不出来，
+        /// 站位一变还会被它自己标注的那面墙切掉一半（玩家截图里的「店铺」「任务挑战」
+        /// 就是这样——半截字埋在墙里）。加一块比字略大的深色板，字才变成"牌子"。
+        ///
+        /// 板子的尺寸要等 TextMesh 真的排完版才知道（bounds 在第一帧之后才有效），
+        /// 所以交给 WorldTextPlate 在第一次 LateUpdate 里量一次、贴好、然后自己停掉。
+        /// </summary>
+        public static TextMesh Plate(TextMesh tm, float pad = 0.16f, Color? back = null)
+        {
+            if (tm == null) return tm;
+            var plate = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            plate.name = "TextPlate";
+            Object.DestroyImmediate(plate.GetComponent<Collider>());
+            plate.transform.SetParent(tm.transform, false);
+            // 往字的背后让 2 厘米：同深度会和字打架（z-fighting），字会一闪一闪
+            plate.transform.localPosition = new Vector3(0f, 0f, 0.02f);
+            plate.transform.localRotation = Quaternion.identity;
+
+            var c = back ?? new Color(0.06f, 0.07f, 0.10f, 0.82f);
+            var mr = plate.GetComponent<MeshRenderer>();
+            mr.sharedMaterial = MaterialFor(null, c);
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+
+            var fit = plate.AddComponent<WorldTextPlate>();
+            fit.target = tm;
+            fit.pad = pad;
+            return tm;
+        }
+
         static Material MaterialFor(Font font, Color tint)
         {
             int key = (Mathf.RoundToInt(Mathf.Clamp01(tint.r) * 31) << 15)
@@ -66,6 +100,7 @@ namespace AdversityRoad.World
             if (sh == null)
             {
                 // 实在找不到就退回内置字体材质：字会穿墙，但至少看得见字
+                // （底板走同一条路，font 为 null，此时没有兜底可用，返回 null 即不画板）
                 var fallback = font != null ? font.material : null;
                 _byColor[key] = fallback;
                 return fallback;
@@ -79,7 +114,7 @@ namespace AdversityRoad.World
             m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
             _byColor[key] = m;
-            Bind(font);
+            if (font != null) Bind(font);
             if (!_hooked)
             {
                 _hooked = true;
@@ -111,6 +146,35 @@ namespace AdversityRoad.World
             {
                 Debug.LogWarning("[WorldText] 字体图集重绑失败：" + e.Message);
             }
+        }
+    }
+
+    /// <summary>
+    /// 把底板贴合到文字的实际排版尺寸。
+    ///
+    /// TextMesh 的 bounds 要等它真的排完一次版才有效，所以这件事不能在创建的那一帧做。
+    /// 量到一次（宽高都大于 0）就贴好并把自己关掉——它不是一个需要每帧跑的东西。
+    /// </summary>
+    public class WorldTextPlate : MonoBehaviour
+    {
+        public TextMesh target;
+        public float pad = 0.16f;
+
+        void LateUpdate()
+        {
+            if (target == null) { enabled = false; return; }
+            var mr = target.GetComponent<MeshRenderer>();
+            if (mr == null) { enabled = false; return; }
+
+            // 取本地空间的尺寸：bounds 是世界空间的，父物体有旋转时不能直接拿来当宽高
+            Vector3 e = mr.localBounds.size;
+            if (e.x <= 0.0001f || e.y <= 0.0001f) return;   // 还没排版，下一帧再量
+
+            transform.localScale = new Vector3(e.x + pad * 2f, e.y + pad, 1f);
+            // 文字锚点不一定在中心（多为 MiddleCenter，但也有别的），按实际中心对齐
+            Vector3 c = mr.localBounds.center;
+            transform.localPosition = new Vector3(c.x, c.y, 0.02f);
+            enabled = false;
         }
     }
 }

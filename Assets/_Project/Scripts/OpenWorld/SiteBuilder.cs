@@ -1644,7 +1644,9 @@ namespace AdversityRoad.OpenWorld
             var go = new GameObject("SiteSign");
             go.transform.SetParent(inst.root.transform, false);
             go.transform.localPosition = local;
-            World.WorldText.Attach(go, text, 48, 0.08f, new Color(0.95f, 0.92f, 0.8f));
+            // 悬空的站点名必须有底板：没有底板就是几个飘在半空、被建筑切掉一半的字
+            World.WorldText.Plate(
+                World.WorldText.Attach(go, text, 48, 0.08f, new Color(0.95f, 0.92f, 0.8f)));
             go.AddComponent<FaceCamera>();
         }
 

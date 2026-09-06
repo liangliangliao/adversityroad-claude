@@ -64,11 +64,14 @@ def rects_of(path):
             scope = max([q for q in methods if q < m.start()], default=-1)
             out.append((0.0, float(m.group(1)), tw, th,
                         code[:m.start()].count("\n") + 1, (0.5, 1.0), scope))
-    # 面板自身的高度（越界判定用）
+    # 面板自身的高度（越界判定用）。
+    # 面板套了 ScrollRect 时，控件挂的是**滚动内容**那一层，而内容可以比外框高得多
+    # ——那正是滚动条存在的意义。这时取所有 MakePanel 里最高的那个当基准，
+    # 否则会把"内容比视口长"误报成"控件掉出面板"。
+    heights = [float(m.group(2)) for m in re.finditer(r"MakePanel\([^;]*?" + V, code, re.S)]
     ph = None
-    mp = re.search(r"MakePanel\([^;]*?" + V, code, re.S)
-    if mp:
-        ph = float(mp.group(2))
+    if heights:
+        ph = max(heights) if "ScrollRect" in code else heights[0]
     return ph, out
 
 def main():
