@@ -15,6 +15,7 @@ namespace AdversityRoad.UI
     public class SettingsPanel : MonoBehaviour
     {
         GameObject _panel;    // 滚动内容（1720 高）
+        RectTransform _contentRt;
         GameObject _frame;    // 外框（装得下屏幕的那一层，显示/隐藏与置顶都走它）
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
@@ -62,7 +63,8 @@ namespace AdversityRoad.UI
             viewRt.anchorMin = new Vector2(0f, 0f);
             viewRt.anchorMax = new Vector2(1f, 1f);
             viewRt.offsetMin = new Vector2(8f, 8f);
-            viewRt.offsetMax = new Vector2(-8f, -78f);   // 顶部让出关闭按钮那一条
+            // 顶部让出两条固定区：关闭按钮那一行，再加下面那条常驻的调试开关
+            viewRt.offsetMax = new Vector2(-8f, -172f);
 
             _panel = UiUtil.MakePanel(viewGo.transform, "SettingsPanel", new Vector2(1100, 1720),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
@@ -88,19 +90,29 @@ namespace AdversityRoad.UI
             UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(230, -40), new Vector2(420, 30));
 
             _frame = frame;
+            _contentRt = contentRt;
+
+            // ===== 调试数据开关：钉在**外框**上，不在滚动内容里 =====
+            //
+            // 这颗开关我先后放过三个位置，玩家三次都说"没看到"。
+            // 前几次都是在猜坐标，而真正的原因和坐标无关：它在滚动内容里，
+            // 内容有 1720 高、视口只有七百多，且 Toggle() 不重置滚动位置——
+            // 上一次往下翻过，再打开时内容还停在下面，最顶上的这一行正好在可视区之外。
+            // 玩家看到的就是"面板打开了，开关不在"。
+            //
+            // 放到外框上之后，滚动位置、兄弟层级、视口裁剪这三个可能原因一次全排除：
+            // 它和关闭按钮一样是固定的，面板一打开必然在眼前。
+            // 状态也不再只靠颜色区分——颜色在不同屏幕上未必读得出来，直接写"开/关"。
+            _perfBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(0, -118), new Vector2(1020, 64), Off, () =>
+                {
+                    PerfHud.Enabled = !PerfHud.Enabled;
+                    Refresh();
+                }, 24);
 
             var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(700, 52));
-
-            // 【调试数据放在最上面】这颗开关我先后放过两个位置，玩家两次都说"没显示出来"。
-            // 与其继续猜是滚动没生效还是他没翻到，不如把它挪到标题正下方——
-            // 面板一打开、一行都不用滚就在眼前。同时暂停菜单里也有一条直达的开关。
-            _perfBtn = MakeToggle("调试数据（FPS / 帧时 / 穿墙位移 / 漂移 / 动画状态）", -108, () =>
-            {
-                PerfHud.Enabled = !PerfHud.Enabled;
-                Refresh();
-            });
 
             var l1 = UiUtil.MakeText(_panel.transform, "L1", "心理攻击强度", 26,
                 TextAnchor.MiddleLeft, Color.white);
@@ -443,7 +455,13 @@ namespace AdversityRoad.UI
             if (_debugBtn != null)
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
             if (_perfBtn != null)
+            {
                 _perfBtn.GetComponent<Image>().color = PerfHud.Enabled ? On : Off;
+                var pl = _perfBtn.GetComponentInChildren<Text>();
+                if (pl != null)
+                    pl.text = (PerfHud.Enabled ? "■ 调试数据：开" : "□ 调试数据：关")
+                              + "　（FPS / 帧时 / 穿墙 / 漂移 / 动画状态）";
+            }
             if (_lockModeBtn != null)
             {
                 _lockModeBtn.GetComponentInChildren<Text>().text =
@@ -557,6 +575,9 @@ namespace AdversityRoad.UI
         {
             if (_frame.activeSelf) { Hide(); return; }
             _deleteArmed = false;
+            // 回到顶部：面板是隐藏而不是销毁，滚动位置会留在上次翻到的地方，
+            // 下次打开等于从中间开始看——这正是"开关没显示出来"的直接成因之一
+            if (_contentRt != null) _contentRt.anchoredPosition = Vector2.zero;
             Refresh();
             _frame.SetActive(true);
             _frame.transform.SetAsLastSibling();
