@@ -825,12 +825,52 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(0.08f, 2.5f, 3.4f), new Color(0.72f, 0.88f, 0.92f));
             VillaKit.Deco("ShowerGlass2", c + new Vector3(3.2f, 1.25f, -1.3f),
                 new Vector3(3.4f, 2.5f, 0.08f), new Color(0.72f, 0.88f, 0.92f));
-            var head = VillaKit.Cyl("ShowerHead", c + new Vector3(3.2f, 2.44f, -4.4f), 0.24f, 0.1f, Metal, true);
+            // —— 花洒 ——
+            // 尺寸按真东西来：面盘直径 26 厘米（大顶喷），出水锥不能比面盘还宽。
+            // 上一版面盘 0.24 半径（直径 48cm）配 0.34 半径的水锥（直径 68cm），
+            // 水从面盘外面凭空冒出来，怎么调粒子都不会像。
+            const float HeadR = 0.13f, HeadY = 2.44f;
+            float trayTop = 0.09f + 0.06f;                 // 托盘面：水正好落在这儿
+            var head = VillaKit.Cyl("ShowerHead", c + new Vector3(3.2f, HeadY, -4.4f),
+                HeadR, 0.05f, Metal, true);
             VillaKit.Metal(head, Metal);
-            VillaKit.Metal(VillaKit.Cyl("ShowerRiser", c + new Vector3(3.2f, 0.9f, -4.72f), 0.045f, 1.6f, Metal), Metal);
-            VillaKit.Metal(VillaKit.CylAxis("ShowerArm", c + new Vector3(3.2f, 2.5f, -4.56f), 0.04f, 0.4f,
-                Metal, new Vector3(90f, 0, 0)), Metal);
-            WaterOutlet.Attach(head, c + new Vector3(3.2f, 2.38f, -4.4f), 0.34f, 2.3f, "花 洒");
+            // 面盘底面：比外壳暗一圈，读作"这是布满孔的出水面"，不是一块光板
+            VillaKit.Deco("ShowerFace", c + new Vector3(3.2f, HeadY - 0.008f, -4.4f),
+                new Vector3(HeadR * 1.92f, 0.014f, HeadR * 1.92f), new Color(0.42f, 0.45f, 0.48f));
+            // 喷孔：两圈 + 中心一个。真花洒的孔是同心圆排布的，随机撒点反而不像
+            for (int ring = 1; ring <= 2; ring++)
+            {
+                int holes = ring * 8;
+                float rr = HeadR * (ring == 1 ? 0.42f : 0.76f);
+                for (int k = 0; k < holes; k++)
+                {
+                    float a = k * Mathf.PI * 2f / holes + ring * 0.2f;
+                    VillaKit.Deco("Nozzle", c + new Vector3(3.2f + Mathf.Cos(a) * rr,
+                        HeadY - 0.018f, -4.4f + Mathf.Sin(a) * rr),
+                        new Vector3(0.016f, 0.006f, 0.016f), new Color(0.20f, 0.22f, 0.24f));
+                }
+            }
+            // 立管：从托盘面一直到弯管，不再从半空的 0.9 米开始
+            VillaKit.Metal(VillaKit.Cyl("ShowerRiser", c + new Vector3(3.2f, trayTop, -4.72f),
+                0.032f, HeadY + 0.06f - trayTop, Metal), Metal);
+            VillaKit.Metal(VillaKit.CylAxis("ShowerArm", c + new Vector3(3.2f, HeadY + 0.06f, -4.56f),
+                0.032f, 0.4f, Metal, new Vector3(90f, 0, 0)), Metal);
+            // 混水阀：有阀门才解释得了"水从哪来、怎么开"
+            VillaKit.Metal(VillaKit.Cyl("MixerBody", c + new Vector3(3.2f, 1.02f, -4.66f),
+                0.055f, 0.2f, Metal, true), Metal);
+            for (int s3 = -1; s3 <= 1; s3 += 2)
+                VillaKit.Metal(VillaKit.CylAxis("MixerHandle",
+                    c + new Vector3(3.2f + s3 * 0.13f, 1.12f, -4.62f), 0.02f, 0.12f,
+                    Metal, new Vector3(0, 0, 90f)), Metal);
+            // 壁龛置物台：淋浴间里总得有个放沐浴露的地方
+            VillaKit.Deco("ShowerShelf", c + new Vector3(2.6f, 1.5f, -4.62f),
+                new Vector3(0.7f, 0.05f, 0.22f), new Color(0.86f, 0.87f, 0.88f));
+            VillaKit.Cyl("ShampooBottle", c + new Vector3(2.45f, 1.52f, -4.62f), 0.05f, 0.22f,
+                new Color(0.35f, 0.55f, 0.70f));
+            VillaKit.Cyl("BodyWashBottle", c + new Vector3(2.72f, 1.52f, -4.62f), 0.045f, 0.19f,
+                new Color(0.72f, 0.70f, 0.45f));
+            WaterOutlet.Attach(head, c + new Vector3(3.2f, HeadY - 0.03f, -4.4f),
+                HeadR * 0.88f, HeadY - 0.03f - trayTop, "花 洒");
             VillaKit.Deco("Towel", c + new Vector3(-4.6f, 1.6f, 3f),
                 new Vector3(0.12f, 1.1f, 0.8f), new Color(0.86f, 0.62f, 0.42f));
             VillaKit.Metal(VillaKit.CylAxis("TowelBar", c + new Vector3(-4.66f, 2.2f, 3f), 0.03f, 1.2f,
