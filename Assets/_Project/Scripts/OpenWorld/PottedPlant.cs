@@ -284,6 +284,11 @@ namespace AdversityRoad.OpenWorld
 
         void Water()
         {
+            // 浇水是蹲下去摆弄一盆花：Fixing_Kneeling 正是这个动作；
+            // 拿不到就退回通用的 Interact（站着伸手）。
+            var pa = Core.ActorRegistry.Player;
+            var ha = pa != null ? pa.GetComponentInChildren<Combat.HumanoidAnimator>() : null;
+            if (ha != null) ha.PlayFirstClip(1f, 0.25f, "fixing_kneeling", "interact");
             if (_stage >= StageNames.Length - 1)
             {
                 GameEvents.RaiseSubtitle("它已经结果了。剩下的事不是浇水能加快的。");

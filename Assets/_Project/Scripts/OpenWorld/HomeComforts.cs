@@ -249,7 +249,11 @@ namespace AdversityRoad.OpenWorld
             if (_animated)
             {
                 _anim.BeginRest(_seat.SurfaceY + SitPelvisRise);
-                _phaseDur = _anim.PlayRestClip("sitting", false, true, SitSpeed, 0.35f);
+                // UAL 的 Sitting_Enter 是一段完整的"站着坐下去"；主库的 "sitting"
+                // 是坐姿本身，被当成入座动作用只是没得选。有专用的就用专用的。
+                _phaseDur = _anim.PlayRestClip("sitting_enter", false, true, SitSpeed, 0.35f);
+                if (_phaseDur <= 0f)
+                    _phaseDur = _anim.PlayRestClip("sitting", false, true, SitSpeed, 0.35f);
             }
             else
             {
@@ -307,6 +311,9 @@ namespace AdversityRoad.OpenWorld
                 _phaseDur = fromLying
                     ? _anim.PlayRestClip("getting up", false, false, 1.1f, 0.3f)
                     : _anim.PlayRestClip("stand up", false, false, 1.15f, 0.3f);
+                // UAL 的 Sitting_Exit 是专门的"从座位上起身"，比把入座倒放多了发力那一下
+                if (!fromLying && _phaseDur <= 0f)
+                    _phaseDur = _anim.PlayRestClip("sitting_exit", false, false, 1.15f, 0.3f);
                 if (!fromLying && _phaseDur <= 0f)
                     _phaseDur = _anim.PlayRestClip("sitting", true, false, 1.25f, 0.3f);
                 if (_phaseDur <= 0f) _phaseDur = 0.3f;
@@ -382,7 +389,20 @@ namespace AdversityRoad.OpenWorld
                     if (_phaseT >= _phaseDur) { _phase = Phase.Seated; _loopAt = 0f; }
                     break;
                 case Phase.Seated:
-                    LoopTail("sitting", 0.82f);
+                    // UAL 的 Sitting_Idle_Loop 是**真循环**；LoopTail 是拿一次性片段
+                    // 的尾巴反复播，接缝处总有一下细微的跳。有真循环就别用尾巴。
+                    if (_anim != null && _anim.HasClip("sitting_idle_loop"))
+                    {
+                        // 坐久了偶尔换成"坐着说话"那一段：坐姿也不该是一张静止的照片。
+                        // 按时间取模而不是随机——随机会在两段之间反复横跳。
+                        LoopWhole(((int)(Time.time / 24f) % 4 == 3) &&
+                                  _anim.HasClip("sitting_talking_loop")
+                                      ? "sitting_talking_loop" : "sitting_idle_loop");
+                    }
+                    else
+                    {
+                        LoopTail("sitting", 0.82f);
+                    }
                     break;
                 case Phase.LyingDown:
                     if (_pc != null)
@@ -417,6 +437,14 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>坐稳之后循环播片段末段：完全静止的末帧看着像死机，末段里有细微起伏。</summary>
+        /// <summary>整段循环（用于本身就是循环的片段，如 UAL 的 *_Loop）。</summary>
+        void LoopWhole(string key)
+        {
+            if (!_animated || _anim == null || Time.time < _loopAt) return;
+            float len = _anim.PlayRestClip(key, false, true, 1f, 0.4f, 0f, 1f);
+            _loopAt = Time.time + Mathf.Max(0.5f, len - 0.2f);
+        }
+
         void LoopTail(string key, float from01)
         {
             if (!_animated || _anim == null || Time.time < _loopAt) return;

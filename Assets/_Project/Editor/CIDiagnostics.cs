@@ -164,6 +164,66 @@ namespace AdversityRoad.EditorTools
             }
         }
 
+        /// <summary>
+        /// UAL 烘焙产物核对。这一段是必要的：整套重定向在没有 Unity 的机器上写不了、
+        /// 也验不了，唯一能给出真实结果的地方就是这里。把"清单要几个 / 实际烤出几个 /
+        /// 能不能按名字取到"打进日志，对不上一眼就能看见，而不是等装到手机上发现人不动。
+        /// </summary>
+        static void DiagUal(StringBuilder sb)
+        {
+            sb.Append("\n--- UAL 通用动作库 ---\n");
+            const string list = "Assets/_Project/Animations/UAL/UAL_CLIPS.txt";
+            int want = 0;
+            if (System.IO.File.Exists(list))
+            {
+                foreach (var raw in System.IO.File.ReadAllLines(list))
+                {
+                    string t = raw.Trim();
+                    if (t.Length > 0 && !t.StartsWith("#")) want++;
+                }
+            }
+            else
+            {
+                sb.Append("  [警告] 找不到烘焙清单：").Append(list).Append('\n');
+            }
+
+            var baked = Resources.LoadAll<AnimationClip>("Characters/AnimsUAL");
+            sb.Append("  清单 ").Append(want).Append(" 个 / 实际烤出 ")
+              .Append(baked != null ? baked.Length : 0).Append(" 个\n");
+            if (baked != null)
+            {
+                int empty = 0;
+                foreach (var c in baked)
+                {
+                    if (c == null) continue;
+                    // 长度为 0 或没有任何曲线绑定 = 烤出来是个空壳，运行时表现为"人不动"
+                    var binds = UnityEditor.AnimationUtility.GetCurveBindings(c);
+                    if (c.length <= 0.001f || binds == null || binds.Length == 0)
+                    {
+                        empty++;
+                        sb.Append("  [空片段] ").Append(c.name).Append(" 时长=")
+                          .Append(c.length.ToString("F2")).Append(" 曲线=")
+                          .Append(binds == null ? 0 : binds.Length).Append('\n');
+                    }
+                }
+                if (empty == 0 && baked.Length > 0)
+                    sb.Append("  全部片段有时长且有曲线绑定\n");
+                // 抽查一条：曲线的绑定路径必须是 mixamorig 的，否则重定向没生效
+                foreach (var c in baked)
+                {
+                    if (c == null) continue;
+                    var binds = UnityEditor.AnimationUtility.GetCurveBindings(c);
+                    if (binds == null || binds.Length == 0) continue;
+                    sb.Append("  抽查 ").Append(c.name).Append("：首条绑定路径 ")
+                      .Append(binds[0].path).Append('\n');
+                    if (!binds[0].path.Contains("mixamorig"))
+                        sb.Append("  [严重] 绑定路径不是 mixamorig——重定向没生效，" +
+                                  "这些片段在角色身上不会动\n");
+                    break;
+                }
+            }
+        }
+
         public static void Run()
         {
             var sb = new StringBuilder("\n===== [CIDIAG] 资产运行时诊断开始 =====\n");
@@ -175,6 +235,7 @@ namespace AdversityRoad.EditorTools
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
+                DiagUal(sb);
             }
             catch (System.Exception e)
             {

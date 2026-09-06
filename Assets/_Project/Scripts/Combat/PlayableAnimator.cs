@@ -172,6 +172,37 @@ namespace AdversityRoad.Combat
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
             A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
+
+            // ===== 通用动作库（Quaternius UAL）补位 =====
+            //
+            // 【为什么整块放在最后】上面那句 `if (!_actionIndex.ContainsKey(pose))`
+            // 决定了**先注册的赢**：只要主库那条候选真的找到了片段，这里就不会生效。
+            // 所以这一块是纯补位——原来有的一条不动，原来空着的才由 UAL 顶上。
+            // 这也是为什么不去改上面每一行的候选链：改了就有可能挤掉调了很久的片段。
+            //
+            // 片段名来自 UalRetargetBaker 的产物（Armature| 前缀已剥掉），
+            // 都是重定向到本工程 Mixamo 骨架的普通 Generic 曲线。
+            A(PoseState.PunchJab,    1.9f,  0.12f, 0.70f, false, "punch_jab"),
+            A(PoseState.PunchCross,  1.85f, 0.12f, 0.70f, false, "punch_cross"),
+            A(PoseState.Attack,      1.7f,  0.15f, 0.72f, false, "sword_attack", "sword_attack_rm"),
+            A(PoseState.HeavyAttack, 1.45f, 0.10f, 0.80f, false, "sword_attack_rm", "sword_attack"),
+            A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "sword_idle"),
+            A(PoseState.Hit,         1.5f,  0.08f, 0.78f, false, "hit_chest"),
+            A(PoseState.HitHeavy,    1.25f, 0.05f, 0.86f, false, "hit_head", "hit_chest"),
+            A(PoseState.Flinch,      2.1f,  0.02f, 0.22f, false, "hit_chest", "hit_head"),
+            A(PoseState.Death,       1.0f,  0f,    1f,    true,  "death01"),
+            A(PoseState.Knockdown,   1.25f, 0.04f, 1f,    true,  "death01"),
+            A(PoseState.Dodge,       1.6f,  0.08f, 1f,    false, "roll", "roll_rm"),
+            A(PoseState.JumpUp,      1.2f,  0.05f, 0.85f, false, "jump_start"),
+            A(PoseState.FallLoop,    1.0f,  0f,    1f,    true,  "jump_loop"),
+            A(PoseState.Land,        1.3f,  0f,    0.85f, false, "jump_land"),
+            A(PoseState.LandHard,    1.1f,  0f,    0.92f, false, "jump_land"),
+            A(PoseState.CrouchIdle,  1.0f,  0f,    1f,    true,  "crouch_idle_loop"),
+            // 施法三段：本工程本来就有蓄力→循环→掷出的三个位，UAL 的简易法术正好对上
+            A(PoseState.Charge,      1.0f,  0f,    1f,    false, "spell_simple_enter"),
+            A(PoseState.ChargeLoop,  1.0f,  0f,    1f,    true,  "spell_simple_idle_loop"),
+            A(PoseState.CastProjectile, 1.3f, 0.08f, 0.82f, false, "spell_simple_shoot"),
+            A(PoseState.Cast,        1.0f,  0f,    1f,    false, "spell_simple_exit", "spell_simple_shoot"),
         };
 
         /// <summary>
@@ -436,6 +467,15 @@ namespace AdversityRoad.Combat
         const string ExtraFolder = "Characters/Anims2";
 
         /// <summary>
+        /// 通用动作库（Quaternius UAL）烘焙产物：45 个动作，已由 UalRetargetBaker
+        /// 重定向到本工程的 Mixamo 骨架，是普通的 Generic .anim，和主库一样按名字用。
+        /// 排在最后：主库与 Anims2 里已有的同名片段优先，UAL 只补空缺。
+        /// </summary>
+        const string UalFolder = "Characters/AnimsUAL";
+
+        static readonly string[] ExtraFolders = { ExtraFolder, UalFolder };
+
+        /// <summary>
         /// 动作库文件清单（**按文件名寻址**，与片段内部叫什么无关）。
         ///
         /// 为什么需要这张表：Mixamo 导出的 FBX 里 take 一律叫 "mixamo.com"，
@@ -520,21 +560,25 @@ namespace AdversityRoad.Combat
                 string k = Norm(c.name);
                 if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
             }
-            // 补充库（见 ExtraFolder）：主库同名的不覆盖，只补主库没有的
-            if (_folder != ExtraFolder)
-                foreach (var c in Resources.LoadAll<AnimationClip>(ExtraFolder))
+            // 补充库（见 ExtraFolder / UalFolder）：主库同名的不覆盖，只补主库没有的
+            foreach (var folder in ExtraFolders)
+            {
+                if (_folder == folder) continue;
+                foreach (var c in Resources.LoadAll<AnimationClip>(folder))
                 {
                     if (c == null) continue;
                     string k = Norm(c.name);
                     if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
                 }
+            }
             // 按文件名补齐（见 LibraryFiles）：没有命名 .meta 的 FBX 只能这样寻址
             foreach (var f in LibraryFiles)
             {
                 string fileKey = Norm(f);
                 if (fileKey.Length == 0 || byName.ContainsKey(fileKey)) continue;
                 var byPath = Resources.Load<AnimationClip>(_folder + "/" + f)
-                             ?? Resources.Load<AnimationClip>(ExtraFolder + "/" + f);
+                             ?? Resources.Load<AnimationClip>(ExtraFolder + "/" + f)
+                             ?? Resources.Load<AnimationClip>(UalFolder + "/" + f);
                 if (byPath != null) byName[fileKey] = byPath;
             }
 
@@ -556,12 +600,17 @@ namespace AdversityRoad.Combat
             //
             // 修法：把工程里**实际存在的文件名**放在候选链最前面，让精确匹配
             // 稳定命中；后面的模糊候选保留，作为换素材时的兼容。
+            // 末尾三条 UAL 候选是**兜底**：主库这三条一直在，正常永远轮不到它们。
+            // 但 idle/walk/run 缺任何一条整个动捕层就整体回退成方块骨骼
+            //（下面那句 `if (… == null) { Valid = false; return; }`），
+            // 而换角色、改目录、漏拷文件都可能让某一条落空——留一层兜底，
+            // 代价是三个名字，收益是不会一次性丢掉全部动捕。
             var idle = Pick(byName, "maria wprop j j ong@idle",
-                            "breathing idle", "standing idle", "idle");
+                            "breathing idle", "standing idle", "idle", "idle_loop");
             var walk = Pick(byName, "maria wprop j j ong@walking",
-                            "great sword walk", "walking", "walk");
+                            "great sword walk", "walking", "walk", "walk_loop");
             var run  = Pick(byName, "maria wprop j j ong@running",
-                            "great sword run", "running", "run");
+                            "great sword run", "running", "run", "sprint_loop", "jog_fwd_loop");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
             // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
             // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。
@@ -850,7 +899,8 @@ namespace AdversityRoad.Combat
             if (byName.TryGetValue(Norm(key), out var c) && c != null) return c;
             var byPath = Resources.Load<AnimationClip>(_folder + "/" + file);
             if (byPath != null) return byPath;
-            return Resources.Load<AnimationClip>(ExtraFolder + "/" + file);
+            return Resources.Load<AnimationClip>(ExtraFolder + "/" + file)
+                   ?? Resources.Load<AnimationClip>(UalFolder + "/" + file);
         }
 
         /// <summary>

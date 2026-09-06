@@ -28,7 +28,7 @@ namespace AdversityRoad.EditorTools
     {
         // 版本号变化会让 Unity 自动重导所有匹配资源（本地/CI 缓存都强制生效，
         // 无需手动 Reimport）。改动导入逻辑时 +1。
-        public override uint GetVersion() => 13;
+        public override uint GetVersion() => 14;
 
         // 材质描述后处理放到最后执行（高于 URP 内置的 FBX 材质后处理），
         // 保证内嵌贴图的接线以本脚本为准，不被后续后处理清掉。
@@ -38,8 +38,32 @@ namespace AdversityRoad.EditorTools
             assetPath.Replace('\\', '/').Contains("/Resources/Characters/") &&
             assetPath.ToLowerInvariant().EndsWith(".fbx");
 
+        /// <summary>
+        /// 通用动作库（Quaternius UAL）：唯一一个走 Humanoid 的文件，而且**只在离线烘焙时用**。
+        ///
+        /// 它的骨架是虚幻式命名，和本工程的 Mixamo 骨架完全对不上，Generic 按路径绑定
+        /// 一条都接不上。UalRetargetBaker 借 Unity 的人形重定向把它烤成 Mixamo 骨架上的
+        /// Generic 片段，产物进 Resources/Characters/AnimsUAL，运行时只认那批产物。
+        /// 上面那条"勿改回 Humanoid"说的是**无蒙皮的 Mixamo 动作文件**——
+        /// 那类文件没有绑定姿势可依，Avatar 全靠猜，这才是当年翻车的原因。
+        /// 这个文件自带蒙皮网格（Mannequin），Avatar 从真实绑定姿势建，不是同一回事；
+        /// 何况它不在 Resources 里，运行时根本不加载。
+        /// </summary>
+        bool IsUalLibrary =>
+            assetPath.Replace('\\', '/').EndsWith("/Animations/UAL/UAL1_Standard.fbx");
+
         void OnPreprocessModel()
         {
+            if (IsUalLibrary)
+            {
+                var ual = assetImporter as ModelImporter;
+                if (ual == null) return;
+                ual.animationType = ModelImporterAnimationType.Human;
+                ual.avatarSetup = ModelImporterAvatarSetup.CreateFromThisModel;
+                ual.importAnimation = true;
+                ual.materialImportMode = ModelImporterMaterialImportMode.None;
+                return;
+            }
             if (!InScope) return;
             var mi = assetImporter as ModelImporter;
             if (mi == null) return;

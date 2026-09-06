@@ -22,9 +22,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cslint import blank_out
 
 TYPES = r'(?:var|float|int|bool|string|double|long|byte|char|uint|short|object)'
+# 类型记法：逗号**只允许出现在尖括号里**（泛型实参）。
+# 之前的写法把 ',' 直接放进类型的字符类，于是 `WriteAllText(StampFile, stamp)`
+# 会被读成"类型 `StampFile,` + 变量 `stamp`"——一个普通的两参调用被当成声明，
+# 报出根本不存在的 CS0136。这类误报比漏报更麻烦：它在 CI 门禁里，会拦住正确的代码。
+NAMED = r'[A-Z][\w\.]*(?:<[^<>()]*>)?(?:\[\s*\])*'
 DECL = re.compile(
     r'(?:^|[;{}()\n]|\bfor\s*\(|\bforeach\s*\()\s*'
-    r'(?:' + TYPES + r'|[A-Z][\w<>,\.\[\]]*)\s+'
+    r'(?:' + TYPES + r'|' + NAMED + r')\s+'
     r'([a-z_]\w*)\s*(?:=[^=]|;|\)|\bin\b)')
 
 HEADER = re.compile(r'\b(for|foreach|using|fixed)\s*\(')

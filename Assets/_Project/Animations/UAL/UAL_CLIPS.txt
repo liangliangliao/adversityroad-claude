@@ -1,0 +1,58 @@
+# ===== UAL 烘焙清单 =====
+# 这份文件是唯一事实来源：UalRetargetBaker 只烘焙下面列出的动作，
+# tools/animchain.py 也只认下面列出的名字。两边读同一份，不可能对不上。
+#
+# 【为什么不是全部 45 个】"应用"指的是接进玩法，不是塞进包体。
+# 烘焙出来的每个片段都会被 Resources.LoadAll 加载，并在**每个角色**的
+# Playable 图里占一个槽位——场上同时有玩家、若干敌人和路人，
+# 没人会播的片段是纯开销。animchain 的 L2→L3 层查的就是这件事。
+# 下面这些暂不烘焙，因为本作里没有对应的玩法系统；
+# 源文件（CC0）留在本目录，将来做了对应系统，把名字挪到清单里即可：
+#
+#   A_TPose                参考姿势，不是动作
+#   Driving_Loop           没有载具
+#   Pistol_Aim_Down        没有枪械系统
+#   Pistol_Aim_Neutral     没有枪械系统
+#   Pistol_Aim_Up          没有枪械系统
+#   Pistol_Idle_Loop       没有枪械系统
+#   Pistol_Reload          没有枪械系统
+#   Pistol_Shoot           没有枪械系统
+#   Push_Loop              没有推物交互
+#   Swim_Fwd_Loop          没有游泳（住所有泳池，做了就能接）
+#   Swim_Idle_Loop         没有游泳（住所有泳池，做了就能接）
+#   Walk_Formal_Loop       方向移动环已满，换装需要按角色覆盖片段
+#
+# 名字由 FBX 的 AnimStack 名去掉 Armature| 前缀得到。
+Crouch_Fwd_Loop
+Crouch_Idle_Loop
+Dance_Loop
+Death01
+Fixing_Kneeling
+Hit_Chest
+Hit_Head
+Idle_Loop
+Idle_Talking_Loop
+Idle_Torch_Loop
+Interact
+Jog_Fwd_Loop
+Jump_Land
+Jump_Loop
+Jump_Start
+PickUp_Table
+Punch_Cross
+Punch_Jab
+Roll
+Roll_RM
+Sitting_Enter
+Sitting_Exit
+Sitting_Idle_Loop
+Sitting_Talking_Loop
+Spell_Simple_Enter
+Spell_Simple_Exit
+Spell_Simple_Idle_Loop
+Spell_Simple_Shoot
+Sprint_Loop
+Sword_Attack
+Sword_Attack_RM
+Sword_Idle
+Walk_Loop

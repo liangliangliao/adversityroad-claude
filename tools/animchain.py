@@ -43,6 +43,16 @@ for d in DIRS:
         stem = os.path.splitext(os.path.basename(f))[0]
         files.setdefault(norm(stem), os.path.relpath(f, ROOT))
 
+# UAL 烘焙产物：.anim 由 UalRetargetBaker 在导入时生成，仓库里没有实体文件，
+# 而这个检查跑在没有 Unity 的 lint 作业里。清单是它们存在的唯一凭据。
+UAL_LIST = ROOT / "Assets/_Project/Animations/UAL/UAL_CLIPS.txt"
+if UAL_LIST.exists():
+    for line in io.open(UAL_LIST, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        files.setdefault(norm(line), "Animations/UAL/(烘焙) " + line)
+
 pa = read(PA)
 pac = strip_comments(pa)
 
@@ -137,7 +147,11 @@ mapped = {}                     # norm(file) -> [用途...]
 pose_clip = {}                  # PoseState -> norm(file) 或 None
 for pose, keys in action_map:
     hit = resolve(keys)
-    pose_clip[pose] = hit
+    # 运行时是 `if (!_actionIndex.ContainsKey(pose))`——**先注册的赢**。
+    # 这里以前写成直接赋值（最后一条赢），与运行时相反：表尾新增的补位条目
+    # 会把前面那条已经调好的片段整个盖掉，于是报出一堆并不存在的"静默空转"。
+    if pose_clip.get(pose) is None:
+        pose_clip[pose] = hit
     if hit: mapped.setdefault(hit, []).append("招式 " + pose)
 for pose, keys in unarmed_map:
     hit = resolve(keys)
