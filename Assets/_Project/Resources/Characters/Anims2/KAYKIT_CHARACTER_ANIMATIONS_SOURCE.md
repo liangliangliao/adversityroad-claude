@@ -40,6 +40,8 @@ Source Git blob SHAs verified before import:
 
 SHA-256 hashes of the imported binaries are recorded in `KAYKIT_CHARACTER_ANIMATIONS_SHA256.txt`.
 
+Exact animation names are enumerated from the matching GLB files in `KAYKIT_DAILY_CLIPS.txt`; the GLB files are used only for inspection and are not committed.
+
 ## Scope note
 
 This commit adds animation assets only. It does **not** modify runtime C#, Animator state machines, `PlayableAnimator`, animation mappings or gameplay code.
