@@ -1,0 +1,138 @@
+name: Import KayKit daily animations
+
+on:
+  push:
+    branches:
+      - asset/import-kaykit-daily-anims2
+    paths:
+      - .github/workflows/import-kaykit-daily-anims2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import-kaykit-daily:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: asset/import-kaykit-daily-anims2
+          fetch-depth: 0
+
+      - name: Download pinned KayKit Character Animations 1.1 daily sets
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="Assets/_Project/Resources/Characters/Anims2"
+          REF="8742b69b6d965f369e7b8a87cee570a81184c403"
+          BASE="https://raw.githubusercontent.com/ArtjomSchwenk/Koy/${REF}/Assets/Character/KayKit_Character_Animations_1.1/KayKit_Character_Animations_1.1/Animations/fbx/Rig_Medium"
+          mkdir -p "$DEST"
+
+          files=(
+            Rig_Medium_General.fbx
+            Rig_Medium_MovementBasic.fbx
+            Rig_Medium_MovementAdvanced.fbx
+            Rig_Medium_Simulation.fbx
+            Rig_Medium_Tools.fbx
+          )
+
+          for file in "${files[@]}"; do
+            echo "Downloading $file"
+            curl --fail --location --retry 3 --retry-delay 2 \
+              "${BASE}/${file}" \
+              --output "${DEST}/KayKit_${file}"
+            test -s "${DEST}/KayKit_${file}"
+          done
+
+          # The existing Quaternius license file is the verbatim generic CC0 1.0
+          # legal code, so reuse it under a KayKit-specific filename.
+          cp "${DEST}/QUATERNIUS_UAL_CC0_LICENSE.txt" \
+             "${DEST}/KAYKIT_CHARACTER_ANIMATIONS_CC0_LICENSE.txt"
+
+          cat > "${DEST}/KAYKIT_CHARACTER_ANIMATIONS_SOURCE.md" <<'EOF'
+          # KayKit Character Animations — daily-behaviour subset
+
+          Creator: Kay Lousberg / KayKit
+
+          Official source: https://kaylousberg.itch.io/kaykit-character-animations
+
+          Official version used: **Free 1.1**
+
+          License: **CC0 1.0 Universal**
+
+          The official page describes the current free pack as 161 humanoid animations in FBX/GLTF, compatible with Unity and other engines. Its non-combat categories include general interactions, basic/advanced movement, simulation/emotes (including sitting and lying down), and tool/work actions. Version 1.1 added 28 Rig_Medium tool animations including chopping, digging, fishing, hammering, lockpicking, sawing, pickaxing and generic working actions.
+
+          ## Imported subset
+
+          Only the non-combat Rig_Medium animation-set FBX files were imported into `Assets/_Project/Resources/Characters/Anims2`:
+
+          - `KayKit_Rig_Medium_General.fbx`
+          - `KayKit_Rig_Medium_MovementBasic.fbx`
+          - `KayKit_Rig_Medium_MovementAdvanced.fbx`
+          - `KayKit_Rig_Medium_Simulation.fbx`
+          - `KayKit_Rig_Medium_Tools.fbx`
+
+          The KayKit CombatMelee, CombatRanged and Special FBX sets were intentionally excluded because this import is a daily-behaviour supplement and the repository already has dedicated combat libraries.
+
+          ## Reproducible binary transport
+
+          The official itch.io page is the licensing/source-of-truth page. Because the free itch download is served through an interactive download flow, the exact Free 1.1 FBX binaries were retrieved from a public GitHub mirror of the same package, pinned to commit:
+
+          - Mirror: `ArtjomSchwenk/Koy`
+          - Commit: `8742b69b6d965f369e7b8a87cee570a81184c403`
+          - Source directory: `Assets/Character/KayKit_Character_Animations_1.1/KayKit_Character_Animations_1.1/Animations/fbx/Rig_Medium`
+
+          Source Git blob SHAs verified before import:
+
+          - General: `2abcd06d6df7eda781a726e97fd89db715281c30`
+          - MovementBasic: `afbc67426f531cdda49b7f665f91c2cc7e744fbf`
+          - MovementAdvanced: `ff188316654191f267475903a8d8e5d9289b1d25`
+          - Simulation: `cc6641d380bfb906a85a204cbcd20157bf3ec5dd`
+          - Tools: `72df46850d70c9a95c62395e1a832bf0c04775c0`
+
+          SHA-256 hashes of the imported binaries are recorded in `KAYKIT_CHARACTER_ANIMATIONS_SHA256.txt`.
+
+          ## Scope note
+
+          This commit adds animation assets only. It does **not** modify runtime C#, Animator state machines, `PlayableAnimator`, animation mappings or gameplay code.
+
+          The official page currently lists eating/drinking as planned future simulation animations, so this package should not be treated as verified coverage for eating/drinking until those clips are actually released and inspected.
+          EOF
+
+          (cd "$DEST" && sha256sum \
+            KayKit_Rig_Medium_General.fbx \
+            KayKit_Rig_Medium_MovementBasic.fbx \
+            KayKit_Rig_Medium_MovementAdvanced.fbx \
+            KayKit_Rig_Medium_Simulation.fbx \
+            KayKit_Rig_Medium_Tools.fbx \
+            > KAYKIT_CHARACTER_ANIMATIONS_SHA256.txt)
+
+          # Best-effort audit: record visible FBX animation-stack strings when present.
+          : > "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
+          for file in "${files[@]}"; do
+            target="${DEST}/KayKit_${file}"
+            echo "## KayKit_${file}" >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
+            strings -a "$target" \
+              | grep -E 'AnimStack::|AnimationStack::' \
+              | sed -E 's/.*(AnimStack::|AnimationStack::)//' \
+              | sed -E 's/[[:cntrl:]].*$//' \
+              | sed '/^[[:space:]]*$/d' \
+              | sort -u \
+              >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt" || true
+            echo >> "${DEST}/KAYKIT_DAILY_ANIMATION_STACKS.txt"
+          done
+
+      - name: Commit imported assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/_Project/Resources/Characters/Anims2
+          if git diff --cached --quiet; then
+            echo "No asset changes to commit"
+            exit 0
+          fi
+          git commit -m "assets: add KayKit daily behaviour animation sets"
+          git push origin HEAD:asset/import-kaykit-daily-anims2
