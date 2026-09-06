@@ -30,7 +30,7 @@ namespace AdversityRoad.Integrations
 
         // ---- 应用注册 ----
         public string clientId = "";
-        public string packageName = "com.adversityroad.game";
+        public string packageName = "";   // 空则取 Application.identifier，见 Load()
         /// <summary>Android 签名哈希（Base64）。Azure 门户注册 Android 平台时要填的那一串。</summary>
         public string signatureHashBase64 = "";
 
@@ -64,9 +64,16 @@ namespace AdversityRoad.Integrations
         static MsTodoConfig Load()
         {
             string json = PlayerPrefs.GetString(Key, "");
-            if (string.IsNullOrEmpty(json)) return new MsTodoConfig();
-            try { return JsonUtility.FromJson<MsTodoConfig>(json) ?? new MsTodoConfig(); }
-            catch { return new MsTodoConfig(); }
+            MsTodoConfig c;
+            if (string.IsNullOrEmpty(json)) c = new MsTodoConfig();
+            else
+            {
+                try { c = JsonUtility.FromJson<MsTodoConfig>(json) ?? new MsTodoConfig(); }
+                catch { c = new MsTodoConfig(); }
+            }
+            // 包名不该靠人手打——Unity 自己就知道，写错了在 Azure 那边是查不出来的哑错。
+            if (string.IsNullOrWhiteSpace(c.packageName)) c.packageName = Application.identifier;
+            return c;
         }
 
         public void Save()

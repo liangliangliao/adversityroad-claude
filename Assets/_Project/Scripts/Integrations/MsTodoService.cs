@@ -364,10 +364,43 @@ namespace AdversityRoad.Integrations
 
         void Fail(string msg, State back = State.SignedOut)
         {
-            LastError = msg;
+            LastError = msg + Hint(msg);
             Status = back;
             UserCode = VerificationUrl = "";
             Raise();
+        }
+
+        /// <summary>
+        /// 把微软的 AADSTS 码翻成"到哪一页点哪一下"。
+        /// 原始英文照留——它带 Trace ID，真去提工单时有用；但玩家先看到的应该是能照做的那一句。
+        /// 这些码全都指向 Azure 应用注册的配置，没有一个是游戏这边能改掉的，
+        /// 所以提示必须说清楚是去门户改，而不是让人反复点「登录」。
+        /// </summary>
+        static string Hint(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "";
+            if (raw.Contains("AADSTS70002") || raw.Contains("AADSTS7000218") ||
+                raw.Contains("must be marked as"))
+                return "\n\n→ 这个应用没被当成\"公共客户端\"。去 portal.azure.com → 应用注册 → " +
+                       "选中你的应用 → 左侧\"身份验证\" → 拉到最下面\"高级设置 / 允许公共客户端流\" " +
+                       "选【是】→ 保存。改完等一两分钟再点登录。\n" +
+                       "顺带检查：平台那一栏只能加\"移动和桌面应用程序\"，" +
+                       "加成\"Web\"或\"单页应用程序\"同样会被拒。";
+            if (raw.Contains("AADSTS700016") || raw.Contains("was not found in the directory"))
+                return "\n\n→ 这个 Client ID 在该目录里不存在。检查两件事：" +
+                       "Client ID 有没有粘错（是概述页的\"应用程序(客户端) ID\"，不是对象 ID）；" +
+                       "个人 Microsoft 账号请把 Tenant 填 common。";
+            if (raw.Contains("AADSTS900023") || raw.Contains("Specified tenant identifier"))
+                return "\n\n→ Tenant 填错了。个人账号填 common；企业账号填租户 ID 或域名。";
+            if (raw.Contains("AADSTS50194") || raw.Contains("AADSTS50020"))
+                return "\n\n→ 应用注册时账户类型选窄了。改成\"任何组织目录中的账户 + 个人 Microsoft 账户\"，" +
+                       "或者把 Tenant 改成你自己的租户 ID。";
+            if (raw.Contains("AADSTS65001") || raw.Contains("consent"))
+                return "\n\n→ 权限没同意。去 API 权限页确认已添加 Microsoft Graph 的委托权限 " +
+                       "Tasks.ReadWrite、User.Read、offline_access，然后重新登录并在浏览器里点同意。";
+            if (raw.Contains("AADSTS650053") || raw.Contains("invalid_scope"))
+                return "\n\n→ Scopes 写错了。保持默认的 offline_access Tasks.ReadWrite User.Read，空格分隔。";
+            return "";
         }
 
         static string Describe(UnityWebRequest req) =>

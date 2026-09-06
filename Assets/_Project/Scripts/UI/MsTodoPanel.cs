@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,8 +19,13 @@ namespace AdversityRoad.UI
         InputField _authority, _tenant, _clientId, _package, _sha1, _graph, _scopes, _interval;
         Toggle _autoSync;
         Text _redirect, _status, _body;
-        float _bodyTop;
+        float _bodyTop, _bodyShift, _statusTop, _statusReserve;
         RectTransform _contentRt;
+        // 状态那块的文字长度是微软的报错决定的，短则一行、长则十几行。
+        // 它一长，下面的按钮和说明就被压住——所以记下它下面每个控件的原始 Y，
+        // 状态每次变化时按实际高度把它们整体推一推，而不是赌一个够大的预留值。
+        readonly List<RectTransform> _below = new List<RectTransform>();
+        readonly List<float> _belowY = new List<float>();
         Button _signBtn;
 
         public static MsTodoPanel Create(Transform canvas)
@@ -87,7 +93,9 @@ namespace AdversityRoad.UI
             y -= 86f;
 
             y = Section("② 授权与登录", y);
-            _status = Note("", ref y, 21, 8);
+            _statusTop = y;
+            _status = Note("", ref y, 21, 4);
+            _statusReserve = _status.rectTransform.sizeDelta.y;
             _signBtn = UiUtil.MakeButton(_content.transform, "登录", new Vector2(0.5f, 1f),
                 new Vector2(-300, y - 34), new Vector2(340, 62),
                 new Color(0.22f, 0.5f, 0.34f, 0.95f), OnSign, 24);
@@ -104,7 +112,9 @@ namespace AdversityRoad.UI
                 "1. portal.azure.com → 应用注册 → 新注册，账户类型选\"任何组织目录 + 个人 Microsoft 账户\"。\n" +
                 "2. 概述页的\"应用程序(客户端) ID\"填到上面的 Client ID。\n" +
                 "3. 身份验证页最下方，把\"允许公共客户端流\"打开——**这一步不做登录必失败**，\n" +
-                "   微软会回 AADSTS7000218，因为它默认要求应用带密钥，而手机应用不能存密钥。\n" +
+                "   微软会回 AADSTS70002 或 AADSTS7000218：它默认把应用当成带密钥的服务端应用，\n" +
+                "   而手机应用不能存密钥。同一页的\"平台\"只加\"移动和桌面应用程序\"，\n" +
+                "   加成 Web 或单页应用程序照样会被拒。\n" +
                 "4. API 权限页添加 Microsoft Graph 委托权限：Tasks.ReadWrite、User.Read、offline_access。\n\n" +
                 "登录用的是设备码流程：点「登录」后这里会显示一串短码，\n" +
                 "在任意一台设备的浏览器打开 microsoft.com/devicelogin 输入它即可。\n" +
@@ -122,6 +132,16 @@ namespace AdversityRoad.UI
             // 同步内容有多长取决于玩家的清单，这里先给个底，真实高度在 Refresh 里按行数定，
             // 内容区高度也跟着一起长——否则清单一多就顶出容器，滚也滚不到底。
             LayoutBody(600f);
+
+            // 记下状态框下面的所有控件（_body 除外，它由 LayoutBody 单独定位）
+            int si = _status.transform.GetSiblingIndex();
+            for (int i = si + 1; i < _content.transform.childCount; i++)
+            {
+                var rt = _content.transform.GetChild(i) as RectTransform;
+                if (rt == null || rt == _body.rectTransform) continue;
+                _below.Add(rt);
+                _belowY.Add(rt.anchoredPosition.y);
+            }
 
             _frame.SetActive(false);
             Refresh();
@@ -235,10 +255,27 @@ namespace AdversityRoad.UI
         void LayoutBody(float h)
         {
             if (_body == null) return;
+            float top = _bodyTop - _bodyShift;
             _body.rectTransform.sizeDelta = new Vector2(1130, h);
-            _body.rectTransform.anchoredPosition = new Vector2(0, _bodyTop - h * 0.5f);
+            _body.rectTransform.anchoredPosition = new Vector2(0, top - h * 0.5f);
             if (_contentRt != null)
-                _contentRt.sizeDelta = new Vector2(1200, Mathf.Max(1200f, -_bodyTop + h + 40f));
+                _contentRt.sizeDelta = new Vector2(1200, Mathf.Max(1200f, -top + h + 40f));
+        }
+
+        /// <summary>
+        /// 按状态文字的实际排版高度重排。preferredHeight 是 Text 在当前宽度下折行后的真实高度，
+        /// 比数换行符准——微软的报错是一整行长英文，换行符一个都没有，全靠折行。
+        /// </summary>
+        void LayoutStatus()
+        {
+            if (_status == null) return;
+            float h = Mathf.Max(40f, _status.preferredHeight + 10f);
+            _status.rectTransform.sizeDelta = new Vector2(1130, h);
+            _status.rectTransform.anchoredPosition = new Vector2(0, _statusTop - h * 0.5f);
+            _bodyShift = h - _statusReserve;
+            for (int i = 0; i < _below.Count; i++)
+                _below[i].anchoredPosition =
+                    new Vector2(_below[i].anchoredPosition.x, _belowY[i] - _bodyShift);
         }
 
         void Refresh()
@@ -275,7 +312,7 @@ namespace AdversityRoad.UI
                 if (!string.IsNullOrEmpty(svc.LastError))
                     sb.Append("\n\n").Append(svc.LastError);
             }
-            if (_status != null) _status.text = sb.ToString();
+            if (_status != null) { _status.text = sb.ToString(); LayoutStatus(); }
             if (_signBtn != null)
             {
                 var lab = _signBtn.GetComponentInChildren<Text>();
