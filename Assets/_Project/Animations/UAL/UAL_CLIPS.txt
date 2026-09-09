@@ -21,6 +21,8 @@
 #   Swim_Fwd_Loop          没有游泳（住所有泳池，做了就能接）
 #   Swim_Idle_Loop         没有游泳（住所有泳池，做了就能接）
 #   Walk_Formal_Loop       方向移动环已满，换装需要按角色覆盖片段
+#   Roll_RM                与 Roll 只差根位移，而本工程丢弃根位移
+#   Sword_Attack_RM        与 Sword_Attack 只差根位移，同上
 #
 # 名字由 FBX 的 AnimStack 名去掉 Armature| 前缀得到。
 Crouch_Fwd_Loop
@@ -42,7 +44,6 @@ PickUp_Table
 Punch_Cross
 Punch_Jab
 Roll
-Roll_RM
 Sitting_Enter
 Sitting_Exit
 Sitting_Idle_Loop
@@ -53,6 +54,5 @@ Spell_Simple_Idle_Loop
 Spell_Simple_Shoot
 Sprint_Loop
 Sword_Attack
-Sword_Attack_RM
 Sword_Idle
 Walk_Loop

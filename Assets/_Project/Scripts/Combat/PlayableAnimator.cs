@@ -171,7 +171,10 @@ namespace AdversityRoad.Combat
             A(PoseState.Flinch,      2.1f,  0.02f, 0.20f, false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
-            A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
+            // 闪避改成变体池：CI 诊断里这一条是「变体×2 Stand To Roll | Stand To Roll」——
+            // 同一个片段接了两次，等于没有变化。把 UAL 的 Roll 并进来，
+            // 翻滚才真的会换个样子。这也是"补充"而不是"替换"：主库那条仍排在前面。
+            AP(PoseState.Dodge,      1.7f,  0.10f, 1f,           "stand to roll", "forward roll", "sprinting forward roll", "dive roll", "roll"),
         };
 
         /// <summary>
@@ -193,15 +196,15 @@ namespace AdversityRoad.Combat
         {
             A(PoseState.PunchJab,    1.9f,  0.12f, 0.70f, false, "punch_jab"),
             A(PoseState.PunchCross,  1.85f, 0.12f, 0.70f, false, "punch_cross"),
-            A(PoseState.Attack,      1.7f,  0.15f, 0.72f, false, "sword_attack", "sword_attack_rm"),
-            A(PoseState.HeavyAttack, 1.45f, 0.10f, 0.80f, false, "sword_attack_rm", "sword_attack"),
+            A(PoseState.Attack,      1.7f,  0.15f, 0.72f, false, "sword_attack"),
+            A(PoseState.HeavyAttack, 1.45f, 0.10f, 0.80f, false, "sword_attack"),
             A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "sword_idle"),
             A(PoseState.Hit,         1.5f,  0.08f, 0.78f, false, "hit_chest"),
             A(PoseState.HitHeavy,    1.25f, 0.05f, 0.86f, false, "hit_head", "hit_chest"),
             A(PoseState.Flinch,      2.1f,  0.02f, 0.22f, false, "hit_chest", "hit_head"),
             A(PoseState.Death,       1.0f,  0f,    1f,    true,  "death01"),
             A(PoseState.Knockdown,   1.25f, 0.04f, 1f,    true,  "death01"),
-            A(PoseState.Dodge,       1.6f,  0.08f, 1f,    false, "roll", "roll_rm"),
+            A(PoseState.Dodge,       1.6f,  0.08f, 1f,    false, "roll"),
             A(PoseState.JumpUp,      1.2f,  0.05f, 0.85f, false, "jump_start"),
             A(PoseState.FallLoop,    1.0f,  0f,    1f,    true,  "jump_loop"),
             A(PoseState.Land,        1.3f,  0f,    0.85f, false, "jump_land"),
@@ -898,6 +901,12 @@ namespace AdversityRoad.Combat
             Add(PickFile(byName, "crouch walk back", "Crouch Walk Back"), 180f, CrouchTier, false);
             Add(PickFile(byName, "crouched sneaking left", "Crouched Sneaking Left"), -90f, CrouchTier, false);
             Add(PickFile(byName, "crouched sneaking right", "Crouched Sneaking Right"), 90f, CrouchTier, false);
+            // 蹲伏**前进**：主库压根没有这一条。CI 的移动表可以直接看出来——
+            // 蹲伏档只有 -180°（后退）和 90°（右），没有 0°。而蹲着往前走是最常用的方向，
+            // 缺了它就只能去混最近的那条（侧移或后退），读起来是"蹲着横挪着往前"。
+            // UAL 的 Crouch_Fwd_Loop 填的正是这个洞——这才是"补充已有动作库"的样子：
+            // 不去和调好的片段抢位置，只补它确实没有的方向。
+            Add(PickFile(byName, "crouch_fwd_loop", "Crouch_Fwd_Loop"), 0f, CrouchTier, false);
             return list;
         }
 
