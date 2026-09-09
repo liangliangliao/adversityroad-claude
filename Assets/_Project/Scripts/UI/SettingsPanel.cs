@@ -490,7 +490,7 @@ namespace AdversityRoad.UI
                 _ualBtn.GetComponent<Image>().color = ual ? On : Off;
                 var ul = _ualBtn.GetComponentInChildren<Text>();
                 if (ul != null)
-                    ul.text = ual ? "■ 动作库：UAL 优先" : "□ 动作库：主库优先";
+                    ul.text = ual ? "■ 动作库：UAL 全量" : "□ 动作库：主库+UAL补位";
             }
             if (_lockModeBtn != null)
             {

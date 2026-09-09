@@ -307,6 +307,9 @@ namespace AdversityRoad.EditorTools
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
                 if (!DiagUal(sb)) exit = 1;
+                // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
+                // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。
+                if (sb.ToString().Contains("!! ")) exit = 1;
             }
             catch (System.Exception e)
             {
