@@ -49,6 +49,62 @@ namespace AdversityRoad.AI
         // ---- 连续硬直的三道闸（见 TakeHit 里「防连锁硬直」那段的推导）----
         /// <summary>硬直连锁的统计窗口（秒）：窗口内被打进硬直越多次，硬直越短、霸体越长。</summary>
         public const float StaggerChainWindow = 6f;
+
+        /// <summary>
+        /// 受击反应四档的硬直时长（秒）。索引 = HitReactionTier 的返回值。
+        ///   0 微颤   —— 不进硬直（只播 0.1 秒的一颤，正在出的招照常挥完）
+        ///   1 小踉跄 —— 四肢命中
+        ///   2 大踉跄 —— 胸腹命中 / 头部轻击 / 重击打四肢
+        ///   3 击倒   —— 头部重击，或一击打掉超过一成血
+        /// </summary>
+        public static readonly float[] StaggerSeconds = { 0f, 0.35f, 0.75f, 1.5f };
+
+        /// <summary>
+        /// 受击反应分档：打中哪儿 + 这一下真正打进去多少 → 反应有多大。
+        ///
+        /// 【为什么用「真正打进去的伤害」而不是招式的原始数值】
+        /// 旧的判据是 DamageResolver.IsHeavy(dmg)，读的是招式表里写的原始削韧/伤害，
+        /// 那个数在挥出去之前就定了——**与打中哪个部位、对方防御多高全都无关**。
+        /// 于是砍中小腿和砍中脑袋是同一个反应，一记被高防御吃掉大半的重击
+        /// 也照样把人打倒。这里改用 final（过完防御与部位系数之后真正掉的血），
+        /// 再叠一层部位本身的基准档：这才是"按伤害程度区分"该有的读法。
+        ///
+        /// 部位基准取自 BodyPartTable 的设计意图：头是唯一的会心区（反应最大），
+        /// 胸腹是基准，四肢伤害低但削韧高（所以是小踉跄而不是没反应），
+        /// 手脚末端只是擦到（微颤，连招都打不断）。
+        /// </summary>
+        int HitReactionTier(BodyPart part, float landed, bool heavy) =>
+            HitReactionTierOf(part, landed, heavy, profile.maxHealth);
+
+        /// <summary>同上，静态版：CI 诊断要在不生成敌人的情况下把这张表打出来。</summary>
+        public static int HitReactionTierOf(BodyPart part, float landed, bool heavy, float maxHealth)
+        {
+            int t;
+            switch (part)
+            {
+                case BodyPart.Head: t = 2; break;
+                case BodyPart.Chest:
+                case BodyPart.Abdomen: t = 1; break;
+                case BodyPart.Extremity: t = -1; break;
+                default: t = 0; break;   // 四肢：伤害低，反应也小
+            }
+            if (heavy) t += 1;
+            // 一击打掉超过一成血：不论打中哪儿都算大事
+            if (maxHealth > 0.01f && landed >= maxHealth * 0.12f) t += 1;
+            return Mathf.Clamp(t, 0, 3);
+        }
+
+        /// <summary>受击反应档位的中文名（诊断与调试叠层共用一份说法）。</summary>
+        public static string TierLabel(int tier)
+        {
+            switch (Mathf.Clamp(tier, 0, 3))
+            {
+                case 0: return "微颤(不打断)";
+                case 1: return "小踉跄";
+                case 2: return "大踉跄";
+                default: return "击倒";
+            }
+        }
         float _poiseArmorUntil;   // 起身/破防恢复后的霸体窗：期间照常掉血，但不再被打进硬直
         int _staggerChain;        // 6 秒窗口内已经被打进硬直几次
         float _staggerChainUntil; // 这个窗口什么时候过期
@@ -473,6 +529,13 @@ namespace AdversityRoad.AI
                     // 追打仍然有收益，但对方拿回了出招的权利。
                     // 倒地起身比普通踉跄长：爬起来本来就更慢、更该被保护。
                     _poiseArmorUntil = Time.time + (_downed ? 0.9f : 0.45f);
+                    // 【起身反击】光有霸体窗还不够：出手冷却是 1.1~3.0 秒，
+                    // 硬直结束时它多半还在冷却里，于是"拿回了控制权却依然不还手"，
+                    // 玩家看到的仍然是一路被压着打。大作里敌人是**带着招爬起来的**
+                    // （魂系起身挥刀、只狼的兵卒起身反击），这里对齐：
+                    // 硬直结束把出手冷却压到 0.3 秒，配合上面的霸体窗，
+                    // 它这一刀能真的挥出来而不是刚抬手又被打断。
+                    _attackCd = Mathf.Min(_attackCd, 0.3f);
                     if (poser != null)
                     {
                         // 被击倒的要先播"起身过程"（倒地片段倒放：腿脚先动、身体渐立），
@@ -1254,6 +1317,26 @@ namespace AdversityRoad.AI
             // 重击打在霸体上：不进硬直，但把霸体冷却削掉 0.35 秒——
             // "重招更容易打断对方"这条直觉保留下来，只是不再是必然。
             if (!canFlinch && heavyHit && !poiseArmored) _flinchCd -= 0.35f;
+
+            // ---- 受击反应分档：按【打中哪儿 + 这一下真正打进去多少】决定反应大小 ----
+            // 玩家的原话：「踉跄状态没有根据伤害程度做区分，头部被打中应当非常明显，
+            // 胸部次之，依次类推，不是每次踉跄反应都非常大」。这条判断是对的：
+            // 旧代码只有两档（重击 1.5 秒击倒 / 其余一律 0.42 秒踉跄），
+            // 而"重击"的门槛读的是**招式的原始数值**，与打中哪个部位完全无关——
+            // 砍中小腿和砍中脑袋给出的是同一个反应。
+            // 分档之后：擦到手脚只是微微一颤（而且**不打断它正在出的招**），
+            // 四肢是小踉跄，胸腹是标准踉跄，头部才是大反应，头部重击才击倒。
+            int tier = HitReactionTier(part, final, heavyHit);
+            // 【0 档不进硬直】这是"不是每次反应都很大"的关键一半：
+            // 微颤只播一个 0.1 秒的一颤，敌人正在挥的那一刀照常挥完。
+            // 大作里打四肢/末端本来就打不断一记已经挥出去的重招。
+            bool microFlinch = tier == 0 && _posture > 0 && State != EnemyState.Stagger;
+            if (microFlinch)
+            {
+                // 正在挥招的当口不要把它的招从画面上抹掉（与下面那段同理）
+                if (poser != null && Time.time > _swingUntil) poser.SetPose(PoseState.Flinch);
+                canFlinch = false;   // 不消耗霸体冷却，也不进下面的硬直分支
+            }
             if (_posture > 0 && State != EnemyState.Stagger && canFlinch)
             {
                 // 受击霸体冷却 1.1→0.7s（Boss 2.4→1.9s）：原值下杂兵在一整套连段里
@@ -1274,11 +1357,14 @@ namespace AdversityRoad.AI
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = (heavyHit ? 1.5f : 0.42f) * chainDecay;
+                // 1 档=小踉跄 0.35s、2 档=大踉跄 0.75s、3 档=击倒 1.5s
+                _staggerTimer = StaggerSeconds[Mathf.Clamp(tier, 1, 3)] * chainDecay;
                 StopMoving();
-                // 重击=被撞飞重重倒地（受击状态可视化），恢复时播起身过程。
+                // 只有 3 档（头部重击 / 一击超过一成血的重击）才真的被打倒在地。
+                // 此前是"任何重击都倒地"，于是一套连段里人一直在地上，起来又倒——
+                // 那正是"一路被压着打"最直接的来源。
                 // 击飞很远（大击退）时播【腾空后翻滚】——飞出去是真实空翻而非僵直漂移
-                if (heavyHit)
+                if (tier >= 3)
                 {
                     _downed = true;
                     // 「击飞」是少数招式的特权，不是重击的默认表现。
@@ -1305,12 +1391,17 @@ namespace AdversityRoad.AI
                     }
                 }
                 else if (poser != null)
-                    poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
+                {
+                    // 反应大小也要**看得见**：2 档走重受击片段，1 档走普通受击。
+                    // 只改时长不改动作，画面上仍然是"每次都一样大"。
+                    if (tier >= 2) poser.SetHitPose(dmg.physicalDamage * 2f, dmg.knockback);
+                    else poser.SetHitPose(dmg.physicalDamage * 0.5f, dmg.knockback);
+                }
             }
             // 霸体冷却期间也要【看得出挨了打】：不打断攻防逻辑，但受击动作必播
             //（此前霸体期间连受击动画都不播，就是"被踢了一脚却站着没反应"的原因）。
             // 仅在自己不处于挥击相位时播，避免把正在出的招从画面上抹掉。
-            else if (!guardedHit && State != EnemyState.Stagger &&
+            else if (!microFlinch && !guardedHit && State != EnemyState.Stagger &&
                      Time.time > _swingUntil && poser != null)
             {
                 poser.SetHitPose(dmg.physicalDamage, dmg.knockback);

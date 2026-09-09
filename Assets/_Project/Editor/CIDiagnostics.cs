@@ -256,7 +256,39 @@ namespace AdversityRoad.EditorTools
             // 防连锁硬直的三道闸（见 EnemyController.TakeHit）。这几个数决定
             // "一直追打对方还有没有还手机会"，而那件事在日志里看不见任何伤害异常——
             // 不写出来就只能靠实机反馈，而实机反馈到这里已经绕了一个小时。
-            sb.Append("[CIDIAG][平衡] 防连锁硬直：起身霸体窗 0.90s（普通踉跄 0.45s）；")
+            // 受击反应分档：按「打中哪儿 × 轻斩/重击」把实际档位打成一张表。
+            // 玩家反馈"踉跄没有按伤害程度区分"，而这件事在代码里只是一个 int，
+            // 在日志里不打出来就完全看不见——打出来才对得上实机的感受。
+            {
+                var parts = new[]
+                {
+                    AdversityRoad.Combat.BodyPart.Head, AdversityRoad.Combat.BodyPart.Chest,
+                    AdversityRoad.Combat.BodyPart.Abdomen, AdversityRoad.Combat.BodyPart.ArmL,
+                    AdversityRoad.Combat.BodyPart.LegL, AdversityRoad.Combat.BodyPart.Extremity,
+                };
+                var std = AdversityRoad.AI.EnemyCatalog.Create(
+                    AdversityRoad.AI.EnemyType.CoughAssassin, AdversityRoad.AI.EnemyTier.Standard);
+                float stdHp = std.maxHealth * Mathf.Clamp(
+                    AdversityRoad.Core.GameDebug.EnemyToughness, 0.25f, 12f);
+                float red = 100f / (100f + std.defense);
+                foreach (var bp in parts)
+                {
+                    var pp = AdversityRoad.Combat.BodyPartTable.Get(bp, false);
+                    float light = bd * 1.10f * red * pp.damage;          // 巨剑横斩
+                    float heavy = bd * 2.40f * red * pp.damage;          // 蓄力跳劈
+                    int tl = AdversityRoad.AI.EnemyController.HitReactionTierOf(bp, light, false, stdHp);
+                    int th = AdversityRoad.AI.EnemyController.HitReactionTierOf(bp, heavy, true, stdHp);
+                    sb.Append("[CIDIAG][平衡]   受击 ").Append(pp.label.PadRight(4))
+                      .Append(" 轻斩=").Append(light.ToString("0")).Append(" → ")
+                      .Append(AdversityRoad.AI.EnemyController.TierLabel(tl))
+                      .Append(' ').Append(AdversityRoad.AI.EnemyController.StaggerSeconds[tl].ToString("0.00")).Append("s")
+                      .Append("   重击=").Append(heavy.ToString("0")).Append(" → ")
+                      .Append(AdversityRoad.AI.EnemyController.TierLabel(th))
+                      .Append(' ').Append(AdversityRoad.AI.EnemyController.StaggerSeconds[th].ToString("0.00")).Append("s")
+                      .Append('\n');
+                }
+            }
+            sb.Append("[CIDIAG][平衡] 防连锁硬直：起身霸体窗 0.90s（普通踉跄 0.45s）+ 起身反击（出手冷却压到 0.3s）；")
               .Append("硬直递减窗口 ").Append(AdversityRoad.AI.EnemyController.StaggerChainWindow)
               .Append("s 内每多一次 ×0.72（下限 0.35）、霸体冷却 ×(1+0.45n)；")
               .Append("重击不再免检霸体，只削 0.35s\n");
