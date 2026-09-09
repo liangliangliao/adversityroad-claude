@@ -1968,7 +1968,10 @@ namespace AdversityRoad.Combat
 
             if (dmg.physicalDamage > 0)
             {
-                float phys = dmg.physicalDamage * partProf.damage;
+                // 命中质量：与敌人侧同一套规则（见 Hitbox.ApplyHitQuality）。
+                // 攻防两侧用同一份判据，玩家才可能从挨打里学到"它这一下是够到了还是擦到"。
+                float quality = dmg.hitQuality > 0.001f ? dmg.hitQuality : 1f;
+                float phys = dmg.physicalDamage * partProf.damage * quality;
                 // 敌方偷袭：从背后被打 = 趁其不备，1.4 倍伤害且格挡无效（格挡只护正面）
                 // 背刺判定收窄：原来 Dot>0.35 等于把身后 138° 的整个扇区都算背刺，
                 // 被围住时总有一个敌人落在里面——玩家举着盾却一直"挡不住"，

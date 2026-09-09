@@ -288,10 +288,14 @@ namespace AdversityRoad.EditorTools
                       .Append('\n');
                 }
             }
-            sb.Append("[CIDIAG][平衡] 防连锁硬直：起身霸体窗 0.90s（普通踉跄 0.45s）+ 起身反击（出手冷却压到 0.3s）；")
+            sb.Append("[CIDIAG][平衡] 命中质量：接触体积占比 × 刃位，合计倍率夹在 0.55~1.25")
+              .Append("（擦到边／用剑柄怼 vs 刃中段罩满，最差与最好差约 2.3 倍）；")
+              .Append("伤害与削韧同乘；投射物与心理攻击不走判定框，不参与\n");
+            sb.Append("[CIDIAG][平衡] 防连锁硬直：起身霸体窗 0.90s（普通踉跄 0.45s；")
+              .Append("连续 3 次硬直之后保底 1.20s）＋起身反击带霸体（前摇打不断）；")
               .Append("硬直递减窗口 ").Append(AdversityRoad.AI.EnemyController.StaggerChainWindow)
               .Append("s 内每多一次 ×0.72（下限 0.35）、霸体冷却 ×(1+0.45n)；")
-              .Append("重击不再免检霸体，只削 0.35s\n");
+              .Append("重击不再免检霸体，只削 0.35s；打断前摇的硬直也走同一套递减\n");
         }
 
         /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>

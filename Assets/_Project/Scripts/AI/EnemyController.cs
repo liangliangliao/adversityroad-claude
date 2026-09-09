@@ -106,6 +106,7 @@ namespace AdversityRoad.AI
             }
         }
         float _poiseArmorUntil;   // 起身/破防恢复后的霸体窗：期间照常掉血，但不再被打进硬直
+        bool _wakeArmor;          // 起身后的**第一记反击**带霸体：不打断它的前摇（见 TakeHit 的打断段）
         int _staggerChain;        // 6 秒窗口内已经被打进硬直几次
         float _staggerChainUntil; // 这个窗口什么时候过期
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
@@ -528,7 +529,13 @@ namespace AdversityRoad.AI
                     // 一次还手都没有。这里不给无敌（伤害照吃），只给**不被打进硬直**——
                     // 追打仍然有收益，但对方拿回了出招的权利。
                     // 倒地起身比普通踉跄长：爬起来本来就更慢、更该被保护。
-                    _poiseArmorUntil = Time.time + (_downed ? 0.9f : 0.45f);
+                    // 【保底还手窗】被连续打进硬直 3 次以上之后，这一次恢复必定给到
+                    // 1.2 秒不受硬直的时间。前面的递减是"越来越短"，这一条是"一定有"——
+                    // 递减是渐近的，玩家手快就仍然可能把每一次间隙都填满；
+                    // 有了这条硬保证，"根本起不来"在规则上就不可能成立。
+                    float guard = _downed ? 0.9f : 0.45f;
+                    if (_staggerChain >= 3) guard = Mathf.Max(guard, 1.2f);
+                    _poiseArmorUntil = Time.time + guard;
                     // 【起身反击】光有霸体窗还不够：出手冷却是 1.1~3.0 秒，
                     // 硬直结束时它多半还在冷却里，于是"拿回了控制权却依然不还手"，
                     // 玩家看到的仍然是一路被压着打。大作里敌人是**带着招爬起来的**
@@ -536,6 +543,9 @@ namespace AdversityRoad.AI
                     // 硬直结束把出手冷却压到 0.3 秒，配合上面的霸体窗，
                     // 它这一刀能真的挥出来而不是刚抬手又被打断。
                     _attackCd = Mathf.Min(_attackCd, 0.3f);
+                    // 起身反击必须**带霸体**，否则它就是一个更快的挨打循环：
+                    // 见 TakeHit 打断段里那条注释——起身→出招→前摇被打断→再硬直。
+                    _wakeArmor = true;
                     if (poser != null)
                     {
                         // 被击倒的要先播"起身过程"（倒地片段倒放：腿脚先动、身体渐立），
@@ -830,6 +840,7 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Dead || attackHitbox == null) return;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
             if (poser != null) poser.SetPose(_attackPose);
+            _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
             StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
@@ -1159,9 +1170,19 @@ namespace AdversityRoad.AI
 
             if (_telegraphing && !dmg.unblockable)
             {
-                // 霸体：精英/首领对轻击不吃打断（但重击/绝招仍打得断）
-                bool superArmor = (profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
-                                  && !DamageResolver.IsHeavy(dmg);
+                // 【这里原来是"一直在踉跄"的真正出口，而且是我上一版亲手造的】
+                // 打断前摇走的是 ForceBreak(0.9f)，它**不看霸体窗、不吃硬直递减**，
+                // 是一条独立于上面那三道闸之外的进硬直通路。
+                // 而我上一版加的"起身反击"把出手冷却压到 0.3 秒，等于让敌人
+                // 一爬起来就进前摇——于是循环变成：
+                //     起身 → 0.3 秒后进前摇 → 玩家下一刀打断 → 硬直 0.9 秒 → 起身 …
+                // 它比改之前更起不来。这是我的回归，不是原有的老问题。
+                // 修法与大作一致：**起身反击自带霸体**（魂系起身挥刀打不断、
+                // 只狼兵卒起身反击有韧性），霸体窗内的前摇也一样打不断。
+                bool superArmor = ((profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
+                                   && !DamageResolver.IsHeavy(dmg))
+                                  || _wakeArmor
+                                  || Time.time < _poiseArmorUntil;
                 Vector3 mid = _player != null
                     ? (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f
                     : transform.position + Vector3.up * 1.3f;
@@ -1173,7 +1194,13 @@ namespace AdversityRoad.AI
                 }
                 else
                 {
-                    ForceBreak(0.9f);   // 出招被打断 + 短硬直：读招抢攻的正收益
+                    // 打断的硬直也走硬直递减：短时间内反复打断它的前摇，
+                    // 每次能定住的时间越来越短（与被打进硬直共用同一个 6 秒窗口）。
+                    // 读招抢攻的收益仍在（招被取消掉了），只是不能靠它把人钉死。
+                    if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                    _staggerChainUntil = Time.time + StaggerChainWindow;
+                    _staggerChain++;
+                    ForceBreak(0.9f * Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1)));
                     CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
                     CombatFeedback.WeaponClash(mid);
                 }
@@ -1194,8 +1221,12 @@ namespace AdversityRoad.AI
             if (BodyPartTable.IsLeg(part)) _legHurtUntil = Time.time + 2.2f;
             else if (BodyPartTable.IsArm(part)) _armHurtUntil = Time.time + 2.2f;
 
+            // 命中质量（接触体积 × 刃位，见 Hitbox.ApplyHitQuality）：
+            // 擦到边、用剑柄怼、够到极限距离都打不透；刃中段罩满才吃满伤害。
+            // 0 表示这一击没走判定框（投射物/心理攻击），按 1 处理。
+            float quality = dmg.hitQuality > 0.001f ? dmg.hitQuality : 1f;
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense)
-                * sneakMult * partDmgMult;
+                * sneakMult * partDmgMult * quality;
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法。
             // 处决（大作破韧终结）：破绽期用重击/大招命中 = 巨额增伤 + 横幅 + 强顿帧慢镜，
             // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
@@ -1221,7 +1252,8 @@ namespace AdversityRoad.AI
                 _hp -= final;
                 if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
             }
-            _posture -= dmg.postureDamage * partPostureMult * externalDamageMult;
+            // 削韧同样吃命中质量：擦到边不该和扎实的一刀削掉一样多的架势
+            _posture -= dmg.postureDamage * partPostureMult * externalDamageMult * quality;
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
@@ -1257,7 +1289,11 @@ namespace AdversityRoad.AI
             }
             // 伤害数字按部位分色分号：头部会心最大最亮，四肢偏冷色且带削韧提示。
             // （部位名由 HitReactionOverlay 在接触点弹出，这里不重复文字，只统一颜色语言）
-            CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
+            // 命中质量够好/够差时在数字后面缀一个短标签：让"为什么这一下打得多/打得少"
+            // 从画面上就读得出来，而不是只在代码里成立（"贴身·力不透" / "刃中·扎实" / "擦到"）。
+            string qtag = Combat.Hitbox.QualityLabel(dmg);
+            CombatFeedback.DamageNumber(transform.position,
+                Mathf.RoundToInt(final).ToString() + (qtag.Length > 0 ? "  " + qtag : ""),
                 execution ? new Color(1f, 0.6f, 0.15f)
                 : headshot ? new Color(1f, 0.55f, 0.25f)
                 : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f)
