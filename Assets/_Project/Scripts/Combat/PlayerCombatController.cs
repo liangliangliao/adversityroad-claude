@@ -31,7 +31,7 @@ namespace AdversityRoad.Combat
         // 单下从 10 出头抬到 14 上下，重击/绝招则跨过"一击见效"的观感门槛。
         // 「重击」的分级线（DamageResolver.HeavyPhysical=34）已同步上移，
         // 普通连段不会因为调高攻击力就变成每一下都击倒。
-        public float baseDamage = 20f;
+        public float baseDamage = DefaultBaseDamage;
         // 轻击体力：连打约 5.8 段/秒，旧值 8 → 47/秒消耗 vs 15/秒回复，3 秒即见底。
         // 降到 3 后连打消耗 ≈20/秒，配合回复提升后可长时间连打不断（体力只在
         // 闪避/蓄力等"大动作"上形成真实取舍，而不是卡住普通连段）。
@@ -95,6 +95,27 @@ namespace AdversityRoad.Combat
             new ComboStage { pose = PoseState.SwordThrust, dmg = 1.45f, posture = 14, lunge = 1.0f, windup = 0.065f, open = 0.15f, length = 0.34f, cancelAt = 0.19f },
             new ComboStage { pose = PoseState.AttackSpin,  dmg = 2.0f,  posture = 28, lunge = 0.6f, windup = 0.10f, open = 0.22f, length = 0.46f, cancelAt = 0.32f },
         };
+
+        /// <summary>
+        /// 一套完整连段的伤害倍率合计与耗时（CI 平衡诊断用，见 CIDiagnostics）。
+        ///
+        /// 时长按**链取消**算：前几段在 cancelAt 就能接下一段，只有最后一段要演完。
+        /// 这是玩家实际能打出的节奏，也是唯一有意义的分母——按 length 相加会
+        /// 高估三成，然后据此得出"其实没那么快"的错误结论。
+        /// </summary>
+        public static void ComboTotals(bool sword, out float dmgMult, out float seconds)
+        {
+            var chain = sword ? SwordChain : PunchChain;
+            dmgMult = 0f; seconds = 0f;
+            for (int i = 0; i < chain.Length; i++)
+            {
+                dmgMult += chain[i].dmg;
+                seconds += i == chain.Length - 1 ? chain[i].length : chain[i].cancelAt;
+            }
+        }
+
+        /// <summary>基础伤害的默认值（CI 平衡诊断用：诊断不实例化玩家）。</summary>
+        public const float DefaultBaseDamage = 20f;
 
         enum AttackBtn { None, Punch, Kick, Heavy }
 

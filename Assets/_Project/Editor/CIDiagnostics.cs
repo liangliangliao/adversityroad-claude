@@ -169,6 +169,61 @@ namespace AdversityRoad.EditorTools
         /// 也验不了，唯一能给出真实结果的地方就是这里。把"清单要几个 / 实际烤出几个 /
         /// 能不能按名字取到"打进日志，对不上一眼就能看见，而不是等装到手机上发现人不动。
         /// </summary>
+        /// <summary>
+        /// 战斗平衡：一套完整连段能打掉多少血，各档敌人要挨几套才倒。
+        ///
+        /// 【为什么这张表必须由 CI 打】敌人生命那张表是在
+        /// GameDebug.TankyEnemies 默认为 true（全工程伤害 ×0.1）的年代写的，
+        /// 从来没有在真实伤害下被算过一次。把那个调试开关关掉之后，
+        /// "敌人很容易就被打死"是必然结果，而这件事**看代码看不出来**：
+        /// 伤害在四个文件里被乘了六道（招式倍率、防御减免、部位、破绽、连携、耐揍），
+        /// 生命在第七个文件里被乘了两道（档位、全局调校）。
+        /// 靠手感回忆去调这种数只会来回摆，所以让构建每次都把结论打出来。
+        /// </summary>
+        static void DiagBalance(StringBuilder sb)
+        {
+            AdversityRoad.Combat.PlayerCombatController.ComboTotals(true, out float swMult, out float swSec);
+            AdversityRoad.Combat.PlayerCombatController.ComboTotals(false, out float puMult, out float puSec);
+            float bd = AdversityRoad.Combat.PlayerCombatController.DefaultBaseDamage;
+            sb.Append("[CIDIAG][平衡] 基础伤害 ").Append(bd)
+              .Append("；剑连 ").Append(swMult.ToString("0.00")).Append(" 倍 / ")
+              .Append(swSec.ToString("0.00")).Append(" 秒（链取消），拳连 ")
+              .Append(puMult.ToString("0.00")).Append(" 倍 / ")
+              .Append(puSec.ToString("0.00")).Append(" 秒\n");
+            if (AdversityRoad.Core.GameDebug.TankyEnemies)
+                sb.Append("[CIDIAG][平衡] !! GameDebug.TankyEnemies 默认是 true —— ")
+                  .Append("全工程每个敌人受到的伤害都会被乘 ")
+                  .Append(AdversityRoad.Core.GameDebug.TankyDamageScale)
+                  .Append("，这是调试开关，不该进发布包\n");
+            var tiers = new[]
+            {
+                AdversityRoad.AI.EnemyTier.Novice, AdversityRoad.AI.EnemyTier.Standard,
+                AdversityRoad.AI.EnemyTier.Elite,  AdversityRoad.AI.EnemyTier.Chief,
+            };
+            // 取一个"标准杂兵"作代表：目录里生命 100 / 防御 8 的那一档。
+            // 逐档只看档位换算，不逐个敌人列——四十多种敌人列出来没人会读，
+            // 而各档的换算是同一套，代表值就足够看出量级。
+            foreach (var t in tiers)
+            {
+                var pf = AdversityRoad.AI.EnemyCatalog.Create(
+                    AdversityRoad.AI.EnemyType.CoughAssassin, t);   // 目录里的 100 血 / 8 防
+                float perHit = bd * 1.10f * (100f / (100f + pf.defense));      // 单下轻斩（巨剑横斩）
+                float perCombo = bd * swMult * (100f / (100f + pf.defense));   // 一整套剑连
+                float combos = perCombo > 0.01f ? pf.maxHealth / perCombo : 0f;
+                sb.Append("[CIDIAG][平衡]   ")
+                  .Append(AdversityRoad.AI.EnemyCatalog.TierLabel(t).PadRight(4))
+                  .Append(" 生命=").Append(pf.maxHealth.ToString("0"))
+                  .Append(" 防御=").Append(pf.defense.ToString("0.0"))
+                  .Append("  单下轻斩=").Append(perHit.ToString("0.0"))
+                  .Append("（血条 ").Append((perHit / Mathf.Max(1f, pf.maxHealth) * 100f).ToString("0.0")).Append("%）")
+                  .Append("  打倒需 ").Append(combos.ToString("0.0")).Append(" 套剑连 ≈ ")
+                  .Append((combos * swSec).ToString("0.0")).Append(" 秒不间断输出\n");
+            }
+            // 削韧破防→抓破绽处决（重击 ×2.8）是首领档的正解，实战会明显短于上表。
+            sb.Append("[CIDIAG][平衡] 上表是「只用轻连段、不破防」的上限；")
+              .Append("削韧破防后重击处决吃 2.8 倍，实战应显著短于此\n");
+        }
+
         /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>
         static bool DiagUal(StringBuilder sb)
         {
@@ -306,6 +361,7 @@ namespace AdversityRoad.EditorTools
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
+                DiagBalance(sb);
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
                 // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。
