@@ -46,6 +46,12 @@ namespace AdversityRoad.AI
 
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
+        // ---- 连续硬直的三道闸（见 TakeHit 里「防连锁硬直」那段的推导）----
+        /// <summary>硬直连锁的统计窗口（秒）：窗口内被打进硬直越多次，硬直越短、霸体越长。</summary>
+        public const float StaggerChainWindow = 6f;
+        float _poiseArmorUntil;   // 起身/破防恢复后的霸体窗：期间照常掉血，但不再被打进硬直
+        int _staggerChain;        // 6 秒窗口内已经被打进硬直几次
+        float _staggerChainUntil; // 这个窗口什么时候过期
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
         PoseState _attackPose = PoseState.Attack;   // 本次出手选中的招式（多样化）
         int _comboLeft;           // 精英/首领的连击追加段数
@@ -460,6 +466,13 @@ namespace AdversityRoad.AI
                 if (_staggerTimer <= 0)
                 {
                     State = EnemyState.Chase;
+                    // 【起身霸体窗】倒地爬起来的那一下不能再被打回去。
+                    // 这是动作游戏的通行规则（起身无敌帧 / 受身）：没有它，
+                    // 玩家只要贴着倒地的敌人一直按，敌人就永远停在"倒下—爬起—又倒下"，
+                    // 一次还手都没有。这里不给无敌（伤害照吃），只给**不被打进硬直**——
+                    // 追打仍然有收益，但对方拿回了出招的权利。
+                    // 倒地起身比普通踉跄长：爬起来本来就更慢、更该被保护。
+                    _poiseArmorUntil = Time.time + (_downed ? 0.9f : 0.45f);
                     if (poser != null)
                     {
                         // 被击倒的要先播"起身过程"（倒地片段倒放：腿脚先动、身体渐立），
@@ -1220,13 +1233,40 @@ namespace AdversityRoad.AI
             // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
             // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
             bool heavyHit = fbHeavy;
-            if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
+            // ================= 防连锁硬直（这一段是新的，理由写在这里） =================
+            // 玩家反馈：「敌人被打倒、进防御状态之后，只要一直追打就基本无还手之力，
+            // 一路被动到死」。旧代码里有三处让这件事必然发生：
+            //   ① 这行原本是 (_flinchCd <= 0f || heavyHit)——**重击无条件绕过霸体冷却**。
+            //      而"重击"的门槛是削韧≥22 或伤害≥34，旋风绝斩、蓄力跳劈、所有绝招
+            //      全都够线。于是连着放重招 = 每一下都进硬直，每次 1.5 秒，永远起不来。
+            //   ② 倒地起身没有任何保护，爬起来的那一帧就能被打回去（见起身霸体窗）。
+            //   ③ 硬直没有递减：第七次被打进硬直和第一次一样长。
+            // 大型动作游戏对这三件事都有成文的做法，这里逐条对应：
+            //   ① 韧性/霸体（魂系 poise、只狼躯干）：重击不再免检，只是把霸体冷却
+            //      **削掉一截**——连着放重招仍然更容易打出硬直，但不再是每下必中。
+            //   ② 起身无敌帧 / 受身（几乎所有格斗与动作游戏）：见上面的 _poiseArmorUntil。
+            //   ③ 硬直递减 / 连段比例衰减（格斗游戏的 proration、God of War 的眩晕衰减）：
+            //      同一个 6 秒窗口内每多被打进一次硬直，硬直时间乘 0.72、霸体冷却加长，
+            //      于是连段一定会结束，敌人一定会拿回一次出手机会。
+            // 三条都**不减少伤害**：追打的收益一点没变，变的只是"对方还有没有还手的机会"。
+            bool poiseArmored = Time.time < _poiseArmorUntil;
+            bool canFlinch = !poiseArmored && _flinchCd <= 0f;
+            // 重击打在霸体上：不进硬直，但把霸体冷却削掉 0.35 秒——
+            // "重招更容易打断对方"这条直觉保留下来，只是不再是必然。
+            if (!canFlinch && heavyHit && !poiseArmored) _flinchCd -= 0.35f;
+            if (_posture > 0 && State != EnemyState.Stagger && canFlinch)
             {
                 // 受击霸体冷却 1.1→0.7s（Boss 2.4→1.9s）：原值下杂兵在一整套连段里
                 // 只踉跄一次，剩下四五下全程站着不动——这是"打上去没反应/攻击力弱"
                 // 最刺眼的一处。缩短后普通敌人几乎每两下就吃一次硬直，但仍保留
                 // 霸体窗口，不至于被彻底连到死。
-                _flinchCd = profile.category == EnemyCategory.Boss ? 1.9f : 0.7f;
+                // 连锁计数：6 秒窗口内每多被打进一次硬直，霸体冷却越长、硬直越短
+                if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                _staggerChainUntil = Time.time + StaggerChainWindow;
+                _staggerChain++;
+                float chainDecay = Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1));
+                _flinchCd = (profile.category == EnemyCategory.Boss ? 1.9f : 0.7f)
+                            * (1f + 0.45f * (_staggerChain - 1));
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
                 CancelInvoke(nameof(FireProjectile));
@@ -1234,7 +1274,7 @@ namespace AdversityRoad.AI
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = heavyHit ? 1.5f : 0.42f;
+                _staggerTimer = (heavyHit ? 1.5f : 0.42f) * chainDecay;
                 StopMoving();
                 // 重击=被撞飞重重倒地（受击状态可视化），恢复时播起身过程。
                 // 击飞很远（大击退）时播【腾空后翻滚】——飞出去是真实空翻而非僵直漂移
@@ -1276,13 +1316,22 @@ namespace AdversityRoad.AI
                 poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
             }
 
-            if (_posture <= 0)
+            if (_posture <= 0 && !poiseArmored)
             {
                 // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
+                //
+                // 【也走同一套递减】破防本来就是"削韧打法"的正收益，不该削弱；
+                // 但破防之后韧性是**回满**的，如果 2.4 秒的破绽每次都一样长，
+                // 削韧流就变成了另一条无限连——玩家一直打，敌人一直在破绽里。
+                // 递减之后第一次破防仍是完整的 2.4 秒（该给的仪式感一点不少），
+                // 短时间内反复破防才会缩短。破绽结束同样给一个霸体窗。
+                if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                _staggerChainUntil = Time.time + StaggerChainWindow;
+                _staggerChain++;
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = 2.4f;
+                _staggerTimer = 2.4f * Mathf.Max(0.4f, Mathf.Pow(0.75f, _staggerChain - 1));
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
