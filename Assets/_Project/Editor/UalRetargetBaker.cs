@@ -50,7 +50,7 @@ namespace AdversityRoad.EditorTools
         const string ClipList = "Assets/_Project/Animations/UAL/UAL_CLIPS.txt";
 
         /// <summary>改了烘焙逻辑就 +1，让所有机器（含 CI 缓存）重烤。</summary>
-        const int BakeVersion = 2;
+        const int BakeVersion = 3;
 
         const int Fps = 30;
 
@@ -325,6 +325,12 @@ namespace AdversityRoad.EditorTools
             animator = go.GetComponent<Animator>() ?? go.AddComponent<Animator>();
             animator.avatar = avatar;
             animator.applyRootMotion = false;   // 根位移丢弃：世界位移由角色控制器负责
+            // 【这一行是整套烘焙的成败所在】Animator 默认是 CullUpdateTransforms：
+            // **没有摄像机看见它就不写骨骼**。CI 是 batchmode、没有渲染，
+            // 于是逐帧 Evaluate 之后读到的永远是绑定姿势——Mixamo 的绑定姿势
+            // 正是双臂平举的 T-Pose。第一版 33 个片段就是这么被烤成同一个静止 T-Pose 的，
+            // 而结构检查（数量/时长/有曲线/路径对）它全都满足，一路绿灯。
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             root = go.transform;
             return go;
         }
@@ -358,6 +364,9 @@ namespace AdversityRoad.EditorTools
             var hipsPos = new Keyframe[frames * 3];
             int hipsIdx = bones.FindIndex(b => b.t.name == "mixamorig:Hips");
 
+            var first = new Quaternion[n];
+            bool moved = false;
+
             var graph = PlayableGraph.Create("UALBake_" + name);
             try
             {
@@ -378,6 +387,9 @@ namespace AdversityRoad.EditorTools
                     for (int i = 0; i < n; i++)
                     {
                         var q = bones[i].t.localRotation;
+                        // 姿态到底有没有动：和第一帧比。全程不动 = 这段是废的
+                        if (f == 0) first[i] = q;
+                        else if (Quaternion.Angle(first[i], q) > 1.5f) moved = true;
                         // 四元数连续化：相邻帧点积为负时取反，否则曲线插值会绕远路
                         if (f > 0 && Quaternion.Dot(prev[i], q) < 0f)
                             q = new Quaternion(-q.x, -q.y, -q.z, -q.w);
@@ -399,6 +411,17 @@ namespace AdversityRoad.EditorTools
             finally
             {
                 if (graph.IsValid()) graph.Destroy();
+            }
+
+            // 【内容自检】一段全程一动不动的片段是废的，绝不能当成"烤好了"写出去。
+            // 上一版没有这道检查，于是 33 个 T-Pose 通过了全部结构检查、
+            // 打进 APK、装到手机上才被玩家看出来——"每次做出动作都附带一个
+            // 双臂两侧张开的动画"，那就是绑定姿势。
+            if (!moved)
+            {
+                Debug.LogError("[CIDIAG][UAL] 「" + name + "」烤出来是**静止**的（全程骨骼没有变化）。" +
+                               "多半是 Animator 被剔除了没写骨骼（cullingMode），或者重定向没生效。");
+                return false;
             }
 
             var clip = new AnimationClip { frameRate = Fps, name = name };

@@ -219,6 +219,46 @@ namespace AdversityRoad.EditorTools
                 }
                 if (empty == 0 && baked.Length > 0)
                     sb.Append("  全部片段有时长且有曲线绑定\n");
+
+                // 【内容检查，不只是结构】上一版只验了"有几个、多长、有没有曲线、路径对不对"——
+                // 33 个静止 T-Pose 把这四项全都满足了，一路绿灯打进 APK，
+                // 装到手机上才被玩家看出来。曲线存在不等于姿态会变，必须验数值。
+                int frozen = 0;
+                foreach (var c in baked)
+                {
+                    if (c == null) continue;
+                    var binds = UnityEditor.AnimationUtility.GetCurveBindings(c);
+                    if (binds == null || binds.Length == 0) continue;
+                    bool varies = false;
+                    foreach (var b in binds)
+                    {
+                        if (!b.propertyName.StartsWith("m_LocalRotation")) continue;
+                        var curve = UnityEditor.AnimationUtility.GetEditorCurve(c, b);
+                        if (curve == null || curve.length < 2) continue;
+                        float lo = curve.keys[0].value, hi = lo;
+                        for (int k = 1; k < curve.length; k++)
+                        {
+                            float v = curve.keys[k].value;
+                            if (v < lo) lo = v;
+                            if (v > hi) hi = v;
+                        }
+                        if (hi - lo > 0.01f) { varies = true; break; }
+                    }
+                    if (!varies)
+                    {
+                        frozen++;
+                        sb.Append("  [静止片段] ").Append(c.name)
+                          .Append("　全程骨骼旋转没有变化——这一段是废的\n");
+                    }
+                }
+                if (frozen > 0)
+                {
+                    ok = false;
+                    sb.Append("  [严重] ").Append(frozen)
+                      .Append(" 个片段是静止的。多半是烘焙时 Animator 被剔除没写骨骼" +
+                              "（cullingMode），读到的一直是绑定姿势（T-Pose）。\n");
+                }
+                else if (baked.Length > 0) sb.Append("  全部片段的姿态确实在变化\n");
                 // 抽查一条：曲线的绑定路径必须是 mixamorig 的，否则重定向没生效
                 foreach (var c in baked)
                 {
