@@ -259,6 +259,13 @@ namespace AdversityRoad.EditorTools
                               "（cullingMode），读到的一直是绑定姿势（T-Pose）。\n");
                 }
                 else if (baked.Length > 0) sb.Append("  全部片段的姿态确实在变化\n");
+
+                // 名字全列出来：下游全部按名字寻址，名字对不上就什么都接不上，
+                // 而"接不上"在运行时是静默的。列出来才不用靠猜。
+                var names = new System.Collections.Generic.List<string>();
+                foreach (var c in baked) if (c != null) names.Add(c.name);
+                names.Sort();
+                sb.Append("  片段名：").Append(string.Join("、", names)).Append('\n');
                 // 抽查一条：曲线的绑定路径必须是 mixamorig 的，否则重定向没生效
                 foreach (var c in baked)
                 {
@@ -286,14 +293,19 @@ namespace AdversityRoad.EditorTools
             int exit = 0;
             try
             {
+                // 【烘焙必须排在最前面】DiagLocomotion 会真的建一份 PlayableAnimator
+                // 并把招式表、方向移动表打出来——那份表是这份报告里最有价值的东西。
+                // 上一版把烘焙放在它**后面**，于是打表时 AnimsUAL 目录还是空的，
+                // 报告里看到的是"没有 UAL 参与"的假象：明明加了蹲伏前进和闪避变体，
+                // 表里却一点没变，我差点据此去查一个根本不存在的 bug。
+                // 诊断要么反映真实状态，要么不如不打。
+                UalRetargetBaker.Bake(false);
+
                 DiagWeapon(sb, "scene");
                 DiagTrail(sb);
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
                 DiagCharacterMaterials(sb);
-                // 显式烘焙：batchmode 下 InitializeOnLoad 的 delayCall 永远不会触发，
-                // 不在这里调一次，下面查到的就永远是"烤出 0 个"
-                UalRetargetBaker.Bake(false);
                 if (!DiagUal(sb)) exit = 1;
             }
             catch (System.Exception e)
