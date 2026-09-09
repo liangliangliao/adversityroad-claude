@@ -219,9 +219,40 @@ namespace AdversityRoad.EditorTools
                   .Append("  打倒需 ").Append(combos.ToString("0.0")).Append(" 套剑连 ≈ ")
                   .Append((combos * swSec).ToString("0.0")).Append(" 秒不间断输出\n");
             }
-            // 削韧破防→抓破绽处决（重击 ×2.8）是首领档的正解，实战会明显短于上表。
-            sb.Append("[CIDIAG][平衡] 上表是「只用轻连段、不破防」的上限；")
-              .Append("削韧破防后重击处决吃 2.8 倍，实战应显著短于此\n");
+            // 【最重要的一段】上表只算轻连段——而实机里收人头的从来不是连段。
+            // 绝招 ×10、必杀 ×16~21，攒势又只要几次命中，这才是真实的击杀路径。
+            // 上一版没有这一段，于是那份"标准杂兵要挨两套连招"的报告是好看的、错的。
+            AdversityRoad.Combat.PlayerCombatController.PeakMultipliers(
+                out float spMult, out float ultMult);
+            int hpm = AdversityRoad.Combat.PlayerCombatController.HitsPerMomentum;
+            sb.Append("[CIDIAG][平衡] 爆发路径：绝招 ").Append(spMult.ToString("0.#"))
+              .Append(" 倍（1 势）、必杀 ").Append(ultMult.ToString("0.#"))
+              .Append(" 倍（3 势）；每 ").Append(hpm).Append(" 次命中攒 1 势，")
+              .Append("攒满必杀需 ").Append(hpm * 3).Append(" 次命中 ≈ ")
+              .Append((hpm * 3f / 4f).ToString("0.#")).Append(" 套剑连\n");
+            foreach (var t in tiers)
+            {
+                var pf = AdversityRoad.AI.EnemyCatalog.Create(
+                    AdversityRoad.AI.EnemyType.CoughAssassin, t);
+                float hp = pf.maxHealth * Mathf.Clamp(AdversityRoad.Core.GameDebug.EnemyToughness, 0.25f, 12f);
+                float red = 100f / (100f + pf.defense);
+                float sp = bd * spMult * red, ult = bd * ultMult * red;
+                sb.Append("[CIDIAG][平衡]   ")
+                  .Append(AdversityRoad.AI.EnemyCatalog.TierLabel(t).PadRight(4))
+                  .Append(" 强度×").Append(AdversityRoad.Core.GameDebug.EnemyToughness.ToString("0.#"))
+                  .Append(" 后生命=").Append(hp.ToString("0"))
+                  .Append("  一记绝招=").Append(sp.ToString("0"))
+                  .Append("（").Append((sp / Mathf.Max(1f, hp) * 100f).ToString("0")).Append("%）")
+                  .Append("  一套必杀=").Append(ult.ToString("0"))
+                  .Append("（").Append((ult / Mathf.Max(1f, hp) * 100f).ToString("0")).Append("%）");
+                // 标记用 ※ 而不是 !!：!! 会让作业变红（见 Run 里的判定），
+                // 而"必杀能一口气秒掉低档杂兵"本来就是必杀该有的样子，不是缺陷。
+                // 需要警觉的是它在**高档**上也成立——那说明爆发把生命曲线整个吃掉了。
+                if (ult >= hp) sb.Append("  ※ 一套必杀直接秒杀这一档");
+                sb.Append('\n');
+            }
+            sb.Append("[CIDIAG][平衡] 轻连段那张表是「只用连段、不破防」的上限；")
+              .Append("削韧破防后重击处决吃 2.8 倍，爆发路径见上\n");
         }
 
         /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>

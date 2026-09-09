@@ -35,6 +35,40 @@ namespace AdversityRoad.Core
             set => UnityEngine.PlayerPrefs.SetInt("dbg_prefer_ual", value ? 1 : 0);
         }
 
+        /// <summary>
+        /// 包体标记。每改一次会影响手感的东西就 +1，并显示在设置面板标题上。
+        ///
+        /// 【为什么要有它】"改了，但装上去没什么变化"这句话有两种可能：
+        /// 改错了地方，或者装的还是上一个包。这两者要分开，否则下一轮会去修
+        /// 一个根本不存在的问题——这个项目里已经发生过一次（招式表在烘焙前打的那次）。
+        /// 面板上写着几号包，一眼就能排除掉后一种可能。
+        /// </summary>
+        public const int BuildTag = 41;
+
+        /// <summary>
+        /// 敌人强度：在调好的基准生命之上再乘一道，**玩家自己在设置面板里调**。
+        ///
+        /// 【为什么做成设置项而不是我改一个常量】这个数是纯手感，只有实机打过才知道
+        /// 合不合适；而我这边改一个数要等一次二十多分钟的构建，一来一回就是一小时，
+        /// 还只试得了一个值。做成开关之后，同一局里就能把 ×1 到 ×5 全试一遍，
+        /// 定下来的那个值告诉我，我再把它设成默认。
+        ///
+        /// 与 TankyEnemies 的区别：那个是把伤害乘 0.1 的调试开关（十倍血、一档到底）；
+        /// 这个是连续可调的生命倍率，档位之间是能玩的差别，不是能不能打死的差别。
+        /// </summary>
+        public static float EnemyToughness
+        {
+            get
+            {
+                float v = UnityEngine.PlayerPrefs.GetFloat("dbg_tough", 2f);
+                return v < 0.1f ? 2f : v;
+            }
+            set => UnityEngine.PlayerPrefs.SetFloat("dbg_tough", UnityEngine.Mathf.Clamp(value, 0.25f, 12f));
+        }
+
+        /// <summary>敌人强度的可选档位（设置面板按这张表轮换）。</summary>
+        public static readonly float[] ToughnessSteps = { 1f, 2f, 3f, 5f, 8f };
+
         /// <summary>敌人耐揍模式：大幅削减敌人受到的伤害（仅供调试，默认关闭）。</summary>
         public static bool TankyEnemies;
 

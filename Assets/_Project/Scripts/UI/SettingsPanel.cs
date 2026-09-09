@@ -19,7 +19,7 @@ namespace AdversityRoad.UI
         GameObject _frame;    // 外框（装得下屏幕的那一层，显示/隐藏与置顶都走它）
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
-        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn, _ualBtn;
+        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn, _ualBtn, _toughBtn;
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
@@ -128,13 +128,45 @@ namespace AdversityRoad.UI
             // 但读起来就是这个感受，而结论一样：看不到。
             // 三个都是调试开关，一起钉在固定区，两行放下，不占额外高度。
             _debugBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
-                new Vector2(0, -174), new Vector2(1020, 58), Off, () =>
+                new Vector2(-256, -174), new Vector2(500, 58), Off, () =>
                 {
                     GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
                     Refresh();
                 }, 22);
 
-            var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
+            // 第二行右半：敌人强度（连续档位，立刻对场上所有敌人生效）
+            //
+            // 【为什么这颗按钮存在】"敌人太容易被打死"这种事只有实机打过才知道
+            // 合适的值是多少，而我这边改一个常量要等一次二十多分钟的构建，
+            // 一来一回一小时、还只试得了一个值。做成档位之后，同一局里就能
+            // 把 ×1 到 ×8 全试一遍，定下来的那个告诉我，我再设成默认。
+            // 改档立刻重算场上每个敌人的生命，并且**保留当前血量百分比**——
+            // 不需要退出重进，也不会把打了一半的敌人治满。
+            _toughBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(256, -174), new Vector2(500, 58), Off, () =>
+                {
+                    var steps = GameDebug.ToughnessSteps;
+                    float cur = GameDebug.EnemyToughness;
+                    int i = 0;
+                    for (int k = 0; k < steps.Length; k++)
+                        if (Mathf.Approximately(steps[k], cur)) { i = k; break; }
+                    GameDebug.EnemyToughness = steps[(i + 1) % steps.Length];
+                    int n = AI.EnemyController.ApplyToughnessAll();
+                    // 报出**换算之后的实际血量**，不是只报倍率：倍率读不出手感，
+                    // "标准杂兵 660 血、约 6 套连招"才是可以拿去和实机对照的东西。
+                    float std = AI.EnemyCatalog.Create(
+                        AI.EnemyType.CoughAssassin, AI.EnemyTier.Standard).maxHealth
+                        * GameDebug.EnemyToughness;
+                    GameEvents.RaiseSubtitle("敌人强度 ×" + GameDebug.EnemyToughness.ToString("0.#")
+                        + "：标准杂兵 " + std.ToString("0") + " 血（约 "
+                        + (std / 107f).ToString("0.#") + " 套完整剑连），场上 " + n + " 个敌人已更新。");
+                    Refresh();
+                }, 22);
+
+            // 标题带包体号：装上去之后"这是第几个包"必须一眼可见，
+            // 否则"改了没变化"永远分不清是改错了还是装的旧包（见 GameDebug.BuildTag）。
+            var title = UiUtil.MakeText(_panel.transform, "Title",
+                "设 置 · 心理安全　#" + Core.GameDebug.BuildTag, 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(700, 52));
 
@@ -474,8 +506,15 @@ namespace AdversityRoad.UI
                 var dl = _debugBtn.GetComponentInChildren<Text>();
                 if (dl != null)
                     dl.text = GameDebug.TankyEnemies
-                        ? "■ 调试模式：开　敌人耐揍（受到伤害 ×0.1，不易被打死）"
-                        : "□ 调试模式：关　敌人正常受伤";
+                        ? "■ 调试模式：开（伤害 ×0.1）"
+                        : "□ 调试模式：关";
+            }
+            if (_toughBtn != null)
+            {
+                float t = GameDebug.EnemyToughness;
+                _toughBtn.GetComponent<Image>().color = t > 1.01f ? On : Off;
+                var tl = _toughBtn.GetComponentInChildren<Text>();
+                if (tl != null) tl.text = "敌人强度：×" + t.ToString("0.#") + "（点击切换）";
             }
             if (_perfBtn != null)
             {

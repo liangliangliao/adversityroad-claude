@@ -19,6 +19,8 @@ namespace AdversityRoad.AI
     public class EnemyController : MonoBehaviour
     {
         public EnemyProfile profile = new EnemyProfile();
+        /// <summary>已经乘进 profile.maxHealth 的「敌人强度」倍率（见 ApplyToughness）。</summary>
+        float _toughApplied = 1f;
         public Hitbox attackHitbox;
         public Transform[] patrolPoints;
 
@@ -169,7 +171,7 @@ namespace AdversityRoad.AI
         // 之后才注入，Awake 里读取会拿到默认值。
         void Start()
         {
-            _hp = profile.maxHealth;
+            ApplyToughness(true);
             _posture = profile.posture;
             _agent.speed = profile.MoveSpeed;
             _tauntTimer = Random.Range(4f, 9f);
@@ -1394,6 +1396,38 @@ namespace AdversityRoad.AI
                 else transform.position += dir * sp * Time.deltaTime;
                 yield return null;
             }
+        }
+
+        /// <summary>
+        /// 把设置面板里的「敌人强度」落到这一个敌人的生命上。
+        ///
+        /// profile 是每个实例各自一份（EnemyCatalog.Create 每次 new 一个），
+        /// 所以直接改它的 maxHealth 是安全的，血条、minHpFloor、回血都会跟着走。
+        /// _toughApplied 记着已经乘过多少，改档时先除回去再乘新的——
+        /// 否则连按几次开关会把生命累乘上天，而那种 bug 在实机上表现为
+        /// "调了一下就再也打不死了"，和这次要修的问题正好是一对。
+        ///
+        /// full=false 时保留当前血量**百分比**：战斗中途改档不会把一个残血敌人
+        /// 直接治满，也不会把满血敌人一秒打死。
+        /// </summary>
+        public void ApplyToughness(bool full)
+        {
+            float want = Mathf.Clamp(Core.GameDebug.EnemyToughness, 0.25f, 12f);
+            if (!full && Mathf.Approximately(want, _toughApplied)) return;
+            float frac = profile.maxHealth > 0.01f ? Mathf.Clamp01(_hp / profile.maxHealth) : 1f;
+            profile.maxHealth = profile.maxHealth / Mathf.Max(0.01f, _toughApplied) * want;
+            _toughApplied = want;
+            _hp = full ? profile.maxHealth : profile.maxHealth * frac;
+            if (statusBar != null) statusBar.SetHealth(_hp, profile.maxHealth);
+        }
+
+        /// <summary>场上所有敌人立刻按新档位重算生命（设置面板改档时调）。返回处理了几个。</summary>
+        public static int ApplyToughnessAll()
+        {
+            var all = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            int n = 0;
+            foreach (var e in all) { if (e == null) continue; e.ApplyToughness(false); n++; }
+            return n;
         }
 
         void Die()

@@ -117,6 +117,20 @@ namespace AdversityRoad.Combat
         /// <summary>基础伤害的默认值（CI 平衡诊断用：诊断不实例化玩家）。</summary>
         public const float DefaultBaseDamage = 20f;
 
+        /// <summary>
+        /// 玩家伤害的**上限**：绝招（1 势）与必杀（3 势）相对基础伤害的倍率。
+        ///
+        /// 【为什么诊断必须看这两个数】上一版的平衡表只算了轻连段（合计 5.8 倍），
+        /// 于是得出"标准杂兵要挨两套连招"的结论，而实机里根本没人用连段收人头：
+        /// 一记裂地跳劈就是 10 倍（200 点原始伤害），一套必杀 16~21 倍（320~420 点）。
+        /// 拿最弱的那条路径去验证"敌人脆不脆"，只会得到一份好看的、错的报告。
+        /// </summary>
+        public static void PeakMultipliers(out float special, out float ultimate)
+        {
+            special = 10f;    // 踏空·裂地跳劈（SpAirSplit.mult，1 势里最高）
+            ultimate = 21f;   // 觉醒·乱舞满蓄（四段系数 6.1 × 基数 3.4）
+        }
+
         enum AttackBtn { None, Punch, Kick, Heavy }
 
         /// <summary>
@@ -202,6 +216,9 @@ namespace AdversityRoad.Combat
         Coroutine _ranwuRoutine;
 
         int _momentum;
+        /// <summary>攒够一点意势需要的命中次数（见 HitboxWindow 里的说明）。</summary>
+        public const int HitsPerMomentum = 4;
+        int _momentumHits;
         bool _critNext;
         float _lastPerfect;
         float _legHurtUntil;   // 腿部被击中：短时间移动变慢（打腿＝打机动力，攻防对称）
@@ -1580,7 +1597,19 @@ namespace AdversityRoad.Combat
             yield return new WaitForSeconds(windup);
             weaponHitbox.onHit = h =>
             {
-                if (buildMomentum) AddMomentum(1);
+                // 【意势按命中次数攒，不是一击一势】
+                // 原本每命中一次就 +1 势：轻连段第一下落地就有 1 势（绝招 ×7~10），
+                // 第三下落地就满 3 势（必杀四段合计 ×16~21 = 320~420 点原始伤害）。
+                // 也就是说"打三下 → 必杀 → 死"是任何一档敌人的通用解，
+                // 而这条路径上敌人的生命几乎不参与——这正是"敌人非常容易被打死"
+                // 在改了生命之后依然如故的原因：杀他们的从来不是连段。
+                // 绝招的 7~21 倍是**花资源换来的爆发**，那资源就必须真的稀缺：
+                // 4 次命中 ≈ 一整套连段 = 1 势，攒满必杀要 12 次命中 ≈ 3 套连段。
+                if (buildMomentum && ++_momentumHits >= HitsPerMomentum)
+                {
+                    _momentumHits = 0;
+                    AddMomentum(1);
+                }
                 if (Dyn() != null) _dynamics.OnHitLanded(dmg >= heavyDamage);
                 // 连段计数（伤害衰减用）：命中即累加，断手复位
                 if (Time.time - _lastComboHitTime > 1.5f) _comboHits = 0;
