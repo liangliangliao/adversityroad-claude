@@ -291,6 +291,14 @@ namespace AdversityRoad.EditorTools
             sb.Append("[CIDIAG][平衡] 命中质量：接触体积占比 × 刃位，合计倍率夹在 0.55~1.25")
               .Append("（擦到边／用剑柄怼 vs 刃中段罩满，最差与最好差约 2.3 倍）；")
               .Append("伤害与削韧同乘；投射物与心理攻击不走判定框，不参与\n");
+            sb.Append("[CIDIAG][平衡] 硬直占空比上限：任意 ")
+              .Append(AdversityRoad.AI.EnemyController.StaggerChainWindow).Append(" 秒内最多 ")
+              .Append(AdversityRoad.AI.EnemyController.StaggerBudget)
+              .Append(" 秒可处于硬直（≤")
+              .Append((AdversityRoad.AI.EnemyController.StaggerBudget
+                       / AdversityRoad.AI.EnemyController.StaggerChainWindow * 100f).ToString("0"))
+              .Append("%）；超预算后受击/破防/打断前摇一律不再进硬直，")
+              .Append("完美闪避与精准格挡打出的破绽不受限\n");
             sb.Append("[CIDIAG][平衡] 防连锁硬直：起身霸体窗 0.90s（普通踉跄 0.45s；")
               .Append("连续 3 次硬直之后保底 1.20s）＋起身反击带霸体（前摇打不断）；")
               .Append("硬直递减窗口 ").Append(AdversityRoad.AI.EnemyController.StaggerChainWindow)

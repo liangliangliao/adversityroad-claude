@@ -51,6 +51,22 @@ namespace AdversityRoad.AI
         public const float StaggerChainWindow = 6f;
 
         /// <summary>
+        /// 【硬直占空比上限】任意 6 秒里最多 2 秒可以处于硬直，超过就一律拒绝进硬直。
+        ///
+        /// 前四版我加的都是**渐近**的规则（递减、霸体冷却、起身窗、保底窗），
+        /// 每一条单独看都对，合起来却仍然挡不住"一直被压着"——因为它们都留了余地，
+        /// 而玩家手快就能把每一条余地填满。四轮实机反馈说的都是同一件事。
+        ///
+        /// 这一条不留余地：它是一个**硬上限**，与打了几下、打中哪儿、
+        /// 走的是哪条进硬直的路（受击/破防/打断前摇）统统无关。
+        /// 超预算之后敌人照常掉血、照常播受击反应，但不再进硬直状态——
+        /// 也就是说它在任何 6 秒里都至少有 4 秒是能动、能走、能出手的。
+        /// 唯一的例外是完美闪避/精准格挡打出的破绽（ForceBreak 直接调用）：
+        /// 那是玩家读招的确定奖励，本来就该无条件成立。
+        /// </summary>
+        public const float StaggerBudget = 2.0f;
+
+        /// <summary>
         /// 受击反应四档的硬直时长（秒）。索引 = HitReactionTier 的返回值。
         ///   0 微颤   —— 不进硬直（只播 0.1 秒的一颤，正在出的招照常挥完）
         ///   1 小踉跄 —— 四肢命中
@@ -107,6 +123,40 @@ namespace AdversityRoad.AI
         }
         float _poiseArmorUntil;   // 起身/破防恢复后的霸体窗：期间照常掉血，但不再被打进硬直
         bool _wakeArmor;          // 起身后的**第一记反击**带霸体：不打断它的前摇（见 TakeHit 的打断段）
+
+        // ---- 战斗实况统计（滚动 6 秒窗口）----
+        // 【为什么要有这一组】前四版我都是读代码推理、改参数、在 CI 里算一张表说
+        // "这样应该就对了"，然后实机反馈"没变化"。四次都这样，说明我对运行时到底
+        // 发生了什么的模型是错的，而错在哪儿光看代码看不出来。
+        // 这组计数器把一场真实战斗里的关键事实直接量出来：敌人有多少比例的时间
+        // 在硬直、进硬直分别走的哪条路、它到底挥出过几刀、霸体挡下过几次打断。
+        // 打开「调试数据」就显示在右上角。有了它，下一轮就不必再猜。
+        float _winStart;
+        float _winStagger;          // 窗口内处于硬直的累计秒数
+        int _winFlinch;             // 因受击进硬直的次数
+        int _winPosture;            // 因韧性击破进硬直的次数
+        int _winInterrupt;          // 因前摇被打断进硬直的次数
+        int _winSwing;              // 真正挥出去的招数
+        int _winArmorSave;          // 霸体/预算挡下打断的次数
+
+        /// <summary>硬直预算是否已经用完（用完则本窗口内不再进硬直）。</summary>
+        bool PoiseBudgetSpent => _winStagger >= StaggerBudget;
+
+        /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
+        public float StaggerDuty => _winStagger / Mathf.Max(0.01f, Time.time - _winStart);
+
+        /// <summary>右上角诊断行：这一个敌人最近 6 秒的战斗实况。</summary>
+        public string TraceLine()
+        {
+            float win = Mathf.Max(0.01f, Time.time - _winStart);
+            return "硬直占比 " + (_winStagger / win * 100f).ToString("0") + "%"
+                 + " (" + _winStagger.ToString("0.0") + "/" + win.ToString("0.0") + "s)"
+                 + "  进硬直 受击" + _winFlinch + "/破防" + _winPosture + "/打断" + _winInterrupt
+                 + "  出手" + _winSwing + "  霸体挡下" + _winArmorSave
+                 + (PoiseBudgetSpent ? "  [预算用尽·免疫硬直]" : "")
+                 + (Time.time < _poiseArmorUntil ? "  [霸体窗]" : "")
+                 + (_wakeArmor ? "  [起身霸体]" : "");
+        }
         int _staggerChain;        // 6 秒窗口内已经被打进硬直几次
         float _staggerChainUntil; // 这个窗口什么时候过期
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
@@ -388,6 +438,14 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
             _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt; _defendCd -= dt;
+            // 滚动窗口：既给硬直占空比上限当分母，也给右上角那行实况当数据源
+            if (Time.time - _winStart > StaggerChainWindow)
+            {
+                _winStart = Time.time;
+                _winStagger = 0f;
+                _winFlinch = _winPosture = _winInterrupt = _winSwing = _winArmorSave = 0;
+            }
+            if (State == EnemyState.Stagger) _winStagger += dt;
             TickTelegraph(dt);
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
@@ -841,6 +899,7 @@ namespace AdversityRoad.AI
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
             if (poser != null) poser.SetPose(_attackPose);
             _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
+            _winSwing++;
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
             StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
@@ -1182,7 +1241,8 @@ namespace AdversityRoad.AI
                 bool superArmor = ((profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
                                    && !DamageResolver.IsHeavy(dmg))
                                   || _wakeArmor
-                                  || Time.time < _poiseArmorUntil;
+                                  || Time.time < _poiseArmorUntil
+                                  || PoiseBudgetSpent;
                 Vector3 mid = _player != null
                     ? (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f
                     : transform.position + Vector3.up * 1.3f;
@@ -1190,6 +1250,7 @@ namespace AdversityRoad.AI
                 {
                     // 打不断：明确告诉玩家"这一下没能打断，它的招还会出来"——
                     // 招还带着前摇，所以仍然躲得掉，玩家知道该准备闪了
+                    _winArmorSave++;
                     CombatFeedback.DamageNumber(mid, "霸体·未打断", new Color(0.8f, 0.8f, 0.85f), 1.1f);
                 }
                 else
@@ -1200,6 +1261,7 @@ namespace AdversityRoad.AI
                     if (Time.time > _staggerChainUntil) _staggerChain = 0;
                     _staggerChainUntil = Time.time + StaggerChainWindow;
                     _staggerChain++;
+                    _winInterrupt++;
                     ForceBreak(0.9f * Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1)));
                     CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
                     CombatFeedback.WeaponClash(mid);
@@ -1349,6 +1411,8 @@ namespace AdversityRoad.AI
             //      于是连段一定会结束，敌人一定会拿回一次出手机会。
             // 三条都**不减少伤害**：追打的收益一点没变，变的只是"对方还有没有还手的机会"。
             bool poiseArmored = Time.time < _poiseArmorUntil;
+            // 硬直预算用尽 = 本窗口内一律不再进硬直（见 StaggerBudget）
+            if (PoiseBudgetSpent) poiseArmored = true;
             bool canFlinch = !poiseArmored && _flinchCd <= 0f;
             // 重击打在霸体上：不进硬直，但把霸体冷却削掉 0.35 秒——
             // "重招更容易打断对方"这条直觉保留下来，只是不再是必然。
@@ -1383,6 +1447,7 @@ namespace AdversityRoad.AI
                 if (Time.time > _staggerChainUntil) _staggerChain = 0;
                 _staggerChainUntil = Time.time + StaggerChainWindow;
                 _staggerChain++;
+                _winFlinch++;
                 float chainDecay = Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1));
                 _flinchCd = (profile.category == EnemyCategory.Boss ? 1.9f : 0.7f)
                             * (1f + 0.45f * (_staggerChain - 1));
@@ -1445,6 +1510,7 @@ namespace AdversityRoad.AI
 
             if (_posture <= 0 && !poiseArmored)
             {
+                _winPosture++;
                 // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
                 //
                 // 【也走同一套递减】破防本来就是"削韧打法"的正收益，不该削弱；

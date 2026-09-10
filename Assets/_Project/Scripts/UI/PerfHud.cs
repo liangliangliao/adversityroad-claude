@@ -147,6 +147,35 @@ namespace AdversityRoad.UI
             ert.anchoredPosition = new Vector2(-24f, -334f);
             ert.sizeDelta = new Vector2(900f, 40f);
 
+            // 第六行：**最近那个敌人的战斗实况**（滚动 6 秒）。
+            //
+            // 【为什么加这一行】"敌人被压着打、起不来"这件事我改了四轮：
+            // 每一轮都是读代码推理、改参数、在 CI 里算一张表说"这样应该就对了"，
+            // 然后实机反馈"没变化"。四次都这样，说明我对运行时到底发生了什么的
+            // 模型是错的，而错在哪儿光看代码看不出来——CI 那张表算的是**规则**，
+            // 不是**实况**。规则算得再对，只要有一条我没想到的路径绕过去，结果就是零。
+            //
+            // 这一行直接量出实况：它有百分之多少的时间在硬直、进硬直分别走的哪条路
+            //（受击/破防/前摇被打断）、它到底挥出过几刀、霸体挡下过几次。
+            // 打一场再看这一行，就能一次分清三件事：
+            //   · 硬直占比高 → 还是被锁，闸没关严；
+            //   · 硬直占比低但出手=0 → 它有机会却不出手（问题在出手冷却/攻击令牌）；
+            //   · 硬直占比低、出手也有 → 规则已经对了，剩下的是手感取舍。
+            var c6 = new GameObject("FoeCombatText");
+            c6.transform.SetParent(go.transform, false);
+            _foe6 = c6.AddComponent<Text>();
+            _foe6.font = _text.font;
+            _foe6.fontSize = 24;
+            _foe6.alignment = TextAnchor.UpperRight;
+            _foe6.color = new Color(1f, 0.7f, 0.85f);
+            _foe6.raycastTarget = false;
+            _foe6.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var crt = _foe6.rectTransform;
+            crt.anchorMin = crt.anchorMax = new Vector2(1f, 1f);
+            crt.pivot = new Vector2(1f, 1f);
+            crt.anchoredPosition = new Vector2(-24f, -370f);
+            crt.sizeDelta = new Vector2(1000f, 40f);
+
             // ===== 动作横幅：每做出一个动作，屏幕中下方打出它用的动画 =====
             // 右上角那几行是**状态**（此刻在播什么），密、小、一直在变，
             // 玩的时候没人来得及读。你要的是**事件**：做了一个动作 → 告诉我
@@ -217,6 +246,7 @@ namespace AdversityRoad.UI
         Text _anim4, _slip5, _cam6;
 
         Text _foe5;
+        Text _foe6;   // 敌人战斗实况（硬直占比 / 进硬直路径 / 出手次数）
         Text _banner;           // 动作横幅（事件式，播完淡出）
         Image _bannerBg;
         float _bannerUntil;     // 横幅显示到什么时候（unscaledTime）
@@ -382,6 +412,19 @@ namespace AdversityRoad.UI
                                             : new Color(1f, 0.85f, 0.6f);
                     }
                     else _foe5.text = "";
+
+                    // 第六行：同一个敌人的战斗实况（见构造里的推导）
+                    if (_foe6 != null)
+                    {
+                        if (near != null)
+                        {
+                            _foe6.text = near.TraceLine();
+                            // 硬直占比超过三分之一就标红：那已经越过了本该被预算挡住的线
+                            _foe6.color = near.StaggerDuty > 0.34f
+                                ? new Color(1f, 0.4f, 0.4f) : new Color(1f, 0.7f, 0.85f);
+                        }
+                        else _foe6.text = "";
+                    }
                 }
                 // ---- 动作横幅：起播时刻一变，就是"又做了一个动作" ----
                 // 用「片段名 + 起播时刻」当身份：连按同一招时片段名不变，
