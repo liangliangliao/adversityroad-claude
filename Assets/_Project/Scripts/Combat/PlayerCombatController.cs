@@ -275,7 +275,6 @@ namespace AdversityRoad.Combat
             float dt = Time.deltaTime;
             if (_parryTimer > 0) _parryTimer -= dt;
             if (_specialCd > 0) _specialCd -= dt;
-            if (_heavyReleaseCd > 0) _heavyReleaseCd -= dt;
             // 腿伤到期：解除减速（只撤自己登记的那一条，见 PlayerController.ClearSlow）
             if (_legHurtUntil > 0f && Time.time >= _legHurtUntil)
             {
@@ -864,9 +863,11 @@ namespace AdversityRoad.Combat
 
         void StartCharge()
         {
-            // 后摇未走完不许再蓄（见 HeavyReleaseCooldown）：这一条把"连点重击"
-            // 挡在门外，而正常的"打完一套再蓄一次"完全不受影响。
-            if (_heavyReleaseCd > 0f) return;
+            // 【这里曾经有一条重击后摇冷却，已撤销】
+            // 玩家的原话："不应该给玩家潜能加限制，这个游戏是开放能力的……
+            // 为了公平，应该提高敌人的战斗力。" 这是设计方向的决定，不是数值争论：
+            // 熟练度带来的胜率提升是这个游戏想要的东西，不该由系统按住。
+            // 连点重击造成的失衡改从**敌人那一侧**补（见 EnemyController 的四项）。
             if (!_player.Stats.SpendStamina(6f)) return;
             Fusion.Push(MoveToken.Heavy);   // 重击也是可入连招的元素
             EndCombo();
@@ -908,29 +909,10 @@ namespace AdversityRoad.Combat
             // 蓄力释放=连贯二连击（跳劈→旋风斩，均必中）：敌方至少吃两次伤害
             if (_heavyComboRoutine != null) StopCoroutine(_heavyComboRoutine);
             _heavyComboRoutine = StartCoroutine(HeavyCombo(charge01, spent >= 2));
-            // 【重击二连的收招冷却】玩家实机日志（movelog 80 秒）揭出的东西：
-            //   Heavy 按下 213 次，蓄力时长中位 0.10 秒（等于根本没蓄），
-            //   相邻两次松开的间隔中位 0.20 秒，实际起播 148 次攻击。
-            // 也就是说这一招在被**当成连点键**用：每秒近两次的必中二连，
-            // 每次 26+32 的削韧、42 起步的伤害。没有蓄力、没有代价、没有间隔。
-            // 敌人那边"永远不还手"、"一套就破防"，分母全在这里——
-            // 我前八版一直按"一套 4 段 1.04 秒的剑连"在算，而实机根本不是这么打的。
-            // 蓄力技必须有释放后摇，否则"蓄力"两个字不成立。
-            _heavyReleaseCd = HeavyReleaseCooldown;
         }
 
         Coroutine _heavyComboRoutine;
 
-        /// <summary>
-        /// 重击（蓄力二连）释放之后的后摇冷却。
-        ///
-        /// 取 0.55 秒：二连本身约 0.55~0.7 秒演完，冷却与它大致等长，
-        /// 于是"连点"退化成"打完一套再来一套"，节奏从每秒两次降到每秒不到一次；
-        /// 而真正蓄了力再放的那一下收益不变（伤害与范围仍随蓄力增长）。
-        /// 这不是削弱重击，是把它从连点键变回蓄力技。
-        /// </summary>
-        public const float HeavyReleaseCooldown = 0.55f;
-        float _heavyReleaseCd;
 
         /// <summary>蓄力释放二连击：巨剑跳劈 → 紧接巨剑旋风斩（快速无缝衔接）。
         /// 两段均【必中】（无法格挡/闪避/对攻化解）；攻击范围随蓄力大幅增大

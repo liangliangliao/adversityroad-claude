@@ -64,7 +64,10 @@ namespace AdversityRoad.AI
         /// 唯一的例外是完美闪避/精准格挡打出的破绽（ForceBreak 直接调用）：
         /// 那是玩家读招的确定奖励，本来就该无条件成立。
         /// </summary>
-        public const float StaggerBudget = 2.0f;
+        // ③ 2.0 → 1.2 秒（占空比 33% → 20%）。实测硬直仍是挡住敌人的第一大项（34.7%）。
+        // 预算是硬夹在时长上的，改小立刻见效；玩家的输出一点没少，
+        // 少的是"对方被按在地上的时间"。
+        public const float StaggerBudget = 1.2f;
 
         /// <summary>
         /// 受击反应四档的硬直时长（秒）。索引 = HitReactionTier 的返回值。
@@ -146,7 +149,7 @@ namespace AdversityRoad.AI
         /// "刚挨打不能立刻还手"这条规则最多能连续压制多久（秒）。
         /// 超过就无条件放行——否则只要玩家不停手，它就永远等不到那 0.55 秒的空档。
         /// </summary>
-        public const float DizzySuppressCap = 1.2f;
+        public const float DizzySuppressCap = 0.5f;
         float _dizzyBlocked;        // 已经被上面那条规则连续挡了多久
 
         /// <summary>脱手多久之后韧性开始回复（秒）。</summary>
@@ -762,7 +765,10 @@ namespace AdversityRoad.AI
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
-                    float standoff = profile.AttackRange + 1.8f;
+                    // ⑤ 待战环从 +1.8 米收到 +0.8 米。实测"够不到"占 25.4%——
+                    // 敌人有四分之一的时间站在自己够不着的地方等令牌。
+                    // 环收紧之后它逼得更近，抢到令牌就能直接进攻击距离。
+                    float standoff = profile.AttackRange + 0.8f;
                     if (dist > standoff)
                     {
                         MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
@@ -814,7 +820,11 @@ namespace AdversityRoad.AI
                     //   ① 已经进入霸体窗 / 硬直预算用尽——那正是它该反击的时刻；
                     //   ② 被这条规则连续挡住超过 DizzySuppressCap 秒，无条件放行。
                     // 放行时一并给起身霸体，否则这一刀刚抬手就又被打断（#44 的教训）。
-                    bool dizzy = Time.time - _lastHurtT <= 0.55f;
+                    // ② "刚挨打不还手"的窗口 0.55 → 0.25 秒（实测挡住 23.7% 的帧）。
+                    // 0.55 秒本来就长过玩家的连打间隔，等于永久压制；
+                    // 0.25 秒仍然保留"被打中的一瞬间不能若无其事地挥回来"这个观感，
+                    // 但不再是一条只要对方不停手就永不打开的闸。
+                    bool dizzy = Time.time - _lastHurtT <= 0.25f;
                     if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent))
                         dizzy = false;
                     // 【累加不在这里做】见 Update 顶层：这段代码只在 Attack 状态跑，
@@ -984,7 +994,12 @@ namespace AdversityRoad.AI
 
         void DoPhysicalAttack()
         {
-            _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
+            // ① 出手冷却：3.0~1.1 秒 → 1.5~0.6 秒。
+            // 实测（movelog 131 秒 / 交战 41 秒）敌人只出手 6 次 = 0.15 次/秒，
+            // 而玩家 1.38 次/秒——攻防比 9.5 : 1。冷却本身挡掉了 12.6% 的帧。
+            // 玩家侧不做任何限制（他的原话：这个游戏是开放能力的），
+            // 差距只能从敌人这一侧补，这是四项里最直接的一项。
+            _attackCd = Mathf.Lerp(1.5f, 0.6f, profile.aggression);
             StopMoving();   // 蓄势前摇(Charge/聚气)即刻硬停：前摇期间原地不动，不前滑漂移
             TriggerAnim("Attack");
 

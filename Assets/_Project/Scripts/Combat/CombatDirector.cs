@@ -16,7 +16,10 @@ namespace AdversityRoad.Combat
     public static class CombatDirector
     {
         /// <summary>同时允许攻击的普通敌人上限（大作群战常用 1—2）。</summary>
-        public const int MaxConcurrentAttackers = 2;
+        // ④ 2 → 3。实测"无令牌"只挡住 3.5% 的帧，不是主因，但围攻礼让的本意是
+        // "不被一群人同时糊脸"，不是"场上永远只有两个人愿意动手"。
+        // 玩家侧不做任何限制的前提下，3 个同时进攻仍然读得清，且明显更有压力。
+        public const int MaxConcurrentAttackers = 3;
         const float HoldTimeout = 3.5f;   // 令牌最长持有时间（保险回收）
 
         static readonly Dictionary<MonoBehaviour, float> _holders =
