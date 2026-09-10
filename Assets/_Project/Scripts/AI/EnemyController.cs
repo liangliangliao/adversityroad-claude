@@ -208,7 +208,9 @@ namespace AdversityRoad.AI
         public string SwingBlockReason => WhyNoSwing();
 
         /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
-        public float StaggerDuty => _winStagger / Mathf.Max(0.01f, Time.time - _winStart);
+        // 分母是整个窗口，不是"已经过去多久"——后者在窗口开头会算出 >1 的占比，
+        // 实测日志里 foeStaggerPct 出现过 2.002，那是分母的错，不是硬直真的超了。
+        public float StaggerDuty => _winStagger / StaggerChainWindow;
 
         /// <summary>右上角诊断行：这一个敌人最近 6 秒的战斗实况。</summary>
         public string TraceLine()
@@ -549,6 +551,14 @@ namespace AdversityRoad.AI
             // 魂系的 poise 有恢复窗、仁王的气会回）：不回复的韧性条不是"架势"，
             // 是一根**只减不增的第二血条**，破防也就成了必然事件而不是打出来的成果。
             // 脱手 1.2 秒后按每秒 25% 回复；被打就重新计时。
+            // 【"挨打眩晕"的累加放在顶层】只要它最近挨过打、又不在硬直里，
+            // 就一直在被那条"刚挨打不还手"的规则压着——不管它此刻处于哪个状态。
+            // 放在 Attack 分支里累加是错的（见那里的注释）。
+            if (Time.time - _lastHurtT <= 0.55f && State != EnemyState.Stagger)
+                _dizzyBlocked += dt;
+            else if (State != EnemyState.Stagger && Time.time - _lastHurtT > 1.0f)
+                _dizzyBlocked = 0f;
+
             if (State != EnemyState.Stagger && Time.time - _lastPostureHitAt > PostureCalm)
                 _posture = Mathf.Min(profile.posture,
                     _posture + profile.posture * PostureRegenPerSec * dt);
@@ -807,7 +817,10 @@ namespace AdversityRoad.AI
                     bool dizzy = Time.time - _lastHurtT <= 0.55f;
                     if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent))
                         dizzy = false;
-                    if (dizzy) _dizzyBlocked += dt; else _dizzyBlocked = 0f;
+                    // 【累加不在这里做】见 Update 顶层：这段代码只在 Attack 状态跑，
+                    // 而实机日志里敌人 35% 的时间在 Stagger、还有 Chase/MentalAttack，
+                    // 那些帧根本走不到这儿，累加器攒不起来；一回到 Attack 又被清零。
+                    // 实测 1.2 秒的保底放行**整场只触发过 1 帧**（[挨打眩晕1.1s] × 1）。
                     bool forced = _dizzyBlocked > DizzySuppressCap;
                     if (forced) { dizzy = false; _wakeArmor = true; _dizzyBlocked = 0f; }
                     // 被玩家正在打的这一个，令牌也不该跟别人抢——它就是当前的交战对象。
@@ -1644,6 +1657,17 @@ namespace AdversityRoad.AI
             // 于是"打一套 -> 破防 -> 硬直里继续打 -> 再破防 -> 计时器重置"闭环成立。
             // 玩家截图里的「破防2、受击1、占比 43%」正是这个形状：
             // 进硬直只有三次，时间却烧掉 2.6 秒。
+            // 【韧性不许欠债】实机日志里 foePoise 最低到过 **-90.8**。
+            // 原因是这个分支被 poiseArmored / State==Stagger 挡下时，韧性**不重置**，
+            // 于是继续往负数里减，攒出一大笔"破防债"；等霸体窗一过、
+            // 硬直一解除，_posture <= 0 立刻成立，当场兑现一次破防。
+            // 也就是说霸体窗和硬直预算并没有真的挡住破防，只是把它**推迟**了。
+            // 破防被霸体吸收掉就该是吸收掉：韧性回满，债一笔勾销。
+            if (_posture <= 0 && (poiseArmored || State == EnemyState.Stagger))
+            {
+                _posture = profile.posture;
+                if (statusBar != null) statusBar.SetPosture(_posture, profile.posture);
+            }
             if (_posture <= 0 && !poiseArmored && State != EnemyState.Stagger)
             {
                 _winPosture++;
