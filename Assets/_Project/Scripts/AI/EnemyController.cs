@@ -138,6 +138,9 @@ namespace AdversityRoad.AI
         int _winInterrupt;          // 因前摇被打断进硬直的次数
         int _winSwing;              // 真正挥出去的招数
         int _winArmorSave;          // 霸体/预算挡下打断的次数
+        // 上一个"有内容"的窗口的底稿：打完停手之后截图仍读得到（见 TraceLine）
+        float _lastStagger, _lastAt = -99f;
+        int _lastFlinch, _lastPosture, _lastInterrupt, _lastSwing, _lastArmorSave;
 
         /// <summary>硬直预算是否已经用完（用完则本窗口内不再进硬直）。</summary>
         bool PoiseBudgetSpent => _winStagger >= StaggerBudget;
@@ -148,8 +151,19 @@ namespace AdversityRoad.AI
         /// <summary>右上角诊断行：这一个敌人最近 6 秒的战斗实况。</summary>
         public string TraceLine()
         {
+            // 本窗口还没打起来，就显示上一个有内容的窗口（60 秒内有效）——
+            // 打完停手再截图也读得到，标上「上一段」以免和当下混淆。
+            bool live = _winFlinch + _winPosture + _winInterrupt + _winSwing > 0;
+            if (!live && Time.time - _lastAt < 60f)
+                return "【实况·上一段】硬直占比 "
+                     + (_lastStagger / StaggerChainWindow * 100f).ToString("0") + "%"
+                     + " (" + _lastStagger.ToString("0.0") + "/"
+                     + StaggerChainWindow.ToString("0.0") + "s)"
+                     + "  进硬直 受击" + _lastFlinch + "/破防" + _lastPosture
+                     + "/打断" + _lastInterrupt
+                     + "  出手" + _lastSwing + "  霸体挡下" + _lastArmorSave;
             float win = Mathf.Max(0.01f, Time.time - _winStart);
-            return "硬直占比 " + (_winStagger / win * 100f).ToString("0") + "%"
+            return "【实况】硬直占比 " + (_winStagger / win * 100f).ToString("0") + "%"
                  + " (" + _winStagger.ToString("0.0") + "/" + win.ToString("0.0") + "s)"
                  + "  进硬直 受击" + _winFlinch + "/破防" + _winPosture + "/打断" + _winInterrupt
                  + "  出手" + _winSwing + "  霸体挡下" + _winArmorSave
@@ -441,6 +455,16 @@ namespace AdversityRoad.AI
             // 滚动窗口：既给硬直占空比上限当分母，也给右上角那行实况当数据源
             if (Time.time - _winStart > StaggerChainWindow)
             {
+                // 【窗口翻页前先留一份底】否则打完手一停，6 秒一到全部归零，
+                // 截图永远只截得到一排 0——上一版玩家发来的正是这样一张图。
+                // 有内容才留底：安静的窗口不该把上一场真实数据冲掉。
+                if (_winFlinch + _winPosture + _winInterrupt + _winSwing > 0)
+                {
+                    _lastStagger = _winStagger; _lastFlinch = _winFlinch;
+                    _lastPosture = _winPosture; _lastInterrupt = _winInterrupt;
+                    _lastSwing = _winSwing; _lastArmorSave = _winArmorSave;
+                    _lastAt = Time.time;
+                }
                 _winStart = Time.time;
                 _winStagger = 0f;
                 _winFlinch = _winPosture = _winInterrupt = _winSwing = _winArmorSave = 0;

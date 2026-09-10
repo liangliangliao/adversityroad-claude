@@ -84,7 +84,7 @@ namespace AdversityRoad.UI
             var mrt = _move.rectTransform;
             mrt.anchorMin = mrt.anchorMax = new Vector2(1f, 1f);
             mrt.pivot = new Vector2(1f, 1f);
-            mrt.anchoredPosition = new Vector2(-24f, -226f);
+            mrt.anchoredPosition = new Vector2(-24f, -232f);
             mrt.sizeDelta = new Vector2(700f, 40f);
 
             // 第三行：**搓杆时的整条链**。"看不到角色自己的移动节奏"这句话，
@@ -105,7 +105,7 @@ namespace AdversityRoad.UI
             var srt = _spin.rectTransform;
             srt.anchorMin = srt.anchorMax = new Vector2(1f, 1f);
             srt.pivot = new Vector2(1f, 1f);
-            srt.anchoredPosition = new Vector2(-24f, -262f);
+            srt.anchoredPosition = new Vector2(-24f, -274f);
             srt.sizeDelta = new Vector2(760f, 40f);
 
             // 第四行：**此刻画面上真正在播的动画**。
@@ -124,7 +124,7 @@ namespace AdversityRoad.UI
             var art = _anim4.rectTransform;
             art.anchorMin = art.anchorMax = new Vector2(1f, 1f);
             art.pivot = new Vector2(1f, 1f);
-            art.anchoredPosition = new Vector2(-24f, -298f);
+            art.anchoredPosition = new Vector2(-24f, -316f);
             art.sizeDelta = new Vector2(900f, 40f);
 
             // 第五行：**最近那个敌人**的动画实况。
@@ -144,7 +144,7 @@ namespace AdversityRoad.UI
             var ert = _foe5.rectTransform;
             ert.anchorMin = ert.anchorMax = new Vector2(1f, 1f);
             ert.pivot = new Vector2(1f, 1f);
-            ert.anchoredPosition = new Vector2(-24f, -334f);
+            ert.anchoredPosition = new Vector2(-24f, -358f);
             ert.sizeDelta = new Vector2(900f, 40f);
 
             // 第六行：**最近那个敌人的战斗实况**（滚动 6 秒）。
@@ -173,7 +173,14 @@ namespace AdversityRoad.UI
             var crt = _foe6.rectTransform;
             crt.anchorMin = crt.anchorMax = new Vector2(1f, 1f);
             crt.pivot = new Vector2(1f, 1f);
-            crt.anchoredPosition = new Vector2(-24f, -370f);
+            // 【整栈行距从 36 改成 42】行高是 40，而原来每行只隔 36——
+            // 也就是说**任意相邻两行都压着 4 像素**，一直如此，只是勉强还读得出来。
+            // 我加第六行时写了 y=-370，那儿已经坐着 _slip5（滑行诊断），
+            // 两行 40 高的文字完全重叠，截图上读出来是
+            // "硬直占比 0% (0.0/2:幅 -进硬直 敞脚击00破防0峰值单帧…"——
+            // 我专门为了看实况加的这一行，自己把自己盖掉了。
+            // 现在行距 42 > 行高 40，整栈八行一条都不压；两行"敌人"排在一起。
+            crt.anchoredPosition = new Vector2(-24f, -400f);
             crt.sizeDelta = new Vector2(1000f, 40f);
 
             // ===== 动作横幅：每做出一个动作，屏幕中下方打出它用的动画 =====
@@ -222,7 +229,7 @@ namespace AdversityRoad.UI
             var srt5 = _slip5.rectTransform;
             srt5.anchorMin = srt5.anchorMax = new Vector2(1f, 1f);
             srt5.pivot = new Vector2(1f, 1f);
-            srt5.anchoredPosition = new Vector2(-24f, -370f);
+            srt5.anchoredPosition = new Vector2(-24f, -442f);
             srt5.sizeDelta = new Vector2(900f, 40f);
 
             // 第六行：镜头。**「见自己」是这一行里唯一真正要紧的**——
@@ -239,7 +246,7 @@ namespace AdversityRoad.UI
             var srt6 = _cam6.rectTransform;
             srt6.anchorMin = srt6.anchorMax = new Vector2(1f, 1f);
             srt6.pivot = new Vector2(1f, 1f);
-            srt6.anchoredPosition = new Vector2(-24f, -406f);
+            srt6.anchoredPosition = new Vector2(-24f, -484f);
             srt6.sizeDelta = new Vector2(900f, 40f);
         }
 
