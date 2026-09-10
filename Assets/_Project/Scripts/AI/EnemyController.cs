@@ -181,7 +181,7 @@ namespace AdversityRoad.AI
         /// </summary>
         string WhyNoSwing()
         {
-            if (_winSwing > 0 || State == EnemyState.Dead) return "";
+            if (State == EnemyState.Dead) return "";
             if (holdPosition) return "[候场]";
             if (passive || undying) return "[非战型]";
             if (State == EnemyState.Stagger) return "[硬直中]";
@@ -192,6 +192,20 @@ namespace AdversityRoad.AI
             if (_attackCd > 0f) return "[冷却" + _attackCd.ToString("0.0") + "s]";
             return "[无令牌]";
         }
+
+        // ---- 供日志逐帧落盘的只读视图（见 MoveLogger.FoeColumns）----
+        // 截图只能给一个瞬时快照，且常常不是在交手中截的；落进日志才有时间序列。
+        public float StaggerWindowSeconds => _winStagger;
+        public int WinFlinch => _winFlinch;
+        public int WinPosture => _winPosture;
+        public int WinInterrupt => _winInterrupt;
+        public int WinSwing => _winSwing;
+        public int WinArmorSave => _winArmorSave;
+        public float HealthNow => _hp;
+        public float PoiseNow => _posture;
+        public float AttackCooldown => Mathf.Max(0f, _attackCd);
+        /// <summary>此刻是什么在挡着它出手（不出手时才有值）。</summary>
+        public string SwingBlockReason => WhyNoSwing();
 
         /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
         public float StaggerDuty => _winStagger / Mathf.Max(0.01f, Time.time - _winStart);
@@ -218,7 +232,7 @@ namespace AdversityRoad.AI
                  + StaggerBudget.ToString("0.0") + "s预算 (整窗 "
                  + (_winStagger / StaggerChainWindow * 100f).ToString("0") + "%)"
                  + "  进硬直 受击" + _winFlinch + "/破防" + _winPosture + "/打断" + _winInterrupt
-                 + "  出手" + _winSwing + WhyNoSwing()
+                 + "  出手" + _winSwing + (_winSwing > 0 ? "" : WhyNoSwing())
                  + "  霸体挡下" + _winArmorSave
                  + (PoiseBudgetSpent ? "  [预算用尽]" : "")
                  + (Time.time < _poiseArmorUntil ? "  [霸体窗]" : "")

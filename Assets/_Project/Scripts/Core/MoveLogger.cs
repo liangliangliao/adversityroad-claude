@@ -216,7 +216,51 @@ namespace AdversityRoad.Core
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
                     "visStep,hipLeak,hipRaw,pinOn,bodyLX,bodyLZ,bindX,bindZ," +
-                    "enemies,spawnCount,held,event\n";
+                    "enemies,spawnCount,held," +
+                    // ---- 最近那个敌人的战斗实况（见 EnemyController 的窗口统计）----
+                    // 【为什么补这一组】此前 89 列全是玩家自己的移动与动画，
+                    // 敌人那一侧一个字都没有。而"敌人被压着打、从不还手"这件事
+                    // 前后改了八版，每一版都只能靠一张截图上的一行字来判断，
+                    // 而截图既抓不到时间序列，也常常不是在交手中截的。
+                    // 落进日志之后，"它有多久在硬直、什么在挡着它出手"就是可以
+                    // 逐帧回放的曲线，而不是一个瞬时快照。
+                    "foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
+                    "foeSwing,foeArmorSave,foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
+
+        /// <summary>
+        /// 最近那个敌人的战斗实况列（13 列 + 末尾的 event 由调用方补）。
+        /// 顺序必须与 Header 里那一段严格一致——列数对不上会让后面每一列都错位，
+        /// 而错位的日志比没有日志更坏（见本文件末尾的列数自检）。
+        /// </summary>
+        static string FoeColumns()
+        {
+            AI.EnemyController near = null;
+            float best = float.MaxValue;
+            var p = ActorRegistry.Player;
+            if (p != null)
+                foreach (var e in ActorRegistry.Enemies)
+                {
+                    if (e == null || e.State == AI.EnemyState.Dead) continue;
+                    float d = (e.transform.position - p.transform.position).sqrMagnitude;
+                    if (d < best) { best = d; near = e; }
+                }
+            if (near == null) return ",,,,,,,,,,,,";
+            var sb = new StringBuilder(96);
+            sb.Append(near.State).Append(',')
+              .Append(F(near.StaggerWindowSeconds)).Append(',')
+              .Append(F(near.StaggerDuty)).Append(',')
+              .Append(near.WinFlinch).Append(',')
+              .Append(near.WinPosture).Append(',')
+              .Append(near.WinInterrupt).Append(',')
+              .Append(near.WinSwing).Append(',')
+              .Append(near.WinArmorSave).Append(',')
+              .Append(Q(near.SwingBlockReason)).Append(',')
+              .Append(F(near.HealthNow)).Append(',')
+              .Append(F(near.PoiseNow)).Append(',')
+              .Append(F(near.AttackCooldown)).Append(',')
+              .Append(F(p != null ? Vector3.Distance(near.transform.position, p.transform.position) : 0f));
+            return sb.ToString();
+        }
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
         static string B(bool v) => v ? "1" : "0";
@@ -444,7 +488,8 @@ namespace AdversityRoad.Core
               .Append(F(_anim != null ? _anim.DbgHipBind.y : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
-              .Append(Q(held2.ToString())).Append(",\n");
+              .Append(Q(held2.ToString())).Append(',')
+              .Append(FoeColumns()).Append(",\n");
 
             // 一次性列数自检：状态行的字段数必须等于表头。少一列多一列都会让
             // 后面**每一列都错位**，而错位的日志比没有日志更坏——它会让我信心十足地
