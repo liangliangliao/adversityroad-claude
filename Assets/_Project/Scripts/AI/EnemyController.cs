@@ -142,6 +142,13 @@ namespace AdversityRoad.AI
         float _lastStagger, _lastAt = -99f;
         int _lastFlinch, _lastPosture, _lastInterrupt, _lastSwing, _lastArmorSave;
 
+        /// <summary>
+        /// "刚挨打不能立刻还手"这条规则最多能连续压制多久（秒）。
+        /// 超过就无条件放行——否则只要玩家不停手，它就永远等不到那 0.55 秒的空档。
+        /// </summary>
+        public const float DizzySuppressCap = 1.2f;
+        float _dizzyBlocked;        // 已经被上面那条规则连续挡了多久
+
         /// <summary>脱手多久之后韧性开始回复（秒）。</summary>
         public const float PostureCalm = 1.2f;
         /// <summary>韧性每秒回复的比例（占满值）。</summary>
@@ -166,6 +173,26 @@ namespace AdversityRoad.AI
         float ClampStagger(float seconds) =>
             Mathf.Min(seconds, Mathf.Max(0f, StaggerBudget - _winStagger));
 
+        /// <summary>
+        /// 「出手 0」的时候，把**是什么在挡着它**直接写出来。
+        /// 两次实机取样出手都是 0，而我只能靠猜是冷却、是令牌、还是别的——
+        /// 结果真正的原因（连续挨打就永远等不到 0.55 秒空档）猜了六版都没猜到。
+        /// 这一栏之后就不用猜了。
+        /// </summary>
+        string WhyNoSwing()
+        {
+            if (_winSwing > 0 || State == EnemyState.Dead) return "";
+            if (holdPosition) return "[候场]";
+            if (passive || undying) return "[非战型]";
+            if (State == EnemyState.Stagger) return "[硬直中]";
+            if (_player != null &&
+                Vector3.Distance(transform.position, _player.position) > profile.AttackRange * 1.2f)
+                return "[够不到]";
+            if (Time.time - _lastHurtT <= 0.55f) return "[挨打眩晕" + _dizzyBlocked.ToString("0.0") + "s]";
+            if (_attackCd > 0f) return "[冷却" + _attackCd.ToString("0.0") + "s]";
+            return "[无令牌]";
+        }
+
         /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
         public float StaggerDuty => _winStagger / Mathf.Max(0.01f, Time.time - _winStart);
 
@@ -176,19 +203,24 @@ namespace AdversityRoad.AI
             // 打完停手再截图也读得到，标上「上一段」以免和当下混淆。
             bool live = _winFlinch + _winPosture + _winInterrupt + _winSwing > 0;
             if (!live && Time.time - _lastAt < 60f)
-                return "【实况·上一段】硬直占比 "
-                     + (_lastStagger / StaggerChainWindow * 100f).ToString("0") + "%"
-                     + " (" + _lastStagger.ToString("0.0") + "/"
-                     + StaggerChainWindow.ToString("0.0") + "s)"
+                return "【实况·上一段】硬直 " + _lastStagger.ToString("0.0") + "/"
+                     + StaggerBudget.ToString("0.0") + "s预算 (整窗 "
+                     + (_lastStagger / StaggerChainWindow * 100f).ToString("0") + "%)"
                      + "  进硬直 受击" + _lastFlinch + "/破防" + _lastPosture
                      + "/打断" + _lastInterrupt
                      + "  出手" + _lastSwing + "  霸体挡下" + _lastArmorSave;
-            float win = Mathf.Max(0.01f, Time.time - _winStart);
-            return "【实况】硬直占比 " + (_winStagger / win * 100f).ToString("0") + "%"
-                 + " (" + _winStagger.ToString("0.0") + "/" + win.ToString("0.0") + "s)"
+            // 【分母必须是整窗，不能是"已过去多久"】上一版写的是
+            // _winStagger / (Time.time - _winStart)：窗口刚开头时分母极小，
+            // 于是 1.8 秒硬直在第 1.9 秒被显示成 94%，看着像上限完全失效。
+            // 实际那一次是 1.8/2.0 的预算、正好被夹在上限上——数字没错，是分母错了。
+            // 现在统一按整个 6 秒窗口算，并把预算用了多少直接写出来。
+            return "【实况】硬直 " + _winStagger.ToString("0.0") + "/"
+                 + StaggerBudget.ToString("0.0") + "s预算 (整窗 "
+                 + (_winStagger / StaggerChainWindow * 100f).ToString("0") + "%)"
                  + "  进硬直 受击" + _winFlinch + "/破防" + _winPosture + "/打断" + _winInterrupt
-                 + "  出手" + _winSwing + "  霸体挡下" + _winArmorSave
-                 + (PoiseBudgetSpent ? "  [预算用尽·免疫硬直]" : "")
+                 + "  出手" + _winSwing + WhyNoSwing()
+                 + "  霸体挡下" + _winArmorSave
+                 + (PoiseBudgetSpent ? "  [预算用尽]" : "")
                  + (Time.time < _poiseArmorUntil ? "  [霸体窗]" : "")
                  + (_wakeArmor ? "  [起身霸体]" : "");
         }
@@ -744,8 +776,30 @@ namespace AdversityRoad.AI
                     // 受击眩晕：刚被打中 0.55s 内头脑发懵，没有能力立即反击——
                     // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）；
                     // 攻击令牌（围攻礼让）：取到令牌才真正出手，否则只在下方走位伺机
-                    if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f &&
-                        Combat.CombatDirector.TryAcquire(this, profile.category == EnemyCategory.Boss))
+                    // ============ 这里是"敌人从不还手"的真正出口 ============
+                    // 实机两次取样，出手都是 0。而原因和硬直无关：
+                    // `Time.time - _lastHurtT > 0.55f` 要求它**连续 0.55 秒没有挨打**
+                    // 才允许出手。玩家一套剑连的链取消间隔是 0.19~0.32 秒——
+                    // 也就是说只要玩家不停手，这个条件**永远不可能成立**。
+                    // 它不需要被打进硬直，只要挨打比每 0.55 秒更密就够了。
+                    // 我前六版全部在改硬直，而真正把它按住的是这一行。
+                    //
+                    // 这条规则的本意（"刚被打中不能若无其事地还手"）是对的，
+                    // 但它没有上限，于是变成了无条件的压制。补两个出口，
+                    // 两个都对齐大作里"霸体期就是反击窗"的做法：
+                    //   ① 已经进入霸体窗 / 硬直预算用尽——那正是它该反击的时刻；
+                    //   ② 被这条规则连续挡住超过 DizzySuppressCap 秒，无条件放行。
+                    // 放行时一并给起身霸体，否则这一刀刚抬手就又被打断（#44 的教训）。
+                    bool dizzy = Time.time - _lastHurtT <= 0.55f;
+                    if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent))
+                        dizzy = false;
+                    if (dizzy) _dizzyBlocked += dt; else _dizzyBlocked = 0f;
+                    bool forced = _dizzyBlocked > DizzySuppressCap;
+                    if (forced) { dizzy = false; _wakeArmor = true; _dizzyBlocked = 0f; }
+                    // 被玩家正在打的这一个，令牌也不该跟别人抢——它就是当前的交战对象。
+                    if (_attackCd <= 0 && !dizzy &&
+                        (forced || Time.time - _lastHurtT < 3f ||
+                         Combat.CombatDirector.TryAcquire(this, profile.category == EnemyCategory.Boss)))
                     { DoPhysicalAttack(); break; }
                     // 出手间隙像人一样左右游走找角度（而非钉在原地干等）；
                     // 挥击动作进行中绝不游走——脚下滑动会毁掉出招画面（漂移感）

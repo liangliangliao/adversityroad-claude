@@ -311,6 +311,11 @@ namespace AdversityRoad.EditorTools
                       .Append("% 回复\n");
                 }
             }
+            sb.Append("[CIDIAG][平衡] 还手闸：\"刚挨打不还手\"原本要求连续 0.55s 未受击，")
+              .Append("而玩家剑连的链取消间隔是 0.19~0.32s——不停手它就永远等不到。")
+              .Append("现在霸体窗内/硬直预算用尽时不再受此限；连续被压制超过 ")
+              .Append(AdversityRoad.AI.EnemyController.DizzySuppressCap)
+              .Append("s 无条件放行（并给起身霸体）；被打过 3 秒内的目标不与他人抢攻击令牌\n");
             sb.Append("[CIDIAG][平衡] 硬直占空比上限：任意 ")
               .Append(AdversityRoad.AI.EnemyController.StaggerChainWindow).Append(" 秒内最多 ")
               .Append(AdversityRoad.AI.EnemyController.StaggerBudget)
