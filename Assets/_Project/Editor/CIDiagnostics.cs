@@ -291,6 +291,26 @@ namespace AdversityRoad.EditorTools
             sb.Append("[CIDIAG][平衡] 命中质量：接触体积占比 × 刃位，合计倍率夹在 0.55~1.25")
               .Append("（擦到边／用剑柄怼 vs 刃中段罩满，最差与最好差约 2.3 倍）；")
               .Append("伤害与削韧同乘；投射物与心理攻击不走判定框，不参与\n");
+            // 韧性账：一套连段削多少韧 vs 敌人有多少韧。上一轮实机数据显示
+            // 破防才是硬直的主要来源（进硬直 受击1/破防2），而这笔账此前没人算过。
+            {
+                float cp = AdversityRoad.Combat.PlayerCombatController.ComboPosture(true);
+                foreach (var t2 in tiers)
+                {
+                    var pf2 = AdversityRoad.AI.EnemyCatalog.Create(
+                        AdversityRoad.AI.EnemyType.CoughAssassin, t2);
+                    sb.Append("[CIDIAG][平衡]   韧性 ")
+                      .Append(AdversityRoad.AI.EnemyCatalog.TierLabel(t2).PadRight(4))
+                      .Append(" 韧性=").Append(pf2.posture.ToString("0"))
+                      .Append("  一套剑连削韧=").Append(cp.ToString("0"))
+                      .Append("  → ").Append((pf2.posture / Mathf.Max(1f, cp)).ToString("0.0"))
+                      .Append(" 套破防一次；脱手 ")
+                      .Append(AdversityRoad.AI.EnemyController.PostureCalm)
+                      .Append("s 后按每秒 ")
+                      .Append((AdversityRoad.AI.EnemyController.PostureRegenPerSec * 100f).ToString("0"))
+                      .Append("% 回复\n");
+                }
+            }
             sb.Append("[CIDIAG][平衡] 硬直占空比上限：任意 ")
               .Append(AdversityRoad.AI.EnemyController.StaggerChainWindow).Append(" 秒内最多 ")
               .Append(AdversityRoad.AI.EnemyController.StaggerBudget)

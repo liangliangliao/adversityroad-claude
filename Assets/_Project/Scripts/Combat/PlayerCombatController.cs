@@ -114,6 +114,15 @@ namespace AdversityRoad.Combat
             }
         }
 
+        /// <summary>一套连段的削韧合计（CI 平衡诊断用）。</summary>
+        public static float ComboPosture(bool sword)
+        {
+            var chain = sword ? SwordChain : PunchChain;
+            float p = 0f;
+            foreach (var c in chain) p += c.posture;
+            return p;
+        }
+
         /// <summary>基础伤害的默认值（CI 平衡诊断用：诊断不实例化玩家）。</summary>
         public const float DefaultBaseDamage = 20f;
 

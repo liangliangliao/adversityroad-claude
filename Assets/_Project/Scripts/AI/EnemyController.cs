@@ -142,8 +142,29 @@ namespace AdversityRoad.AI
         float _lastStagger, _lastAt = -99f;
         int _lastFlinch, _lastPosture, _lastInterrupt, _lastSwing, _lastArmorSave;
 
+        /// <summary>脱手多久之后韧性开始回复（秒）。</summary>
+        public const float PostureCalm = 1.2f;
+        /// <summary>韧性每秒回复的比例（占满值）。</summary>
+        public const float PostureRegenPerSec = 0.25f;
+        float _lastPostureHitAt = -99f;
+
         /// <summary>硬直预算是否已经用完（用完则本窗口内不再进硬直）。</summary>
         bool PoiseBudgetSpent => _winStagger >= StaggerBudget;
+
+        /// <summary>
+        /// 把一次硬直的时长按【本窗口剩余预算】截断。
+        ///
+        /// 【为什么"入口拦一道"不够，必须在时长上硬夹】上一版我只在进硬直的入口
+        /// 判 PoiseBudgetSpent。实机数据（玩家截图）打脸得很干脆：
+        ///     硬直占比 43% (2.6/6.0s)  进硬直 受击1/破防2/打断0  出手0
+        /// 上限写的是 33%（2.0/6.0s），实际 43%。原因是入口判据看的是**进的那一刻**：
+        /// 一次 2.4 秒的破防在预算还剩着的时候获批，进去之后一路烧到 2.4 秒——
+        /// 预算是在它已经进去之后才被烧穿的，入口那一道根本管不着。
+        /// 夹在时长上就没有这个缝：无论从哪条路进、进几次，
+        /// 一个窗口里的硬直总时长都不可能超过预算。
+        /// </summary>
+        float ClampStagger(float seconds) =>
+            Mathf.Min(seconds, Mathf.Max(0f, StaggerBudget - _winStagger));
 
         /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
         public float StaggerDuty => _winStagger / Mathf.Max(0.01f, Time.time - _winStart);
@@ -470,6 +491,21 @@ namespace AdversityRoad.AI
                 _winFlinch = _winPosture = _winInterrupt = _winSwing = _winArmorSave = 0;
             }
             if (State == EnemyState.Stagger) _winStagger += dt;
+
+            // ---- 韧性回复（此前完全没有，这是"一套连段就破防"的根）----
+            // 【实测的账】标准杂兵韧性 40，而玩家一套完整剑连的削韧是
+            // 10+12+14+28 = 64，还没算部位系数（打四肢是 ×1.35~1.5）。
+            // 也就是说**一套连段必定破防，还多出二十几点带进下一次**。
+            // 而破防 = 2.4 秒破绽 + 韧性回满，于是"打一套→破防→破绽里再打一套→
+            // 再破防"可以一直转下去。玩家截图里的「破防 2 次、占比 43%」就是它。
+            //
+            // 所有有韧性/架势系统的作品都给它回复（只狼的躯干值会自己降、
+            // 魂系的 poise 有恢复窗、仁王的气会回）：不回复的韧性条不是"架势"，
+            // 是一根**只减不增的第二血条**，破防也就成了必然事件而不是打出来的成果。
+            // 脱手 1.2 秒后按每秒 25% 回复；被打就重新计时。
+            if (State != EnemyState.Stagger && Time.time - _lastPostureHitAt > PostureCalm)
+                _posture = Mathf.Min(profile.posture,
+                    _posture + profile.posture * PostureRegenPerSec * dt);
             TickTelegraph(dt);
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
@@ -1286,7 +1322,8 @@ namespace AdversityRoad.AI
                     _staggerChainUntil = Time.time + StaggerChainWindow;
                     _staggerChain++;
                     _winInterrupt++;
-                    ForceBreak(0.9f * Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1)));
+                    ForceBreak(ClampStagger(
+                        0.9f * Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1))));
                     CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
                     CombatFeedback.WeaponClash(mid);
                 }
@@ -1340,6 +1377,7 @@ namespace AdversityRoad.AI
             }
             // 削韧同样吃命中质量：擦到边不该和扎实的一刀削掉一样多的架势
             _posture -= dmg.postureDamage * partPostureMult * externalDamageMult * quality;
+            _lastPostureHitAt = Time.time;   // 被削就重新计时，脱手才回（见 PostureCalm）
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
@@ -1483,7 +1521,7 @@ namespace AdversityRoad.AI
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
                 // 1 档=小踉跄 0.35s、2 档=大踉跄 0.75s、3 档=击倒 1.5s
-                _staggerTimer = StaggerSeconds[Mathf.Clamp(tier, 1, 3)] * chainDecay;
+                _staggerTimer = ClampStagger(StaggerSeconds[Mathf.Clamp(tier, 1, 3)] * chainDecay);
                 StopMoving();
                 // 只有 3 档（头部重击 / 一击超过一成血的重击）才真的被打倒在地。
                 // 此前是"任何重击都倒地"，于是一套连段里人一直在地上，起来又倒——
@@ -1532,7 +1570,13 @@ namespace AdversityRoad.AI
                 poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
             }
 
-            if (_posture <= 0 && !poiseArmored)
+            // 【加了 State != Stagger 这一条】此前没有它，于是破防可以在**已经处于硬直中**
+            // 再次触发，并把 _staggerTimer 重新拨回 2.4 秒。而韧性一破就回满、
+            // 玩家一套连段的削韧（10+12+14+28=64）本来就高过标准杂兵的韧性（40），
+            // 于是"打一套 -> 破防 -> 硬直里继续打 -> 再破防 -> 计时器重置"闭环成立。
+            // 玩家截图里的「破防2、受击1、占比 43%」正是这个形状：
+            // 进硬直只有三次，时间却烧掉 2.6 秒。
+            if (_posture <= 0 && !poiseArmored && State != EnemyState.Stagger)
             {
                 _winPosture++;
                 // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
@@ -1548,7 +1592,7 @@ namespace AdversityRoad.AI
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = 2.4f * Mathf.Max(0.4f, Mathf.Pow(0.75f, _staggerChain - 1));
+                _staggerTimer = ClampStagger(2.4f * Mathf.Max(0.4f, Mathf.Pow(0.75f, _staggerChain - 1)));
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
