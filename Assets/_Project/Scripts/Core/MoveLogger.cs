@@ -224,7 +224,11 @@ namespace AdversityRoad.Core
                     // 而截图既抓不到时间序列，也常常不是在交手中截的。
                     // 落进日志之后，"它有多久在硬直、什么在挡着它出手"就是可以
                     // 逐帧回放的曲线，而不是一个瞬时快照。
-                    "foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
+                    // foeId 必须有：日志记的是"最近的那个敌人"，而最近的敌人会换人。
+                    // 没有 id 就只能把不同敌人的计数拼在一起看量级，
+                    // 而 foeSwing 这类窗口计数器每 6 秒还会归零——两件事叠在一起，
+                    // "这一个敌人在这段时间里还手了几次"根本算不准。
+                    "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
                     "foeSwing,foeArmorSave,foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
 
         /// <summary>
@@ -244,9 +248,10 @@ namespace AdversityRoad.Core
                     float d = (e.transform.position - p.transform.position).sqrMagnitude;
                     if (d < best) { best = d; near = e; }
                 }
-            if (near == null) return ",,,,,,,,,,,,";
-            var sb = new StringBuilder(96);
-            sb.Append(near.State).Append(',')
+            if (near == null) return ",,,,,,,,,,,,,";
+            var sb = new StringBuilder(112);
+            sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
+              .Append(near.State).Append(',')
               .Append(F(near.StaggerWindowSeconds)).Append(',')
               .Append(F(near.StaggerDuty)).Append(',')
               .Append(near.WinFlinch).Append(',')
