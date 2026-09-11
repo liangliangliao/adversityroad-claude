@@ -337,6 +337,70 @@ namespace AdversityRoad.EditorTools
               .Append("重击不再免检霸体，只削 0.35s；打断前摇的硬直也走同一套递减\n");
         }
 
+        /// <summary>
+        /// 角色·贰的动作库自检。返回 false 让作业变红。
+        ///
+        /// 【这道检查是被一次真实的严重回归换来的】#41 我把 UalMap 从默认建图路径里
+        /// 摘掉，理由是"主库 84 条把 41 个姿态占满了，UAL 一条都赢不了"。
+        /// 那句话只对角色·壹成立：角色·贰的主库是 Characters/Anims2，
+        /// 里面只有两条拔刀/收刀片段，它的攻击、受击、死亡、闪避、跳跃、施法
+        /// **全部来自 UalMap**。摘掉之后角色·贰的动作动画被一次性删光，
+        /// 而 CI 那时只实例化 PlayerModel（角色·壹）建一份 PlayableAnimator——
+        /// 全绿，一路进了 APK，玩家在手机上才发现。
+        ///
+        /// 教训写成一条检查：**每个可玩角色都要各自验一遍**。
+        /// 判据是硬的——角色·贰必须有 idle/walk/run（否则整层回退方块骨骼），
+        /// 且攻击/受击/死亡这三个最基本的姿态都要有片段。
+        /// </summary>
+        static bool DiagSecondCharacter(StringBuilder sb)
+        {
+            var prefab = Resources.Load<GameObject>("Characters/PlayerModel2");
+            if (prefab == null)
+            {
+                sb.Append("[CIDIAG][角色贰] 没有 Characters/PlayerModel2，跳过\n");
+                return true;
+            }
+            var model = Object.Instantiate(prefab);
+            bool ok = true;
+            try
+            {
+                var animator = model.GetComponentInChildren<Animator>() ?? model.AddComponent<Animator>();
+                var pa = new AdversityRoad.Combat.PlayableAnimator(animator, "Characters/Anims2");
+                sb.Append("[CIDIAG][角色贰] 动作库有效=").Append(pa.Valid ? "是" : "否").Append('\n');
+                if (!pa.Valid)
+                {
+                    sb.Append("[CIDIAG][角色贰] !! 动作库无效：idle/walk/run 缺任一，")
+                      .Append("整个动捕层会回退成方块骨骼\n");
+                    ok = false;
+                }
+                else
+                {
+                    var must = new[]
+                    {
+                        AdversityRoad.Combat.PoseState.Attack,
+                        AdversityRoad.Combat.PoseState.Hit,
+                        AdversityRoad.Combat.PoseState.Death,
+                    };
+                    foreach (var ps in must)
+                        if (!pa.HasAction(ps))
+                        {
+                            sb.Append("[CIDIAG][角色贰] !! 姿态 ").Append(ps)
+                              .Append(" 没有任何片段——角色贰的动作库被改坏了\n");
+                            ok = false;
+                        }
+                    foreach (var line in pa.DescribeActionSet().Split('\n'))
+                        if (line.Length > 0) sb.Append("[CIDIAG][角色贰] ").Append(line).Append('\n');
+                }
+                pa.Destroy();
+            }
+            catch (System.Exception e)
+            {
+                sb.Append("[CIDIAG][角色贰] 诊断异常：").Append(e.Message).Append('\n');
+            }
+            finally { Object.DestroyImmediate(model); }
+            return ok;
+        }
+
         /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>
         static bool DiagUal(StringBuilder sb)
         {
@@ -473,6 +537,7 @@ namespace AdversityRoad.EditorTools
                 DiagTrail(sb);
                 DiagBackpacks(sb);
                 DiagLocomotion(sb);
+                if (!DiagSecondCharacter(sb)) exit = 1;
                 DiagCharacterMaterials(sb);
                 DiagBalance(sb);
                 if (!DiagUal(sb)) exit = 1;

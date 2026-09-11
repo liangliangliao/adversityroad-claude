@@ -220,24 +220,36 @@ namespace AdversityRoad.Combat
         };
 
         /// <summary>
-        /// UAL 的姿态映射【只在开关打开时才参与建图】。
+        /// UAL 姿态表参与建图的方式：**只补主库没占到的姿态**。
         ///
-        /// 上一版默认也把 UalMap 接了进来（只是排在主表后面）。先注册的赢，
-        /// 所以它抢不到姿态**索引**——但变体池是另一回事：Attack/Hit/HitHeavy 这些
-        /// 池会把同姿态的每一条都接进来轮换，于是默认模式下挥巨剑会随机播出
-        /// UAL 的单手 Sword_Attack。玩家看到的"一个类似 sword_attack 的动画、
-        /// 起不到什么作用"就是它：双手巨剑角色做单手剑的挥击，
-        /// 既不是补充也不是优化，是把调好的手感稀释掉。
+        /// 【#41 我在这里造了一个严重回归，这一版修回来】那一版我把默认顺序改成
+        /// 只有 ActionMap，理由写的是"主库 84 条把 41 个姿态占满了，UAL 一条都赢不了"。
+        /// 那句话**只对角色·壹成立**。角色·贰的主库是 Characters/Anims2，
+        /// 里面只有两条拔刀/收刀片段——它的攻击、受击、死亡、闪避、跳跃、施法
+        /// 全部来自 UalMap。把 UalMap 从默认路径里摘掉，等于把角色·贰的
+        /// **全部动作动画一次性删光**。玩家的原话是"角色2所有动作动画全部改坏了"，
+        /// 那是字面准确的描述，不是夸张。我当时只验了角色·壹。
         ///
-        /// 战斗动作上主库 84 条是调过 start/end/speed 三档的，UAL 是通用素材，
-        /// 两者混在一个池里只会互相拖累。所以默认模式下 UAL 一条姿态都不映射，
-        /// 它只做主库**确实没有**的事（见 UalAlwaysOn）；
-        /// 打开「UAL 优先」开关时 UalMap 整张排到最前，用来逐条 A/B 比对。
+        /// 而 #41 真正要解决的问题是另一件事：UalMap 的条目会作为**变体**
+        /// 混进主库已经占住的姿态（诊断里的 Attack [变体×2] … | Sword_Attack），
+        /// 让双手巨剑随机播出单手剑的挥击。那个问题的正解不是删掉整张表，
+        /// 而是让 UAL 条目**只在该姿态还空着时**才注册：
+        ///   · 角色·壹：41 个姿态全被主库占满 → UAL 一条都不进，变体不再被稀释；
+        ///   · 角色·贰：姿态全空 → UAL 全部进来，动作回来了。
+        /// 一条规则同时满足两边，而不是二选一。
         /// </summary>
         static IEnumerable<ActionDef> OrderedActionMap =>
             Core.GameDebug.PreferUalClips
                 ? System.Linq.Enumerable.Concat(UalMap, ActionMap)
-                : (IEnumerable<ActionDef>)ActionMap;
+                : System.Linq.Enumerable.Concat(ActionMap, UalMap);
+
+        /// <summary>这条 ActionDef 是不是 UAL 补位表里的（补位只在姿态空着时注册）。</summary>
+        static bool IsUalFallback(ActionDef d)
+        {
+            for (int i = 0; i < UalMap.Length; i++)
+                if (ReferenceEquals(UalMap[i].keys, d.keys)) return true;
+            return false;
+        }
 
         /// <summary>
         /// 默认模式下仍要接进图里的 UAL 片段（按名字播，不占姿态）。
@@ -550,6 +562,9 @@ namespace AdversityRoad.Combat
         /// 而 Anims2 本身缺 idle/walk/run，作为"主库"是不成立的（会整体回退）。
         /// 于是把它降级成补充库：谁做主库都行，主库没有的名字从这里补进来。
         /// </summary>
+        /// <summary>默认主库（角色·壹）。角色·贰走 Characters/Anims2，见 PlayerAppearance。</summary>
+        const string DefaultFolder = "Characters/Anims";
+
         const string ExtraFolder = "Characters/Anims2";
 
         /// <summary>
@@ -605,7 +620,7 @@ namespace AdversityRoad.Combat
         public PlayableAnimator(Animator animator, string animsFolder = null)
         {
             _animator = animator;
-            _folder = string.IsNullOrEmpty(animsFolder) ? "Characters/Anims" : animsFolder;
+            _folder = string.IsNullOrEmpty(animsFolder) ? DefaultFolder : animsFolder;
             Build();
         }
 
@@ -737,6 +752,13 @@ namespace AdversityRoad.Combat
             }
             foreach (var m in OrderedActionMap)
             {
+                // 【补位表只在姿态还空着时注册】这是 #41 那个回归的正解：
+                // 角色·壹的 41 个姿态被主库占满 → UAL 一条都不进（变体不被稀释）；
+                // 角色·贰的主库只有两条拔刀片段、姿态全空 → UAL 全部进来。
+                // 一条规则同时满足两边。开关打开时 UalMap 排在最前，此时它不是补位，
+                // 是主角，所以那种情况下不套这条。
+                if (!Core.GameDebug.PreferUalClips && IsUalFallback(m) && posed.ContainsKey(m.pose))
+                    continue;
                 if (m.pool)
                 {
                     // 变体池：keys 里每一条都接进来（已被别的招式占用的片段跳过），
@@ -775,7 +797,10 @@ namespace AdversityRoad.Combat
             // 不去重会给同一个片段开两个混合器输入口。
             // UAL 例外：不在白名单上的默认不接（见 UalAlwaysOn），
             // 打开「UAL 优先」开关时全部接入，供动作库面板逐条预览与 A/B。
-            bool ualAll = Core.GameDebug.PreferUalClips;
+            // 白名单只对**主库确实齐全**的角色生效（也就是角色·壹的 Characters/Anims）。
+            // 角色·贰的主库是 Anims2（两条片段），UAL 就是它的动作库本身——
+            // 对它套白名单等于把它的动作删光。这也是 #41 那个回归的第二条腿。
+            bool ualAll = Core.GameDebug.PreferUalClips || _folder != DefaultFolder;
             var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
             {
