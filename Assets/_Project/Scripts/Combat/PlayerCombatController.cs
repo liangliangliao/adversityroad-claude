@@ -1595,8 +1595,12 @@ namespace AdversityRoad.Combat
             if (_appearanceRef == null) _appearanceRef = GetComponentInChildren<Player.PlayerAppearance>();
             Transform model = _appearanceRef != null ? _appearanceRef.ModelRoot : null;
             Transform weapon = _appearanceRef != null && _appearanceRef.IsWeaponDrawn
-                ? _appearanceRef.WeaponInHand : null;
-            weaponHitbox.reach = ReachModel.Measure(transform, model, weapon);
+                ? (_appearanceRef.WeaponInHand
+                   ?? (_anim != null ? _anim.weaponPivot : null))
+                : null;
+            // 玩家侧的"手里有没有东西"是确知的（IsWeaponDrawn 明确回答了这件事），
+            // 所以 bladeKnown 恒为真：出鞘就按量到的刃长算，收鞘/空手就按 0 算。
+            weaponHitbox.reach = ReachModel.Measure(transform, model, weapon, true);
         }
 
         public static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)

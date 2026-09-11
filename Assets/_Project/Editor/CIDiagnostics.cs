@@ -466,9 +466,21 @@ namespace AdversityRoad.EditorTools
                 var go = Object.Instantiate(prefab);
                 try
                 {
+                    // 【兵器也要量】上一版这里传 null，于是日志里刃长恒为 0.00，
+                    // 我因此没看出"敌人握着长刀却被当成空手"这件事——
+                    // 而玩家在真机上一眼就看出来了：赤手空拳比敌人的长刀够得还远。
+                    // 这里按装配时同一条路找兵器节点，把它的名字和量出来的刃长都打出来。
+                    var wp = AdversityRoad.Combat.MecanimCharacter.FindWeaponInModel(go.transform);
+                    var handBone = AdversityRoad.Combat.MecanimCharacter.FindBone(go.transform, "righthand");
                     var prof = AdversityRoad.Combat.ReachModel.Measure(
-                        go.transform, go.transform, null);
+                        go.transform, go.transform, wp, wp != null);
                     if (name.EndsWith("PlayerModel")) p1 = prof;
+                    sb.Append("[CIDIAG][距离] ").Append(name).Append("  兵器节点=")
+                      .Append(wp != null ? wp.name : "（模型自带的认不出）")
+                      .Append("  手骨=").Append(handBone != null ? handBone.name : "（没找到）")
+                      .Append("  量得刃长=")
+                      .Append(AdversityRoad.Combat.ReachModel.BladeLength(handBone, wp).ToString("0.00"))
+                      .Append("m\n");
                     sb.Append("[CIDIAG][距离] ").Append(name).Append("  ")
                       .Append(prof.valid ? prof.ToString() : "!! 量不到骨骼，这个角色不会受距离约束")
                       .Append('\n');

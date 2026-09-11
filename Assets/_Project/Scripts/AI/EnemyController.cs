@@ -1186,11 +1186,16 @@ namespace AdversityRoad.AI
             Transform model = poser != null && poser.MocapModel != null
                 ? poser.MocapModel
                 : (transform.childCount > 0 ? transform.GetChild(0) : null);
-            Transform hand = model != null
-                ? Combat.MecanimCharacter.FindBone(model, "righthand") : null;
-            Transform weapon = hand != null
-                ? Combat.MecanimCharacter.FindWeaponInModel(model) : null;
-            attackHitbox.reach = Combat.ReachModel.Measure(transform, model, weapon);
+            // 【用游戏自己认定的那把兵器】poser.weaponPivot 就是刀光挂上去的那个节点，
+            // 装配时由 MecanimCharacter.TryBuild / WeaponFactory 写入。
+            // 之前这里另找了一套（FindWeaponInModel），和装配用的不是同一条路——
+            // 判定距离认的兵器，必须就是画面上那把。
+            Transform weapon = poser != null ? poser.weaponPivot : null;
+            // 认不出兵器时 bladeKnown=false：兵器系招式不裁，保持原设计。
+            // 把"认不出"当成"空手"，会让一个握着长刀的敌人够不到人——
+            // 玩家实测到的正是这个：赤手空拳比敌人的长刀还够得远。
+            attackHitbox.reach = Combat.ReachModel.Measure(
+                transform, model, weapon, weapon != null);
         }
 
         void FireHitbox()

@@ -21,6 +21,13 @@ namespace AdversityRoad.Combat
     public struct ReachProfile
     {
         public bool valid;
+        /// <summary>刃长这一项是不是**确知**的。
+        /// 玩家侧永远确知（IsWeaponDrawn 明确告诉我们手里有没有东西）；
+        /// 敌人侧如果在模型里认不出兵器节点，那就是"不知道"，不是"没有兵器"——
+        /// 这两者必须分开：把"认不出"当成"空手"，会把一个拿着长刀的敌人
+        /// 悄悄裁成够不到人的样子，而它看上去明明握着刀。
+        /// 不确知时兵器系招式一律不裁，保持原设计。</summary>
+        public bool bladeKnown;
         public float shoulderZ;   // 肩点相对角色根的前向偏移（含身体厚度那一截）
         public float hipZ;        // 髋点相对角色根的前向偏移
         public float arm;         // 肩→掌
@@ -41,7 +48,9 @@ namespace AdversityRoad.Combat
             switch (limb)
             {
                 case ReachLimb.Leg: return LegReach + StepPad;
-                case ReachLimb.Weapon: return WeaponReach + StepPad;
+                case ReachLimb.Weapon:
+                    // 认不出兵器 ⇒ 不裁（返回一个招式表不可能超过的上限）
+                    return bladeKnown ? WeaponReach + StepPad : 99f;
                 default: return ArmReach + StepPad;
             }
         }
@@ -50,10 +59,10 @@ namespace AdversityRoad.Combat
         {
             return "肩前" + shoulderZ.ToString("0.00") + " 臂" + arm.ToString("0.00")
                  + " 髋前" + hipZ.ToString("0.00") + " 腿" + leg.ToString("0.00")
-                 + " 刃" + blade.ToString("0.00")
+                 + " 刃" + (bladeKnown ? blade.ToString("0.00") : "未知")
                  + " → 拳" + (ArmReach + StepPad).ToString("0.00")
                  + " 腿" + (LegReach + StepPad).ToString("0.00")
-                 + " 兵器" + (WeaponReach + StepPad).ToString("0.00");
+                 + " 兵器" + (bladeKnown ? (WeaponReach + StepPad).ToString("0.00") : "不裁");
         }
     }
 
@@ -67,7 +76,8 @@ namespace AdversityRoad.Combat
         /// 量不到骨骼时返回 valid=false：调用方一律按"不限制"处理，
         /// 宁可保持旧行为，也不要因为量错而让谁突然够不着。
         /// </summary>
-        public static ReachProfile Measure(Transform root, Transform model, Transform weaponInHand)
+        public static ReachProfile Measure(Transform root, Transform model, Transform weaponInHand,
+                                           bool bladeKnown = true)
         {
             var p = new ReachProfile();
             if (root == null || model == null) return p;
@@ -99,6 +109,10 @@ namespace AdversityRoad.Combat
             p.shoulderZ = Mathf.Max(0f, root.InverseTransformPoint(sh.position).z);
             p.hipZ = Mathf.Max(0f, root.InverseTransformPoint(upLeg.position).z);
             p.blade = BladeLength(hand, weaponInHand);
+            // 说"确知"的前提是：要么明确知道手里没东西，要么真的量到了刃长。
+            // 认出了兵器节点却量出 0（例如那个节点下面根本没有 Renderer），
+            // 同样算不确知——否则一个拿刀的敌人会被当成空手。
+            p.bladeKnown = bladeKnown && (weaponInHand == null || p.blade > 0.15f);
             p.valid = p.arm > 0.05f && p.leg > 0.05f;
             return p;
         }
