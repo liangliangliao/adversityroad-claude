@@ -229,7 +229,7 @@ namespace AdversityRoad.Core
                     // 而 foeSwing 这类窗口计数器每 6 秒还会归零——两件事叠在一起，
                     // "这一个敌人在这段时间里还手了几次"根本算不准。
                     "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
-                    "foeSwing,foeArmorSave,foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
+                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
 
         /// <summary>
         /// 最近那个敌人的战斗实况列（13 列 + 末尾的 event 由调用方补）。
@@ -248,7 +248,7 @@ namespace AdversityRoad.Core
                     float d = (e.transform.position - p.transform.position).sqrMagnitude;
                     if (d < best) { best = d; near = e; }
                 }
-            if (near == null) return ",,,,,,,,,,,,,";
+            if (near == null) return ",,,,,,,,,,,,,,,,";
             var sb = new StringBuilder(112);
             sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
               .Append(near.State).Append(',')
@@ -259,6 +259,12 @@ namespace AdversityRoad.Core
               .Append(near.WinInterrupt).Append(',')
               .Append(near.WinSwing).Append(',')
               .Append(near.WinArmorSave).Append(',')
+              // 前摇有没有演完：起了几次 / 被打断几次 / 此刻还剩多久。
+              // "敌人攻击没有前兆"这件事，光看前兆的代码是查不出来的——
+              // 代码齐全，问题在它几乎从没演到底。这三列就是用来量这件事的。
+              .Append(near.WinTeleStart).Append(',')
+              .Append(near.WinTeleCancel).Append(',')
+              .Append(F(near.TelegraphLeft)).Append(',')
               .Append(Q(near.SwingBlockReason)).Append(',')
               .Append(F(near.HealthNow)).Append(',')
               .Append(F(near.PoiseNow)).Append(',')

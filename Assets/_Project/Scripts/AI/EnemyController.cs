@@ -141,6 +141,9 @@ namespace AdversityRoad.AI
         int _winInterrupt;          // 因前摇被打断进硬直的次数
         int _winSwing;              // 真正挥出去的招数
         int _winArmorSave;          // 霸体/预算挡下打断的次数
+        int _winTeleStart;          // 亮起过几次前摇
+        int _winTeleCancel;         // 其中被打断了几次（前摇没演完 = 玩家看不到规律）
+        bool _swingFiring;          // 正在"前摇结束→挥出"这一瞬：此时熄灭前摇不算被打断
         // 上一个"有内容"的窗口的底稿：打完停手之后截图仍读得到（见 TraceLine）
         float _lastStagger, _lastAt = -99f;
         int _lastFlinch, _lastPosture, _lastInterrupt, _lastSwing, _lastArmorSave;
@@ -204,6 +207,10 @@ namespace AdversityRoad.AI
         public int WinInterrupt => _winInterrupt;
         public int WinSwing => _winSwing;
         public int WinArmorSave => _winArmorSave;
+        public int WinTeleStart => _winTeleStart;
+        public int WinTeleCancel => _winTeleCancel;
+        /// <summary>此刻是否处于前摇，以及还剩多久（日志用；不在前摇时为 0）。</summary>
+        public float TelegraphLeft => _telegraphing ? Mathf.Max(0f, _windupTotal - _telegraphT) : 0f;
         public float HealthNow => _hp;
         public float PoiseNow => _posture;
         public float AttackCooldown => Mathf.Max(0f, _attackCd);
@@ -440,6 +447,11 @@ namespace AdversityRoad.AI
         /// </summary>
         void ShowTelegraph(bool on, bool perilous = false)
         {
+            // 统计前摇有没有演完：亮起算一次，还没打出去就熄掉算一次被打断。
+            // "前兆没有前兆"这件事光看代码看不出来——前兆的代码明明齐全，
+            // 要看的是它有多少次真的演到底。这两个数直接落进日志（见 MoveLogger）。
+            if (on && !_telegraphing) _winTeleStart++;
+            else if (!on && _telegraphing && !_swingFiring) _winTeleCancel++;
             _telegraphing = on;
             _telegraphT = 0f;
             if (!on)
@@ -540,6 +552,7 @@ namespace AdversityRoad.AI
                 _winStart = Time.time;
                 _winStagger = 0f;
                 _winFlinch = _winPosture = _winInterrupt = _winSwing = _winArmorSave = 0;
+                _winTeleStart = _winTeleCancel = 0;
             }
             if (State == EnemyState.Stagger) _winStagger += dt;
 
@@ -765,10 +778,13 @@ namespace AdversityRoad.AI
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
-                    // ⑤ 待战环从 +1.8 米收到 +0.8 米。实测"够不到"占 25.4%——
-                    // 敌人有四分之一的时间站在自己够不着的地方等令牌。
-                    // 环收紧之后它逼得更近，抢到令牌就能直接进攻击距离。
-                    float standoff = profile.AttackRange + 0.8f;
+                    // 待战环 +1.8 → #52 收到 +0.8 → 现在回到 **+1.4 米**。
+                    // 收到 0.8 是我收过头了：前摇从 2.6 米处起手，而不是 3.6 米，
+                    // 手机屏幕上那 0.6 秒几乎读不出来——这直接加重了"没有前兆"的观感。
+                    // 1.4 米是折中：比 #52 之前逼得近（"够不到"仍然会明显下降），
+                    // 但前摇重新起在一个看得清的距离上。
+                    // 往回收的只有敌人这一侧的数，玩家侧一个字没动。
+                    float standoff = profile.AttackRange + 1.4f;
                     if (dist > standoff)
                     {
                         MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
@@ -1056,8 +1072,10 @@ namespace AdversityRoad.AI
             if (poser != null) poser.SetPose(_attackPose);
             _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
             _winSwing++;
+            _swingFiring = true;   // 这一次 ShowTelegraph(false) 是"打出去了"，不是被打断
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
+            _swingFiring = false;
             StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
             Invoke(nameof(FireHitbox), contact);
             Invoke(nameof(CloseHitbox), contact + 0.25f);
@@ -1394,8 +1412,21 @@ namespace AdversityRoad.AI
                 // 它比改之前更起不来。这是我的回归，不是原有的老问题。
                 // 修法与大作一致：**起身反击自带霸体**（魂系起身挥刀打不断、
                 // 只狼兵卒起身反击有韧性），霸体窗内的前摇也一样打不断。
-                bool superArmor = ((profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
-                                   && !DamageResolver.IsHeavy(dmg))
+                // 【前摇霸体改成全体，不再只给精英/首领】
+                // 玩家的原话："敌人的攻击没有任何前兆，很难预测和躲避。"
+                // 而前兆这套东西是齐的（同族恒定的 0.58~0.82 秒起手、
+                // 颜色即应对、头顶记号、地面红圈、起手音效、画面外方向箭头）。
+                // 真正的问题是**前兆几乎从来没有演完过**：玩家每秒出手 1.38 次，
+                // 而一次前摇要 0.6~0.8 秒——绝大多数前摇刚亮起就被下一刀打断，
+                // ShowTelegraph(false)，攻击取消。于是玩家从没机会把"高举过顶=0.78 秒后横斩"
+                // 这条规律看完整一次，自然也就学不会；偶尔漏过来的那一下，
+                // 读起来就是"毫无征兆"。
+                // **一个从没被看完的前兆，等于没有前兆。**
+                // 大作的通行做法是让敌人一旦起手就基本吃定这一招（魂系/只狼的敌人
+                // 极少被轻击打断），玩家的收益来自闪/挡/弹反，而不是"用连打把它的招洗掉"。
+                // 所以：普通攻击不再能打断前摇；**重击与绝招仍然打得断**，
+                // 完美闪避/精准格挡的破绽也照旧——读招抢攻的正收益一点没少。
+                bool superArmor = !DamageResolver.IsHeavy(dmg)
                                   || _wakeArmor
                                   || Time.time < _poiseArmorUntil
                                   || PoiseBudgetSpent;
