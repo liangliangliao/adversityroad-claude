@@ -297,6 +297,8 @@ namespace AdversityRoad.AI
 
         /// <summary>连击追加段的前摇（秒）：比起手短，但绝不为零。</summary>
         public const float ComboWindup = 0.34f;
+        /// <summary>远程发弹的前摇时长（与进度条、形体征兆共用同一个数）。</summary>
+        public const float RangedWindup = 0.5f;
 
         /// <summary>是否正处于攻击前摇（威胁指示器据此在屏幕边缘标出看不见的敌人）。</summary>
         public bool Telegraphing => _telegraphing;
@@ -548,9 +550,16 @@ namespace AdversityRoad.AI
             // 形体征兆：随进度加深的预备姿态（高举/后拉/压低……）——
             // 这是关了 UI 也读得出来的那一层
             if (poser != null) poser.SetWindup((int)_spec.kind, p01);
+            // 【前摇走满 ⇒ 出手】这是这一刀唯一的触发点。
+            // 好处是它和"前摇还剩多久"用的是同一个时钟：玩家看到的进度条涨满，
+            // 和刀真正落下来，永远是同一瞬间——不可能再出现"圈才涨到一半，刀已经到了"。
+            if (_teleMelee && _telegraphT >= _windupTotal) OpenAttackHitbox();
         }
 
         float _windupTotal;   // 本次前摇的总时长（进度条与形体征兆按它归一化）
+        /// <summary>本次前摇走满之后接的是近战挥击（true）还是远程发弹（false）。
+        /// 远程那一发仍由 Invoke(FireProjectile) 排，时钟不许替它出刀。</summary>
+        bool _teleMelee;
         float _lastCastShot = -99f;   // 上次绝招特写的时刻（节流：特写贵在稀有）
 
         void Update()
@@ -1068,6 +1077,7 @@ namespace AdversityRoad.AI
             // 敌人的强弱改由出手频率/连段长度/招式选择体现，而不是偷玩家的反应时间。
             float windup = Mathf.Max(MinWindup, TelegraphTable.Get(_attackPose, _perilous).windup);
             _windupTotal = windup;
+            _teleMelee = true;
             ShowTelegraph(true, _perilous);
             GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.55f, _spec.pitch);
             // 【绝招特写】不可格挡的大招值得一个镜头：把施展者框进画面、报出招名与应对，
@@ -1085,7 +1095,13 @@ namespace AdversityRoad.AI
                     profile.displayName + " · " + _spec.name, _spec.answer);
             }
             if (poser != null) poser.SetPose(PoseState.Charge);
-            Invoke(nameof(OpenAttackHitbox), windup);
+            // 【出手由前摇时钟驱动，不再用 Invoke 排队】见 TickTelegraph 末尾。
+            // 原来这里排一个 Invoke(OpenAttackHitbox, windup)，而好几条中止路径
+            // （安抚、候场、被打进硬直、转 passive）只调了 ShowTelegraph(false)，
+            // **没有取消那个已经排进队列的 Invoke**。那一刀于是会在下一次前摇
+            // 刚亮起 0.1~0.4 秒时落下来——前摇还剩半截，刀已经到脸上。
+            // 实测就是这样：10 次前摇里 6 次在还剩 0.21~0.52 秒时就出手了。
+            // 让时钟当唯一的裁判，这一整类"排队残留"就不存在了。
         }
 
         /// <summary>起手：播挥击动作。判定框延迟到动画的接触帧才开启（FireHitbox），
@@ -1098,6 +1114,9 @@ namespace AdversityRoad.AI
             // #53/#54 我据此算出的"前摇打断率 86%"是这个计数错误的产物，不是实机事实：
             // 三份日志里 teleCancel 恒等于 teleStart 就是这么来的。
             if (State == EnemyState.Dead || attackHitbox == null) { ShowTelegraph(false); return; }
+            // 自保：这一刀只认"本次前摇走满"这一个来源。
+            // 没在前摇里、或前摇还没走满，就不是这一次该出的刀（历史上的排队残留）。
+            if (!_telegraphing || _telegraphT < _windupTotal - 0.02f) return;
             _swingFiring = true;   // 这一次 ShowTelegraph(false) 是"打出去了"，不是被打断
             ShowTelegraph(false);
             _swingFiring = false;
@@ -1241,10 +1260,11 @@ namespace AdversityRoad.AI
                 // 本作对玩家的承诺是「任何一次会造成伤害的攻击，出手前必定有可见警示」。
                 _perilous = false;   // 连击段不做不可格挡（不可格挡只出现在有完整前摇的起手）
                 _windupTotal = ComboWindup;
+                _teleMelee = true;
                 ShowTelegraph(true, false);
                 GameAudio.Play(GameAudio.Sfx.Alert, 0.45f, _spec.pitch + 0.1f);
                 if (poser != null) poser.SetPose(PoseState.Charge);
-                Invoke(nameof(OpenAttackHitbox), ComboWindup);
+                // 同样交给前摇时钟（见 DoPhysicalAttack 末尾的说明）
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
             else
@@ -1277,9 +1297,14 @@ namespace AdversityRoad.AI
             FaceTarget();
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("凝念");
+            // 【远程这一发以前没设 _windupTotal】于是进度归一化的分母是 0，
+            // p01 恒为 0——红圈从头到尾停在最小那一档、形体征兆也不推进，
+            // 等于把"涨满即出手"这层信息整个抹掉了。补上它自己的 0.5 秒。
+            _windupTotal = RangedWindup;
+            _teleMelee = false;   // 这一次前摇后面接的是弹，不是刀
             ShowTelegraph(true);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.4f);
-            Invoke(nameof(FireProjectile), 0.5f);
+            Invoke(nameof(FireProjectile), RangedWindup);
         }
 
         void FireProjectile()

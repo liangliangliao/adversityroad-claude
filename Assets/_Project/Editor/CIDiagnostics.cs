@@ -318,6 +318,14 @@ namespace AdversityRoad.EditorTools
               .Append("OpenAttackHitbox 里 _swingFiring 置位写在 ShowTelegraph(false) 之后，")
               .Append("于是每一次成功打出去的招都被记成一次「前摇被打断」。")
               .Append("按同一份日志扣掉这部分（teleCancel 10 − 出手 7），真实打断率约 23%\n");
+            sb.Append("[CIDIAG][前摇] 出手由前摇时钟唯一驱动（TickTelegraph 走满才 OpenAttackHitbox），")
+              .Append("不再用 Invoke 排队——排队残留会让刀在下一次前摇刚亮起 0.1~0.4 秒时落下。")
+              .Append("起手 ").Append(AdversityRoad.AI.EnemyController.MinWindup.ToString("0.00"))
+              .Append("~0.82s，连击段 ")
+              .Append(AdversityRoad.AI.EnemyController.ComboWindup.ToString("0.00"))
+              .Append("s，远程 ")
+              .Append(AdversityRoad.AI.EnemyController.RangedWindup.ToString("0.00"))
+              .Append("s；任何一次会造成伤害的攻击，出手前必定有走满的可见警示\n");
             sb.Append("[CIDIAG][平衡] 【设计方向】玩家侧不做任何限制（开放能力，熟练度即胜率）；")
               .Append("差距一律从敌人侧补。实测攻防比 9.5:1（玩家 1.38 次/秒 vs 敌人 0.15 次/秒），")
               .Append("目标 ≤3:1、玩家受击时间 5~15%\n");
@@ -674,6 +682,7 @@ namespace AdversityRoad.EditorTools
                 if (ln.Contains("!! ") ||
                     ln.StartsWith("[CIDIAG][角色贰]") ||
                     ln.StartsWith("[CIDIAG][距离]") ||
+                    ln.StartsWith("[CIDIAG][前摇]") ||
                     ln.StartsWith("[CIDIAG][平衡] 【设计方向】"))
                     sb.Append(ln).Append('\n');
             }
