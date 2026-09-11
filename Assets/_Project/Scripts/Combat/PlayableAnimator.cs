@@ -437,9 +437,7 @@ namespace AdversityRoad.Combat
             // 这一行是给"接了一堆永远播不到的片段"留的照妖镜：
             // 数字和下面列出的名字对不上预期，就是有东西悄悄溜进了每帧的开销里。
             sb.Append("    UAL 接进动作层 ").Append(_ualInGraph.Count).Append(" 条")
-              .Append(Core.GameDebug.PreferUalClips ? "（UAL 优先：全量）"
-                      : _folder != DefaultFolder ? "（本角色主库不全，UAL 即其动作库：补满全部空姿态）"
-                      : "（默认：只补主库空着的姿态）")
+              .Append(Core.GameDebug.PreferUalClips ? "（UAL 优先：全量）" : "（默认：只补主库空着的姿态）")
               .Append(_ualInGraph.Count > 0 ? "：" : "").Append(string.Join("、", _ualInGraph.ToArray()))
               .Append(NL);
             // 同一个姿态的变体池里出现重复片段 = 轮换到它时等于没换。
@@ -635,6 +633,16 @@ namespace AdversityRoad.Combat
         /// 没有则由上层程序化翻滚兜底）。</summary>
         public bool HasAction(PoseState p) => Valid && _actionIndex.ContainsKey(p);
 
+        /// <summary>某个姿态实际接到的片段名（诊断用；没有则空串）。
+        /// 用来逐条比对两个角色是不是真的在用同一套片段——"有片段"与
+        /// "是对的那条片段"是两回事，角色·贰就是栽在这两者的差别上。</summary>
+        public string ActionClipNameOf(PoseState p)
+        {
+            if (!Valid || !_actionIndex.TryGetValue(p, out int i)) return "";
+            string n = ClipNameAt(i);
+            return n == "?" ? "" : n;
+        }
+
         /// <summary>招式片段的有效播放时长（考虑起手偏移与倍速；无片段返回 0）。</summary>
         public float ActionLength(PoseState p) =>
             Valid && _actionIndex.TryGetValue(p, out int i) ? _actionLen[i] : 0f;
@@ -666,6 +674,8 @@ namespace AdversityRoad.Combat
             // 补充库（见 ExtraFolder / UalFolder）：主库同名的不覆盖，只补主库没有的
             // ualClips 记下哪些片段来自 UAL：下面"未映射片段全部接入"那一步要按来源
             // 区别对待（见 UalAlwaysOn）——主库的全接，UAL 的只接白名单上的。
+            // 主库自己提供了哪些片段——下面校验 idle/walk/run 时只认这一批。
+            var ownClips = new HashSet<AnimationClip>(byName.Values);
             var ualClips = new HashSet<AnimationClip>();
             foreach (var folder in ExtraFolders)
             {
@@ -720,6 +730,17 @@ namespace AdversityRoad.Combat
             var run  = Pick(byName, "maria wprop j j ong@running",
                             "great sword run", "running", "run", "sprint_loop", "jog_fwd_loop");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
+            // 【补充库不许把一个凑不齐的自定义主库救活】
+            // idle/walk/run 三条的候选链末尾有 UAL 兜底（idle_loop / walk_loop /
+            // jog_fwd_loop），那是给**默认主库**留的最后一道保险。
+            // 可是对"角色专属动作库"来说，靠 UAL 凑齐这三条就等于把
+            // HumanoidAnimator.TryEnableMecanim 里那条"无效则回退默认库"永久关掉，
+            // 于是这个角色悄悄换成了一套通用动作，而且不报任何错——
+            // 角色·贰就是这么被换掉的，CI 全绿了十几次。
+            // 自定义主库必须用**它自己目录里的**片段撑起这三条，否则判无效、走回退。
+            if (_folder != DefaultFolder &&
+                (!ownClips.Contains(idle) || !ownClips.Contains(walk) || !ownClips.Contains(run)))
+            { Valid = false; return; }
             // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
             // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
@@ -802,7 +823,7 @@ namespace AdversityRoad.Combat
             // 白名单只对**主库确实齐全**的角色生效（也就是角色·壹的 Characters/Anims）。
             // 角色·贰的主库是 Anims2（两条片段），UAL 就是它的动作库本身——
             // 对它套白名单等于把它的动作删光。这也是 #41 那个回归的第二条腿。
-            bool ualAll = Core.GameDebug.PreferUalClips || _folder != DefaultFolder;
+            bool ualAll = Core.GameDebug.PreferUalClips;
             var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
             {

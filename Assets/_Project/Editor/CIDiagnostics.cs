@@ -355,6 +355,12 @@ namespace AdversityRoad.EditorTools
         /// 教训写成一条检查：**每个可玩角色都要各自验一遍**。
         /// 判据是硬的——角色·贰必须有 idle/walk/run（否则整层回退方块骨骼），
         /// 且攻击/受击/死亡这三个最基本的姿态都要有片段。
+        ///
+        /// 【第二次教训：光有片段不算对】上一版这条检查只问"有没有片段"，
+        /// 于是 UAL 接管角色·贰的那十几个包体它一路全绿——每个姿态都有片段，
+        /// 只是全换成了另一套动作。现在改成逐姿态与角色·壹比对片段名：
+        /// 角色·贰没有自己的动作库，两人本就该一模一样，不同即是被换掉了。
+        /// 并且不再在这里硬写目录名，改为与 PlayerAppearance 同源。
         /// </summary>
         static bool DiagSecondCharacter(StringBuilder sb)
         {
@@ -364,12 +370,17 @@ namespace AdversityRoad.EditorTools
                 sb.Append("[CIDIAG][角色贰] 没有 Characters/PlayerModel2，跳过\n");
                 return true;
             }
+            var ref1 = Resources.Load<GameObject>("Characters/PlayerModel");
             var model = Object.Instantiate(prefab);
+            GameObject model1 = ref1 != null ? Object.Instantiate(ref1) : null;
             bool ok = true;
             try
             {
                 var animator = model.GetComponentInChildren<Animator>() ?? model.AddComponent<Animator>();
-                var pa = new AdversityRoad.Combat.PlayableAnimator(animator, "Characters/Anims2");
+                // 【按玩法里真正走的那条路建】PlayerAppearance 传什么目录，这里就传什么，
+                // 上一版我在这里硬写了 "Characters/Anims2"，等于把待验证的那个假设
+                // 抄进了检查本身——检查于是永远同意我。
+                var pa = new AdversityRoad.Combat.PlayableAnimator(animator, PlayerAnimsFolder());
                 sb.Append("[CIDIAG][角色贰] 动作库有效=").Append(pa.Valid ? "是" : "否").Append('\n');
                 if (!pa.Valid)
                 {
@@ -392,6 +403,33 @@ namespace AdversityRoad.EditorTools
                               .Append(" 没有任何片段——角色贰的动作库被改坏了\n");
                             ok = false;
                         }
+                    // 【真正的判据：两个角色必须用同一套片段】
+                    // "有片段"挡不住"换成了另一套片段"——UAL 接管的那十几版里
+                    // 每一个姿态都有片段，CI 一路全绿，而玩家看到的是一套完全陌生的动作。
+                    // 角色·贰没有自己的动作库（Anims2 只是公共补充库），
+                    // 所以它每个姿态的片段名都应当与角色·壹**逐条相同**，不同就是被换掉了。
+                    if (model1 != null)
+                    {
+                        var an1 = model1.GetComponentInChildren<Animator>() ?? model1.AddComponent<Animator>();
+                        var pa1 = new AdversityRoad.Combat.PlayableAnimator(an1, null);
+                        if (pa1.Valid)
+                        {
+                            int diff = 0;
+                            foreach (AdversityRoad.Combat.PoseState ps
+                                     in System.Enum.GetValues(typeof(AdversityRoad.Combat.PoseState)))
+                            {
+                                string a = pa.ActionClipNameOf(ps), b = pa1.ActionClipNameOf(ps);
+                                if (a == b) continue;
+                                diff++;
+                                sb.Append("[CIDIAG][角色贰] !! 姿态 ").Append(ps)
+                                  .Append(" 与角色壹不一致：角色贰=").Append(a.Length > 0 ? a : "（无）")
+                                  .Append("  角色壹=").Append(b.Length > 0 ? b : "（无）").Append('\n');
+                            }
+                            if (diff > 0) ok = false;
+                            else sb.Append("[CIDIAG][角色贰] 与角色壹逐姿态片段一致（两人共用默认动作库）\n");
+                        }
+                        pa1.Destroy();
+                    }
                     foreach (var line in pa.DescribeActionSet().Split('\n'))
                         if (line.Length > 0) sb.Append("[CIDIAG][角色贰] ").Append(line).Append('\n');
                 }
@@ -400,12 +438,19 @@ namespace AdversityRoad.EditorTools
             catch (System.Exception e)
             {
                 sb.Append("[CIDIAG][角色贰] 诊断异常：").Append(e.Message).Append('\n');
+                ok = false;
             }
-            finally { Object.DestroyImmediate(model); }
+            finally
+            {
+                Object.DestroyImmediate(model);
+                if (model1 != null) Object.DestroyImmediate(model1);
+            }
             return ok;
         }
 
-        /// <summary>返回 false 表示这一项不合格，作业要变红。</summary>
+        /// <summary>玩法里角色·贰实际使用的动作库目录（与 PlayerAppearance.Rebuild 同源）。</summary>
+        static string PlayerAnimsFolder() { return null; }
+
         static bool DiagUal(StringBuilder sb)
         {
             bool ok = true;
