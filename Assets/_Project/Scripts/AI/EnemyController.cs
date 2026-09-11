@@ -814,7 +814,12 @@ namespace AdversityRoad.AI
                     UpdateEmotion("狰狞");
                     StopMoving();
                     FaceTarget();
-                    if (dist > profile.AttackRange * 1.2f)
+                    // 【已经起手就把这一招打完】原本只要 dist 超过 AttackRange×1.2
+                    // 就退回 Chase——而玩家每一刀都把它推过这条线（实测 54%~82%），
+                    // 于是前摇一次次被距离判定取消。承诺之后不再中途退出：
+                    // 够不着就在落刀的一瞬踏前一步补上（AttackStep 本来就在做这件事）。
+                    bool committed2 = _telegraphing || Time.time < _swingUntil;
+                    if (dist > profile.AttackRange * 1.2f && !committed2)
                     {
                         Combat.CombatDirector.Release(this);   // 脱离攻击态：归还攻击令牌
                         State = EnemyState.Chase; break;
@@ -1096,7 +1101,10 @@ namespace AdversityRoad.AI
             float gap = to.magnitude - profile.AttackRange * 0.75f;
             if (gap <= 0.05f || dur <= 0.01f) yield break;
             Vector3 dir = to.normalized;
-            float total = Mathf.Min(gap, 0.9f);   // 封顶 0.9m：踏一步，不是冲刺
+            // 封顶 0.9 → 1.3m：击退把它推开 0.26~0.49 米是常态，
+            // 0.9 米的一步在"被推出去之后还要补回来"的情况下常常差一点点。
+            // 仍然是一步，不是冲刺。
+            float total = Mathf.Min(gap, 1.3f);
             float moved = 0f, t = 0f;
             while (t < dur && State != EnemyState.Dead)
             {
@@ -1561,9 +1569,26 @@ namespace AdversityRoad.AI
                 // 上一版直接 ×0.85 当米用：巨剑横斩 knockback 4.5 → 一记轻击把人推开
                 // 3.8 米，连招直接脱靶。动作游戏的普通连段推开量在 0.2~0.8 米，
                 // 目的是「打得动」而不是「打飞」——推远了反而接不上下一段。
+                // 【出招承诺期间几乎不吃击退】这是三份日志找了九轮才找到的那条。
+                //
+                // 日志（183 秒）逐敌人算下来：每挨一下把敌人往后推 0.26~0.49 米，
+                // 而**54%~82% 的命中把它推到了自己够不着的距离之外**（>2.6 米）。
+                // 敌人的中位距离是 2.17~2.56 米，正好卡在 AttackRange×1.2 的边界上。
+                // 于是循环是：走进距离 → 起手 → 挨一刀被推出距离 →
+                // Attack 状态因 dist 超限直接退回 Chase、前摇取消 → 再走回来。
+                //
+                // 这一条同时解释了三个一直对不上的数：
+                //   前摇打断率 86%（它不是被"打断"，是被**推出去**的）
+                //   够不到 31%、Chase 占交战时间 44%
+                //   以及出手次数在三份日志里纹丝不动地都是 6 次——
+                //   我前面改的硬直/眩晕/冷却全都不是瓶颈，位移才是。
+                // 大作的通行做法：敌人一旦进入出招承诺，击退大幅衰减
+                //（魂系/怪猎里正在出招的敌人几乎推不动）。
+                bool committedNow = _telegraphing || Time.time < _swingUntil;
+                float kbScale = committedNow ? 0.15f : 1f;
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f);
-                StartCoroutine(KnockSlide(kb));
+                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f) * kbScale;
+                if (kb.sqrMagnitude > 1e-4f) StartCoroutine(KnockSlide(kb));
             }
 
             if (statusBar != null)
