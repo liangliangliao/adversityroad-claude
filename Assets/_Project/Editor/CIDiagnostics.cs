@@ -314,6 +314,10 @@ namespace AdversityRoad.EditorTools
             sb.Append("[CIDIAG][平衡] 出招承诺：敌人进入前摇/挥击后击退衰减到 15%，")
               .Append("且不再因距离超限中途取消。实测每次命中把敌人推开 0.26~0.49m，")
               .Append("其中 54%~82% 推到了它自己够不着的距离外——前摇不是被打断的，是被推出去的\n");
+            sb.Append("[CIDIAG][平衡] 【更正】此前报的「前摇打断率 86%」是计数错误，不是实机事实：")
+              .Append("OpenAttackHitbox 里 _swingFiring 置位写在 ShowTelegraph(false) 之后，")
+              .Append("于是每一次成功打出去的招都被记成一次「前摇被打断」。")
+              .Append("按同一份日志扣掉这部分（teleCancel 10 − 出手 7），真实打断率约 23%\n");
             sb.Append("[CIDIAG][平衡] 【设计方向】玩家侧不做任何限制（开放能力，熟练度即胜率）；")
               .Append("差距一律从敌人侧补。实测攻防比 9.5:1（玩家 1.38 次/秒 vs 敌人 0.15 次/秒），")
               .Append("目标 ≤3:1、玩家受击时间 5~15%\n");
@@ -519,6 +523,28 @@ namespace AdversityRoad.EditorTools
             return ok;
         }
 
+        /// <summary>
+        /// 把关键结论**重复一遍贴在报告最末尾**。
+        /// 原因很实在：CI 日志只能按"末尾 N 行"取回，而这份报告的材质/贴图清单
+        /// 有一百多行，角色贰的判定结论被顶到了取不回来的位置——上一轮我只能
+        /// 拿"作业是绿的"当证据，而我自己刚说过"结构性检查不等于功能验证"。
+        /// 结论行放末尾，取回来的永远是结论而不是贴图清单。
+        /// </summary>
+        static void AppendVerdict(StringBuilder sb)
+        {
+            string[] lines = sb.ToString().Split('\n');
+            sb.Append("\n===== [CIDIAG] 结论摘要（关键判定一律重贴在末尾）=====\n");
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string ln = lines[i];
+                if (ln.Length == 0) continue;
+                if (ln.Contains("!! ") ||
+                    ln.StartsWith("[CIDIAG][角色贰]") ||
+                    ln.StartsWith("[CIDIAG][平衡] 【设计方向】"))
+                    sb.Append(ln).Append('\n');
+            }
+        }
+
         public static void Run()
         {
             var sb = new StringBuilder("\n===== [CIDIAG] 资产运行时诊断开始 =====\n");
@@ -544,6 +570,7 @@ namespace AdversityRoad.EditorTools
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
                 // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。
                 if (sb.ToString().Contains("!! ")) exit = 1;
+                AppendVerdict(sb);
             }
             catch (System.Exception e)
             {

@@ -153,6 +153,10 @@ namespace AdversityRoad.AI
         /// 超过就无条件放行——否则只要玩家不停手，它就永远等不到那 0.55 秒的空档。
         /// </summary>
         public const float DizzySuppressCap = 0.5f;
+        /// <summary>"刚挨打不还手"的窗口长度。**出手判据与日志判据必须读同一个数**——
+        /// 之前判据写 0.25、日志里 WhyNoSwing 写 0.55，于是日志把一批**根本没被挡住**
+        /// 的帧记成了"挨打眩晕"，那栏 48% 是虚高的。分成两个字面量就一定会再次漂移。</summary>
+        public const float DizzyWindow = 0.25f;
         float _dizzyBlocked;        // 已经被上面那条规则连续挡了多久
 
         /// <summary>脱手多久之后韧性开始回复（秒）。</summary>
@@ -179,11 +183,24 @@ namespace AdversityRoad.AI
         float ClampStagger(float seconds) =>
             Mathf.Min(seconds, Mathf.Max(0f, StaggerBudget - _winStagger));
 
+        /// <summary>此刻是否被"刚挨打不还手"挡住（纯判定，无副作用）。
+        /// forced=被连续挡满 DizzySuppressCap 秒后的无条件放行。
+        /// 出手分支与日志栏都调这一个，不再各写一套。</summary>
+        bool DizzyNow(out bool forced)
+        {
+            forced = _dizzyBlocked > DizzySuppressCap;
+            if (forced) return false;
+            bool dizzy = Time.time - _lastHurtT <= DizzyWindow;
+            if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent)) dizzy = false;
+            return dizzy;
+        }
+
         /// <summary>
         /// 「出手 0」的时候，把**是什么在挡着它**直接写出来。
         /// 两次实机取样出手都是 0，而我只能靠猜是冷却、是令牌、还是别的——
-        /// 结果真正的原因（连续挨打就永远等不到 0.55 秒空档）猜了六版都没猜到。
-        /// 这一栏之后就不用猜了。
+        /// 结果真正的原因（连续挨打就永远等不到那段空档）猜了六版都没猜到。
+        /// 这一栏之后就不用猜了。判据一律走 DizzyNow / 同一组状态，
+        /// **不允许在这里另写一套阈值**——那会让日志描述一个并不存在的代码。
         /// </summary>
         string WhyNoSwing()
         {
@@ -194,8 +211,13 @@ namespace AdversityRoad.AI
             if (_player != null &&
                 Vector3.Distance(transform.position, _player.position) > profile.AttackRange * 1.2f)
                 return "[够不到]";
-            if (Time.time - _lastHurtT <= 0.55f) return "[挨打眩晕" + _dizzyBlocked.ToString("0.0") + "s]";
+            bool forcedNow;
+            if (DizzyNow(out forcedNow))
+                return "[挨打眩晕" + _dizzyBlocked.ToString("0.0") + "s]";
             if (_attackCd > 0f) return "[冷却" + _attackCd.ToString("0.0") + "s]";
+            // 在够得着的距离上却还没进入 Attack 状态——这一档以前没有，
+            // 于是这些帧被上面那条 0.55 秒的错判吸收成了"挨打眩晕"。
+            if (State != EnemyState.Attack) return "[未进攻击态]";
             return "[无令牌]";
         }
 
@@ -570,7 +592,7 @@ namespace AdversityRoad.AI
             // 【"挨打眩晕"的累加放在顶层】只要它最近挨过打、又不在硬直里，
             // 就一直在被那条"刚挨打不还手"的规则压着——不管它此刻处于哪个状态。
             // 放在 Attack 分支里累加是错的（见那里的注释）。
-            if (Time.time - _lastHurtT <= 0.55f && State != EnemyState.Stagger)
+            if (Time.time - _lastHurtT <= DizzyWindow && State != EnemyState.Stagger)
                 _dizzyBlocked += dt;
             else if (State != EnemyState.Stagger && Time.time - _lastHurtT > 1.0f)
                 _dizzyBlocked = 0f;
@@ -845,15 +867,13 @@ namespace AdversityRoad.AI
                     // 0.55 秒本来就长过玩家的连打间隔，等于永久压制；
                     // 0.25 秒仍然保留"被打中的一瞬间不能若无其事地挥回来"这个观感，
                     // 但不再是一条只要对方不停手就永不打开的闸。
-                    bool dizzy = Time.time - _lastHurtT <= 0.25f;
-                    if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent))
-                        dizzy = false;
+                    bool forced;
+                    bool dizzy = DizzyNow(out forced);
                     // 【累加不在这里做】见 Update 顶层：这段代码只在 Attack 状态跑，
                     // 而实机日志里敌人 35% 的时间在 Stagger、还有 Chase/MentalAttack，
                     // 那些帧根本走不到这儿，累加器攒不起来；一回到 Attack 又被清零。
                     // 实测 1.2 秒的保底放行**整场只触发过 1 帧**（[挨打眩晕1.1s] × 1）。
-                    bool forced = _dizzyBlocked > DizzySuppressCap;
-                    if (forced) { dizzy = false; _wakeArmor = true; _dizzyBlocked = 0f; }
+                    if (forced) { _wakeArmor = true; _dizzyBlocked = 0f; }
                     // 被玩家正在打的这一个，令牌也不该跟别人抢——它就是当前的交战对象。
                     if (_attackCd <= 0 && !dizzy &&
                         (forced || Time.time - _lastHurtT < 3f ||
@@ -1071,16 +1091,21 @@ namespace AdversityRoad.AI
         /// 刀/脚真正碰到对方身体的那一刻伤害与特效同步出现。</summary>
         void OpenAttackHitbox()
         {
+            // 【_swingFiring 必须在 ShowTelegraph(false) 之前置位】
+            // 它原本写在这行下面第六行，也就是说 ShowTelegraph(false) 执行时它永远是
+            // false —— 于是**每一次打出去的招都被记成了一次"前摇被打断"**。
+            // #53/#54 我据此算出的"前摇打断率 86%"是这个计数错误的产物，不是实机事实：
+            // 三份日志里 teleCancel 恒等于 teleStart 就是这么来的。
+            if (State == EnemyState.Dead || attackHitbox == null) { ShowTelegraph(false); return; }
+            _swingFiring = true;   // 这一次 ShowTelegraph(false) 是"打出去了"，不是被打断
             ShowTelegraph(false);
-            if (State == EnemyState.Dead || attackHitbox == null) return;
+            _swingFiring = false;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
             if (poser != null) poser.SetPose(_attackPose);
             _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
             _winSwing++;
-            _swingFiring = true;   // 这一次 ShowTelegraph(false) 是"打出去了"，不是被打断
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
-            _swingFiring = false;
             StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
             Invoke(nameof(FireHitbox), contact);
             Invoke(nameof(CloseHitbox), contact + 0.25f);

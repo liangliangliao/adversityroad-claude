@@ -43,7 +43,7 @@ namespace AdversityRoad.Core
         /// 一个根本不存在的问题——这个项目里已经发生过一次（招式表在烘焙前打的那次）。
         /// 面板上写着几号包，一眼就能排除掉后一种可能。
         /// </summary>
-        public const int BuildTag = 55;
+        public const int BuildTag = 56;
 
         /// <summary>
         /// 敌人强度：在调好的基准生命之上再乘一道，**玩家自己在设置面板里调**。
