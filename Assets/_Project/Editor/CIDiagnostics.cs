@@ -480,7 +480,19 @@ namespace AdversityRoad.EditorTools
                       .Append("  手骨=").Append(handBone != null ? handBone.name : "（没找到）")
                       .Append("  量得刃长=")
                       .Append(AdversityRoad.Combat.ReachModel.BladeLength(handBone, wp).ToString("0.00"))
-                      .Append("m\n");
+                      .Append('m');
+                    if (wp != null)
+                    {
+                        // 刃长是从网格包围盒量的，印出用的是哪个渲染器、盒子多大，
+                        // 数字才解释得清（骨骼蒙皮的剑，包围盒可能比剑本身大一圈）。
+                        var rs = wp.GetComponentsInChildren<Renderer>(true);
+                        sb.Append("  渲染器=").Append(rs.Length);
+                        for (int k = 0; k < rs.Length && k < 3; k++)
+                            sb.Append("  [").Append(rs[k].GetType().Name).Append(' ')
+                              .Append(rs[k].name).Append(" 盒=")
+                              .Append(rs[k].bounds.size.ToString("0.00")).Append(']');
+                    }
+                    sb.Append('\n');
                     sb.Append("[CIDIAG][距离] ").Append(name).Append("  ")
                       .Append(prof.valid ? prof.ToString() : "!! 量不到骨骼，这个角色不会受距离约束")
                       .Append('\n');
@@ -508,8 +520,13 @@ namespace AdversityRoad.EditorTools
                   .Append("  靠 ").Append(limb).Append(" 够到");
                 if (p1.valid)
                 {
-                    // 空手（刃长=0）时这一招实际会被裁到哪里——这正是玩家问的那件事。
-                    float bare = p1.LimitOf(limb);
+                    // 【这一列必须用空手的 profile】上一版我把量到兵器的 p1 直接拿来算，
+                    // 于是标签写着"空手"、数字却是持械的（Attack 印成 1.85、突刺印成 2.10）。
+                    // 又一次"日志描述的不是它声称的那件事"。把刃长清零再算。
+                    var bareProf = p1;
+                    bareProf.blade = 0f;
+                    bareProf.bladeKnown = true;
+                    float bare = bareProf.LimitOf(limb);
                     sb.Append("  空手裁到=").Append(Mathf.Min(far, bare).ToString("0.00")).Append('m');
                 }
                 sb.Append('\n');

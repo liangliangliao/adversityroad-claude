@@ -52,8 +52,18 @@ namespace AdversityRoad.Player
             get
             {
                 if (!IsWeaponDrawn) return null;
-                foreach (var t in WeaponObjects()) if (t != null) return t;
-                return null;
+                // 【要挑真的看得见的那一把】WeaponObjects 的第一项是模型自带兵器，
+                // 而换上外装武器之后自带的那把是被关掉渲染的——拿它去量刃长会量出 0，
+                // 于是一个明明握着剑的角色会被当成"刃长不明"。按渲染器是否开着来挑。
+                Transform fallback = null;
+                foreach (var t in WeaponObjects())
+                {
+                    if (t == null) continue;
+                    if (fallback == null) fallback = t;
+                    foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+                        if (r != null && r.enabled) return t;
+                }
+                return fallback;
             }
         }
 
