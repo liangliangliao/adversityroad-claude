@@ -109,6 +109,10 @@ namespace AdversityRoad.Combat
             p.shoulderZ = Mathf.Max(0f, root.InverseTransformPoint(sh.position).z);
             p.hipZ = Mathf.Max(0f, root.InverseTransformPoint(upLeg.position).z);
             p.blade = BladeLength(hand, weaponInHand);
+            // 兜底：手持兵器的刃长不可能超过手臂的 2.5 倍（0.59m 的手臂 ⇒ 约 1.5m）。
+            // 包围盒量法再怎么改也可能碰上奇怪的网格，而这个数会直接变成攻击距离——
+            // 与其信一个量岔了的数，不如夹在一个说得出理由的上限里。
+            if (p.blade > p.arm * 2.5f) p.blade = p.arm * 2.5f;
             // 说"确知"的前提是：要么明确知道手里没东西，要么真的量到了刃长。
             // 认出了兵器节点却量出 0（例如那个节点下面根本没有 Renderer），
             // 同样算不确知——否则一个拿刀的敌人会被当成空手。
@@ -144,16 +148,49 @@ namespace AdversityRoad.Combat
             {
                 var r = rends[i];
                 if (r == null || !r.enabled) continue;   // 放在兵器架上的剑不算在手里
-                var b = r.bounds;
-                for (int c = 0; c < 8; c++)
-                {
-                    var corner = new Vector3(
-                        (c & 1) == 0 ? b.min.x : b.max.x,
-                        (c & 2) == 0 ? b.min.y : b.max.y,
-                        (c & 4) == 0 ? b.min.z : b.max.z);
-                    float d = Vector3.Distance(hand.position, corner);
-                    if (d > best) best = d;
-                }
+                float d = FarthestCorner(r, hand.position);
+                if (d > best) best = d;
+            }
+            return best;
+        }
+
+        /// <summary>
+        /// 兵器网格离握位最远的那个角点有多远。
+        ///
+        /// 【为什么不直接用 renderer.bounds】那是**世界轴对齐**的包围盒。
+        /// 实测：玩家的 Maria_sword 盒=(0.75, 0.22, 1.27)，一根轴独大，量出 1.26m，对；
+        /// 而敌人的 Paladin_J_Nordstrom_Sword 盒=(1.70, 1.82, 0.36)，两根轴都大——
+        /// 那是一把在绑定姿势下斜着放的剑，轴对齐盒罩住的是它的**对角线**，
+        /// 于是量出 2.17m，比那把剑本身长出一大截。
+        /// 改成用网格自己的局部包围盒、再按渲染器的变换转到世界空间：
+        /// 盒子跟着剑一起转，量到的才是刃的方向上的长度。
+        /// </summary>
+        static float FarthestCorner(Renderer r, Vector3 from)
+        {
+            Mesh mesh = null;
+            var smr = r as SkinnedMeshRenderer;
+            if (smr != null) mesh = smr.sharedMesh;
+            else
+            {
+                var mf = r.GetComponent<MeshFilter>();
+                if (mf != null) mesh = mf.sharedMesh;
+            }
+            if (mesh == null) return CornerDist(r.bounds.min, r.bounds.max, from, Matrix4x4.identity);
+            var lb = mesh.bounds;
+            return CornerDist(lb.min, lb.max, from, r.transform.localToWorldMatrix);
+        }
+
+        static float CornerDist(Vector3 min, Vector3 max, Vector3 from, Matrix4x4 m)
+        {
+            float best = 0f;
+            for (int c = 0; c < 8; c++)
+            {
+                var corner = new Vector3(
+                    (c & 1) == 0 ? min.x : max.x,
+                    (c & 2) == 0 ? min.y : max.y,
+                    (c & 4) == 0 ? min.z : max.z);
+                float d = Vector3.Distance(from, m.MultiplyPoint3x4(corner));
+                if (d > best) best = d;
             }
             return best;
         }
