@@ -448,6 +448,56 @@ namespace AdversityRoad.EditorTools
             return ok;
         }
 
+        /// <summary>
+        /// 攻击距离表：把每一招的判定框前沿，和这个角色**实际量出来的**
+        /// 手臂长 / 腿长摆在一起。
+        ///
+        /// 这一项要挡住的是玩家指出的那件事：空手（或剑还在鞘里）时，
+        /// 横斩的判定框照样伸到身前 1.85 米——那是一把大剑的长度。
+        /// 距离是几何量，光看代码看不出它对不对，必须把数摆出来比。
+        /// </summary>
+        static void DiagReach(StringBuilder sb)
+        {
+            foreach (var name in new[] { "Characters/PlayerModel", "Characters/PlayerModel2", "Characters/EnemyModel" })
+            {
+                var prefab = Resources.Load<GameObject>(name);
+                if (prefab == null) { sb.Append("[CIDIAG][距离] ").Append(name).Append(" 缺失\n"); continue; }
+                var go = Object.Instantiate(prefab);
+                try
+                {
+                    var prof = AdversityRoad.Combat.ReachModel.Measure(
+                        go.transform, go.transform, null);
+                    sb.Append("[CIDIAG][距离] ").Append(name).Append("  ")
+                      .Append(prof.valid ? prof.ToString() : "!! 量不到骨骼，这个角色不会受距离约束")
+                      .Append('\n');
+                }
+                finally { Object.DestroyImmediate(go); }
+            }
+            // 逐招对比：判定框前沿 vs 空手够得到的距离。
+            var poses = new[]
+            {
+                AdversityRoad.Combat.PoseState.Attack,
+                AdversityRoad.Combat.PoseState.SwordThrust,
+                AdversityRoad.Combat.PoseState.HeavyAttack,
+                AdversityRoad.Combat.PoseState.PunchJab,
+                AdversityRoad.Combat.PoseState.AttackKick,
+                AdversityRoad.Combat.PoseState.SideKick,
+                AdversityRoad.Combat.PoseState.Sweep,
+            };
+            foreach (var ps in poses)
+            {
+                AdversityRoad.Combat.PlayerCombatController.PoseHitShape(ps, out Vector3 size, out Vector3 center);
+                float far = center.z + size.z * 0.5f;
+                sb.Append("[CIDIAG][距离]   ").Append(ps)
+                  .Append("  判定框前沿=").Append(far.ToString("0.00")).Append('m')
+                  .Append("  靠 ").Append(AdversityRoad.Combat.ReachModel.LimbOf(ps))
+                  .Append(" 够到\n");
+            }
+            sb.Append("[CIDIAG][距离] 规则：判定框前沿超过「肩前+臂长(+刃长)」或「髋前+腿长」加 ")
+              .Append(AdversityRoad.Combat.ReachProfile.StepPad.ToString("0.00"))
+              .Append("m 踏前余量的部分会被裁掉；空手/未出鞘时刃长按 0 算，剑招同时降级为拳连\n");
+        }
+
         /// <summary>玩法里角色·贰实际使用的动作库目录（与 PlayerAppearance.Rebuild 同源）。</summary>
         static string PlayerAnimsFolder() { return null; }
 
@@ -611,6 +661,7 @@ namespace AdversityRoad.EditorTools
                 if (!DiagSecondCharacter(sb)) exit = 1;
                 DiagCharacterMaterials(sb);
                 DiagBalance(sb);
+                DiagReach(sb);
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
                 // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。

@@ -720,7 +720,10 @@ namespace AdversityRoad.Combat
             _buffered = AttackBtn.None;
             int nextDepth = _depth + 1;
             if (nextDepth > 3) nextDepth = 0;
-            var chain = btn == AttackBtn.Kick ? SwordChain : PunchChain;
+            // 【手里没剑就不该出剑招】剑键按下时，只有兵器真的在手上才走剑连；
+            // 空手、剑还插在鞘里、兵器放在兵器架上——三种情况一律走拳连。
+            // 从前这里无条件走剑连，于是空手也能挥出一套大剑的伤害与距离。
+            var chain = btn == AttackBtn.Kick && ArmedNow ? SwordChain : PunchChain;
             var s = chain[nextDepth];
             // 体力不足【不再中断连段】——此前静默 EndCombo 是"连打时突然卡住"的主因：
             // 满体力连打约 3 秒就见底，之后每次出招都失败，人站在原地不动。
@@ -1156,7 +1159,11 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true,
                 blade ? new Color(0.7f, 0.9f, 1f) : new Color(1f, 0.75f, 0.45f));
-            if (weaponHitbox != null) weaponHitbox.SetShape(spec.Size, spec.center);
+            if (weaponHitbox != null)
+            {
+                RefreshReach();
+                weaponHitbox.SetShape(spec.Size, spec.center, pose);
+            }
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(
                 HitboxWindow(0.09f, 0.26f, dmg, spec.postureMult, spec.knockback, true));
@@ -1200,7 +1207,8 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
             if (weaponHitbox == null) return;
-            weaponHitbox.SetShape(spec.Size, spec.center);
+            RefreshReach();
+            weaponHitbox.SetShape(spec.Size, spec.center, PoseState.SwordThrust);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(
                 HitboxWindow(0.1f, 0.18f, dmg, spec.postureMult, spec.knockback, true));
@@ -1555,6 +1563,42 @@ namespace AdversityRoad.Combat
         /// 设计原则：招式越强范围越大——蓄力/绝招终结 > 连段末段 > 起手轻击；
         /// 形状对应轨迹——突刺长而窄（直线）、横斩横宽（横扫弧）、撩斩纵高（下→上弧）、
         /// 旋风斩/扫堂腿环身 360°、跳劈罩住落点、扫堂贴地。</summary>
+        // ===== 够不够得着：按真实的手臂长 / 腿长 / 刃长算 =====
+        //
+        // 玩家的原话："一个人拿一米长的棍子能恰好够着 1~3 米内的物体，
+        // 但如果他手里没有那根棍子，显然不应该够得着。"
+        // 此前这个工程里每一招的判定框长度都是写死的常量，与手里有没有兵器无关：
+        // 空手横斩照样伸到身前 1.85 米。这两个成员把"手里有什么"接进判定。
+        Player.PlayerAppearance _appearanceRef;
+        float _reachAt = -1f;
+
+        /// <summary>兵器此刻是不是真的握在手上（空手 / 未出鞘 / 放在兵器架上都算否）。</summary>
+        public bool ArmedNow
+        {
+            get
+            {
+                if (_appearanceRef == null) _appearanceRef = GetComponentInChildren<Player.PlayerAppearance>();
+                return _appearanceRef == null || _appearanceRef.IsWeaponDrawn;
+            }
+        }
+
+        /// <summary>
+        /// 刷新实测攻击距离并写进判定框。每次出招前调一次——
+        /// 拔刀/收刀、换兵器、换角色都会改变这三个长度，只在装配时量一次是不够的。
+        /// 同一帧内重复调用只量一次（一次出招会经过好几个设形点）。
+        /// </summary>
+        public void RefreshReach()
+        {
+            if (weaponHitbox == null) return;
+            if (Mathf.Approximately(_reachAt, Time.time)) return;
+            _reachAt = Time.time;
+            if (_appearanceRef == null) _appearanceRef = GetComponentInChildren<Player.PlayerAppearance>();
+            Transform model = _appearanceRef != null ? _appearanceRef.ModelRoot : null;
+            Transform weapon = _appearanceRef != null && _appearanceRef.IsWeaponDrawn
+                ? _appearanceRef.WeaponInHand : null;
+            weaponHitbox.reach = ReachModel.Measure(transform, model, weapon);
+        }
+
         public static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
         {
             // 判定框统一由招式规格表派生（轨迹 → 形状）：改数值只改 MoveTable 一处，
@@ -1600,7 +1644,8 @@ namespace AdversityRoad.Combat
                 size *= shapeScale;
                 center.z *= shapeScale;
             }
-            weaponHitbox.SetShape(size, center);
+            RefreshReach();
+            weaponHitbox.SetShape(size, center, shapePose);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(HitboxWindow(windup, open, dmg, posture, knockback,
                 buildMomentum, unblockable));

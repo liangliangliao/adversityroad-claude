@@ -39,8 +39,23 @@ namespace AdversityRoad.Player
         public bool HasSheathWeapon => _sheath != null;
 
         /// <summary>兵器此刻在不在手上（无鞘武器视为一直在手）。动画层据此
-        /// 在持剑动作集与空手动作集之间切换。</summary>
+        /// 在持剑动作集与空手动作集之间切换；攻击距离也据此决定算不算刃长。</summary>
         public bool IsWeaponDrawn => _weaponHidden ? false : (_sheath == null || _sheath.IsDrawn);
+
+        /// <summary>当前骨架所在的模型根（量手臂/腿长用，见 ReachModel）。</summary>
+        public Transform ModelRoot =>
+            visualRoot != null && visualRoot.childCount > 0 ? visualRoot.GetChild(0) : null;
+
+        /// <summary>此刻真正握在手里的兵器（量刃长用）。没拔出来/放下了就是 null。</summary>
+        public Transform WeaponInHand
+        {
+            get
+            {
+                if (!IsWeaponDrawn) return null;
+                foreach (var t in WeaponObjects()) if (t != null) return t;
+                return null;
+            }
+        }
 
         /// <summary>
         /// 拔剑 / 收剑的候选片段（前面的优先）。

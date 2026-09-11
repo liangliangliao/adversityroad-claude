@@ -138,6 +138,9 @@ namespace AdversityRoad.Combat
         bool _leanInit;
 
         Transform _mocapModel, _hips;
+
+        /// <summary>骨架所在的模型根（量手臂/腿长用，见 ReachModel）。</summary>
+        public Transform MocapModel => _mocapModel;
         Vector3 _hipsBindLP;
         bool _hipsPin;
         bool _pendingGetUp;

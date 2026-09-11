@@ -240,7 +240,10 @@ namespace AdversityRoad.Combat
                 {
                     CombatFeedback.SwingArc(transform, true, new Color(1f, 0.7f, 0.3f));
                     // 技能级近战判定：范围大于普通连段（技能越高范围越大的总原则）
-                    weaponHitbox.SetShape(new Vector3(2.6f, 1.8f, 2.6f), new Vector3(0, 0.1f, 1.0f));
+                    var cfr = Combat();
+                    if (cfr != null) cfr.RefreshReach();
+                    weaponHitbox.SetShape(new Vector3(2.6f, 1.8f, 2.6f), new Vector3(0, 0.1f, 1.0f),
+                                          PoseState.Attack);
                     weaponHitbox.EnableHitbox(dmg);
                     Invoke(nameof(CloseHitbox), skill.hitboxOpenTime);
                 }
@@ -361,7 +364,9 @@ namespace AdversityRoad.Combat
             if (weaponHitbox == null) return;
             PlayerCombatController.PoseHitShape(pose, out Vector3 size, out Vector3 center);
             if (!Mathf.Approximately(scale, 1f)) { size *= scale; center.z *= scale; }
-            weaponHitbox.SetShape(size, center);
+            var cfReach = Combat();
+            if (cfReach != null) cfReach.RefreshReach();
+            weaponHitbox.SetShape(size, center, pose);
             // 绝招连段的每一段同样吃融合加成（技能是连招的一环，不是独立的孤岛）
             var cf = Combat();
             if (cf != null) dmg *= cf.Fusion.FusionMult;

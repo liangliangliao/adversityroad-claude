@@ -56,10 +56,63 @@ namespace AdversityRoad.Combat
             _col.enabled = false;
         }
 
+        /// <summary>
+        /// 这个角色的实测攻击距离（手臂/腿/刃长，见 ReachModel）。
+        /// 由拥有者在出招前刷新；valid=false 时一律不裁剪，保持旧行为。
+        /// </summary>
+        public ReachProfile reach;
+
+        /// <summary>上一次因为够不着而被裁掉的长度（米，诊断用；没裁就是 0）。</summary>
+        public float LastReachTrim { get; private set; }
+
         /// <summary>按招式设置判定框形状：size=(宽X, 高Y, 长Z纵深)，center=相对角色根的偏移。
-        /// 每招独立范围——突刺长而窄、横斩横宽、旋风斩/扫堂环身 360°、蓄力/绝招最大。</summary>
-        public void SetShape(Vector3 size, Vector3 center)
+        /// 每招独立范围——突刺长而窄、横斩横宽、旋风斩/扫堂环身 360°、蓄力/绝招最大。
+        ///
+        /// 【pose 是必填的，没有默认值】判定框前沿要按这一招真正靠什么够到对方
+        /// （手/腿/刃）来裁剪，而那件事只有调用方知道。给它一个默认值，就等于
+        /// 允许某个调用点悄悄跳过裁剪——这一轮已经吃够了"某个地方忘了跟上"的亏，
+        /// 所以让编译器去记，而不是让我去记。
+        /// </summary>
+        public void SetShape(Vector3 size, Vector3 center, PoseState pose)
         {
+            LastReachTrim = 0f;
+            // ===== 够不够得着：按实际的手臂/腿/刃长裁掉判定框够不到的那一截 =====
+            // 空手或剑还在鞘里的时候，横斩的判定框照样伸到身前 1.85 米——
+            // 那是大剑的长度，不是手臂的长度。这里把前沿收回到真正够得到的地方。
+            // 只裁前沿，不动宽高，也不改伤害：招式形状仍然是招式形状。
+            if (reach.valid)
+            {
+                float limit = reach.LimitOf(ReachModel.LimbOf(pose));
+                float far = center.z + size.z * 0.5f;
+                float near = center.z - size.z * 0.5f;
+                // 环身招（旋风斩/扫堂腿：判定框前后都罩住身体）的"距离"是**半径**，
+                // 不是前向纵深——够不到身前 2 米，同样也够不到身后 2 米。
+                // 对这一类按半径收，而不是只把前沿削掉（那会收成一个偏后的怪形状）。
+                if (near < -0.05f && far > 0.05f)
+                {
+                    float half = Mathf.Min(size.z * 0.5f, limit);
+                    if (half < size.z * 0.5f) { LastReachTrim = size.z * 0.5f - half; size.z = half * 2f; }
+                    if (size.x * 0.5f > limit) size.x = limit * 2f;
+                }
+                else if (far > limit)
+                {
+                    // 近端不动（贴身那一侧本来就该判到），只把远端收回来。
+                    if (limit <= near)
+                    {
+                        // 连近端都够不到：留一片贴身的薄判定，而不是把判定框整个抹掉
+                        // （那会变成"贴脸挥拳也没反应"，比够得太远更糟）。
+                        LastReachTrim = far - limit;
+                        size.z = 0.2f;
+                        center.z = Mathf.Max(0.1f, limit) - 0.1f;
+                    }
+                    else
+                    {
+                        LastReachTrim = far - limit;
+                        size.z = limit - near;
+                        center.z = near + size.z * 0.5f;
+                    }
+                }
+            }
             transform.localPosition = center;
             transform.localScale = Vector3.one;
             if (_box == null) _box = GetComponent<Collider>() as BoxCollider;

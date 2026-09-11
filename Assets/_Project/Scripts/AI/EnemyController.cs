@@ -1148,6 +1148,26 @@ namespace AdversityRoad.AI
             }
         }
 
+        // ===== 敌人这一侧的"够不够得着"，规矩与玩家完全一致 =====
+        // 只给玩家上几何距离约束、敌人照旧凭空够到，那就是单方面削玩家。
+        float _reachAt = -1f;
+
+        /// <summary>刷新这个敌人的实测攻击距离（手臂/腿/刃长）并写进判定框。</summary>
+        void RefreshReach()
+        {
+            if (attackHitbox == null) return;
+            if (Mathf.Approximately(_reachAt, Time.time)) return;
+            _reachAt = Time.time;
+            Transform model = poser != null && poser.MocapModel != null
+                ? poser.MocapModel
+                : (transform.childCount > 0 ? transform.GetChild(0) : null);
+            Transform hand = model != null
+                ? Combat.MecanimCharacter.FindBone(model, "righthand") : null;
+            Transform weapon = hand != null
+                ? Combat.MecanimCharacter.FindWeaponInModel(model) : null;
+            attackHitbox.reach = Combat.ReachModel.Measure(transform, model, weapon);
+        }
+
         void FireHitbox()
         {
             if (State == EnemyState.Dead || attackHitbox == null) return;
@@ -1155,7 +1175,10 @@ namespace AdversityRoad.AI
             // 判定框按招式轨迹取形：突刺细长（侧移可躲开）、横斩横宽、回旋斩环身 360°、
             // 重砸罩住一片。此前敌人所有招共用一个固定方盒，玩家读了招也无从"往哪躲"。
             var spec = Combat.EnemyMoveTable.Get(_attackPose);
-            attackHitbox.SetShape(spec.Size, spec.center);
+            // 【敌人走同一条规矩】够不够得着按它自己的手臂/腿/刃长算。
+            // 只给玩家上这条规则等于单方面削玩家，和「差距一律从敌人侧补」是反的。
+            RefreshReach();
+            attackHitbox.SetShape(spec.Size, spec.center, _attackPose);
             // 危险攻击：不可格挡（须闪避）+ 伤害/击退加成，兑现红光警示的威胁
             // 手臂伤情：出手明显变弱（打手臂的收益在这里兑现，玩家看得到）
             float armWeak = Time.time < _armHurtUntil ? 0.7f : 1f;
