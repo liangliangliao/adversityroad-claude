@@ -458,6 +458,7 @@ namespace AdversityRoad.EditorTools
         /// </summary>
         static void DiagReach(StringBuilder sb)
         {
+            var p1 = new AdversityRoad.Combat.ReachProfile();
             foreach (var name in new[] { "Characters/PlayerModel", "Characters/PlayerModel2", "Characters/EnemyModel" })
             {
                 var prefab = Resources.Load<GameObject>(name);
@@ -467,6 +468,7 @@ namespace AdversityRoad.EditorTools
                 {
                     var prof = AdversityRoad.Combat.ReachModel.Measure(
                         go.transform, go.transform, null);
+                    if (name.EndsWith("PlayerModel")) p1 = prof;
                     sb.Append("[CIDIAG][距离] ").Append(name).Append("  ")
                       .Append(prof.valid ? prof.ToString() : "!! 量不到骨骼，这个角色不会受距离约束")
                       .Append('\n');
@@ -488,10 +490,17 @@ namespace AdversityRoad.EditorTools
             {
                 AdversityRoad.Combat.PlayerCombatController.PoseHitShape(ps, out Vector3 size, out Vector3 center);
                 float far = center.z + size.z * 0.5f;
+                var limb = AdversityRoad.Combat.ReachModel.LimbOf(ps);
                 sb.Append("[CIDIAG][距离]   ").Append(ps)
                   .Append("  判定框前沿=").Append(far.ToString("0.00")).Append('m')
-                  .Append("  靠 ").Append(AdversityRoad.Combat.ReachModel.LimbOf(ps))
-                  .Append(" 够到\n");
+                  .Append("  靠 ").Append(limb).Append(" 够到");
+                if (p1.valid)
+                {
+                    // 空手（刃长=0）时这一招实际会被裁到哪里——这正是玩家问的那件事。
+                    float bare = p1.LimitOf(limb);
+                    sb.Append("  空手裁到=").Append(Mathf.Min(far, bare).ToString("0.00")).Append('m');
+                }
+                sb.Append('\n');
             }
             sb.Append("[CIDIAG][距离] 规则：判定框前沿超过「肩前+臂长(+刃长)」或「髋前+腿长」加 ")
               .Append(AdversityRoad.Combat.ReachProfile.StepPad.ToString("0.00"))

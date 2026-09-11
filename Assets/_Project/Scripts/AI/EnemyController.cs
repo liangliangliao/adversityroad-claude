@@ -814,7 +814,8 @@ namespace AdversityRoad.AI
                     else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
                     {
                         MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
-                        if (dist <= profile.AttackRange) State = EnemyState.Attack;
+                        RefreshReach();
+                        if (dist <= ReachGate) State = EnemyState.Attack;
                     }
                     else
                     {
@@ -1151,6 +1152,30 @@ namespace AdversityRoad.AI
         // ===== 敌人这一侧的"够不够得着"，规矩与玩家完全一致 =====
         // 只给玩家上几何距离约束、敌人照旧凭空够到，那就是单方面削玩家。
         float _reachAt = -1f;
+
+        /// <summary>
+        /// 它真正够得到的距离：实测的最长一条（兵器或腿）＋ 对方身体半径。
+        ///
+        /// 【为什么必须有这条】判定框现在按几何裁剪了，而 AI 判"该不该出手"用的是
+        /// profile.AttackRange（1.8~2.3m），那是当年按**没有裁剪**的判定框调出来的数。
+        /// 两边一旦对不上，敌人就会在自己够不到的距离上挥空——
+        /// 而"进入攻击距离却打不到人"正是 EnemyMoveTable 开头那段注释警告过的事。
+        /// 取两者的较小值：手里有兵器时这条线约 2.2m，压根不会限制它（AttackRange 最大 2.3）；
+        /// 只有在它确实够不到的时候才把它逼得再走近一点——那本来就该走近。
+        /// </summary>
+        float ReachGate
+        {
+            get
+            {
+                if (attackHitbox == null || !attackHitbox.reach.valid) return profile.AttackRange;
+                var r = attackHitbox.reach;
+                float best = Mathf.Max(r.LimitOf(Combat.ReachLimb.Weapon),
+                                       r.LimitOf(Combat.ReachLimb.Leg));
+                // 对方的受击体半径：刀碰到的是身体表面，不是他的中心点。
+                best += Combat.MecanimCharacter.TargetHeight * 0.17f;
+                return Mathf.Min(profile.AttackRange, best);
+            }
+        }
 
         /// <summary>刷新这个敌人的实测攻击距离（手臂/腿/刃长）并写进判定框。</summary>
         void RefreshReach()
