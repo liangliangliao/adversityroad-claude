@@ -635,6 +635,7 @@ namespace AdversityRoad.EditorTools
                 if (ln.Length == 0) continue;
                 if (ln.Contains("!! ") ||
                     ln.StartsWith("[CIDIAG][角色贰]") ||
+                    ln.StartsWith("[CIDIAG][距离]") ||
                     ln.StartsWith("[CIDIAG][平衡] 【设计方向】"))
                     sb.Append(ln).Append('\n');
             }
