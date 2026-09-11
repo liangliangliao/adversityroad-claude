@@ -437,7 +437,9 @@ namespace AdversityRoad.Combat
             // 这一行是给"接了一堆永远播不到的片段"留的照妖镜：
             // 数字和下面列出的名字对不上预期，就是有东西悄悄溜进了每帧的开销里。
             sb.Append("    UAL 接进动作层 ").Append(_ualInGraph.Count).Append(" 条")
-              .Append(Core.GameDebug.PreferUalClips ? "（UAL 优先：全量）" : "（默认：只接补位用的）")
+              .Append(Core.GameDebug.PreferUalClips ? "（UAL 优先：全量）"
+                      : _folder != DefaultFolder ? "（本角色主库不全，UAL 即其动作库：补满全部空姿态）"
+                      : "（默认：只补主库空着的姿态）")
               .Append(_ualInGraph.Count > 0 ? "：" : "").Append(string.Join("、", _ualInGraph.ToArray()))
               .Append(NL);
             // 同一个姿态的变体池里出现重复片段 = 轮换到它时等于没换。
