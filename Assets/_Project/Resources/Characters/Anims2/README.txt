@@ -12,3 +12,8 @@
    回退默认动作库，不影响运行。
 
 寻址规则与 Anims/ 相同，见那边的 README。
+
+【不要往这里堆未接入的动作包】
+本目录在 Resources 下，LoadAll 会把里面每一条片段都加载进内存，哪怕没人用。
+UAL1/UAL2/KayKit 这类素材储备一律放 Assets/_Project/Animations/ 下（非 Resources），
+接入流程见那边的 README.txt。门禁 tools/animchain.py 会把"加载了却没人用"判红。
