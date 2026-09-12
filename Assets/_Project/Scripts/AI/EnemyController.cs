@@ -313,7 +313,9 @@ namespace AdversityRoad.AI
         float _staggerChainUntil; // 这个窗口什么时候过期
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
         PoseState _attackPose = PoseState.Attack;   // 本次出手选中的招式（多样化）
-        int _comboLeft;           // 精英/首领的连击追加段数
+        int _comboLeft;           // 本串连招还剩几段
+        AttackString _string;     // 本次出手选中的招串（见 EnemyMoveSet）
+        int _stage;               // 打到第几段
         float _strafeDir = 1f, _strafeFlipT;        // 交战游走（像人一样找角度）
         Vector3 _lastSelfPos;     // 位移驱动动画：任何来源的移动都要迈脚，不许滑行
         float _measuredSpeed;
@@ -526,9 +528,11 @@ namespace AdversityRoad.AI
 
             _spec = TelegraphTable.Get(_attackPose, perilous);
 
+            // 头顶记号与脚下红圈属于"屏幕提示层"，默认不显示（见 GameDebug.TelegraphOverlays）：
+            // 读招要靠身体和节拍，不靠符号。
             if (_alertMark != null)
             {
-                _alertMark.text = _spec.mark;
+                _alertMark.text = Core.GameDebug.TelegraphOverlays ? _spec.mark : "";
                 _alertMark.color = _spec.color;
             }
             if (_dangerRingMat != null)
@@ -539,7 +543,7 @@ namespace AdversityRoad.AI
             }
             if (_dangerRing != null)
             {
-                _dangerRing.SetActive(true);
+                _dangerRing.SetActive(Core.GameDebug.TelegraphOverlays);
                 // 指示器按招式轨迹取形：横斩是横向宽弧、突刺是细长直线、扫腿是贴地宽环。
                 // 「往哪躲」于是有画面依据，而不是全场统一一个圆圈。
                 _dangerRingBaseScale = new Vector3(_spec.ring.x, 0.03f, _spec.ring.y);
@@ -549,7 +553,7 @@ namespace AdversityRoad.AI
                     new Vector3(0, -0.95f + _spec.ringHeight, _spec.ring.y * 0.28f);
             }
             // 教学提示：只在玩家还没见过这一族时说一次（说多了就成了噪声）
-            if (NoteTelegraphSeen(_spec.kind, perilous))
+            if (Core.GameDebug.TelegraphOverlays && NoteTelegraphSeen(_spec.kind, perilous))
                 GameEvents.RaiseSubtitle("【" + _spec.name + "】" + _spec.answer);
         }
 
@@ -1041,12 +1045,6 @@ namespace AdversityRoad.AI
         }
 
         // 出手招式池：普通敌人用基础拳脚剑技，精英/首领追加重斩/旋风/腿法大招
-        static readonly PoseState[] BasicMoves =
-            { PoseState.Attack, PoseState.AttackUp, PoseState.SwordThrust,
-              PoseState.PunchCross, PoseState.AttackKick };
-        static readonly PoseState[] EliteMoves =
-            { PoseState.HeavyAttack, PoseState.AttackSpin, PoseState.SpinKick,
-              PoseState.SideKick, PoseState.JumpKick };
 
         /// <summary>
         /// 敌人招式的伤害/击退：统一从 EnemyMoveTable 取，不再散落魔数。
@@ -1126,10 +1124,16 @@ namespace AdversityRoad.AI
             // 且有概率追加 1-2 段连击（高手连招压制）
             bool elite = profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f;
             bool useElite = elite && Random.value < (profile.category == EnemyCategory.Boss ? 0.45f : 0.25f);
-            var pool = useElite ? EliteMoves : BasicMoves;
-            _attackPose = pool[Random.Range(0, pool.Length)];
-            _comboLeft = profile.category == EnemyCategory.Boss ? Random.Range(1, 3)
-                       : elite && Random.value < 0.4f ? 1 : 0;
+            // 【按流派选一整串连招，而不是从十招里随机抓一招】
+            // 原来每个敌人——拳法也好、重武器也好——都抓同一个池子，
+            // 这就是"招式单一、变化太少"的成因：流派只决定要不要显示武器。
+            // 现在变化来自招串（每个流派几串、长度节奏各异），
+            // 规律仍来自招式族（同族前摇时长全场恒定），两者不冲突。
+            var set = EnemyMoveSet.For(archetype, useElite);
+            _string = set[Random.Range(0, set.Length)];
+            _stage = 0;
+            _attackPose = _string.stages[0];
+            _comboLeft = _string.stages.Length - 1;
 
             // 危险攻击（大作红光警示）：精英重招/Boss 有概率使出【不可格挡】的危险一击——
             // 头顶亮「危」、红圈更大更亮，只能闪避不能格挡，教玩家读招而非无脑格挡
@@ -1155,7 +1159,8 @@ namespace AdversityRoad.AI
             // 两道克制：只有【首领】的不可格挡技才给特写，且同一个敌人 9 秒内最多一次。
             // 特写贵在稀有——杂兵每记红光都推一次镜头，镜头就成了噪声，
             // 玩家反而更看不清战场（这是"知道何时不特写"的那一半）。
-            if (_perilous && profile.category == EnemyCategory.Boss &&
+            if (Core.GameDebug.TelegraphOverlays && _perilous &&
+                profile.category == EnemyCategory.Boss &&
                 Time.time - _lastCastShot > 9f)
             {
                 _lastCastShot = Time.time;
@@ -1318,8 +1323,10 @@ namespace AdversityRoad.AI
                 Vector3.Distance(transform.position, _player.position) < profile.AttackRange * 1.6f)
             {
                 _comboLeft--;
-                var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
-                _attackPose = pool[Random.Range(0, pool.Length)];
+                // 招串的下一段——不是再随机抓一招。一串连招的节奏要能被记住。
+                _stage++;
+                _attackPose = _string.stages != null && _stage < _string.stages.Length
+                    ? _string.stages[_stage] : PoseState.Attack;
                 FaceTarget();
                 // 【连击段同样要有前摇】——此前这里直接排 OpenAttackHitbox，
                 // 也就是说敌人一套连招里只有第一下亮「！」，第二、三下是**零征兆**打到脸上。

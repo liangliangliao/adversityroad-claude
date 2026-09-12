@@ -163,6 +163,13 @@ namespace AdversityRoad.Combat
             { PoseState.SpinKick,    M("旋踢",   HitTrajectory.ArcH,  2.5f, 1.6f, 2.2f, new Vector3(0, 0.20f, 0.55f), 1.25f, 28f, 4.0f) },
             { PoseState.SideKick,    M("侧踹",   HitTrajectory.Line,  1.0f, 1.1f, 1.9f, new Vector3(0, 0.10f, 1.10f), 1.00f, 22f, 3.5f) },
             { PoseState.JumpKick,    M("飞踢",   HitTrajectory.Aerial,1.2f, 1.6f, 2.2f, new Vector3(0, 0.20f, 1.20f), 1.20f, 24f, 4.0f) },
+
+            // ---- 补齐两招：它们在读招表（TelegraphTable）里各自成族，却一直没有敌人用过 ----
+            // 扫腿是六个招式族里唯一「挡不住、只能跳」的那一族。它原本只存在于表里：
+            // EnemyController 的招式池里 PoseState.Sweep 出现次数是 0。
+            // 于是玩家永远学不到"看见压低身形就跳"——因为这件事从没发生过。
+            { PoseState.Sweep,       M("扫腿",   HitTrajectory.Circle,3.0f, 0.8f, 3.0f, new Vector3(0, -0.55f, 0.10f), 0.85f, 26f, 2.0f) },
+            { PoseState.PunchJab,    M("刺拳",   HitTrajectory.Point, 0.8f, 0.9f, 1.4f, new Vector3(0, 0.25f, 0.85f), 0.70f, 8f,  0.8f) },
         };
 
         static readonly MoveSpec Fallback =

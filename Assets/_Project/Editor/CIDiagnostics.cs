@@ -612,6 +612,9 @@ namespace AdversityRoad.EditorTools
                 pa = new AdversityRoad.Combat.PlayableAnimator(an, null);
             }
             bool ok = true;
+            sb.Append("[CIDIAG][读招] 屏幕提示层（头顶记号/脚下红圈/字幕教学/特写文字）= ")
+              .Append(AdversityRoad.Core.GameDebug.TelegraphOverlays ? "开" : "关（读招只靠身体与节拍）")
+              .Append('\n');
             sb.Append("[CIDIAG][读招] 每一招的固定规律（时长同族恒定，玩家据此学习）；")
               .Append("前摇播该招动画的前 ")
               .Append((AdversityRoad.AI.EnemyController.WindupPortion * 100f).ToString("0"))
@@ -638,6 +641,47 @@ namespace AdversityRoad.EditorTools
                 if (clip.Length == 0) { sb.Append("  !! 这一招没有自己的动作片段"); ok = false; }
                 sb.Append('\n');
             }
+            // ---- 流派招串：变化从哪来，以及六个招式族是不是都有人用 ----
+            var usedKinds = new System.Collections.Generic.HashSet<AdversityRoad.Combat.TelegraphKind>();
+            foreach (var arch in AdversityRoad.AI.EnemyMoveSet.AllArchetypes)
+            {
+                foreach (bool elite in new[] { false, true })
+                {
+                    var set = AdversityRoad.AI.EnemyMoveSet.For(arch, elite);
+                    foreach (var str in set)
+                    {
+                        var line = new StringBuilder();
+                        float total = 0f;
+                        for (int i = 0; i < str.stages.Length; i++)
+                        {
+                            var sp = AdversityRoad.Combat.TelegraphTable.Get(str.stages[i], false);
+                            usedKinds.Add(sp.kind);
+                            if (i > 0) line.Append(" → ");
+                            line.Append(sp.kind).Append('(').Append(sp.windup.ToString("0.00")).Append("s)");
+                            total += sp.windup;
+                            if (pa != null && pa.Valid && pa.ActionClipNameOf(str.stages[i]).Length == 0)
+                            {
+                                sb.Append("[CIDIAG][读招] !! ").Append(arch).Append(' ').Append(str.name)
+                                  .Append(" 第").Append(i + 1).Append("段 ").Append(str.stages[i])
+                                  .Append(" 没有自己的动作片段，起手段无从播起\n");
+                                ok = false;
+                            }
+                        }
+                        sb.Append("[CIDIAG][读招]   ").Append(arch).Append(elite ? "·精英 " : "      ")
+                          .Append(str.name).Append("  ").Append(line)
+                          .Append("  合计前摇=").Append(total.ToString("0.00")).Append("s\n");
+                    }
+                }
+            }
+            foreach (AdversityRoad.Combat.TelegraphKind k
+                     in System.Enum.GetValues(typeof(AdversityRoad.Combat.TelegraphKind)))
+                if (!usedKinds.Contains(k))
+                {
+                    // 一条玩家永远遇不到的规律，等于不存在——扫腿族此前正是这种情况。
+                    sb.Append("[CIDIAG][读招] !! 招式族 ").Append(k)
+                      .Append(" 没有任何流派会用——这条规律玩家永远学不到\n");
+                    ok = false;
+                }
             if (pa != null) pa.Destroy();
             if (go != null) Object.DestroyImmediate(go);
             return ok;

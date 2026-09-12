@@ -43,7 +43,7 @@ namespace AdversityRoad.Core
         /// 一个根本不存在的问题——这个项目里已经发生过一次（招式表在烘焙前打的那次）。
         /// 面板上写着几号包，一眼就能排除掉后一种可能。
         /// </summary>
-        public const int BuildTag = 67;
+        public const int BuildTag = 68;
 
         /// <summary>
         /// 敌人强度：在调好的基准生命之上再乘一道，**玩家自己在设置面板里调**。
@@ -71,6 +71,19 @@ namespace AdversityRoad.Core
 
         /// <summary>敌人耐揍模式：大幅削减敌人受到的伤害（仅供调试，默认关闭）。</summary>
         public static bool TankyEnemies;
+
+        /// <summary>
+        /// 前摇的**屏幕提示层**（头顶记号「！/危/↓/→」、脚下红圈、第一次遇到某族时的
+        /// 字幕教学、首领绝招特写里的招名文字）。默认 **false**：全部不显示。
+        ///
+        /// 产品决定（玩家原话）："警示不能通过文字或符号在屏幕提示，
+        /// 需要的是通过可直观的敌人的动作动画以及规律来判断和预测敌人攻击，
+        /// 所以从某方面来说这是一款考验玩家判断力的游戏。"
+        /// 那么读招就只能建立在两件事上：**身体在做什么**，和**同族前摇时长恒定**。
+        /// 这一层代码全部保留、只是不再显示——要回来是把这个开关改成 true，
+        /// 一行的事；删掉就不是了。
+        /// </summary>
+        public static bool TelegraphOverlays;
 
         /// <summary>耐揍时敌人实际承受的伤害系数（越小越耐揍）。</summary>
         public const float TankyDamageScale = 0.1f;
