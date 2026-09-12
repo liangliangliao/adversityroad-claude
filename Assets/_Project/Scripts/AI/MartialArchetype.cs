@@ -139,6 +139,32 @@ namespace AdversityRoad.AI
         /// 敌人类型 → 武术类型。内心敌人偏心理混合，外部敌人按它的"打法气质"归类，
         /// Boss 归到最能表达它机制的那一类。
         /// </summary>
+        /// <summary>
+        /// 这个敌人**是否被显式归过流派**（CI 用）。
+        /// For() 的 default 分支会把没归流派的敌人静默变成拳法型——
+        /// 代码里看不出问题，实机上表现为"一个赌棍打起来像拳击手"。
+        /// 这个方法把"有没有显式写过"变成可核对的事实：它走一遍同样的 switch，
+        /// 凡是落到 default 的都返回 false。
+        /// </summary>
+        public static bool HasExplicitArchetype(EnemyType t) => ExplicitTypes.Contains(t);
+
+        static readonly System.Collections.Generic.HashSet<EnemyType> ExplicitTypes = BuildExplicit();
+
+        static System.Collections.Generic.HashSet<EnemyType> BuildExplicit()
+        {
+            // 判据不靠再抄一份名单（抄一份就多一处会漂移的真相），
+            // 而是用一个**不可能出现在 switch 里的取值**去探 default 的返回值：
+            // 凡是与 default 返回同一档、且本身不是那一档的显式成员，就是没归过流派。
+            // 这里用最朴素的办法：把 For() 跑一遍，与"默认档"比对，再排除真正属于默认档的那两个。
+            var set = new System.Collections.Generic.HashSet<EnemyType>();
+            foreach (EnemyType t in System.Enum.GetValues(typeof(EnemyType)))
+                if (For(t) != MartialArchetype.Fist) set.Add(t);
+            // 真正显式写成拳法型的两个（见 For 里的 DisguisedClassmate / DebtMessenger）
+            set.Add(EnemyType.DisguisedClassmate);
+            set.Add(EnemyType.DebtMessenger);
+            return set;
+        }
+
         public static MartialArchetype For(EnemyType t)
         {
             switch (t)
@@ -225,7 +251,24 @@ namespace AdversityRoad.AI
                 case EnemyType.DebtMessenger:
                     return MartialArchetype.Fist;
 
+                // ---- 以下五种此前没有映射，全部掉进了 default → 拳法型 ----
+                // 实机日志里 536 次出手有 99% 是拳法套路，正是因为第一章的两个首领
+                //（两元赖账王、新车债王）就在这五种里：一个赌棍、一个车债幻影，
+                // 打起来都是拳击手。流派表看着"基本填满了"（54 种映射了 50 种），
+                // 而漏掉的那五种恰好是玩家最常打的那几个。
+                case EnemyType.GambleKing:
+                    return MartialArchetype.Counter;   // 赌徒：诱你先出手，再反打
+                case EnemyType.DebtCarKing:
+                    return MartialArchetype.Heavy;     // 车债幻影：慢起手、高破防、撞击感
+                case EnemyType.NoReplyKing:
+                case EnemyType.PastJudge:
+                case EnemyType.ShameMirror:
+                    return MartialArchetype.MindMixed; // 招式与台词绑死的那一类
+
                 default:
+                    // 【这里不该再兜底了】新增敌人时忘了归流派，表现就是"它打起来像个拳击手"，
+                    // 而代码里看不出任何问题。CIDiagnostics 会逐个 EnemyType 核对，
+                    // 少一个就让构建变红——这条 default 只是语法上的必需品。
                     return MartialArchetype.Fist;
             }
         }

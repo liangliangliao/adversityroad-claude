@@ -450,6 +450,9 @@ namespace AdversityRoad.AI
         void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
+            // 记下这个 Agent 本来的避让档位：倒地期间会临时关掉，起身要恢复成原值，
+            // 而不是恢复成某个我在这里猜的常量。
+            if (_agent != null) _avoidanceDefault = _agent.obstacleAvoidanceType;
             _anim = GetComponentInChildren<Animator>();
         }
 
@@ -798,9 +801,27 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Stagger)
             {
                 _staggerTimer -= dt;
+                // ===== 躺在地上的人不该被推着走 =====
+                // 玩家反馈"敌人倒地时会在地上漂移"。机制是两条叠在一起：
+                //  ① StopMoving() 只在**进入**硬直的那一帧调了一次，它清的是那一帧的
+                //     速度；而倒地要躺 0.35~2.4 秒，这中间没有任何东西再按住它。
+                //  ② NavMeshAgent 即使 isStopped = true **仍然参与彼此避让**——
+                //     别的敌人和玩家从旁边挤过去，会把这个躺着的人推开。
+                //     倒在地上的人不是一个"会让路的人"，它此刻根本不该参与避让。
+                // 所以硬直期间每帧按住速度，并关掉避让；起身时再恢复。
+                // 击飞位移那一小段除外——那是有意的位移，不能被清零。
+                if (AgentReady && Time.time >= _knockFlyUntil)
+                {
+                    _agent.velocity = Vector3.zero;
+                    _agent.isStopped = true;
+                    _agent.obstacleAvoidanceType =
+                        UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
+                }
                 UpdateEmotion("慌乱");
                 if (_staggerTimer <= 0)
                 {
+                    // 站起来了，重新参与避让（否则它以后永远从别人身上穿过去）
+                    if (AgentReady) _agent.obstacleAvoidanceType = _avoidanceDefault;
                     State = EnemyState.Chase;
                     // 【起身霸体窗】倒地爬起来的那一下不能再被打回去。
                     // 这是动作游戏的通行规则（起身无敌帧 / 受身）：没有它，
@@ -2047,10 +2068,17 @@ namespace AdversityRoad.AI
         /// <summary>重击击飞：受击位移（二次强减速）。distance=总飞行距离、dur=时长。
         /// 小击退=极短栽倒（≈1.4m/0.15s，当场倒地）；大击退=飞很远（配合腾空后翻滚，
         /// 5m+/0.55s），位移与空翻同步，不再是僵直漂移。</summary>
+        /// <summary>击飞位移的截止时刻：这段时间里的位移是有意的，硬直分支不许清零它。</summary>
+        float _knockFlyUntil;
+        /// <summary>这个 Agent 原本的避让档位（倒地时临时关掉，起身恢复）。</summary>
+        UnityEngine.AI.ObstacleAvoidanceType _avoidanceDefault =
+            UnityEngine.AI.ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+
         System.Collections.IEnumerator KnockFly(Vector3 dir, float distance, float dur)
         {
             dir.y = 0;
             if (dir.sqrMagnitude < 0.01f) yield break;
+            _knockFlyUntil = Time.time + dur;
             dir = dir.normalized;
             // 二次减速位移积分 ∫3k²=1 → 峰值速度系数使总位移=distance
             float peak = distance * 3f / dur;

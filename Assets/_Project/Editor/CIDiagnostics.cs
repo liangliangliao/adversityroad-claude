@@ -673,6 +673,21 @@ namespace AdversityRoad.EditorTools
                     }
                 }
             }
+            // 【每一个敌人都必须有显式的流派】没归流派的会掉进 default → 拳法型，
+            // 表现是"一个赌棍打起来像拳击手"，而代码里看不出任何问题。
+            // 实机日志实测：536 次出手 99% 是拳法套路，因为第一章的两个首领
+            //（两元赖账王、新车债王）正在那 5 个没映射的类型里。
+            // 54 个类型映射了 50 个——"基本填满了"恰恰是这种错最容易藏住的形态。
+            foreach (AdversityRoad.AI.EnemyType et
+                     in System.Enum.GetValues(typeof(AdversityRoad.AI.EnemyType)))
+            {
+                if (!AdversityRoad.AI.MartialArchetypeCatalog.HasExplicitArchetype(et))
+                {
+                    sb.Append("[CIDIAG][读招] !! 敌人 ").Append(et)
+                      .Append(" 没有归入任何武学流派，会掉进默认的拳法型\n");
+                    ok = false;
+                }
+            }
             // 【每一个流派都必须有自己的招串】掉进 default 的那一档会悄悄变成拳法型。
             // 实机日志实测：736 次出手里 66% 是拳法系招串，因为 MindMixed
             //（覆盖约二十种敌人）没有分支。这种"沉默的归并"只能靠逐个枚举值比对来发现。
