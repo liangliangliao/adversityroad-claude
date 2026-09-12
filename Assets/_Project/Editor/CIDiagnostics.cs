@@ -616,9 +616,9 @@ namespace AdversityRoad.EditorTools
               .Append(AdversityRoad.Core.GameDebug.TelegraphOverlays ? "开" : "关（读招只靠身体与节拍）")
               .Append('\n');
             sb.Append("[CIDIAG][读招] 每一招的固定规律（时长同族恒定，玩家据此学习）；")
-              .Append("前摇播该招动画的前 ")
-              .Append((AdversityRoad.AI.EnemyController.WindupPortion * 100f).ToString("0"))
-              .Append("% 放慢铺满\n");
+              .Append("前摇：基底定格在该招动画最前端（")
+              .Append((AdversityRoad.AI.EnemyController.WindupHold * 100f).ToString("0"))
+              .Append("%），叠该族反方向蓄势姿态；落刀从 0 全速播完并卸掉蓄势\n");
             var poses = new[]
             {
                 AdversityRoad.Combat.PoseState.Attack, AdversityRoad.Combat.PoseState.AttackUp,

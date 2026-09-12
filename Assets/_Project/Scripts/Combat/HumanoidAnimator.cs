@@ -320,8 +320,16 @@ namespace AdversityRoad.Combat
         void ApplyWindup()
         {
             // 没有前摇时姿态平滑归零，避免出手瞬间"弹"一下
-            float w = _windupKind < 0 ? 0f : Mathf.SmoothStep(0.25f, 1f, _windup01);
-            _windupW = Mathf.MoveTowards(_windupW, w, Time.deltaTime / 0.12f);
+            // 【蓄势姿态现在是唯一的读招依据，所以要早早拉满并保持住】
+            // 基底已经定格（见 EnemyController.PlayWindupPose），这一层是前摇期间
+            // 画面上**唯一在动的东西**；它必须在前摇前段就到位，让后半段是一个
+            // 稳定、看得清、认得出是哪一族的剪影，而不是一路缓慢渐变到出手那一刻。
+            // 前 40% 涨满，之后保持。
+            float w = _windupKind < 0 ? 0f : Mathf.SmoothStep(0.35f, 1f, Mathf.Clamp01(_windup01 / 0.4f));
+            // 上涨要快（0.08s 到位），卸掉要更快（0.05s）——出手那一瞬蓄势姿态"弹开"，
+            // 与定格的基底同时开始动，这个对比就是"来了"的信号本身。
+            float rate = Time.deltaTime / (w > _windupW ? 0.08f : 0.05f);
+            _windupW = Mathf.MoveTowards(_windupW, w, rate);
             if (_windupW < 0.01f || _windupShape < 0) return;
 
             Transform spine = _spine != null ? _spine : (rig != null ? rig.torso : null);
@@ -334,16 +342,16 @@ namespace AdversityRoad.Combat
             switch ((TelegraphKind)_windupShape)
             {
                 case TelegraphKind.Overhead:   // 高举过顶、上身后仰：最大的剪影变化
-                    Pitch(spine, -26f * k);
-                    Pitch(shL, -105f * k); Pitch(shR, -112f * k);
+                    Pitch(spine, -35f * k);
+                    Pitch(shL, -135f * k); Pitch(shR, -145f * k);
                     break;
                 case TelegraphKind.Horizontal: // 拧腰、兵器拉到右体侧
-                    Yaw(spine, 42f * k);
-                    Yaw(shR, 40f * k); Pitch(shR, -20f * k);
+                    Yaw(spine, 56f * k);
+                    Yaw(shR, 54f * k); Pitch(shR, -27f * k);
                     break;
                 case TelegraphKind.Thrust:     // 正面对齐、兵器收到腰际、重心下沉前压
-                    Pitch(spine, 14f * k);
-                    Pitch(shR, 34f * k); Yaw(shR, -18f * k);
+                    Pitch(spine, 19f * k);
+                    Pitch(shR, 46f * k); Yaw(shR, -24f * k);
                     Sink(hips, 0.04f * k);
                     break;
                 case TelegraphKind.LowSweep:   // 整个人压低——最容易一眼认出的那一族
@@ -351,17 +359,17 @@ namespace AdversityRoad.Combat
                     // 骨盆是整条腿的父节点，把它往下挪多少，脚就往地里陷多少
                     //（这套骨骼没有 IK 去把脚留在原地）。8cm 大致藏在鞋和地面的
                     // 接触里，再多就会看见脚脖子插进地板。
-                    Pitch(spine, 38f * k);
+                    Pitch(spine, 50f * k);
                     Sink(hips, 0.08f * k);
-                    Pitch(shL, 26f * k); Pitch(shR, 26f * k);
+                    Pitch(shL, 35f * k); Pitch(shR, 35f * k);
                     break;
                 case TelegraphKind.Kick:       // 提膝
-                    Pitch(legR, -46f * k);
-                    Pitch(spine, -10f * k);
+                    Pitch(legR, -62f * k);
+                    Pitch(spine, -14f * k);
                     break;
                 case TelegraphKind.Spin:       // 反向拧身蓄力（转之前先往回卷）
-                    Yaw(spine, -52f * k);
-                    Yaw(shL, -34f * k); Yaw(shR, -34f * k);
+                    Yaw(spine, -70f * k);
+                    Yaw(shL, -46f * k); Yaw(shR, -46f * k);
                     break;
             }
         }

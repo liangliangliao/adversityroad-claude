@@ -1119,20 +1119,36 @@ namespace AdversityRoad.AI
             }
         }
 
-        /// <summary>取招式动画的前多少作为"起手段"。</summary>
-        public const float WindupPortion = 0.35f;
+        /// <summary>前摇基底定格在这一招动画的多前面（近乎第一帧）。
+        /// 取一丁点而不是一段：基底越静止，反向蓄势姿态越读得出来，
+        /// 落刀时"从静到动"的对比也越大。</summary>
+        public const float WindupHold = 0.06f;
 
         /// <summary>
-        /// 前摇期间的身体：**播这一招自己的动画的起手段**，拉长到整个前摇时长。
+        /// 前摇期间的身体：**定住在起手的那一帧，再叠上这一族反方向的蓄势姿态**。
         ///
-        /// 【为什么要改】此前所有招式的前摇都播同一段 PoseState.Charge（Great Sword Power Up）。
-        /// 六个招式族的规律层是齐的（时长、记号、颜色、地面指示、形体叠加各不相同），
-        /// 唯独**动作动画本身每一招都长一样**——玩家要学的"看动作认招"因此无从学起：
-        /// 身体只说了"我要出手了"，没说"我要出哪一招"。
-        /// 现在把这一招自己的前 35% 以慢速播完整个前摇：
-        /// 高举过顶的劈斩、收到腰际的突刺、压低的扫腿，是这一招**本身**的动作慢放，
-        /// 不是另一段通用姿势。落刀时再从头全速播完整招，读起来就是"蓄—发"。
-        /// 找不到片段时退回原来的 Charge 姿势（绝不让前摇变成没有姿势）。
+        /// 【#67~#73 我走错的那条路，日志把它钉死了】
+        /// 我让前摇直接播"这一招自己的动画"（0→35% 慢放），落刀再从 35% 续上。
+        /// 实测 36 次前摇里 **33 次（92%）前摇最后一帧与出手第一帧是同一条片段**——
+        /// 也就是说攻击真正打出来的那一瞬间，画面上什么都没变：
+        /// 片段没换、姿势没换，唯一的差别是播放速度由慢变快。
+        /// 于是玩家要分辨的是「同一个动作的慢速版」与「正常速版」，
+        /// 在 2 米、0.6 秒、手机屏幕上这不是一个可分辨的信号。
+        /// 把屏幕符号全部关掉之后这是唯一线索，读不出来是必然的。
+        ///
+        /// 【读招的本质：预备动作的方向与攻击相反】
+        /// 劈之前要举高（向上），刺之前要收刀到腰（向后），扫之前要压低。
+        /// ApplyWindup 里那六族反向姿态本来就是照这个写的，
+        /// 但叠在"已经在向前挥的攻击动画"上就被抵消掉了，主视觉还是攻击本身。
+        /// 所以基底不能是正在走的攻击动画——要**定住**，让反向姿态成为唯一在动的东西。
+        ///
+        /// 现在的做法：
+        ///   基底 = 这一招动画的**第一帧附近定格**（速度压到极低、hold 住），
+        ///          保留"他握着什么、重心在哪"这层信息，但它本身不动；
+        ///   叠加 = 该族的反向蓄势姿态，由 ApplyWindup 拉满并保持；
+        ///   落刀 = 从 0 全速播完整招，同时反向姿态在 0.05 秒内卸掉。
+        /// 于是出手那一瞬有两件事同时发生：**定格的身体开始动 + 蓄势姿态弹开**。
+        /// 这才是"来了"这个信号本身，而且不依赖任何符号。
         /// </summary>
         void PlayWindupPose(float windup)
         {
@@ -1141,10 +1157,8 @@ namespace AdversityRoad.AI
             float raw = string.IsNullOrEmpty(clip) ? 0f : poser.RestClipLength(clip);
             if (raw > 0.05f && windup > 0.05f)
             {
-                // 起手段有多长（秒）→ 要多慢才能铺满整个前摇
-                float segSec = raw * WindupPortion;
-                float speed = Mathf.Clamp(segSec / windup, 0.12f, 1f);
-                if (poser.PlayRestClip(clip, false, true, speed, 0.10f, 0f, WindupPortion) > 0f)
+                // 只取最前面一丁点并 hold 住：基底近乎定格，反向蓄势姿态才是动的那个。
+                if (poser.PlayRestClip(clip, false, true, 0.12f, 0.10f, 0f, WindupHold) > 0f)
                     return;
             }
             poser.SetPose(PoseState.Charge);
@@ -1235,11 +1249,11 @@ namespace AdversityRoad.AI
             ShowTelegraph(false);
             _swingFiring = false;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
-            // 【接着前摇往下打，不要从头重播】前摇已经把这一招的前 35% 慢放完了；
-            // 从 0 重播会让画面"弹回起点"，而且出刀的前三分之一和前摇一模一样，
-            // 玩家因此分不出"还在蓄"与"已经打出来"。从 35% 全速续上，
-            // 整段就是一个连续动作：慢慢抬起 → 加速甩出。那个加速就是"来了"。
-            if (poser != null) poser.PlayActionFrom(_attackPose, WindupPortion);
+            // 【从头全速播完整招】前摇只把基底定格在动画最前面（WindupHold），
+            // 没有吃掉动作本身，所以这里从 0 播就是完整的一次挥击。
+            // 出手瞬间画面上有两件事同时发生：定格的身体开始动 + 反向蓄势姿态弹开——
+            // 这个"从静到动"的对比就是信号本身，不需要任何符号。
+            if (poser != null) poser.SetPose(_attackPose);
             _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
             _winSwing++;
             float contact = ContactDelay(_attackPose);
