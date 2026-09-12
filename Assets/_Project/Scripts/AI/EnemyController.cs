@@ -265,14 +265,22 @@ namespace AdversityRoad.AI
         public float WindupWeightNow => poser != null ? poser.WindupWeight : 0f;
         public int WindupShapeNow => poser != null ? poser.WindupShape : -1;
 
-        /// <summary>敌人此刻在不在画面内（用头顶锚点做代理；相机缺失或在身后返回 -9）。</summary>
+        /// <summary>
+        /// 敌人的**身体**此刻在不在画面内（0~1 在画面内；相机缺失或在镜头身后返回 -9）。
+        ///
+        /// 【上一版这里用错了锚点】我拿头顶警示记号当代理，而那个锚点挂在根节点上方
+        /// 3.3 米——根节点本身在身体中心，所以它在头顶再往上约 2.3 米。
+        /// 交战中位距离只有 2.1 米，这个点**按几何必然**出画面上沿：
+        /// 实机日志里 64% 的前摇帧"不在画面内"，量的其实是那个虚点，不是敌人。
+        /// 差点又据此下一个错结论。锚点改成 transform.position（身体中心）。
+        /// </summary>
         public float MarkViewportY
         {
             get
             {
                 var cam = Camera.main;
-                if (cam == null || _alertMark == null) return -9f;
-                Vector3 vp = cam.WorldToViewportPoint(_alertMark.transform.position);
+                if (cam == null) return -9f;
+                Vector3 vp = cam.WorldToViewportPoint(transform.position);
                 return vp.z <= 0f ? -9f : vp.y;
             }
         }

@@ -673,6 +673,21 @@ namespace AdversityRoad.EditorTools
                     }
                 }
             }
+            // 【每一个流派都必须有自己的招串】掉进 default 的那一档会悄悄变成拳法型。
+            // 实机日志实测：736 次出手里 66% 是拳法系招串，因为 MindMixed
+            //（覆盖约二十种敌人）没有分支。这种"沉默的归并"只能靠逐个枚举值比对来发现。
+            foreach (AdversityRoad.AI.MartialArchetype arch
+                     in System.Enum.GetValues(typeof(AdversityRoad.AI.MartialArchetype)))
+            {
+                var mine = AdversityRoad.AI.EnemyMoveSet.For(arch, false);
+                var fist = AdversityRoad.AI.EnemyMoveSet.For(AdversityRoad.AI.MartialArchetype.Fist, false);
+                if (arch != AdversityRoad.AI.MartialArchetype.Fist && ReferenceEquals(mine, fist))
+                {
+                    sb.Append("[CIDIAG][读招] !! 流派 ").Append(arch)
+                      .Append(" 没有自己的招串，掉进了拳法型——这个流派的敌人打起来和拳法家一样\n");
+                    ok = false;
+                }
+            }
             foreach (AdversityRoad.Combat.TelegraphKind k
                      in System.Enum.GetValues(typeof(AdversityRoad.Combat.TelegraphKind)))
                 if (!usedKinds.Contains(k))

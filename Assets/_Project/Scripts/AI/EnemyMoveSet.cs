@@ -123,7 +123,51 @@ namespace AdversityRoad.AI
             S("横斩·劈斩",   PoseState.Attack, PoseState.HeavyAttack),
         };
 
-        /// <summary>这个流派的招串表。elite=精英/首领那一档（更长、更凶的串）。</summary>
+        // ---- 心理混合型：招式与台词绑死的那一类（羞耻线整条线、多数心理首领）----
+        // 这一档此前掉进 default 变成了拳法型——实机日志里 66% 的出手是拳法系招串，
+        // 根子就在这里：MartialArchetypeCatalog 里 MindMixed 覆盖约二十种敌人。
+        // 给它自己的一套：节奏偏慢、单发与二连为主，让"读一拍再动"成立。
+        static readonly AttackString[] Mind =
+        {
+            S("凝视·横斩",   PoseState.Attack),
+            S("逼近·突刺",   PoseState.SwordThrust),
+            S("压顶",        PoseState.HeavyAttack),
+            S("横斩·正踢",   PoseState.Attack, PoseState.AttackKick),
+        };
+        static readonly AttackString[] MindElite =
+        {
+            S("凝视·横·压顶", PoseState.Attack, PoseState.HeavyAttack),
+            S("旋·刺 二段",   PoseState.AttackSpin, PoseState.SwordThrust),
+        };
+
+        // ---- 擒拿型：抓取压制，短距离、下盘多 ----
+        static readonly AttackString[] Grapple =
+        {
+            S("下潜·抱摔",   PoseState.Sweep, PoseState.PunchCross),
+            S("贴身·重拳",   PoseState.PunchCross, PoseState.PunchCross),
+            S("扫腿·正踢",   PoseState.Sweep, PoseState.AttackKick),
+        };
+        static readonly AttackString[] GrappleElite =
+        {
+            S("扫·摔·踢 三段", PoseState.Sweep, PoseState.PunchCross, PoseState.AttackKick),
+        };
+
+        // ---- 协同型：围堵与交叉，招短、收招快，便于两人错开 ----
+        static readonly AttackString[] Coop =
+        {
+            S("侧踢·牵制",   PoseState.SideKick),
+            S("刺拳·侧踢",   PoseState.PunchJab, PoseState.SideKick),
+            S("横斩·退",     PoseState.Attack),
+        };
+        static readonly AttackString[] CoopElite =
+        {
+            S("踢·刺·旋 三段", PoseState.SideKick, PoseState.PunchJab, PoseState.SpinKick),
+        };
+
+        /// <summary>这个流派的招串表。elite=精英/首领那一档（更长、更凶的串）。
+        /// **每一个流派都必须在这里有自己的分支**——掉进 default 的那一档会悄悄
+        /// 变成拳法型，而实机日志证明那正好是最容易发生的事（66% 的出手是拳法系）。
+        /// CI 的 DiagTelegraphRules 会核对枚举里每一个值都被显式处理。</summary>
         public static AttackString[] For(MartialArchetype a, bool elite)
         {
             switch (a)
@@ -135,8 +179,9 @@ namespace AdversityRoad.AI
                 case MartialArchetype.Heavy:    return elite ? HeavyElite : Heavy;
                 case MartialArchetype.Assassin: return elite ? AssassinElite : Assassin;
                 case MartialArchetype.Counter:  return elite ? CounterElite : Counter;
-                // 擒拿/协同暂无专属动作素材，走拳法型（短连击）——
-                // 宁可共用一套说得清的招串，也不要退回"十招随机抓一招"。
+                case MartialArchetype.Grapple:  return elite ? GrappleElite : Grapple;
+                case MartialArchetype.Coop:     return elite ? CoopElite : Coop;
+                case MartialArchetype.MindMixed: return elite ? MindElite : Mind;
                 default:                        return elite ? FistElite : Fist;
             }
         }
@@ -147,6 +192,7 @@ namespace AdversityRoad.AI
             MartialArchetype.Fist, MartialArchetype.Leg, MartialArchetype.Grapple,
             MartialArchetype.Blade, MartialArchetype.Staff, MartialArchetype.Heavy,
             MartialArchetype.Assassin, MartialArchetype.Counter, MartialArchetype.Coop,
+            MartialArchetype.MindMixed,
         };
     }
 }
