@@ -594,6 +594,100 @@ namespace AdversityRoad.EditorTools
         }
 
         /// <summary>
+        /// 第 9-26 章 · 90 关内部障碍线的入库体检（V2.2 增补 PRD 第 11.3 / 12 节）。
+        ///
+        /// 【为什么要在 CI 里跑】
+        /// 这 90 关是一份三千多行的策划冻结数据：缺一栏 Reality Victory、
+        /// 某一关的两个干扰项写成了同一招、某个 Boss 没写最终失效条件——
+        /// 这些在编译期全是合法的，在实机上则表现为"这一关打完了但没有通关"
+        /// 或者"三选一一眼就能看出答案"。只能靠逐条比对来发现。
+        ///
+        /// 判据分两级：结构性错误（缺胜利条件、干扰项同家族、Boss 无命门）报红；
+        /// 可读性问题（best 明显更长、选项超长）只打提醒——它们要改的是文案，
+        /// 不该把构建挡下来，但必须在报告里看得见。
+        /// </summary>
+        static bool DiagInternalChapters(StringBuilder sb)
+        {
+            bool ok = true;
+            sb.Append("\n--- 第 9-26 章 · 90 关内部障碍线 ---\n");
+
+            var chapters = AdversityRoad.InternalOS.InternalChapterCatalog.Chapters;
+            var levels = AdversityRoad.InternalOS.InternalChapterCatalog.AllLevels();
+            int units = 0, killable = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var us = levels[i].internalUnits;
+                for (int j = 0; j < us.Count; j++)
+                {
+                    units += us[j].count;
+                    if (us[j].killable) killable += us[j].count;
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 章节=").Append(chapters.Count)
+              .Append(" 关卡=").Append(levels.Count)
+              .Append(" Boss=").Append(chapters.Count)
+              .Append(" 内部单位=").Append(units)
+              .Append("（其中可击杀 ").Append(killable).Append("）\n");
+
+            var errors = AdversityRoad.InternalOS.InternalChapterCatalog.Validate();
+            for (int i = 0; i < errors.Count; i++)
+            {
+                sb.Append("[CIDIAG][内部线] !! ").Append(errors[i]).Append('\n');
+                ok = false;
+            }
+
+            // 【这 90 关一个外部敌人都不该有】这是本增补的定义，不是口味问题。
+            int external = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var us = levels[i].internalUnits;
+                for (int j = 0; j < us.Count; j++) if (us[j].category != "Internal") external++;
+            }
+            if (external > 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 出现了 ").Append(external)
+                  .Append(" 个非 Internal 单位——第 9-26 章只打自己\n");
+                ok = false;
+            }
+
+            // Boss 一览：真正的失效条件是什么，以及它是不是"打倒就行"。
+            int killGates = 0;
+            for (int i = 0; i < chapters.Count; i++)
+            {
+                var b = chapters[i].boss;
+                if (b == null) continue;
+                bool kill = AdversityRoad.InternalOS.InternalChapterCatalog.IsKillDeathType(b.deathType);
+                if (kill) killGates++;
+                sb.Append("[CIDIAG][内部线]   Boss ").Append(b.bossId).Append(' ').Append(b.name)
+                  .Append("  命门=").Append(b.coreMechanism)
+                  .Append("  失效=").Append(b.executionGate)
+                  .Append("  DeathType=").Append(b.deathType).Append('\n');
+            }
+            sb.Append("[CIDIAG][内部线] 其中允许靠打倒结束的 Boss：").Append(killGates)
+              .Append(" / ").Append(chapters.Count).Append('\n');
+
+            // 三选一：结构与安全报红，可读性只提醒。
+            var issues = AdversityRoad.InternalOS.MentalAttackValidator.ValidateAll();
+            int hard = 0, soft = 0;
+            for (int i = 0; i < issues.Count; i++)
+            {
+                if (issues[i].error) { hard++; sb.Append("[CIDIAG][三选一] !! ").Append(issues[i]).Append('\n'); }
+                else soft++;
+            }
+            sb.Append("[CIDIAG][三选一] 事件=")
+              .Append(AdversityRoad.InternalOS.MentalAttackCatalog.Events.Count)
+              .Append("  结构/安全错误=").Append(hard)
+              .Append("  可读性提醒=").Append(soft).Append('\n');
+            if (hard > 0) ok = false;
+
+            // 提醒逐条列出来：不报红，但不许它们悄悄躺着。
+            for (int i = 0; i < issues.Count; i++)
+                if (!issues[i].error) sb.Append("[CIDIAG][三选一]   ").Append(issues[i]).Append('\n');
+
+            return ok;
+        }
+
+        /// <summary>
         /// 读招规律表：玩家要学的那套「固定规则」到底长什么样，一次全列出来。
         ///
         /// 判据是硬的：每一个敌人会用的招式，都必须能找到**它自己的动作片段**——
@@ -886,6 +980,7 @@ namespace AdversityRoad.EditorTools
                 DiagBalance(sb);
                 DiagReach(sb);
                 if (!DiagStoryLadder(sb)) exit = 1;
+                if (!DiagInternalChapters(sb)) exit = 1;
                 if (!DiagTelegraphRules(sb)) exit = 1;
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：

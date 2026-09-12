@@ -1,0 +1,4380 @@
+{
+ "version": "V2.2",
+ "worldKits": [
+  {
+   "id": "WK01",
+   "kit": "PlayerHome",
+   "area": "玩家住宅",
+   "usage": "床、书桌、电脑、手机、衣柜、玄关、厨房；高频安全屋与关键时刻触发。"
+  },
+  {
+   "id": "WK02",
+   "kit": "Apartment",
+   "area": "公寓/楼道",
+   "usage": "电梯、楼梯、长廊、门厅、消防通道；适合启动、暴露、返回现场。"
+  },
+  {
+   "id": "WK03",
+   "kit": "UrbanStreet",
+   "area": "城市街道",
+   "usage": "路口、人行道、店铺、车辆、公交站；适合刺激、风险、社会事件。"
+  },
+  {
+   "id": "WK04",
+   "kit": "Transit",
+   "area": "地铁/公交/车站",
+   "usage": "站厅、站台、车厢、地下通道、闸机；适合路线、等待、重启、判断。"
+  },
+  {
+   "id": "WK05",
+   "kit": "Office",
+   "area": "写字楼",
+   "usage": "前台、走廊、会议室、办公桌、电梯；适合评价、交付、决策。"
+  },
+  {
+   "id": "WK06",
+   "kit": "Recruitment",
+   "area": "招聘/工业园",
+   "usage": "厂门、招聘栏、候场、面试室、园区；适合拒绝与现实行动。"
+  },
+  {
+   "id": "WK07",
+   "kit": "Commercial",
+   "area": "商业区",
+   "usage": "商场、广场、店铺、咖啡厅；适合即时奖励、比较、选择。"
+  },
+  {
+   "id": "WK08",
+   "kit": "Library",
+   "area": "图书馆/档案馆",
+   "usage": "书架、自习室、档案室、阶梯；适合知识、信息过载、反刍。"
+  },
+  {
+   "id": "WK09",
+   "kit": "Studio",
+   "area": "项目工作室",
+   "usage": "白板、电脑、版本台、测试区、发布台；适合完美主义与范围管理。"
+  },
+  {
+   "id": "WK10",
+   "kit": "Service",
+   "area": "医院/银行/服务区",
+   "usage": "大厅、窗口、回廊、等候区；适合资源、现实程序与恢复。"
+  },
+  {
+   "id": "WK11",
+   "kit": "Park",
+   "area": "公园/运动区",
+   "usage": "步道、桥、坡道、广场、训练区；适合拉伸区、复发、风险阶梯。"
+  },
+  {
+   "id": "WK12",
+   "kit": "Industrial",
+   "area": "仓库/工厂",
+   "usage": "货架、传送带、装卸台、机械门；适合交付、Scope、习惯回路。"
+  },
+  {
+   "id": "WK13",
+   "kit": "Edge",
+   "area": "边缘区",
+   "usage": "小巷、车库、停车楼、废弃建筑；适合真实风险、撤退、宿敌。"
+  },
+  {
+   "id": "WK14",
+   "kit": "InnerCore",
+   "area": "内心世界",
+   "usage": "可变几何、断桥、悬浮城市、镜面、档案核心；仅在机制需要时启用。"
+  }
+ ],
+ "rootObstacles": [
+  {
+   "code": "A",
+   "name": "威胁系统过度接管",
+   "chain": "模糊刺激→危险解释→注意劫持→停止/撤离",
+   "chapters": "17 / 18 / 21"
+  },
+  {
+   "code": "B",
+   "name": "自我价值与外界评价绑定",
+   "chain": "评价→价值波动→羞耻/证明→偏离Goal",
+   "chapters": "8 / 11 / 15 / 22"
+  },
+  {
+   "code": "C",
+   "name": "行动启动系统失效",
+   "chain": "目标明确→临场空白/等待/分心→未启动",
+   "chapters": "3 / 10 / 20 / 25"
+  },
+  {
+   "code": "D",
+   "name": "认知系统无限占用",
+   "chain": "问题→分析→更多问题→分析替代行动",
+   "chapters": "6 / 14 / 16 / 25"
+  },
+  {
+   "code": "E",
+   "name": "失败被解释为身份威胁",
+   "chain": "失败恐惧→不尝试→证据缺失→更低效能",
+   "chapters": "9 / 12 / 13 / 21"
+  },
+  {
+   "code": "F",
+   "name": "关系与环境夺取方向",
+   "chain": "他人索取/评价/挑衅→成为行为中心",
+   "chapters": "1 / 2 / 4 / 15 / 23"
+  },
+  {
+   "code": "G",
+   "name": "旧模式重新掌权",
+   "chain": "压力→旧行为上线→“我没改变”→长期退出",
+   "chapters": "7 / 13 / 20 / 26"
+  }
+ ],
+ "deathTypes": [
+  {
+   "id": "Defeat",
+   "meaning": "传统击败，但仍需Execution Gate。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Disengagement",
+   "meaning": "解除低价值目标锁定并离开敌人优势战场。",
+   "source": "附录 B"
+  },
+  {
+   "id": "AuthorityRevocation",
+   "meaning": "撤销Boss的裁判/指挥/终审权。",
+   "source": "附录 B"
+  },
+  {
+   "id": "DependencyBreak",
+   "meaning": "解除“必须先满足X才能行动”的依赖关系。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Integration",
+   "meaning": "整合旧模式经验，不杀死过去。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Calibration",
+   "meaning": "重新校准预测/威胁/能力。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Archive",
+   "meaning": "事实与必要行动处理后归档重复内容。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Outgrow",
+   "meaning": "能力提高后Boss自然失去统治力。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Publish",
+   "meaning": "通过现实交付/发布使Boss失效。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Restart",
+   "meaning": "通过重新进入目标而击破“中断=结束”。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Activation",
+   "meaning": "真正StartEvent发生。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Decision",
+   "meaning": "在足够信息下做出并执行决定。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Embodiment",
+   "meaning": "知识进入现实行为。",
+   "source": "附录 B"
+  },
+  {
+   "id": "EnvironmentShift",
+   "meaning": "通过改变暴露结构与World State取胜。",
+   "source": "附录 B"
+  },
+  {
+   "id": "GoalEvolution",
+   "meaning": "目标本身被现实证据合法重铸。",
+   "source": "附录 B"
+  },
+  {
+   "id": "Reconnection",
+   "meaning": "重新把价值与当前行动接上，动机不再依赖强度。",
+   "source": "§6 Boss 总表"
+  },
+  {
+   "id": "Interruption",
+   "meaning": "在自动行为链启动的那一刻打断它。",
+   "source": "§6 Boss 总表"
+  },
+  {
+   "id": "Replacement",
+   "meaning": "同一个触发保留，但接上另一个动作。",
+   "source": "§6 Boss 总表"
+  },
+  {
+   "id": "AutomationShift",
+   "meaning": "新行为接近默认，旧模式出现也几乎不改变结果。",
+   "source": "§6 Boss 总表"
+  },
+  {
+   "id": "RecoveryConfidence",
+   "meaning": "确认损失可恢复之后，风险不再等于不可承受。",
+   "source": "§6 Boss 总表"
+  }
+ ],
+ "masteryLevels": [
+  {
+   "level": "M0 未识别",
+   "rule": "Boss控制行为，玩家尚未意识到模式。"
+  },
+  {
+   "level": "M1 识别",
+   "rule": "事后能识别。"
+  },
+  {
+   "level": "M2 提醒后反制",
+   "rule": "AI提醒后能改变。"
+  },
+  {
+   "level": "M3 自主反制",
+   "rule": "当下自行识别并改变。"
+  },
+  {
+   "level": "M4 跨场景迁移",
+   "rule": "新环境仍能应用。"
+  },
+  {
+   "level": "M5 自动化",
+   "rule": "旧模式出现但几乎不改变最终行为；新行为接近默认。"
+  }
+ ],
+ "chapters": [
+  {
+   "chapterId": "chapter09",
+   "chapterNo": 9,
+   "title": "失败与完美主义线",
+   "core": "允许现实检验发生；从“继续准备”转向“达到完成条件后交付”。",
+   "spaceLanguage": "白纸、无限扩张空间、修改支路、提交台；空间本身表现标准漂移与最后一步迟迟不发生。",
+   "axis": "FailureFear",
+   "rootObstacle": "E",
+   "districtId": "office",
+   "levels": [
+    {
+     "levelId": "9-1",
+     "chapterId": "chapter09",
+     "name": "白纸之门",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK09"
+     ],
+     "baseKitLabel": "WK09 Studio",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "42m×18m×4m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "电脑桌附近 Local(0,0,2)",
+     "mainPath": "空白工作区→草稿工位→修改走廊→提交区",
+     "realityToAdversity": "停留越久，白墙按预制阶段向外扩展；粗稿生成后道路才收敛。",
+     "coreMechanic": "创建第一版；识别2个Critical与4个Cosmetic修改；不要求全部优化。",
+     "enemyNote": "白纸哨兵×2，主要制造错误提示与打断；避免战斗喧宾夺主。",
+     "internalUnits": [
+      {
+       "unitId": "IU_9_1_3e6b4b",
+       "displayName": "白纸哨兵",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH09_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_FirstDraft",
+      "TRG_PerfectionExpansion",
+      "TRG_DoneThreshold",
+      "TRG_Submit"
+     ],
+     "triggerNote": "TRG_FirstDraft / TRG_PerfectionExpansion / TRG_DoneThreshold / TRG_Submit",
+     "navMeshCamera": "主路径全NavMesh；扩张用预烘焙隐藏地板；修改走廊FOV 60→56，提交区恢复。",
+     "realityVictory": "存在粗稿+达到Done最低标准+执行Submit。",
+     "reusedAssets": "Studio_Base + Overlay_Perfection + PF_DraftDesk/PF_DoneLock/PF_SubmitConsole"
+    },
+    {
+     "levelId": "9-2",
+     "chapterId": "chapter09",
+     "name": "永久校稿室",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05",
+      "WK09"
+     ],
+     "baseKitLabel": "WK05/WK09",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "主厅32×24m；档案区24×18m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "主厅入口左后侧",
+     "mainPath": "编辑桌→文件柜环→文字迷宫→Stop/Submit门",
+     "realityToAdversity": "每次修改激活更多文件柜，房间最长扩至56m；高修改次数后进入环形文字迷宫。",
+     "coreMechanic": "将修改卡分成Critical/Useful/Cosmetic；边际收益下降后停止校稿。",
+     "enemyNote": "校稿幽灵/反复修改节点；不要求清空全部提示。",
+     "internalUnits": [
+      {
+       "unitId": "IU_9_2_97700a",
+       "displayName": "校稿幽灵",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH09_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_EditCount",
+      "TRG_MarginalGainLow",
+      "TRG_StopEditing"
+     ],
+     "triggerNote": "TRG_EditCount / TRG_MarginalGainLow / TRG_StopEditing",
+     "navMeshCamera": "迷宫仅3层环形，避免真实迷路；Exit方向始终可恢复。",
+     "realityVictory": "处理最后一个真正阻断项后主动停止修改并提交。",
+     "reusedAssets": "OfficeArchive_Base + TextMaze_Module + PF_EditCard"
+    },
+    {
+     "levelId": "9-3",
+     "chapterId": "chapter09",
+     "name": "未提交仓库",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12 Industrial",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "65×38m，高12m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "装卸区 Local(0,0,-28)",
+     "mainPath": "入口→货架迷宫→装箱区→装车月台",
+     "realityToAdversity": "已完成80-95%的箱子不断堆积并遮挡视线；只允许锁定一个Current Goal Box。",
+     "coreMechanic": "推、搬、绕、攀1.5m平台；运输正确目标箱而非处理全部旧箱。",
+     "enemyNote": "最后检查者×3会把目标箱推回检查区；非目标箱形成Scope诱饵。",
+     "internalUnits": [
+      {
+       "unitId": "IU_9_3_73ce39",
+       "displayName": "最后检查者",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH09_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_GoalBoxSelect",
+      "TRG_ScopeDrift",
+      "TRG_LoadTruck"
+     ],
+     "triggerNote": "TRG_GoalBoxSelect / TRG_ScopeDrift / TRG_LoadTruck",
+     "navMeshCamera": "3m货架通道；箱体使用NavMeshObstacle；相机保持货车方向Beacon。",
+     "realityVictory": "把当前目标箱装上货车，车门关闭并生成Reality Evidence。",
+     "reusedAssets": "Warehouse_Base + PF_UnsubmittedBox/PF_LoadDock"
+    },
+    {
+     "levelId": "9-4",
+     "chapterId": "chapter09",
+     "name": "全或无断崖",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK14"
+     ],
+     "baseKitLabel": "WK11/WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "主路线120m；平台宽8-15m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "第一平台",
+     "mainPath": "7个平台→断裂区→精英区→终点",
+     "realityToAdversity": "失误只破坏局部平台；巨大的“从头开始”门作为诱饵，小型Continue路线保留。",
+     "coreMechanic": "Checkpoint每个平台保存；允许跌落后从最近点继续；强调局部恢复。",
+     "enemyNote": "精英“全或无刽子手”位于第5平台，会破坏部分路线但始终留可继续路径。",
+     "internalUnits": [
+      {
+       "unitId": "IU_9_4_7166de",
+       "displayName": "全或无刽子手",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH09_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Checkpoint_01-07",
+      "TRG_RestartBait",
+      "TRG_Continue"
+     ],
+     "triggerNote": "TRG_Checkpoint_01-07 / TRG_RestartBait / TRG_Continue",
+     "navMeshCamera": "跌落传送最近Checkpoint而非死亡重开；固定相机提示下一平台。",
+     "realityVictory": "带着至少一次局部损伤也可到达终点；若首战无失误同样允许胜利。",
+     "reusedAssets": "CliffWalk_Base + PF_PersistentCheckpoint"
+    },
+    {
+     "levelId": "9-5",
+     "chapterId": "chapter09",
+     "name": "完美审判庭",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK05",
+      "WK14"
+     ],
+     "baseKitLabel": "WK05→WK14",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "Reality 35×25m；法庭55×45m；核心40×40m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "审核大厅前台 Local(0,0,-18)",
+     "mainPath": "现实提交窗口→法庭→四修改门→Done石板→SubmitConsole",
+     "realityToAdversity": "接近提交窗后大厅变法庭；进入错误修改门使Arena外扩；Done锁定后空间停止膨胀。",
+     "coreMechanic": "P1检查→P2边际收益→P3锁定DoD→P4承受失败投影→P5 15秒提交窗口。",
+     "enemyNote": "Boss 28 完美审判官；四门Quality/Research/Review/Polish，只有Quality可含真实阻断。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RealityToCourt",
+      "TRG_DoneLock",
+      "TRG_SubmitWindow",
+      "TRG_Submit"
+     ],
+     "triggerNote": "TRG_RealityToCourt / TRG_DoneLock / TRG_SubmitWindow / TRG_Submit",
+     "navMeshCamera": "Boss战不永久硬锁；SubmitConsole始终有HUD方向标。",
+     "realityVictory": "按下Submit即Boss失效，即使HP未清零；DeathType=Publish。",
+     "reusedAssets": "Office_Base + Court_Overlay + Boss_PerfectionJudge_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 28,
+    "name": "完美审判官",
+    "enemyType": "PerfectionJudge",
+    "chapterId": "chapter09",
+    "levelId": "9-5",
+    "bossType": "Dependency / Execution Gate",
+    "coreTest": "玩家是否能在结果未保证时让现实检验发生。",
+    "attackGrammar": [
+     "瑕疵扫描",
+     "再检查",
+     "灾难预告",
+     "标准漂移",
+     "身份审判"
+    ],
+    "phases": [
+     "P1合理准备",
+     "P2边际收益下降",
+     "P3标准漂移",
+     "P4失败恐惧",
+     "P5提交窗口"
+    ],
+    "fakeWeaknesses": [
+     "继续准备",
+     "更多检查",
+     "寻找保证成功"
+    ],
+    "coreMechanism": "Failure Permission Core",
+    "executionGate": "锁定DoD并执行Submit",
+    "deathType": "Publish",
+    "deathTypeAtoms": [
+     "Publish"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter10",
+   "chapterNo": 10,
+   "title": "启动冻结线",
+   "core": "把“我要做”转换成第一个可观察身体动作；降低StartLatency。",
+   "spaceLanguage": "住宅结冰、伪准备门、等待站、空白通道、出口边界；Boss战横跨从床到城市街道。",
+   "axis": "Procrastination",
+   "rootObstacle": "C",
+   "districtId": "residential",
+   "levels": [
+    {
+     "levelId": "10-1",
+     "chapterId": "chapter10",
+     "name": "六十秒之门",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01"
+     ],
+     "baseKitLabel": "WK01 PlayerHome",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "住宅约12×9m+楼道20m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "床旁 Local(-3,0,-3)",
+     "mainPath": "床→目标物→鞋→玄关门",
+     "realityToAdversity": "冰面每10秒激活一层Overlay，共5阶段；手机/床/整理桌面为诱饵。",
+     "coreMechanic": "最多4个必要动作节点；任务语言必须转成身体动作语言。",
+     "enemyNote": "无强制敌人；冰层本身是时间压力。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_GetUp",
+      "TRG_ItemPicked",
+      "TRG_ShoesOn",
+      "TRG_Exit",
+      "TRG_FreezeStage"
+     ],
+     "triggerNote": "TRG_GetUp / TRG_ItemPicked / TRG_ShoesOn / TRG_Exit / TRG_FreezeStage",
+     "navMeshCamera": "无需动态NavMesh；5层预制覆盖；连续行动后FOV 58→62。",
+     "realityVictory": "跨过玄关门槛即胜利。",
+     "reusedAssets": "PlayerHome_Base + OVR_FreezeHome"
+    },
+    {
+     "levelId": "10-2",
+     "chapterId": "chapter10",
+     "name": "等待天气站",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK03",
+      "WK04"
+     ],
+     "baseKitLabel": "WK03/WK04",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "70×28m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "公交站后侧",
+     "mainPath": "候车亭→信息屏→上车区",
+     "realityToAdversity": "电子屏不断提供“下一班更好/天气更合适/再等几分钟”的理由。",
+     "coreMechanic": "Goal OS计算Viable Window；玩家在满足最低条件的时间窗上车。",
+     "enemyNote": "等待天气广播/便利店诱饵；不以敌人击杀为主。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ViableWindow",
+      "TRG_WaitLoop",
+      "TRG_BoardBus"
+     ],
+     "triggerNote": "TRG_ViableWindow / TRG_WaitLoop / TRG_BoardBus",
+     "navMeshCamera": "车辆用路线动画；上车区NavMesh OffLink；相机在窗口到来时轻推向车门。",
+     "realityVictory": "在有效窗口登上一辆满足最低条件的公交。",
+     "reusedAssets": "StreetTransit_Base + PF_TransitWindow"
+    },
+    {
+     "levelId": "10-3",
+     "chapterId": "chapter10",
+     "name": "空白隧道",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "长度110m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "站厅入口",
+     "mainPath": "入口厅→长通道→岔路→扶梯→出口",
+     "realityToAdversity": "Stress升高时路牌逐渐模糊，但NextAction Beacon永不完全消失。",
+     "coreMechanic": "一次只显示一个下一动作：“前进20m/左转/上扶梯/过闸门”。",
+     "enemyNote": "低强度空白影降低工作记忆表现；不要求大量战斗。",
+     "internalUnits": [
+      {
+       "unitId": "IU_10_3_c49f64",
+       "displayName": "空白影",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH10_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_StressBands",
+      "TRG_NextAction_01..04"
+     ],
+     "triggerNote": "TRG_StressBands / TRG_NextAction_01..04",
+     "navMeshCamera": "主路NavMesh连续；岔路都能回到主路；镜头锁定Beacon优先于敌人。",
+     "realityVictory": "在信息被压缩到“下一步”后走出出口。",
+     "reusedAssets": "TransitTunnel_Base + PF_NextActionCard"
+    },
+    {
+     "levelId": "10-4",
+     "chapterId": "chapter10",
+     "name": "选择洪水",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "85×85m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中央圆岛",
+     "mainPath": "中央锁定台→8条放射路→选定Goal出口",
+     "realityToAdversity": "每次切换目标水位+0.15m，最高1.2m；其它道路仍存在但灯光变暗。",
+     "coreMechanic": "Goal Lock最多选择1个当前目标；切换有明显成本。",
+     "enemyNote": "四只“任务拉扯者”从不同方向出现；目标是保持锁定并穿过出口。",
+     "internalUnits": [
+      {
+       "unitId": "IU_10_4_dd69d4",
+       "displayName": "任务拉扯者",
+       "count": 4,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH10_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_GoalSwitch",
+      "TRG_WaterLevel",
+      "TRG_GoalLock",
+      "TRG_Exit"
+     ],
+     "triggerNote": "TRG_GoalSwitch / TRG_WaterLevel / TRG_GoalLock / TRG_Exit",
+     "navMeshCamera": "水面不做复杂流体，使用分段平面；NavMesh面积随阶段用速度Modifier。",
+     "realityVictory": "锁定一个目标并抵达对应出口。",
+     "reusedAssets": "CommercialPlaza_Base + OVR_TaskFlood + PF_GoalLockTerminal"
+    },
+    {
+     "levelId": "10-5",
+     "chapterId": "chapter10",
+     "name": "冻结王座",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK01",
+      "WK02",
+      "WK03"
+     ],
+     "baseKitLabel": "WK01+WK02+WK03",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "完整路线约150m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "床边",
+     "mainPath": "卧室→客厅→玄关→楼道→电梯→大堂→前庭→人行道",
+     "realityToAdversity": "Boss横跨整条路线；伪任务门、休息诱饵与冰覆盖逐段出现。",
+     "coreMechanic": "P1起床；P2绕过伪准备；P3电梯只选下楼；P4 Boss实体化；P5穿越前庭。",
+     "enemyNote": "Boss 29 冻结之王；不以攻击致死，Core位于城市边界ExitTrigger。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_FrozenKing_P1..P5",
+      "TRG_CityBoundary"
+     ],
+     "triggerNote": "TRG_FrozenKing_P1..P5 / TRG_CityBoundary",
+     "navMeshCamera": "Base Scene连续加载；Overlay分区激活；城市边界始终有GoalBeacon。",
+     "realityVictory": "走上真实城市主路径；DeathType=Activation。",
+     "reusedAssets": "PlayerHome/Apartment/Street Base + Boss_FrozenKing_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 29,
+    "name": "冻结之王",
+    "enemyType": "FrozenKing",
+    "chapterId": "chapter10",
+    "levelId": "10-5",
+    "bossType": "Behavioral / Time Drain",
+    "coreTest": "“我要做”能否变成第一个身体动作。",
+    "attackGrammar": [
+     "微延迟",
+     "伪准备",
+     "选择洪水",
+     "动力检测",
+     "空白"
+    ],
+    "phases": [
+     "P1微延迟",
+     "P2伪准备",
+     "P3任务膨胀",
+     "P4低动力",
+     "P5六十秒窗口"
+    ],
+    "fakeWeaknesses": [
+     "等动力",
+     "重做计划",
+     "先打鸡血"
+    ],
+    "coreMechanism": "Start Threshold Core",
+    "executionGate": "60秒内产生真实StartEvent",
+    "deathType": "Activation",
+    "deathTypeAtoms": [
+     "Activation"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter11",
+   "chapterNo": 11,
+   "title": "评价、拒绝与暴露线",
+   "core": "让外部NO、沉默与注视不再拥有终止Goal Journey的权力。",
+   "spaceLanguage": "招聘走廊、电话亭、邮箱、门阵与工业园多入口；空间强调“下一扇门仍存在”。",
+   "axis": "JobAnxiety",
+   "rootObstacle": "B",
+   "districtId": "office",
+   "levels": [
+    {
+     "levelId": "11-1",
+     "chapterId": "chapter11",
+     "name": "候场走廊",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05 Office",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "45×16m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "电梯口",
+     "mainPath": "电梯→候场椅→前台→面试走廊→面试门",
+     "realityToAdversity": "NPC随机看手机、聊天、看玩家、皱眉或微笑；系统不提供读心答案。",
+     "coreMechanic": "持续锁定NPC>3秒降低Focus；不读心盾用于解除目标锁定。",
+     "enemyNote": "12-18名背景NPC，无强制敌人。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_GazeFocus",
+      "TRG_Recenter",
+      "TRG_InterviewDoor"
+     ],
+     "triggerNote": "TRG_GazeFocus / TRG_Recenter / TRG_InterviewDoor",
+     "navMeshCamera": "走廊宽2.5-3m；人群避障；相机不自动切到NPC脸部特写。",
+     "realityVictory": "敲响面试室门并进入。",
+     "reusedAssets": "OfficeFloor_Base + PF_GazeNPC"
+    },
+    {
+     "levelId": "11-2",
+     "chapterId": "chapter11",
+     "name": "电话亭",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "55×40m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "广场入口",
+     "mainPath": "5个电话亭→选择联系人→拨号→离开",
+     "realityToAdversity": "拨号时广场环境声增强但通话保持清晰；结果可能YES/NO/无人接听。",
+     "coreMechanic": "按Goal Relevance选择值得拨打的电话；完成拨号本身即有效行为。",
+     "enemyNote": "“拨号犹豫者”以Mental Taunt干扰；不阻止真正交互。",
+     "internalUnits": [
+      {
+       "unitId": "IU_11_2_94ff17",
+       "displayName": "拨号犹豫者",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH11_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_SelectContact",
+      "TRG_CallStart",
+      "TRG_CallResult"
+     ],
+     "triggerNote": "TRG_SelectContact / TRG_CallStart / TRG_CallResult",
+     "navMeshCamera": "每亭独立交互半径；通话中固定软相机。",
+     "realityVictory": "完成一次有效主动联系，不以YES为唯一胜利。",
+     "reusedAssets": "CommercialSquare_Base + PF_CallBooth"
+    },
+    {
+     "levelId": "11-3",
+     "chapterId": "chapter11",
+     "name": "沉默邮箱II",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05 Office",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "60m线性大厅",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "入口",
+     "mainPath": "投递台→巨大邮箱→背后新路径→下一目标",
+     "realityToAdversity": "投递后邮箱高度放大至8m，诱导玩家停留等待；真正GoalBeacon转到其背后。",
+     "coreMechanic": "禁止通过反复刷新反馈推进；需要转身继续下一有效行动。",
+     "enemyNote": "无实体敌人；“沉默”作为环境机制。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_SubmitMail",
+      "TRG_WaitAtMailbox",
+      "TRG_NextGoal"
+     ],
+     "triggerNote": "TRG_SubmitMail / TRG_WaitAtMailbox / TRG_NextGoal",
+     "navMeshCamera": "镜头在投递后缓慢重新构图到背后道路。",
+     "realityVictory": "离开邮箱区域并完成下一步。",
+     "reusedAssets": "OfficeMail_Base + PF_SilentMailbox"
+    },
+    {
+     "levelId": "11-4",
+     "chapterId": "chapter11",
+     "name": "NO门阵",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK06"
+     ],
+     "baseKitLabel": "WK06 Recruitment",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "双层招聘中心，约70×45m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "一层入口",
+     "mainPath": "16扇门分Matched/Maybe/LowMatch/Closed/Unknown",
+     "realityToAdversity": "每扇门反馈不同；任务统计“有效尝试”而非刷开门数量。",
+     "coreMechanic": "完成5次有效尝试；LowMatch不能刷次数；无回应保留不确定状态。",
+     "enemyNote": "精英“拒绝统计师”把1次NO放大为巨大比例，玩家通过恢复正确分母反制。",
+     "internalUnits": [
+      {
+       "unitId": "IU_11_4_d810a2",
+       "displayName": "拒绝统计师",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH11_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_AttemptValid",
+      "TRG_No",
+      "TRG_Silence",
+      "TRG_Elite"
+     ],
+     "triggerNote": "TRG_AttemptValid / TRG_No / TRG_Silence / TRG_Elite",
+     "navMeshCamera": "楼梯与电梯两路；门前2m安全交互区。",
+     "realityVictory": "完成规定有效尝试并继续移动。",
+     "reusedAssets": "RecruitmentCenter_Base + PF_RejectionDoor"
+    },
+    {
+     "levelId": "11-5",
+     "chapterId": "chapter11",
+     "name": "拒绝守门人",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK06"
+     ],
+     "baseKitLabel": "WK06 Recruitment",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "工业园约180×90m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "主门外",
+     "mainPath": "主门→侧门侦察→园区路线→新机会出口",
+     "realityToAdversity": "主门NO后Boss强化正面防御；侧门可能同样拒绝；真正变化是“唯一机会”锁链断裂。",
+     "coreMechanic": "P1正面NO；P2停止强攻；P3侦察侧门；P4承受第二次拒绝；P5继续新路线。",
+     "enemyNote": "Boss 30 拒绝守门人，Boss身体不是最终命门。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_MainNo",
+      "TRG_ScoutRoute",
+      "TRG_SecondNo",
+      "TRG_OpportunityChainBreak"
+     ],
+     "triggerNote": "TRG_MainNo / TRG_ScoutRoute / TRG_SecondNo / TRG_OpportunityChainBreak",
+     "navMeshCamera": "开放园区NavMesh；Boss可保持远距离可见但不强锁。",
+     "realityVictory": "击破“唯一机会”关系，继续到另一条Goal Route；DeathType=AuthorityRevocation。",
+     "reusedAssets": "IndustrialPark_Base + Boss_RejectionGatekeeper_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 30,
+    "name": "拒绝守门人",
+    "enemyType": "RejectionGatekeeper",
+    "chapterId": "chapter11",
+    "levelId": "11-5",
+    "bossType": "Authority / Exposure",
+    "coreTest": "外部NO是否拥有终止整个Goal Journey的权力。",
+    "attackGrammar": [
+     "拒绝印记",
+     "读心波",
+     "沉默攻击",
+     "统计扭曲",
+     "曝光灼烧"
+    ],
+    "phases": [
+     "P1明确NO",
+     "P2沉默",
+     "P3连续拒绝",
+     "P4公开评价",
+     "P5下一扇门"
+    ],
+    "fakeWeaknesses": [
+     "让所有人喜欢",
+     "说服拒绝者"
+    ],
+    "coreMechanism": "Rejection Authority Core",
+    "executionGate": "拒绝后仍执行下一次有效行动",
+    "deathType": "AuthorityRevocation",
+    "deathTypeAtoms": [
+     "AuthorityRevocation"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter12",
+   "chapterNo": 12,
+   "title": "低自我效能与无力预言线",
+   "core": "把“我感觉做不到”降级为待验证预测，并用Behavior Evidence校准。",
+   "spaceLanguage": "墙、矿井、阶梯、能力塔、气象塔；空间强调“能力可拆、预测可验证”。",
+   "axis": "LowConfidence",
+   "rootObstacle": "E",
+   "districtId": "office",
+   "levels": [
+    {
+     "levelId": "12-1",
+     "chapterId": "chapter12",
+     "name": "不能之墙",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK12"
+     ],
+     "baseKitLabel": "WK11/WK12",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "60×40m；主墙40×15m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "训练中心入口",
+     "mainPath": "正面巨墙→小门/梯子/维修通道/训练攀爬/求助NPC",
+     "realityToAdversity": "墙不可直接攻击；不同路线对应拆解、训练、资源、支持。",
+     "coreMechanic": "玩家必须选择符合当前能力与资源的路径。",
+     "enemyNote": "少量“绝对标签”投影；不作为主战斗。",
+     "internalUnits": [
+      {
+       "unitId": "IU_12_1_0a4fcf",
+       "displayName": "绝对标签投影",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH12_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_RouteChoice",
+      "TRG_HelpRequest",
+      "TRG_TrainingRoute"
+     ],
+     "triggerNote": "TRG_RouteChoice / TRG_HelpRequest / TRG_TrainingRoute",
+     "navMeshCamera": "5条路线各自NavMesh；正面墙禁攀。",
+     "realityVictory": "找到至少一种现实可行路径并通过。",
+     "reusedAssets": "TrainingCenter_Base + PF_CannotWall"
+    },
+    {
+     "levelId": "12-2",
+     "chapterId": "chapter12",
+     "name": "证据矿井",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK13",
+      "WK14"
+     ],
+     "baseKitLabel": "WK13/WK14",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "总路线约160m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "预测大厅",
+     "mainPath": "预测台→行为测试区→矿层→证据升降机",
+     "realityToAdversity": "只有真实行为测试生成Evidence Ore；成功与失败都可产生证据。",
+     "coreMechanic": "先预测成功概率，再执行测试，再把结果入库。",
+     "enemyNote": "矿井影只干扰预测，不掉落Evidence。",
+     "internalUnits": [
+      {
+       "unitId": "IU_12_2_02c645",
+       "displayName": "矿井影",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH12_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Prediction",
+      "TRG_BehaviorTest",
+      "TRG_EvidenceOre"
+     ],
+     "triggerNote": "TRG_Prediction / TRG_BehaviorTest / TRG_EvidenceOre",
+     "navMeshCamera": "矿井主路明确；测试区可循环但每轮成本增加。",
+     "realityVictory": "至少生成一块真实Evidence Ore并送入升降机。",
+     "reusedAssets": "Mine_Base + PF_EvidenceOre/PF_EvidenceVault"
+    },
+    {
+     "levelId": "12-3",
+     "chapterId": "chapter12",
+     "name": "小胜阶梯",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05",
+      "WK14"
+     ],
+     "baseKitLabel": "WK05/WK14",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "12层，每层约18×18m，高3.5m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "塔底",
+     "mainPath": "1-3简单→4-6组合→7-9压力→10-12接近现实目标",
+     "realityToAdversity": "只允许逐层推进；已掌握楼层下次可快速通过。",
+     "coreMechanic": "每层产生一个Behavior Evidence；不能靠自我肯定解锁。",
+     "enemyNote": "难度随层级，避免纯数值堆叠。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_FloorComplete_01..12",
+      "TRG_FastPass"
+     ],
+     "triggerNote": "TRG_FloorComplete_01..12 / TRG_FastPass",
+     "navMeshCamera": "4套模块循环组合；楼梯NavMesh与短电梯捷径。",
+     "realityVictory": "完成与当前目标相关的最高可训练层。",
+     "reusedAssets": "TrainingTower_Base + ModularFloors"
+    },
+    {
+     "levelId": "12-4",
+     "chapterId": "chapter12",
+     "name": "能力校准塔",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "中心电梯+五翼，总约85×70m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中央大厅",
+     "mainPath": "A已掌握/B尚未掌握/C练习可得/D需资源/E需他人支持",
+     "realityToAdversity": "任务先分类再进入对应翼区；高估与低估都会产生校准反馈。",
+     "coreMechanic": "关键是能力拆分与资源判断，不是证明强弱。",
+     "enemyNote": "精英“绝对能力标签者”把“暂时不会”写成“永远不会”，玩家击断文字链接。",
+     "internalUnits": [
+      {
+       "unitId": "IU_12_4_20a418",
+       "displayName": "绝对能力标签者",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH12_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_AbilityClassify",
+      "TRG_Overestimate",
+      "TRG_Underestimate"
+     ],
+     "triggerNote": "TRG_AbilityClassify / TRG_Overestimate / TRG_Underestimate",
+     "navMeshCamera": "五翼各自短关；中央大厅快速回流。",
+     "realityVictory": "正确分类至少3个能力项，并完成1个现实匹配训练。",
+     "reusedAssets": "AbilityTower_Base + PF_AbilityRouteGate"
+    },
+    {
+     "levelId": "12-5",
+     "chapterId": "chapter12",
+     "name": "无力预言台",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK05",
+      "WK14"
+     ],
+     "baseKitLabel": "WK05/WK14",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "气象塔4层；屋顶45×45m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "一层大厅",
+     "mainPath": "预测室→测试平台→Evidence Vault→屋顶Prediction Array",
+     "realityToAdversity": "天空投影最坏未来；Reality Test结果返回后Boss会“成功贬值”。",
+     "coreMechanic": "P1预测；P2选择低成本测试；P3得到结果；P4固定证据；P5低Confidence继续。",
+     "enemyNote": "Boss 31 无力预言家；Core=Prediction Authority。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_Prediction",
+      "TRG_Test",
+      "TRG_EvidenceLock",
+      "TRG_Core"
+     ],
+     "triggerNote": "TRG_Prediction / TRG_Test / TRG_EvidenceLock / TRG_Core",
+     "navMeshCamera": "屋顶有安全护栏；投影视觉不改变碰撞。",
+     "realityVictory": "带着不足100%的Confidence走进Reality Test Gate；DeathType=Calibration。",
+     "reusedAssets": "WeatherTower_Base + Boss_PowerlessProphet_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 31,
+    "name": "无力预言家",
+    "enemyType": "PowerlessProphet",
+    "chapterId": "chapter12",
+    "levelId": "12-5",
+    "bossType": "Prediction / Evidence Distortion",
+    "coreTest": "“我做不到”是事实还是未经验证的预测。",
+    "attackGrammar": [
+     "过去召回",
+     "能力绝对化",
+     "证据过滤",
+     "难度融合",
+     "行动前失败"
+    ],
+    "phases": [
+     "P1事实/预测",
+     "P2能力拆分",
+     "P3行为实验",
+     "P4成功贬值",
+     "P5低Confidence行动"
+    ],
+    "fakeWeaknesses": [
+     "重复“我一定行”",
+     "选择远超能力任务"
+    ],
+    "coreMechanism": "Prediction Authority",
+    "executionGate": "低Confidence下完成可恢复行为实验",
+    "deathType": "Calibration",
+    "deathTypeAtoms": [
+     "Calibration"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter13",
+   "chapterNo": 13,
+   "title": "坚持、复发与重新开始线",
+   "core": "中断不等于终结；核心成长指标从“连续不断”转向RecoveryLatency。",
+   "spaceLanguage": "断桥、计划商店、复发沼泽、第二天住宅、重启车站；世界状态必须承认过去发生过。",
+   "axis": "WillpowerCollapse",
+   "rootObstacle": "E",
+   "districtId": "transit",
+   "levels": [
+    {
+     "levelId": "13-1",
+     "chapterId": "chapter13",
+     "name": "断链桥",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11"
+     ],
+     "baseKitLabel": "WK11 Park",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "桥115m×6m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "桥头 Local(0,0,-52)",
+     "mainPath": "10个行动节点→60%断裂→维修/侧梁→终点",
+     "realityToAdversity": "BreakEvent只破坏局部；巨大START OVER门为诱饵，Continue路线保留。",
+     "coreMechanic": "Checkpoint每20m保存；禁止因一次断裂清空总进度。",
+     "enemyNote": "链断者×2可暂时关闭最近节点。",
+     "internalUnits": [
+      {
+       "unitId": "IU_13_1_bf8f1e",
+       "displayName": "链断者",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH13_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_BreakEvent",
+      "TRG_RestartBait",
+      "TRG_Continue",
+      "TRG_Checkpoint"
+     ],
+     "triggerNote": "TRG_BreakEvent / TRG_RestartBait / TRG_Continue / TRG_Checkpoint",
+     "navMeshCamera": "跌落回最近Checkpoint；镜头持续展示对岸。",
+     "realityVictory": "从断点继续到达河对岸。",
+     "reusedAssets": "ParkBridge_Base + PF_PersistentCheckpoint"
+    },
+    {
+     "levelId": "13-2",
+     "chapterId": "chapter13",
+     "name": "归零商店",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "45×32m，两层",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "商店入口",
+     "mainPath": "新计划本→新装备→新方法→明日专区→中央ResumeTerminal",
+     "realityToAdversity": "每购买一个“全新开始”道具，额外生成一间Preparation Room。",
+     "coreMechanic": "携带ExistingGoalToken；正确行为是恢复旧任务而非无限重做计划。",
+     "enemyNote": "精英“计划推销员”无法击杀，以吸引力诱导。",
+     "internalUnits": [
+      {
+       "unitId": "IU_13_2_13a980",
+       "displayName": "计划推销员",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH13_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_NewPlanBuy",
+      "TRG_PreparationDepth",
+      "TRG_Resume"
+     ],
+     "triggerNote": "TRG_NewPlanBuy / TRG_PreparationDepth / TRG_Resume",
+     "navMeshCamera": "Preparation Room可Additive启用；出口始终存在。",
+     "realityVictory": "把ExistingGoalToken放回ResumeTerminal并从员工通道离开。",
+     "reusedAssets": "CommercialStore_Base + PF_ResumeTerminal"
+    },
+    {
+     "levelId": "13-3",
+     "chapterId": "chapter13",
+     "name": "复发沼泽",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK14"
+     ],
+     "baseKitLabel": "WK11/WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "95×65m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "旧入口",
+     "mainPath": "熟悉陷阱→过去技能节点→短恢复路线→出口",
+     "realityToAdversity": "复用拖延沼泽资产但不清除MasteredSkills；旧陷阱位置轻微变化。",
+     "coreMechanic": "读取PlayerMasteredSkills；恢复路线约初见60%距离。",
+     "enemyNote": "旧模式投影只制造“你又回来了”叙事。",
+     "internalUnits": [
+      {
+       "unitId": "IU_13_3_a09361",
+       "displayName": "旧模式投影",
+       "count": 3,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH13_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_SkillRecall",
+      "TRG_RelapseTrap",
+      "TRG_RecoveryRoute"
+     ],
+     "triggerNote": "TRG_SkillRecall / TRG_RelapseTrap / TRG_RecoveryRoute",
+     "navMeshCamera": "旧捷径保留；主NavMesh与原资产兼容。",
+     "realityVictory": "至少用一个过去已掌握技能穿过沼泽，并比较恢复时间。",
+     "reusedAssets": "Swamp_Base + OVR_Relapse"
+    },
+    {
+     "levelId": "13-4",
+     "chapterId": "chapter13",
+     "name": "第二天",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01"
+     ],
+     "baseKitLabel": "WK01 PlayerHome",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "住宅12×9m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "床边，游戏时间07:00",
+     "mainPath": "床→目标板→选择最小恢复动作→执行",
+     "realityToAdversity": "昨日未完成物件与失败痕迹持续存在；没有Reload Yesterday选项。",
+     "coreMechanic": "只允许Continue Today；恢复动作控制在模拟3分钟以内。",
+     "enemyNote": "“昨日判官”只有Mental Attack，没有实体。",
+     "internalUnits": [
+      {
+       "unitId": "IU_13_4_031142",
+       "displayName": "昨日判官",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH13_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Day2Start",
+      "TRG_RecoveryActionSelect",
+      "TRG_RecoveryComplete"
+     ],
+     "triggerNote": "TRG_Day2Start / TRG_RecoveryActionSelect / TRG_RecoveryComplete",
+     "navMeshCamera": "住宅常驻；相机不触发失败回顾CG。",
+     "realityVictory": "完成一个今天的最小恢复动作。",
+     "reusedAssets": "PlayerHome_Base + PersistentWorldState"
+    },
+    {
+     "levelId": "13-5",
+     "chapterId": "chapter13",
+     "name": "重启站",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "站厅55×35m；双站台90m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 16,
+     "spawnPoint": "站厅入口",
+     "mainPath": "错过首班→归零显示→新计划窗口→下一班站台→登车",
+     "realityToAdversity": "首班车在入场时离开；后续“明天/重开”支路增加但下一班始终真实存在。",
+     "coreMechanic": "P1错过；P2承受归零诱惑；P3拒绝重做全计划；P4识别下一班；P5登车。",
+     "enemyNote": "Boss 32 一次中断即结束者；Core=ResetBelief。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_FirstTrainMiss",
+      "TRG_ResetBait",
+      "TRG_NextTrain",
+      "TRG_Board"
+     ],
+     "triggerNote": "TRG_FirstTrainMiss / TRG_ResetBait / TRG_NextTrain / TRG_Board",
+     "navMeshCamera": "列车时序可重复测试；站台有安全边界。",
+     "realityVictory": "登上下一班；DeathType=Restart。",
+     "reusedAssets": "TransitStation_Base + Boss_RestartKing_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 32,
+    "name": "一次中断即结束者",
+    "enemyType": "OnceBrokenEnder",
+    "chapterId": "chapter13",
+    "levelId": "13-5",
+    "bossType": "Relapse / Reset Trap",
+    "coreTest": "一次偏离是否升级成长期退出。",
+    "attackGrammar": [
+     "Streak归零",
+     "破罐破摔",
+     "明日重启",
+     "新计划诱惑",
+     "身份复发"
+    ],
+    "phases": [
+     "P1第一次中断",
+     "P2归零诱惑",
+     "P3第二次复发",
+     "P4压力复发",
+     "P5快速重返"
+    ],
+    "fakeWeaknesses": [
+     "永不断",
+     "重做宏大计划"
+    ],
+    "coreMechanism": "Reset Belief Core",
+    "executionGate": "在恢复窗口内真正重新进入",
+    "deathType": "Restart",
+    "deathTypeAtoms": [
+     "Restart"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter14",
+   "chapterNo": 14,
+   "title": "不确定性与决策线",
+   "core": "把情报用于行动，而非把“100%确定”当成行动许可证。",
+   "spaceLanguage": "商场、档案馆、交通岔路、钟楼、资料大厅；空间强调信息收益、可逆性与等待成本。",
+   "axis": "SelfDoubt",
+   "rootObstacle": "D",
+   "districtId": "office",
+   "levels": [
+    {
+     "levelId": "14-1",
+     "chapterId": "chapter14",
+     "name": "无限比较市场",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "80×65m，两层开放",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "商场入口",
+     "mainPath": "12店→比较指标→DecisionCriteriaBoard→出口",
+     "realityToAdversity": "每进一家店增加比较维度；边际信息收益逐渐降低；部分机会随营业时间关闭。",
+     "coreMechanic": "最多锁定3-5个核心标准，达到阈值后必须决策。",
+     "enemyNote": "“最佳方案导购”不断推荐新维度。",
+     "internalUnits": [
+      {
+       "unitId": "IU_14_1_8bbb54",
+       "displayName": "最佳方案导购",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH14_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_InfoGain",
+      "TRG_CriteriaLock",
+      "TRG_DelayCost"
+     ],
+     "triggerNote": "TRG_InfoGain / TRG_CriteriaLock / TRG_DelayCost",
+     "navMeshCamera": "商场环路保证可回中央；出口方向稳定。",
+     "realityVictory": "在阈值后选择一个方案并离开。",
+     "reusedAssets": "Mall_Base + PF_DecisionCriteriaBoard"
+    },
+    {
+     "levelId": "14-2",
+     "chapterId": "chapter14",
+     "name": "100%先知档案馆",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK08"
+     ],
+     "baseKitLabel": "WK08 Library",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "主厅50×28m；书架区65×25m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "档案馆入口",
+     "mainPath": "主厅→深层书架→镜像扩展→返回出口",
+     "realityToAdversity": "越深入书架越高、过道越窄；达到阈值后复制“还有更多资料”的镜像区。",
+     "coreMechanic": "InformationGain前高后低；主动停止检索是主要动作。",
+     "enemyNote": "反例书记员每个结论都提供反例，无法清空。",
+     "internalUnits": [
+      {
+       "unitId": "IU_14_2_cce843",
+       "displayName": "反例书记员",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH14_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_InfoThreshold",
+      "TRG_MirrorArchive",
+      "TRG_ExitDecision"
+     ],
+     "triggerNote": "TRG_InfoThreshold / TRG_MirrorArchive / TRG_ExitDecision",
+     "navMeshCamera": "镜像区只复制视觉和有限交互，避免资源爆炸。",
+     "realityVictory": "主动停止检索并返回现实决策。",
+     "reusedAssets": "Archive_Base + OVR_InfiniteInfo"
+    },
+    {
+     "levelId": "14-3",
+     "chapterId": "chapter14",
+     "name": "可逆岔路",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "中心厅直径30m；4路各60-90m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中心大厅",
+     "mainPath": "低成本可逆/中成本可逆/部分可逆/高后果不可逆",
+     "realityToAdversity": "可逆路线形成环；部分可逆返回需要额外时间；不可逆前有明确Gate。",
+     "coreMechanic": "根据Reversibility决定快速试还是继续侦察。",
+     "enemyNote": "精英“不可逆幻象者”把普通小路夸张成断崖。",
+     "internalUnits": [
+      {
+       "unitId": "IU_14_3_0f4aa5",
+       "displayName": "不可逆幻象者",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH14_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_RouteType",
+      "TRG_Reversal",
+      "TRG_CommitGate"
+     ],
+     "triggerNote": "TRG_RouteType / TRG_Reversal / TRG_CommitGate",
+     "navMeshCamera": "四路独立NavMesh；返回成本可量化。",
+     "realityVictory": "选择与决策类型匹配的行动强度并通过。",
+     "reusedAssets": "TransitHub_Base + PF_ReversibleGate/PF_IrreversibleGate"
+    },
+    {
+     "levelId": "14-4",
+     "chapterId": "chapter14",
+     "name": "机会成本钟楼",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK03",
+      "WK05"
+     ],
+     "baseKitLabel": "WK03/WK05",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "广场60×60m；塔6层",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "钟楼底部",
+     "mainPath": "塔层资料→广场机会入口",
+     "realityToAdversity": "每上层得到更多资料，但广场中的现实机会按可见倒计时依次关闭。",
+     "coreMechanic": "比较InformationGain与DelayCost；关闭必须事前可见。",
+     "enemyNote": "精英“再想一分钟”制造视觉冻结，但世界时间继续。",
+     "internalUnits": [
+      {
+       "unitId": "IU_14_4_6fd3e6",
+       "displayName": "再想一分钟",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH14_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_OpportunityClose",
+      "TRG_InfoGain",
+      "TRG_ExitTower"
+     ],
+     "triggerNote": "TRG_OpportunityClose / TRG_InfoGain / TRG_ExitTower",
+     "navMeshCamera": "塔内楼梯可回；相机在机会即将关闭时提示广场而非弹窗。",
+     "realityVictory": "信息收益低于延迟成本后离塔并行动。",
+     "reusedAssets": "ClockTower_Base + PF_DelayCostClock"
+    },
+    {
+     "levelId": "14-5",
+     "chapterId": "chapter14",
+     "name": "绝对确定大厅",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "圆厅直径52m+8资料房",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "入口",
+     "mainPath": "8资料房→DecisionCriteriaLock→机会成本钟→3个Decision Gate",
+     "realityToAdversity": "Boss不断生成新变量；锁定核心标准后资料增长不再改变Gate条件。",
+     "coreMechanic": "P1搜集；P2边际收益；P3锁定标准；P4显示延迟成本；P5选择并执行。",
+     "enemyNote": "Boss 33 绝对确定者；Core=CertaintyRequirement。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_CriteriaLock",
+      "TRG_GateOpen",
+      "TRG_FirstStep"
+     ],
+     "triggerNote": "TRG_CriteriaLock / TRG_GateOpen / TRG_FirstStep",
+     "navMeshCamera": "资料房环形可回；Boss不硬锁中央。",
+     "realityVictory": "选择一个满足阈值的门并完成第一步；DeathType=Decision。",
+     "reusedAssets": "CivicHall_Base + Boss_AbsoluteCertainty_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 33,
+    "name": "绝对确定者",
+    "enemyType": "AbsoluteCertainty",
+    "chapterId": "chapter14",
+    "levelId": "14-5",
+    "bossType": "Information Trap / Decision Lock",
+    "coreTest": "玩家是否把“确定”当成行动许可证。",
+    "attackGrammar": [
+     "新变量",
+     "反例召唤",
+     "最佳方案幻觉",
+     "后悔模拟",
+     "不可逆伪装"
+    ],
+    "phases": [
+     "P1信息收集",
+     "P2收益下降",
+     "P3可逆分类",
+     "P4不行动成本",
+     "P5足够信息行动"
+    ],
+    "fakeWeaknesses": [
+     "搜集全部信息",
+     "比较所有选项"
+    ],
+    "coreMechanism": "Certainty Requirement",
+    "executionGate": "达到信息阈值后停止研究并执行第一步",
+    "deathType": "Decision",
+    "deathTypeAtoms": [
+     "Decision"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter15",
+   "chapterNo": 15,
+   "title": "比较、等级与依赖性自尊线",
+   "core": "比较可以用于学习，但排名不能成为人格价值裁判；训练Strategic Unlock。",
+   "spaceLanguage": "排行榜、垂直塔、低价值竞技场、掌声市场、无限阶梯；终局从垂直等级空间走向水平目标道路。",
+   "axis": "Shame",
+   "rootObstacle": "B",
+   "districtId": "edge",
+   "levels": [
+    {
+     "levelId": "15-1",
+     "chapterId": "chapter15",
+     "name": "排行榜大厅",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "70×50m，挑高20m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中庭入口",
+     "mainPath": "中央Goal Route直穿大厅",
+     "realityToAdversity": "四面排名屏动态刷新；Camera停留>2.5s GoalBeacon变暗，>6s生成比较敌人。",
+     "coreMechanic": "允许查看，但必须主动重锁Goal。",
+     "enemyNote": "比较影/排行提示，无真实私人第三方。",
+     "internalUnits": [
+      {
+       "unitId": "IU_15_1_c91710",
+       "displayName": "比较影",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH15_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_RankingGaze",
+      "TRG_Recenter",
+      "TRG_Exit"
+     ],
+     "triggerNote": "TRG_RankingGaze / TRG_Recenter / TRG_Exit",
+     "navMeshCamera": "主路宽8m；人群低密度；相机不强制转屏。",
+     "realityVictory": "重新锁定Goal并穿过大厅。",
+     "reusedAssets": "CommercialAtrium_Base + PF_RankingScreen"
+    },
+    {
+     "levelId": "15-2",
+     "chapterId": "chapter15",
+     "name": "偶像塔",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "5层，每层22×22m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "一层入口",
+     "mainPath": "成就→荣誉→能力→失败→训练→Behavior Extraction",
+     "realityToAdversity": "巨大榜样投影不能整体复制；最多提取3个Behavior Fragment。",
+     "coreMechanic": "把“成为某人”转成“学习具体行为”。",
+     "enemyNote": "无敌对战斗，以展览互动为主。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_BehaviorExtract",
+      "TRG_IdentityCopyAttempt"
+     ],
+     "triggerNote": "TRG_BehaviorExtract / TRG_IdentityCopyAttempt",
+     "navMeshCamera": "电梯到4层，最后一层步行；每层短环路。",
+     "realityVictory": "带走最多3个行为片段并绑定到自己的Goal。",
+     "reusedAssets": "ExhibitionTower_Base + PF_BehaviorFragment"
+    },
+    {
+     "levelId": "15-3",
+     "chapterId": "chapter15",
+     "name": "轻视竞技场",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK13"
+     ],
+     "baseKitLabel": "WK13",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "主场35×35m+4小擂台",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "入口",
+     "mainPath": "主擂台→低价值擂台→Disengage Gate",
+     "realityToAdversity": "弱敌提供廉价EgoPower但主目标时间流逝；离场门始终存在。",
+     "coreMechanic": "训练LowValueChallenge识别与Strategic Unlock。",
+     "enemyNote": "大量弱敌；精英“挑衅冠军”攻击低、嘲讽高。",
+     "internalUnits": [
+      {
+       "unitId": "IU_15_3_b1712f",
+       "displayName": "低价值挑衅者",
+       "count": 6,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH15_L3_Internal_01"
+      },
+      {
+       "unitId": "IU_15_3_797c41",
+       "displayName": "挑衅冠军",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH15_L3_Internal_02"
+      }
+     ],
+     "triggerIds": [
+      "TRG_LowValueFight",
+      "TRG_Disengage"
+     ],
+     "triggerNote": "TRG_LowValueFight / TRG_Disengage",
+     "navMeshCamera": "Arena边界清晰；解除锁定后Camera回GoalGate。",
+     "realityVictory": "可通过不战直接离场；不强制击杀。",
+     "reusedAssets": "FightClub_Base + PF_DisengageGate"
+    },
+    {
+     "levelId": "15-4",
+     "chapterId": "chapter15",
+     "name": "外部验证市场",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07 Commercial",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "85×60m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "广场入口",
+     "mainPath": "舞台区→掌声区→冷区→无人关注任务区",
+     "realityToAdversity": "掌声区提供短时Buff，停止后衰减；无人区无外部反馈。",
+     "coreMechanic": "完成一个与观众无关的Goal Task。",
+     "enemyNote": "精英“掌声商人”用观众交换偏离目标。",
+     "internalUnits": [
+      {
+       "unitId": "IU_15_4_8d0432",
+       "displayName": "掌声商人",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH15_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ApplauseBuff",
+      "TRG_ColdZone",
+      "TRG_GoalTask"
+     ],
+     "triggerNote": "TRG_ApplauseBuff / TRG_ColdZone / TRG_GoalTask",
+     "navMeshCamera": "NPC crowd LOD分级；音频随区域衰减。",
+     "realityVictory": "在无人鼓掌区完成任务并离场。",
+     "reusedAssets": "PerformanceSquare_Base + PF_AudienceZone"
+    },
+    {
+     "levelId": "15-5",
+     "chapterId": "chapter15",
+     "name": "等级王座",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK14"
+     ],
+     "baseKitLabel": "WK14 InnerCore",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "主Arena约60×60m；视觉无限阶梯",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "中央王座前",
+     "mainPath": "向上强敌→向下弱敌→偶像投影→评价反转→水平Goal Road",
+     "realityToAdversity": "击败弱敌反而让王座升高；SelfBenchmarkTerminal激活后墙体裂开形成水平道路。",
+     "coreMechanic": "P1向上比较；P2向下比较；P3榜样神化；P4掌声/嘘声；P5解除排名依赖。",
+     "enemyNote": "Boss 34 等级王座；Core=ComparisonDependency。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_SelfBenchmark",
+      "TRG_HorizontalRoad"
+     ],
+     "triggerNote": "TRG_SelfBenchmark / TRG_HorizontalRoad",
+     "navMeshCamera": "垂直视觉只做3层真实可玩，远景假无限。",
+     "realityVictory": "解除Boss锁定并走向水平Goal Road；DeathType=DependencyBreak。",
+     "reusedAssets": "InnerHierarchy_Base + Boss_RankingThrone_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 34,
+    "name": "等级王座",
+    "enemyType": "RankThrone",
+    "chapterId": "chapter15",
+    "levelId": "15-5",
+    "bossType": "Dependency / Identity",
+    "coreTest": "自我价值是否依赖“比别人强”。",
+    "attackGrammar": [
+     "上位凝视",
+     "下位诱饵",
+     "神化投影",
+     "贬低反击",
+     "排名刷新",
+     "证明冲动"
+    ],
+    "phases": [
+     "P1向上比较",
+     "P2向下比较",
+     "P3榜样神化",
+     "P4评价反转",
+     "P5关闭排行榜"
+    ],
+    "fakeWeaknesses": [
+     "成为第一",
+     "找更弱的人"
+    ],
+    "coreMechanism": "Comparison Dependency Core",
+    "executionGate": "SelfBenchmark后完成与评价无关的Goal Action",
+    "deathType": "DependencyBreak",
+    "deathTypeAtoms": [
+     "DependencyBreak"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter16",
+   "chapterNo": 16,
+   "title": "愤怒与反刍线",
+   "core": "当事实和可行动项已经提取后，停止没有新增信息的重复回放，并把注意力归还给当前Goal。",
+   "spaceLanguage": "电影院、辩论厅、无限流水线、三出口判定室、档案馆；空间循环必须可读但不能做成恶意迷宫。",
+   "axis": "FairnessSensitivity",
+   "rootObstacle": "D",
+   "districtId": "service",
+   "levels": [
+    {
+     "levelId": "16-1",
+     "chapterId": "chapter16",
+     "name": "重播影院",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK08"
+     ],
+     "baseKitLabel": "WK08",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "大厅25×18m；放映厅28×22m；后台15×12m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "影院大厅",
+     "mainPath": "大厅→座位→循环影片→始终存在的出口",
+     "realityToAdversity": "同一抽象事件循环播放，解释字幕变化但事实层几乎不变；NewInformationYield逐轮下降。",
+     "coreMechanic": "玩家主动离开座位而非“想通”影片。",
+     "enemyNote": "无实体敌人；银幕本身吸引Camera。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ReplayCount",
+      "TRG_InfoYield",
+      "TRG_ExitSeat"
+     ],
+     "triggerNote": "TRG_ReplayCount / TRG_InfoYield / TRG_ExitSeat",
+     "navMeshCamera": "出口灯始终可见；避免封死门。",
+     "realityVictory": "主动离开影院回现实街道。",
+     "reusedAssets": "Cinema_Base + PF_ReplayProjector"
+    },
+    {
+     "levelId": "16-2",
+     "chapterId": "chapter16",
+     "name": "假想辩论厅",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "38×28m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "会议厅入口",
+     "mainPath": "辩论台→观众席→侧门GoalDoor",
+     "realityToAdversity": "每赢一次投影辩论获得ImaginaryVictory特效，但Goal Progress=0；对手立即换说法。",
+     "coreMechanic": "走下辩论台才看到真正GoalDoor。",
+     "enemyNote": "精英“完美反驳者”无法被最终说服。",
+     "internalUnits": [
+      {
+       "unitId": "IU_16_2_9455c7",
+       "displayName": "完美反驳者",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH16_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ImaginaryWin",
+      "TRG_StepDown",
+      "TRG_GoalDoor"
+     ],
+     "triggerNote": "TRG_ImaginaryWin / TRG_StepDown / TRG_GoalDoor",
+     "navMeshCamera": "侧门一直NavMesh可达；相机离台后重构图。",
+     "realityVictory": "停止追求最后一句话并离开。",
+     "reusedAssets": "ConferenceHall_Base + PF_DisengageGate"
+    },
+    {
+     "levelId": "16-3",
+     "chapterId": "chapter16",
+     "name": "未完成感工厂",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12 Industrial",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "主线约130m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "流水线入口",
+     "mainPath": "不断到来的“为什么/如果/再解释”箱→STOP LINE→出口",
+     "realityToAdversity": "处理一个箱就生成下一个；流水线理论上无限，Stop Line是主动机制。",
+     "coreMechanic": "判断是否还有新增信息和现实行动；都没有则停止生产线。",
+     "enemyNote": "“问题搬运工”只是节奏压力。",
+     "internalUnits": [
+      {
+       "unitId": "IU_16_3_9b0de7",
+       "displayName": "问题搬运工",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH16_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_BoxProcessed",
+      "TRG_InfoZero",
+      "TRG_StopLine"
+     ],
+     "triggerNote": "TRG_BoxProcessed / TRG_InfoZero / TRG_StopLine",
+     "navMeshCamera": "传送带对象池；停止后噪声与运动同步关闭。",
+     "realityVictory": "按下Stop Line并从安静出口离开。",
+     "reusedAssets": "Factory_Base + PF_StopLine"
+    },
+    {
+     "levelId": "16-4",
+     "chapterId": "chapter16",
+     "name": "可行动判定室",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK10"
+     ],
+     "baseKitLabel": "WK10 Service",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "42×30m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中央分类台",
+     "mainPath": "ACTION POSSIBLE / NO CURRENT ACTION / MORE FACTS NEEDED三门",
+     "realityToAdversity": "事件卡必须送入正确门；More Facts有有限调查室和Evidence Threshold。",
+     "coreMechanic": "防止把一切二分；只对真正可行动事件进入行动通道。",
+     "enemyNote": "精英“无限调查员”试图把所有卡送More Facts。",
+     "internalUnits": [
+      {
+       "unitId": "IU_16_4_78f5ba",
+       "displayName": "无限调查员",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH16_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ActionabilitySort",
+      "TRG_EvidenceThreshold"
+     ],
+     "triggerNote": "TRG_ActionabilitySort / TRG_EvidenceThreshold",
+     "navMeshCamera": "三门短回路，错误分类可修正。",
+     "realityVictory": "正确分类并完成至少一个现实行动或归档。",
+     "reusedAssets": "AdminHall_Base + PF_ActionabilitySorter"
+    },
+    {
+     "levelId": "16-5",
+     "chapterId": "chapter16",
+     "name": "永恒重播机",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK08",
+      "WK14"
+     ],
+     "baseKitLabel": "WK08→WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "现实馆40×28m；Inner 55×45m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "档案馆入口",
+     "mainPath": "Facts轨→Actions轨→Replays轨→ArchiveVault→现实街道",
+     "realityToAdversity": "重复胶片被分流；Boss高速播放Replay Reel并插入自我指责片段。",
+     "coreMechanic": "P1事实；P2行动；P3识别重复；P4Boss；P5归档并回到现在。",
+     "enemyNote": "Boss 35 永恒重播机；Core=AttentionOwnership。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_FilmSort",
+      "TRG_ArchiveVault",
+      "TRG_ReturnReality"
+     ],
+     "triggerNote": "TRG_FilmSort / TRG_ArchiveVault / TRG_ReturnReality",
+     "navMeshCamera": "三轨明显区分；结束后无长CG，立即恢复第三人称。",
+     "realityVictory": "归档Replay Reel后走至少15m朝当前Goal前进；DeathType=Archive。",
+     "reusedAssets": "FilmArchive_Base + Boss_ReplayMachine_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 35,
+    "name": "永恒重播机",
+    "enemyType": "EternalReplayer",
+    "chapterId": "chapter16",
+    "levelId": "16-5",
+    "bossType": "Attention / Loop / Archive",
+    "coreTest": "事件结束后是否仍无限占据今天。",
+    "attackGrammar": [
+     "重播",
+     "更好答案",
+     "道德未完成感",
+     "身份追责",
+     "未来预演污染",
+     "强制解释"
+    ],
+    "phases": [
+     "P1事实重建",
+     "P2责任判断",
+     "P3收益衰减",
+     "P4自我攻击",
+     "P5归档"
+    ],
+    "fakeWeaknesses": [
+     "完美解释",
+     "脑内重新赢",
+     "强迫原谅"
+    ],
+    "coreMechanism": "Attention Ownership Core",
+    "executionGate": "归档后立即返回当前Goal",
+    "deathType": "Archive",
+    "deathTypeAtoms": [
+     "Archive"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter17",
+   "chapterNo": 17,
+   "title": "安全警觉与威胁辨别线",
+   "core": "提高Signal Discrimination：真正危险时保护自己，信息不足时保持Unknown，普通刺激不自动升级成威胁。",
+   "spaceLanguage": "夜街、三色站、停车楼撤离、安全屋余震、交通控制中心；空间必须同时容纳真危险与误报。",
+   "axis": "NoiseSensitivity",
+   "rootObstacle": "A",
+   "districtId": "transit",
+   "levels": [
+    {
+     "levelId": "17-1",
+     "chapterId": "chapter17",
+     "name": "模糊街道",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK03"
+     ],
+     "baseKitLabel": "WK03 UrbanStreet",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "150×50m，可玩主段约120m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "夜间公交站",
+     "mainPath": "公交站→店铺段→路口→窄巷口→安全亮区",
+     "realityToAdversity": "同一街道混合普通刺激、信息不足和1个真实风险事件；环境声方向性增强。",
+     "coreMechanic": "玩家用Reality Scan区分Facts/Interpretation；黄区允许暂不结论。",
+     "enemyNote": "普通NPC、车辆、脚步；真实风险用可读Telegraph，禁止靠惊吓作弊。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_AmbiguousSignal",
+      "TRG_RealRisk",
+      "TRG_SafeZone"
+     ],
+     "triggerNote": "TRG_AmbiguousSignal / TRG_RealRisk / TRG_SafeZone",
+     "navMeshCamera": "人行道NavMesh连续；车道禁入；Camera Lock仅短暂提示事实源。",
+     "realityVictory": "正确处理至少1个红/2个黄/多个绿信号并抵达安全亮区。",
+     "reusedAssets": "UrbanStreet_Night_Base + OVR_ThreatCalibration"
+    },
+    {
+     "levelId": "17-2",
+     "chapterId": "chapter17",
+     "name": "三色判断站",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "站厅65×50m；3出口各25m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "地铁闸机内",
+     "mainPath": "证据观察台→红/黄/绿三出口→反馈回廊",
+     "realityToAdversity": "每轮事件在站厅真实发生，三出口代表Danger/Unknown/LowEvidence；错误选择可回中央重试。",
+     "coreMechanic": "判断基于可见证据，系统不要求“乐观”。",
+     "enemyNote": "背景NPC/广播；少量信号诱饵。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_EvidenceReady",
+      "TRG_RedExit",
+      "TRG_YellowExit",
+      "TRG_GreenExit"
+     ],
+     "triggerNote": "TRG_EvidenceReady / TRG_RedExit / TRG_YellowExit / TRG_GreenExit",
+     "navMeshCamera": "三个出口等距，避免位置暗示正确答案。",
+     "realityVictory": "连续完成若干正确分类，并保留Unknown能力。",
+     "reusedAssets": "TransitStation_Base + PF_ThreatColorGate"
+    },
+    {
+     "levelId": "17-3",
+     "chapterId": "chapter17",
+     "name": "安全出口演练",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK13"
+     ],
+     "baseKitLabel": "WK13 Edge",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "停车楼90×65m，3层局部开放",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "二层停车区",
+     "mainPath": "观察→建立距离→楼梯/坡道→安全出口",
+     "realityToAdversity": "真实高风险追逐/环境危险出现；任务重点是撤离而非战胜。",
+     "coreMechanic": "先为不可胜：确认出口、遮挡、距离、求助点；战略撤退可A级或S级。",
+     "enemyNote": "追逐者/环境危险只用于路线压迫，禁止羞辱性追击。",
+     "internalUnits": [
+      {
+       "unitId": "IU_17_3_42bec8",
+       "displayName": "追逐者",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH17_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_RealThreat",
+      "TRG_ExitPlan",
+      "TRG_StrategicWithdrawal"
+     ],
+     "triggerNote": "TRG_RealThreat / TRG_ExitPlan / TRG_StrategicWithdrawal",
+     "navMeshCamera": "停车楼多层NavMesh；追逐AI速度略低于玩家稳定奔跑速度。",
+     "realityVictory": "保存关键资源并安全离开；不是击杀敌人。",
+     "reusedAssets": "ParkingGarage_Base + PF_StrategicExit"
+    },
+    {
+     "levelId": "17-4",
+     "chapterId": "chapter17",
+     "name": "警报余震室",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01"
+     ],
+     "baseKitLabel": "WK01 PlayerHome",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "安全屋12×9m+恢复室8×6m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "安全屋入口",
+     "mainPath": "Reality Anchor物件→窗/桌/地面→呼吸步道→GoalBoard",
+     "realityToAdversity": "危险已结束但灯闪、回声、虚假提示残留；每确认一个现实锚点，Overlay强度下降。",
+     "coreMechanic": "Recovery而非继续搜索危险；可随时退出高压提示。",
+     "enemyNote": "无敌人；只保留警报残响。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_Anchor_01..05",
+      "TRG_RecoveryStable"
+     ],
+     "triggerNote": "TRG_Anchor_01..05 / TRG_RecoveryStable",
+     "navMeshCamera": "全室安全NavMesh；相机稳定、不抖动。",
+     "realityVictory": "警报阈值回落并重新读取GoalBoard。",
+     "reusedAssets": "PlayerHome_Base + OVR_AlarmAftershock + PF_RealityAnchor"
+    },
+    {
+     "levelId": "17-5",
+     "chapterId": "chapter17",
+     "name": "过载雷达",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK04",
+      "WK14"
+     ],
+     "baseKitLabel": "WK04/WK14",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "控制中心55×40m；雷达核心30×30m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "交通控制室门口",
+     "mainPath": "信号墙→Evidence Console→阈值校准→多信号终局",
+     "realityToAdversity": "初始所有信号标红；逐步显示证据强度，最终保留1个真红、数黄、多绿。",
+     "coreMechanic": "P1识别真危险；P2普通信号；P3Unknown；P4余震；P5校准阈值。",
+     "enemyNote": "Boss 36 过载雷达；不是邪恶怪物，而是保护系统失准。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ThreatCalibrate",
+      "TRG_FalseAlarmRate",
+      "TRG_CoreThreshold"
+     ],
+     "triggerNote": "TRG_ThreatCalibrate / TRG_FalseAlarmRate / TRG_CoreThreshold",
+     "navMeshCamera": "雷达视觉不改碰撞；Console交互区固定。",
+     "realityVictory": "证据与反应强度匹配；DeathType=Calibration。",
+     "reusedAssets": "TrafficControl_Base + Boss_OverloadedRadar_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 36,
+    "name": "过载雷达",
+    "enemyType": "OverloadedRadar",
+    "chapterId": "chapter17",
+    "levelId": "17-5",
+    "bossType": "Calibration / Safety",
+    "coreTest": "保护系统是否把模糊刺激全部升级为威胁。",
+    "attackGrammar": [
+     "全红警报",
+     "注意力劫持",
+     "最坏解释",
+     "搜索威胁",
+     "警报残留"
+    ],
+    "phases": [
+     "P1真危险",
+     "P2普通刺激",
+     "P3信息不足",
+     "P4余震",
+     "P5校准"
+    ],
+    "fakeWeaknesses": [
+     "关闭警觉",
+     "证明所有刺激善意"
+    ],
+    "coreMechanism": "Threat Calibration Core",
+    "executionGate": "正确区分Danger/Unknown/LowEvidence",
+    "deathType": "Calibration",
+    "deathTypeAtoms": [
+     "Calibration"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter18",
+   "chapterNo": 18,
+   "title": "逃避与舒适区线",
+   "core": "区分Strategic Withdrawal与Avoidance Escape；不让即时减压自动决定长期方向。",
+   "spaceLanguage": "训练馆出口、舒适港、三带山坡、返回现场、候车大厅；撤退本身可以是正确选择。",
+   "axis": "Procrastination",
+   "rootObstacle": "A",
+   "districtId": "transit",
+   "levels": [
+    {
+     "levelId": "18-1",
+     "chapterId": "chapter18",
+     "name": "退出按钮",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11"
+     ],
+     "baseKitLabel": "WK11",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "训练馆50×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "入口",
+     "mainPath": "简单挑战区→Stretch区→巨大EXIT→回流区",
+     "realityToAdversity": "越接近困难区EXIT越亮；退出立即Stress下降，但下一次相同挑战AvoidanceStrength上升。",
+     "coreMechanic": "体验负强化；同时保留合法退出权。",
+     "enemyNote": "训练影×少量；不追杀。",
+     "internalUnits": [
+      {
+       "unitId": "IU_18_1_473149",
+       "displayName": "训练影",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH18_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_StressRise",
+      "TRG_ExitUse",
+      "TRG_ReentryOffer"
+     ],
+     "triggerNote": "TRG_StressRise / TRG_ExitUse / TRG_ReentryOffer",
+     "navMeshCamera": "出口与挑战门等距；相机不羞辱退出。",
+     "realityVictory": "至少一次识别“我是在保护资源还是只为立即消除不适”。",
+     "reusedAssets": "TrainingHall_Base + PF_ExitGate"
+    },
+    {
+     "levelId": "18-2",
+     "chapterId": "chapter18",
+     "name": "舒适港",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11"
+     ],
+     "baseKitLabel": "WK11 Park",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "100×70m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "公园入口",
+     "mainPath": "休闲区→餐饮区→娱乐区→远处坡顶Goal",
+     "realityToAdversity": "舒适设施更亮更近，GoalBeacon在远处但始终可见；世界时间真实流逝。",
+     "coreMechanic": "停留不扣血，但显示OpportunityCost；玩家可选择何时离开。",
+     "enemyNote": "无敌人；环境本身提供即时奖励。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ComfortStay",
+      "TRG_TimeCost",
+      "TRG_LeaveHarbor"
+     ],
+     "triggerNote": "TRG_ComfortStay / TRG_TimeCost / TRG_LeaveHarbor",
+     "navMeshCamera": "开放公园NavMesh；远Goal始终在天际线。",
+     "realityVictory": "在自选窗口离开舒适港并进入Goal坡道。",
+     "reusedAssets": "ParkLeisure_Base + OVR_Comfort"
+    },
+    {
+     "levelId": "18-3",
+     "chapterId": "chapter18",
+     "name": "拉伸区山坡",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11"
+     ],
+     "baseKitLabel": "WK11 Park",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "山坡路线140m，宽25-50m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "山脚",
+     "mainPath": "Comfort低坡→Stretch中坡→Panic高坡→横向出口",
+     "realityToAdversity": "三条海拔带可视化；玩家可横向移动调整强度。",
+     "coreMechanic": "训练选择“略难但可承受”的区间，而非冲顶。",
+     "enemyNote": "不同强度训练敌人/机关。",
+     "internalUnits": [
+      {
+       "unitId": "IU_18_3_c42084",
+       "displayName": "拉伸区训练影",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH18_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ZoneComfort",
+      "TRG_ZoneStretch",
+      "TRG_ZonePanic"
+     ],
+     "triggerNote": "TRG_ZoneComfort / TRG_ZoneStretch / TRG_ZonePanic",
+     "navMeshCamera": "坡面NavMesh；Panic区有明确安全退回线。",
+     "realityVictory": "在Stretch区完成一项任务并安全退出。",
+     "reusedAssets": "HillTraining_Base + PF_StretchZone"
+    },
+    {
+     "levelId": "18-4",
+     "chapterId": "chapter18",
+     "name": "返回现场",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [],
+     "baseKitLabel": "复用触发过退出的Base Scene",
+     "districtId": "transit",
+     "dynamicBase": true,
+     "greyboxScale": "按来源关卡",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "上一次退出点附近",
+     "mainPath": "安全入口→原退出点→缩小任务→完成",
+     "realityToAdversity": "PersistentWorldState保留上次退出痕迹；系统展示“回来”而非“从零”。",
+     "coreMechanic": "Reentry计划必须包含时间和最小版本；不要求一次做到原难度。",
+     "enemyNote": "精英“再等等”会打开新的休息支路。",
+     "internalUnits": [
+      {
+       "unitId": "IU_18_4_8eea77",
+       "displayName": "再等等",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH18_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Reentry",
+      "TRG_MinimumVersion",
+      "TRG_Complete"
+     ],
+     "triggerNote": "TRG_Reentry / TRG_MinimumVersion / TRG_Complete",
+     "navMeshCamera": "沿用来源关卡NavMesh；回流路线更短。",
+     "realityVictory": "退出后真正重新进入并完成最小有效动作。",
+     "reusedAssets": "SourceBase + OVR_Reentry"
+    },
+    {
+     "levelId": "18-5",
+     "chapterId": "chapter18",
+     "name": "撤退之王",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "候车大厅80×55m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "大厅中央",
+     "mainPath": "继续门/降低难度门/换路线门/战略撤退区/“明天”门",
+     "realityToAdversity": "多个退出都真实可用，但只有部分带来下一战条件变化；无限回避会被Goal OS识别。",
+     "coreMechanic": "P1正常退出；P2即时减压；P3Stretch识别；P4返回计划；P5带着不适继续。",
+     "enemyNote": "Boss 37 撤退之王；Core=DiscomfortIntolerance。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RouteChoice",
+      "TRG_StrategicWithdraw",
+      "TRG_AvoidanceEscape",
+      "TRG_ReentryPlan"
+     ],
+     "triggerNote": "TRG_RouteChoice / TRG_StrategicWithdraw / TRG_AvoidanceEscape / TRG_ReentryPlan",
+     "navMeshCamera": "大厅中心可观察所有门；不隐藏合法撤退。",
+     "realityVictory": "选择能改变战局的策略并继续/计划重返；DeathType=Outgrow。",
+     "reusedAssets": "TransitConcourse_Base + Boss_RetreatKing_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 37,
+    "name": "撤退之王",
+    "enemyType": "RetreatKing",
+    "chapterId": "chapter18",
+    "levelId": "18-5",
+    "bossType": "Avoidance / Reinforcement",
+    "coreTest": "即时减压是否自动强化长期逃避。",
+    "attackGrammar": [
+     "退出按钮",
+     "即时舒适",
+     "状态不好",
+     "明天再来",
+     "风险夸大",
+     "100%恢复等待"
+    ],
+    "phases": [
+     "P1正常退出",
+     "P2舒适强化",
+     "P3拉伸区",
+     "P4返回现场",
+     "P5带不适继续"
+    ],
+    "fakeWeaknesses": [
+     "永不撤退",
+     "冲进Panic Zone"
+    ],
+    "coreMechanism": "Discomfort Intolerance Core",
+    "executionGate": "选择战略撤退或Stretch行动并落实重返",
+    "deathType": "Outgrow",
+    "deathTypeAtoms": [
+     "Outgrow"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter19",
+   "chapterNo": 19,
+   "title": "动机与价值断线线",
+   "core": "重新连接Value→Goal→Milestone→Next Action；同时允许Goal Evolution，不把坚持错误目标当成美德。",
+   "spaceLanguage": "广告广场、即时奖励市场、价值森林、目标神殿、灰色城市；空间表现“别人的方向”和“自己的路线”。",
+   "axis": "WillpowerCollapse",
+   "rootObstacle": "C",
+   "districtId": "transit",
+   "levels": [
+    {
+     "levelId": "19-1",
+     "chapterId": "chapter19",
+     "name": "别人的目标广场",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "90×70m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "广场边缘",
+     "mainPath": "广告墙→人群流→微弱Personal Beacon→个人出口",
+     "realityToAdversity": "巨型广告展示赚钱/排名/体面等通用目标，NPC沿广告方向流动；自己的Beacon初始较弱。",
+     "coreMechanic": "玩家从若干价值卡中绑定一个与自己Goal有关的理由。",
+     "enemyNote": "社会噪声影，不可击杀。",
+     "internalUnits": [
+      {
+       "unitId": "IU_19_1_39ca99",
+       "displayName": "社会噪声影",
+       "count": 3,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH19_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ExternalGoalPull",
+      "TRG_PersonalBeacon"
+     ],
+     "triggerNote": "TRG_ExternalGoalPull / TRG_PersonalBeacon",
+     "navMeshCamera": "Crowd用简单流场；个人出口不随排名变化。",
+     "realityVictory": "重新识别自己的目标方向并离开广场。",
+     "reusedAssets": "CitySquare_Base + OVR_ExternalGoals"
+    },
+    {
+     "levelId": "19-2",
+     "chapterId": "chapter19",
+     "name": "即时奖励市场",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "夜市120×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "街口",
+     "mainPath": "两侧即时奖励摊位→中段分心支路→街尾Goal Gate",
+     "realityToAdversity": "诱惑更近、更亮、更响；Goal奖励延迟但可见。",
+     "coreMechanic": "不是禁娱乐，而是设定时间/预算/优先级后通过。",
+     "enemyNote": "奖励商贩NPC，无敌意。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RewardInteract",
+      "TRG_Budget",
+      "TRG_GoalGate"
+     ],
+     "triggerNote": "TRG_RewardInteract / TRG_Budget / TRG_GoalGate",
+     "navMeshCamera": "线性街+多短支路；音量根据距离控制。",
+     "realityVictory": "在允许的即时奖励边界内抵达Goal Gate。",
+     "reusedAssets": "NightMarket_Base + PF_RewardBudget"
+    },
+    {
+     "levelId": "19-3",
+     "chapterId": "chapter19",
+     "name": "价值罗盘森林",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK14"
+     ],
+     "baseKitLabel": "WK11/WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "森林区域100×100m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "林口",
+     "mainPath": "多价值路径→行为石→可实体化桥→核心林地",
+     "realityToAdversity": "抽象价值词本身不能开路；必须给出“今天对应什么动作”。",
+     "coreMechanic": "每个价值最多生成1条当前行为路径，避免价值堆叠。",
+     "enemyNote": "迷雾只遮挡未绑定行为的路线。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ValueSelect",
+      "TRG_ActionBind",
+      "TRG_PathMaterialize"
+     ],
+     "triggerNote": "TRG_ValueSelect / TRG_ActionBind / TRG_PathMaterialize",
+     "navMeshCamera": "路径模块化；未激活区不烘焙动态导航。",
+     "realityVictory": "至少建立一条Value→Action路径并走通。",
+     "reusedAssets": "Forest_Base + PF_ValueCompass"
+    },
+    {
+     "levelId": "19-4",
+     "chapterId": "chapter19",
+     "name": "目标进化神殿",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK14"
+     ],
+     "baseKitLabel": "WK14",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "环形神殿直径60m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "外环",
+     "mainPath": "当前Goal祭台→保留/修改/拆分/暂停/放弃五门→新路线",
+     "realityToAdversity": "每扇门都可合法通关；“放弃”不是失败，需记录理由和后续方向。",
+     "coreMechanic": "Goal Evolution产生版本历史；只要与Value一致即可。",
+     "enemyNote": "守旧祭司投影会把改变目标说成“意志薄弱”。",
+     "internalUnits": [
+      {
+       "unitId": "IU_19_4_b37176",
+       "displayName": "守旧祭司投影",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH19_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_GoalReview",
+      "TRG_GoalEvolve",
+      "TRG_NewGoal"
+     ],
+     "triggerNote": "TRG_GoalReview / TRG_GoalEvolve / TRG_NewGoal",
+     "navMeshCamera": "五门等价视觉权重；避免暗示唯一正确。",
+     "realityVictory": "做出继续/修改/拆分/暂停/放弃判断并生成下一动作。",
+     "reusedAssets": "GoalTemple_Inner + PF_GoalEvolutionGate"
+    },
+    {
+     "levelId": "19-5",
+     "chapterId": "chapter19",
+     "name": "意义断线者",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK03",
+      "WK07"
+     ],
+     "baseKitLabel": "WK03/WK07",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "城市中心约140×120m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 20,
+     "spawnPoint": "灰色街区入口",
+     "mainPath": "灰色城市→Value Node→Milestone Node→Action Node→恢复/改道出口",
+     "realityToAdversity": "世界逐步失色；重新连接每一层后局部颜色恢复；若目标失效则出现新城市道路。",
+     "coreMechanic": "P1为什么；P2价值转行为；P3验证目标有效；P4低动力执行；P5重连或演化。",
+     "enemyNote": "Boss 38 意义断线者，无直接攻击。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_ValueLink",
+      "TRG_GoalValidity",
+      "TRG_ActionLink",
+      "TRG_GoalEvolution"
+     ],
+     "triggerNote": "TRG_ValueLink / TRG_GoalValidity / TRG_ActionLink / TRG_GoalEvolution",
+     "navMeshCamera": "城市Base保持；色彩用材质参数。",
+     "realityVictory": "恢复方向性或合法改道；DeathType=Reconnection/GoalEvolution。",
+     "reusedAssets": "CityCenter_Base + Boss_MeaningDisconnect_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 38,
+    "name": "意义断线者",
+    "enemyType": "MeaningDisconnector",
+    "chapterId": "chapter19",
+    "levelId": "19-5",
+    "bossType": "Motivation / Value",
+    "coreTest": "目标是否仍与价值连接，或已经需要Goal Evolution。",
+    "attackGrammar": [
+     "应该之声",
+     "远期模糊",
+     "即时奖励",
+     "目标异化",
+     "成本隐藏"
+    ],
+    "phases": [
+     "P1为什么",
+     "P2价值转行为",
+     "P3目标有效性",
+     "P4低动力执行",
+     "P5重新连接"
+    ],
+    "fakeWeaknesses": [
+     "励志内容",
+     "更大目标",
+     "羞辱没动力"
+    ],
+    "coreMechanism": "Value-Action Link",
+    "executionGate": "恢复Value→Action或合法改变目标",
+    "deathType": "Reconnection / GoalEvolution",
+    "deathTypeAtoms": [
+     "Reconnection",
+     "GoalEvolution"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter20",
+   "chapterNo": 20,
+   "title": "自动驾驶与习惯劫持线",
+   "core": "找到Cue→Routine→Reward，在意识介入前的最早窗口改变默认路径；长期目标是AutomationShift。",
+   "spaceLanguage": "住宅-街道连续路线、通知虫巢、习惯实验室、If-Then锻造炉、跨区Boss；战斗前“造势”比临场意志更重要。",
+   "axis": "Procrastination",
+   "rootObstacle": "C",
+   "districtId": "residential",
+   "levels": [
+    {
+     "levelId": "20-1",
+     "chapterId": "chapter20",
+     "name": "自动驾驶巷",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01",
+      "WK03"
+     ],
+     "baseKitLabel": "WK01+WK03",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "住宅至便利店路线约130m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "PlayerHome客厅",
+     "mainPath": "玄关→楼下→旧习惯岔路→便利店/目标路",
+     "realityToAdversity": "无明确输入时角色会沿旧行为路线缓慢自动走；玩家可在3个Interruption Window夺回控制。",
+     "coreMechanic": "记录第一次自动偏转发生在哪一秒。",
+     "enemyNote": "无敌人；旧路线用灯光与熟悉音效强化。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_AutoRoute",
+      "TRG_InterruptWindow_01..03"
+     ],
+     "triggerNote": "TRG_AutoRoute / TRG_InterruptWindow_01..03",
+     "navMeshCamera": "自动移动速度低，任何主动输入立即夺回；避免剥夺控制感。",
+     "realityVictory": "至少一次在早期窗口打断自动路径并进入Goal路线。",
+     "reusedAssets": "PlayerHomeStreet_Base + OVR_Autopilot"
+    },
+    {
+     "levelId": "20-2",
+     "chapterId": "chapter20",
+     "name": "红点虫巢",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01"
+     ],
+     "baseKitLabel": "WK01 PlayerHome",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "卧室6×5m扩展Inner 25×25m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "床/书桌旁",
+     "mainPath": "手机→通知虫→TriggerSource→环境重构→GoalDesk",
+     "realityToAdversity": "通知红点实体化为虫群；打完虫会再生，必须处理源头：通知、位置、入口。",
+     "coreMechanic": "增加错误行为摩擦、降低正确行为摩擦。",
+     "enemyNote": "红点虫群，低伤害高干扰。",
+     "internalUnits": [
+      {
+       "unitId": "IU_20_2_5ccb48",
+       "displayName": "红点虫",
+       "count": 6,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH20_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Notification",
+      "TRG_SourceDisable",
+      "TRG_DeviceMove"
+     ],
+     "triggerNote": "TRG_Notification / TRG_SourceDisable / TRG_DeviceMove",
+     "navMeshCamera": "虫群对象池；手机UI不做真实App仿真。",
+     "realityVictory": "至少关闭/移动一个Trigger Source并完成目标桌动作。",
+     "reusedAssets": "PlayerHome_Base + InnerNotificationNest"
+    },
+    {
+     "levelId": "20-3",
+     "chapterId": "chapter20",
+     "name": "习惯回路实验室",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "60×25m三室",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "实验室入口",
+     "mainPath": "Cue Room→Routine Corridor→Reward Chamber→观察台",
+     "realityToAdversity": "玩家完整走一遍旧回路，再通过替代Routine重新跑。",
+     "coreMechanic": "显示Automaticity与Reward，不做道德化。",
+     "enemyNote": "实验影作为行为链可视化。",
+     "internalUnits": [
+      {
+       "unitId": "IU_20_3_ec7ee6",
+       "displayName": "实验影",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH20_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Cue",
+      "TRG_Routine",
+      "TRG_Reward",
+      "TRG_Replacement"
+     ],
+     "triggerNote": "TRG_Cue / TRG_Routine / TRG_Reward / TRG_Replacement",
+     "navMeshCamera": "三室线性并可快速重置。",
+     "realityVictory": "识别真实Trigger与Reward，并成功执行一次替代Routine。",
+     "reusedAssets": "HabitLab_Base + PF_HabitLoop"
+    },
+    {
+     "levelId": "20-4",
+     "chapterId": "chapter20",
+     "name": "如果-那么锻造炉",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12 Industrial",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "45×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "锻造间",
+     "mainPath": "Trigger模块仓→Action模块仓→锻造台→模拟现场",
+     "realityToAdversity": "把一个具体Trigger和一个≤60秒动作锻造成If-Then Token；过度复杂组合会熔毁。",
+     "coreMechanic": "规则必须可观察、可执行、足够短。",
+     "enemyNote": "精英“模糊条件者”提供“如果有空/状态好”之类无效Trigger。",
+     "internalUnits": [
+      {
+       "unitId": "IU_20_4_396386",
+       "displayName": "模糊条件者",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH20_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_TriggerSelect",
+      "TRG_ActionSelect",
+      "TRG_SimTest"
+     ],
+     "triggerNote": "TRG_TriggerSelect / TRG_ActionSelect / TRG_SimTest",
+     "navMeshCamera": "锻造台中心交互，模拟现场短循环。",
+     "realityVictory": "生成并在模拟现场成功触发一条Implementation Intention。",
+     "reusedAssets": "Forge_Base + PF_IfThenForge"
+    },
+    {
+     "levelId": "20-5",
+     "chapterId": "chapter20",
+     "name": "习惯劫持者",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK01",
+      "WK03",
+      "WK04"
+     ],
+     "baseKitLabel": "WK01→WK03→WK04",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "跨住宅、街道、交通区约250m有效路线",
+     "firstRunMinutesMin": 15,
+     "firstRunMinutesMax": 22,
+     "spawnPoint": "PlayerHome",
+     "mainPath": "卧室Cue→玄关→街道→站点→Goal入口",
+     "realityToAdversity": "Boss无固定身体，附着于手机、床、通知、路线、等待点；重复利用同一弱点会自适应。",
+     "coreMechanic": "P1找Trigger；P2制造3秒窗口；P3替代Routine；P4环境重构；P5让正确行为成为默认。",
+     "enemyNote": "Boss 39 习惯劫持者；Core=TriggerArchitecture。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_HabitPhase_01..05",
+      "TRG_EnvironmentShift"
+     ],
+     "triggerNote": "TRG_HabitPhase_01..05 / TRG_EnvironmentShift",
+     "navMeshCamera": "多个Base Scene Additive流式加载；Boss不硬锁。",
+     "realityVictory": "真实Trigger出现时执行替代Routine；DeathType=Interruption→Replacement→AutomationShift。",
+     "reusedAssets": "PlayerHome/Street/Transit + Boss_HabitHijacker_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 39,
+    "name": "习惯劫持者",
+    "enemyType": "HabitHijacker",
+    "chapterId": "chapter20",
+    "levelId": "20-5",
+    "bossType": "Automatic / Trigger",
+    "coreTest": "行为是否在意识介入前已沿Cue-Routine-Reward发生。",
+    "attackGrammar": [
+     "Trigger Flash",
+     "无意识连招",
+     "即时奖励",
+     "意志疲劳",
+     "环境复活"
+    ],
+    "phases": [
+     "P1发现Trigger",
+     "P2打断窗口",
+     "P3替代Routine",
+     "P4环境重构",
+     "P5新自动化"
+    ],
+    "fakeWeaknesses": [
+     "只靠意志抑制",
+     "复杂系统"
+    ],
+    "coreMechanism": "Trigger Architecture Core",
+    "executionGate": "真实Trigger下完成替代Routine",
+    "deathType": "Interruption / Replacement / AutomationShift",
+    "deathTypeAtoms": [
+     "Interruption",
+     "Replacement",
+     "AutomationShift"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter21",
+   "chapterNo": 21,
+   "title": "风险、勇气与恢复力线",
+   "core": "不是保证不失败，而是通过概率、影响、可恢复性和Plan B让风险回到可管理范围。",
+   "spaceLanguage": "峡谷、维修工坊、Plan B营地、风险塔、悬崖龙巢；空间强调撤退路、补给点与恢复路径。",
+   "axis": "FailureFear",
+   "rootObstacle": "A",
+   "districtId": "edge",
+   "levels": [
+    {
+     "levelId": "21-1",
+     "chapterId": "chapter21",
+     "name": "概率峡谷",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK14"
+     ],
+     "baseKitLabel": "WK11/WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "峡谷主区140×80m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "峡谷入口",
+     "mainPath": "多座桥→概率标记→观察台→目标对岸",
+     "realityToAdversity": "不同桥有不同风险/收益；部分高风险桥明显不值得走。",
+     "coreMechanic": "区分“可能发生”与“高概率”；选择不走某桥可获得战略评级。",
+     "enemyNote": "风/落石等环境机关，Telegraph清晰。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RiskEstimate",
+      "TRG_BridgeChoice"
+     ],
+     "triggerNote": "TRG_RiskEstimate / TRG_BridgeChoice",
+     "navMeshCamera": "桥梁独立NavMesh links；跌落回安全点。",
+     "realityVictory": "选择与目标价值匹配的风险路线并过峡谷。",
+     "reusedAssets": "Canyon_Base + PF_RiskBridge"
+    },
+    {
+     "levelId": "21-2",
+     "chapterId": "chapter21",
+     "name": "最坏结果工坊",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "55×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "维修车间入口",
+     "mainPath": "灾难机器→真实损失仓→可恢复仓→想象仓→重组台",
+     "realityToAdversity": "巨大“灾难机器”可拆成Probability/Impact/Recoverability模块；想象损失视觉最大但重量最轻。",
+     "coreMechanic": "把最坏结果拆成可处理部分；不要求乐观。",
+     "enemyNote": "机械影/警报装置。",
+     "internalUnits": [
+      {
+       "unitId": "IU_21_2_25a347",
+       "displayName": "机械影",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH21_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_RiskPartSort",
+      "TRG_RecoveryIdentify"
+     ],
+     "triggerNote": "TRG_RiskPartSort / TRG_RecoveryIdentify",
+     "navMeshCamera": "工坊安全；搬运物体限制数量。",
+     "realityVictory": "完成风险拆解并输出一个可接受行动等级。",
+     "reusedAssets": "Workshop_Base + PF_RiskMachine"
+    },
+    {
+     "levelId": "21-3",
+     "chapterId": "chapter21",
+     "name": "Plan B营地",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11"
+     ],
+     "baseKitLabel": "WK11",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "营地80×60m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "主帐篷",
+     "mainPath": "主路线地图→撤退路→补给→支援→备用路线",
+     "realityToAdversity": "玩家必须在出发前布置至少2类恢复资源；没有Plan B时主门不关闭但提示高暴露。",
+     "coreMechanic": "Plan B不是逃避，而是保护底线。",
+     "enemyNote": "无敌人，偏策略准备。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RecoveryPlan",
+      "TRG_ExitRoute",
+      "TRG_SupportNode"
+     ],
+     "triggerNote": "TRG_RecoveryPlan / TRG_ExitRoute / TRG_SupportNode",
+     "navMeshCamera": "营地环形布局；每节点可重复编辑。",
+     "realityVictory": "形成可执行的恢复方案并出发。",
+     "reusedAssets": "Camp_Base + PF_RecoveryPlan"
+    },
+    {
+     "levelId": "21-4",
+     "chapterId": "chapter21",
+     "name": "风险阶梯",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12",
+      "WK14"
+     ],
+     "baseKitLabel": "WK12/WK14",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "训练塔8层，每层20×20m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "塔底",
+     "mainPath": "低风险→中风险→高风险可逆→接近现实目标",
+     "realityToAdversity": "每层风险可选择继续、停留训练或返回；禁止强迫冲顶。",
+     "coreMechanic": "训练逐级暴露与恢复；失败不会清空低层掌握。",
+     "enemyNote": "压力机关随层变化。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_RiskTier",
+      "TRG_StopAtTier",
+      "TRG_Recover"
+     ],
+     "triggerNote": "TRG_RiskTier / TRG_StopAtTier / TRG_Recover",
+     "navMeshCamera": "楼层模块复用；返回捷径开放。",
+     "realityVictory": "在当前Stretch Risk层完成一个有效试验。",
+     "reusedAssets": "RiskTower_Base + PF_RiskTierGate"
+    },
+    {
+     "levelId": "21-5",
+     "chapterId": "chapter21",
+     "name": "灾难预言龙",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK14"
+     ],
+     "baseKitLabel": "WK14",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "悬崖盆地约90×70m",
+     "firstRunMinutesMin": 15,
+     "firstRunMinutesMax": 22,
+     "spawnPoint": "盆地入口",
+     "mainPath": "不败态区→补给/退路→龙巢→Reality Gate",
+     "realityToAdversity": "天空投影最坏未来，地面同时保留主路/退路/掩体/备用桥；只有建立不败态后Core窗口稳定。",
+     "coreMechanic": "P1真风险；P2概率；P3损失；P4恢复路线；P5带剩余风险行动。",
+     "enemyNote": "Boss 40 灾难预言龙；Core=IrrecoverabilityIllusion。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_UnbeatablePosture",
+      "TRG_RecoveryPlan",
+      "TRG_Core"
+     ],
+     "triggerNote": "TRG_UnbeatablePosture / TRG_RecoveryPlan / TRG_Core",
+     "navMeshCamera": "飞行Boss只在可读范围；Arena四周有明确安全边界。",
+     "realityVictory": "带Plan B穿过风险区；DeathType=RecoveryConfidence。",
+     "reusedAssets": "CanyonBoss_Base + Boss_CatastropheDragon_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 40,
+    "name": "灾难预言龙",
+    "enemyType": "DisasterProphetDragon",
+    "chapterId": "chapter21",
+    "levelId": "21-5",
+    "bossType": "Risk Projection / Recovery",
+    "coreTest": "可能失败是否被扩大成不可恢复的灾难。",
+    "attackGrammar": [
+     "概率吞噬",
+     "灾难放大",
+     "恢复删除",
+     "一次定终身",
+     "羞耻联动",
+     "未来连锁"
+    ],
+    "phases": [
+     "P1真风险",
+     "P2概率",
+     "P3损失",
+     "P4恢复路线",
+     "P5剩余风险行动"
+    ],
+    "fakeWeaknesses": [
+     "证明不会失败",
+     "零风险"
+    ],
+    "coreMechanism": "Irrecoverability Illusion",
+    "executionGate": "建立Recovery Plan后执行可恢复风险行动",
+    "deathType": "RecoveryConfidence",
+    "deathTypeAtoms": [
+     "RecoveryConfidence"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter22",
+   "chapterNo": 22,
+   "title": "内部批评者线",
+   "core": "保留高标准、责任与修正，解除“必须羞辱自己才会进步”的Punishment Dependency。",
+   "spaceLanguage": "法院、训练营、精密工坊、维修室、军营指挥室；通过空间把标准系统与羞辱指挥权拆开。",
+   "axis": "Shame",
+   "rootObstacle": "B",
+   "districtId": "edge",
+   "levels": [
+    {
+     "levelId": "22-1",
+     "chapterId": "chapter22",
+     "name": "人格判决法院",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "45×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "法庭入口",
+     "mainPath": "行为事实台→人格标签台→修正出口",
+     "realityToAdversity": "人格标签投入后被系统退回；只有可观察行为可进入证据台。",
+     "coreMechanic": "训练Behavior Language，不取消责任。",
+     "enemyNote": "审判书记员只接受具体证据。",
+     "internalUnits": [
+      {
+       "unitId": "IU_22_1_b755df",
+       "displayName": "审判书记员",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH22_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_BehaviorFact",
+      "TRG_IdentityLabel",
+      "TRG_RepairPlan"
+     ],
+     "triggerNote": "TRG_BehaviorFact / TRG_IdentityLabel / TRG_RepairPlan",
+     "navMeshCamera": "法庭中央可见三个区域；无战斗堵门。",
+     "realityVictory": "把一个错误从人格判词改写成行为+修正。",
+     "reusedAssets": "Court_Base + PF_BehaviorEvidenceDesk"
+    },
+    {
+     "levelId": "22-2",
+     "chapterId": "chapter22",
+     "name": "羞辱训练营",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "70×45m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "训练场入口",
+     "mainPath": "暴君教练区→短期Buff区→Collapse区→替代教练区",
+     "realityToAdversity": "辱骂Buff短时提高输出，随后Stamina/Exploration/Recovery明显下降。",
+     "coreMechanic": "亲自比较惩罚驱动与修正驱动的长期表现。",
+     "enemyNote": "羞辱教练NPC/训练假人。",
+     "internalUnits": [
+      {
+       "unitId": "IU_22_2_3afcad",
+       "displayName": "羞辱教练",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH22_L2_Internal_01"
+      },
+      {
+       "unitId": "IU_22_2_fb9b2f",
+       "displayName": "训练假人",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH22_L2_Internal_02"
+      }
+     ],
+     "triggerIds": [
+      "TRG_PunishmentBuff",
+      "TRG_Collapse",
+      "TRG_AltCoach"
+     ],
+     "triggerNote": "TRG_PunishmentBuff / TRG_Collapse / TRG_AltCoach",
+     "navMeshCamera": "训练场开阔；效果用数值与动画而非羞辱特写。",
+     "realityVictory": "使用非羞辱反馈完成同一训练目标。",
+     "reusedAssets": "TrainingCamp_Base + OVR_SelfPunishment"
+    },
+    {
+     "levelId": "22-3",
+     "chapterId": "chapter22",
+     "name": "高标准工坊",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "60×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "制造线入口",
+     "mainPath": "质量标准板→制造→检测→返工→交付",
+     "realityToAdversity": "产品有真实质量门槛；不合格必须返工，但不存在人格惩罚。",
+     "coreMechanic": "证明“高标准”与“自我侮辱”可分离。",
+     "enemyNote": "质量检测机关。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_QualityCheck",
+      "TRG_Rework",
+      "TRG_Deliver"
+     ],
+     "triggerNote": "TRG_QualityCheck / TRG_Rework / TRG_Deliver",
+     "navMeshCamera": "生产线短循环；无无限返工。",
+     "realityVictory": "达到标准并交付。",
+     "reusedAssets": "PrecisionWorkshop_Base + PF_QualityStandard"
+    },
+    {
+     "levelId": "22-4",
+     "chapterId": "chapter22",
+     "name": "错误修复室",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK09",
+      "WK12"
+     ],
+     "baseKitLabel": "WK09/WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "45×30m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "维修台",
+     "mainPath": "故障定位→责任归属→修复→复测",
+     "realityToAdversity": "错误设备不能靠攻击自己修复；每一步都有具体对象。",
+     "coreMechanic": "责任、补救、学习三步闭环。",
+     "enemyNote": "精英“人格化错误”尝试把故障标签贴到玩家身上。",
+     "internalUnits": [
+      {
+       "unitId": "IU_22_4_fa8d24",
+       "displayName": "人格化错误",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH22_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_FaultLocate",
+      "TRG_Repair",
+      "TRG_Retest"
+     ],
+     "triggerNote": "TRG_FaultLocate / TRG_Repair / TRG_Retest",
+     "navMeshCamera": "工作台交互稳定；相机聚焦设备而非玩家受罚。",
+     "realityVictory": "修复并通过复测。",
+     "reusedAssets": "RepairRoom_Base + PF_RepairStation"
+    },
+    {
+     "levelId": "22-5",
+     "chapterId": "chapter22",
+     "name": "内在暴君",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK14"
+     ],
+     "baseKitLabel": "WK14",
+     "districtId": "edge",
+     "dynamicBase": false,
+     "greyboxScale": "军营指挥室55×45m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "指挥室入口",
+     "mainPath": "军令墙→羞辱广播→标准控制台→Command Console",
+     "realityToAdversity": "Boss把“标准系统”与“羞辱系统”绑定；玩家必须保留前者、切断后者。",
+     "coreMechanic": "P1真实错误；P2行为/身份分开；P3体验羞辱Buff代价；P4高标准替代；P5夺回指挥权。",
+     "enemyNote": "Boss 41 内在暴君；Core=PunishmentDependency。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_CommandAuthority",
+      "TRG_StandardKeep",
+      "TRG_ShameDisable"
+     ],
+     "triggerNote": "TRG_CommandAuthority / TRG_StandardKeep / TRG_ShameDisable",
+     "navMeshCamera": "Boss不允许通过摧毁全部控制台取胜。",
+     "realityVictory": "保留标准、反馈、责任，关闭羞辱指挥权；DeathType=AuthorityRevocation。",
+     "reusedAssets": "CommandRoom_Inner + Boss_InnerTyrant_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 41,
+    "name": "内在暴君",
+    "enemyType": "InnerTyrant",
+    "chapterId": "chapter22",
+    "levelId": "22-5",
+    "bossType": "Punishment / Identity",
+    "coreTest": "玩家是否依赖羞辱自己维持纪律。",
+    "attackGrammar": [
+     "人格判决",
+     "全局化",
+     "羞辱鞭",
+     "不允许庆祝",
+     "移动球门",
+     "复发审判"
+    ],
+    "phases": [
+     "P1真实错误",
+     "P2行为/身份拆分",
+     "P3羞辱动力",
+     "P4高标准替代",
+     "P5拒绝惩罚依赖"
+    ],
+    "fakeWeaknesses": [
+     "放弃标准或继续自我侮辱"
+    ],
+    "coreMechanism": "Punishment Dependency Core",
+    "executionGate": "承认错误→修正→再次行动",
+    "deathType": "AuthorityRevocation",
+    "deathTypeAtoms": [
+     "AuthorityRevocation"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter23",
+   "chapterNo": 23,
+   "title": "环境同化与社会感染线",
+   "core": "只评价行为模式和环境效应，不把人分成“高级/低级”；训练环境暴露、边界和Identity Anchor。",
+   "spaceLanguage": "酒馆、资源巷、情绪天气街区、换乘站、迷雾街区；Boss可以没有实体。",
+   "axis": "BoundaryConflict",
+   "rootObstacle": "F",
+   "districtId": "transit",
+   "levels": [
+    {
+     "levelId": "23-1",
+     "chapterId": "chapter23",
+     "name": "抱怨酒馆",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK07"
+     ],
+     "baseKitLabel": "WK07",
+     "districtId": "commercial",
+     "dynamicBase": false,
+     "greyboxScale": "55×38m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "酒馆入口",
+     "mainPath": "吧台→抱怨桌→行动桌→出口",
+     "realityToAdversity": "NPC循环讲问题但不行动；停留越久GoalBeacon淡出，音乐节奏变慢。",
+     "coreMechanic": "玩家可以听、回应、设时限，然后完成自己的Goal Action。",
+     "enemyNote": "多个NPC行为模式，不贴人格标签。",
+     "internalUnits": [
+      {
+       "unitId": "IU_23_1_d9a1bb",
+       "displayName": "抱怨常客影",
+       "count": 4,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH23_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ComplaintExposure",
+      "TRG_GoalFade",
+      "TRG_Leave"
+     ],
+     "triggerNote": "TRG_ComplaintExposure / TRG_GoalFade / TRG_Leave",
+     "navMeshCamera": "座位交互有限时；出口一直开放。",
+     "realityVictory": "在保持边界的前提下离开并继续目标。",
+     "reusedAssets": "Tavern_Base + OVR_Complaint"
+    },
+    {
+     "levelId": "23-2",
+     "chapterId": "chapter23",
+     "name": "单向消耗巷",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK03"
+     ],
+     "baseKitLabel": "WK03",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "长巷120×18m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "巷口",
+     "mainPath": "多个资源请求点→边界选择→出口",
+     "realityToAdversity": "NPC分别请求时间/钱/注意/代办；玩家资源条实时变化。",
+     "coreMechanic": "选择帮助/限额/拒绝/转介/离开，不要求全部拒绝。",
+     "enemyNote": "资源索取NPC。",
+     "internalUnits": [
+      {
+       "unitId": "IU_23_2_d2f46a",
+       "displayName": "资源索取影",
+       "count": 3,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH23_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Request",
+      "TRG_BoundaryChoice",
+      "TRG_ResourceFloor"
+     ],
+     "triggerNote": "TRG_Request / TRG_BoundaryChoice / TRG_ResourceFloor",
+     "navMeshCamera": "巷道线性但有短侧退路。",
+     "realityVictory": "保持不可替代资源并完成主线通过。",
+     "reusedAssets": "UrbanAlley_Base + PF_BoundaryChoice"
+    },
+    {
+     "levelId": "23-3",
+     "chapterId": "chapter23",
+     "name": "情绪天气街区",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK03",
+      "WK07"
+     ],
+     "baseKitLabel": "WK03/WK07",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "街区140×100m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "商业街入口",
+     "mainPath": "不同情绪NPC区→天气变化→固定GoalBuilding",
+     "realityToAdversity": "NPC群体情绪改变天空、灯光、环境音；Goal建筑坐标始终不变。",
+     "coreMechanic": "观察Emotion Contagion但保持自己的路线。",
+     "enemyNote": "背景NPC群落。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_MoodZone",
+      "TRG_WeatherShift",
+      "TRG_GoalBuilding"
+     ],
+     "triggerNote": "TRG_MoodZone / TRG_WeatherShift / TRG_GoalBuilding",
+     "navMeshCamera": "天气用全局Volume；不改变碰撞。",
+     "realityVictory": "穿过至少3种情绪区仍抵达GoalBuilding。",
+     "reusedAssets": "CommercialStreet_Base + OVR_EmotionWeather"
+    },
+    {
+     "levelId": "23-4",
+     "chapterId": "chapter23",
+     "name": "环境选择站",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK04"
+     ],
+     "baseKitLabel": "WK04 Transit",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "换乘站90×70m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "中心站厅",
+     "mainPath": "高行动密度/高抱怨/高支持/混合环境四线",
+     "realityToAdversity": "每条线展示一段行为生态，不贴人物价值标签；可回中央重新选。",
+     "coreMechanic": "根据当前Goal与资源选择暴露环境。",
+     "enemyNote": "无敌人；环境数据为主。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_EnvironmentPreview",
+      "TRG_RouteCommit"
+     ],
+     "triggerNote": "TRG_EnvironmentPreview / TRG_RouteCommit",
+     "navMeshCamera": "四线模块化，中央快速换乘。",
+     "realityVictory": "选择更有利于当前目标的环境并进入。",
+     "reusedAssets": "TransitHub_Base + PF_EnvironmentRoute"
+    },
+    {
+     "levelId": "23-5",
+     "chapterId": "chapter23",
+     "name": "同化迷雾",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK03"
+     ],
+     "baseKitLabel": "WK03",
+     "districtId": "transit",
+     "dynamicBase": false,
+     "greyboxScale": "完整街区约180×140m",
+     "firstRunMinutesMin": 15,
+     "firstRunMinutesMax": 22,
+     "spawnPoint": "街区边缘",
+     "mainPath": "旧路线→Norm Drift区→边界节点→支持节点→District出口",
+     "realityToAdversity": "雾逐渐让路牌、语言、商店提示同质化；玩家通过调整路线/接触频率/支持点改变World State。",
+     "coreMechanic": "P1观察影响；P2行为与人格分离；P3边界实验；P4建设支持环境；P5Identity Anchor。",
+     "enemyNote": "Boss 42 同化迷雾，无实体。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_NormDrift",
+      "TRG_BoundaryShift",
+      "TRG_SupportNode",
+      "TRG_DistrictState"
+     ],
+     "triggerNote": "TRG_NormDrift / TRG_BoundaryShift / TRG_SupportNode / TRG_DistrictState",
+     "navMeshCamera": "分区流式；雾只视觉和感知，不遮死路径。",
+     "realityVictory": "改变District暴露结构并保留自己的行为标准；DeathType=EnvironmentShift。",
+     "reusedAssets": "UrbanDistrict_Base + Boss_AssimilationFog_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 42,
+    "name": "同化迷雾",
+    "enemyType": "AssimilationFog",
+    "chapterId": "chapter23",
+    "levelId": "23-5",
+    "bossType": "Environmental / Norm Shift",
+    "coreTest": "环境是否在慢慢改变“什么算正常”的标准。",
+    "attackGrammar": [
+     "正常化",
+     "情绪天气",
+     "低标准吸附",
+     "单向消耗",
+     "讽刺行动",
+     "群体回拉"
+    ],
+    "phases": [
+     "P1影响观察",
+     "P2行为/人格分开",
+     "P3边界实验",
+     "P4积极环境",
+     "P5身份锚"
+    ],
+    "fakeWeaknesses": [
+     "鄙视别人",
+     "切断所有关系"
+    ],
+    "coreMechanism": "Norm Authority",
+    "executionGate": "调整暴露结构并保留行为标准",
+    "deathType": "EnvironmentShift",
+    "deathTypeAtoms": [
+     "EnvironmentShift"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter24",
+   "chapterNo": 24,
+   "title": "范围失控与目标膨胀线",
+   "core": "冻结当前版本范围，保护Definition of Done并真正发布；不阻止未来迭代。",
+   "spaceLanguage": "项目工作室、物流分类城、验收大厅、80%工地、发布中心；空间强调分兵与收口。",
+   "axis": "BoundaryConflict",
+   "rootObstacle": "D",
+   "districtId": "office",
+   "levels": [
+    {
+     "levelId": "24-1",
+     "chapterId": "chapter24",
+     "name": "功能九头蛇",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK09"
+     ],
+     "baseKitLabel": "WK09 Studio",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "工作室70×45m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "版本白板旁",
+     "mainPath": "核心模块→新增需求墙→Current Version Door",
+     "realityToAdversity": "每完成一个模块弹出3个新需求；只有与SuccessCondition相关的需求可进入本版。",
+     "coreMechanic": "新需求默认进入Later，除非证明当前版无法实现核心价值。",
+     "enemyNote": "功能九头蛇投影，非传统怪物。",
+     "internalUnits": [
+      {
+       "unitId": "IU_24_1_d8c82c",
+       "displayName": "功能九头蛇投影",
+       "count": 1,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH24_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_FeatureDone",
+      "TRG_NewScope",
+      "TRG_CurrentVersion"
+     ],
+     "triggerNote": "TRG_FeatureDone / TRG_NewScope / TRG_CurrentVersion",
+     "navMeshCamera": "需求墙用对象池；主版本门始终可见。",
+     "realityVictory": "完成本版Must列表并穿过Current Version Door。",
+     "reusedAssets": "Studio_Base + OVR_ScopeHydra"
+    },
+    {
+     "levelId": "24-2",
+     "chapterId": "chapter24",
+     "name": "必须/以后/删除城",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12 Industrial",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "物流中心80×50m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "卸货口",
+     "mainPath": "需求箱→MUST/LATER/DELETE/EXPERIMENT四传送带→出口",
+     "realityToAdversity": "传送带若不分类会堵塞主路；每箱有价值/成本/依赖提示。",
+     "coreMechanic": "训练Scope Triage；不允许所有箱进MUST。",
+     "enemyNote": "“必须怪”把所有箱贴红色Must标签。",
+     "internalUnits": [
+      {
+       "unitId": "IU_24_2_bac6c9",
+       "displayName": "必须怪",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH24_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_ScopeClassify",
+      "TRG_MustOverflow"
+     ],
+     "triggerNote": "TRG_ScopeClassify / TRG_MustOverflow",
+     "navMeshCamera": "传送带静态路径+箱体对象池。",
+     "realityVictory": "完成一轮需求分类且Must不超过容量。",
+     "reusedAssets": "LogisticsCenter_Base + PF_ScopeSorter"
+    },
+    {
+     "levelId": "24-3",
+     "chapterId": "chapter24",
+     "name": "完成定义之门",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK09"
+     ],
+     "baseKitLabel": "WK09",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "验收大厅55×35m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "入口",
+     "mainPath": "DoD白板→测试门→验收区→Release Prep",
+     "realityToAdversity": "没有Definition of Done时大厅会继续“施工”；锁定后测试门才稳定。",
+     "coreMechanic": "DoD必须可验证、可观察、有限条数。",
+     "enemyNote": "验收员NPC/测试机关。",
+     "internalUnits": [
+      {
+       "unitId": "IU_24_3_2e0c0c",
+       "displayName": "验收员影",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH24_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_DoDSet",
+      "TRG_TestGate",
+      "TRG_Acceptance"
+     ],
+     "triggerNote": "TRG_DoDSet / TRG_TestGate / TRG_Acceptance",
+     "navMeshCamera": "测试区短循环；DoD修改有变更记录。",
+     "realityVictory": "通过预先定义的验收条件。",
+     "reusedAssets": "AcceptanceHall_Base + PF_DefinitionOfDoneLock"
+    },
+    {
+     "levelId": "24-4",
+     "chapterId": "chapter24",
+     "name": "80%陷阱",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12"
+     ],
+     "baseKitLabel": "WK12",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "建筑工地约100×60m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "一层入口",
+     "mainPath": "主楼施工→80%平台→新脚手架诱饵→顶层交付",
+     "realityToAdversity": "越接近顶层越多扩建脚手架开启；进入新支线会延长ReleaseDelay。",
+     "coreMechanic": "训练最后20%收尾，不被新点子劫持。",
+     "enemyNote": "精英“最后一个功能”在脚手架上不断招手。",
+     "internalUnits": [
+      {
+       "unitId": "IU_24_4_c0da75",
+       "displayName": "最后一个功能",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH24_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Completion80",
+      "TRG_NewScaffold",
+      "TRG_IgnoreScope"
+     ],
+     "triggerNote": "TRG_Completion80 / TRG_NewScaffold / TRG_IgnoreScope",
+     "navMeshCamera": "垂直施工区最多3层真实可玩。",
+     "realityVictory": "拒绝不必要扩建并完成原主楼。",
+     "reusedAssets": "Construction_Base + OVR_Last20"
+    },
+    {
+     "levelId": "24-5",
+     "chapterId": "chapter24",
+     "name": "永不完成者",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK09"
+     ],
+     "baseKitLabel": "WK09",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "发布中心65×50m",
+     "firstRunMinutesMin": 12,
+     "firstRunMinutesMax": 18,
+     "spawnPoint": "测试入口",
+     "mainPath": "测试→ReleaseConsole→四周新功能走廊",
+     "realityToAdversity": "中央ReleaseConsole始终存在；追逐新功能会让Boss恢复Scope Armor。",
+     "coreMechanic": "P1冻结版本；P2分类需求；P3对抗新想法；P4最后20%；P5Release。",
+     "enemyNote": "Boss 43 永不完成者；Core=ScopeBoundary。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_VersionFreeze",
+      "TRG_ScopeDoor",
+      "TRG_Release"
+     ],
+     "triggerNote": "TRG_VersionFreeze / TRG_ScopeDoor / TRG_Release",
+     "navMeshCamera": "新功能走廊可Additive关闭；Boss不通过HP结束。",
+     "realityVictory": "按DoD通过测试并按下RELEASE；DeathType=Publish。",
+     "reusedAssets": "ReleaseCenter_Base + Boss_NeverFinished_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 43,
+    "name": "永不完成者",
+    "enemyType": "NeverFinisher",
+    "chapterId": "chapter24",
+    "levelId": "24-5",
+    "bossType": "Scope / Completion",
+    "coreTest": "项目是否因Scope持续增长而永远无法完成。",
+    "attackGrammar": [
+     "功能九头蛇",
+     "越界需求",
+     "重构诱惑",
+     "新工具诱惑",
+     "假想用户",
+     "收尾逃避"
+    ],
+    "phases": [
+     "P1目标冻结",
+     "P2需求分类",
+     "P3新想法",
+     "P4最后20%",
+     "P5发布门"
+    ],
+    "fakeWeaknesses": [
+     "把所有功能做完",
+     "无限重构"
+    ],
+    "coreMechanism": "Scope Boundary Core",
+    "executionGate": "按预先DoD发布当前版本",
+    "deathType": "Publish",
+    "deathTypeAtoms": [
+     "Publish"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter25",
+   "chapterNo": 25,
+   "title": "知道—做到断裂线",
+   "core": "把Knowledge→Trigger→Action变成可验证链；理论理解不能替代Reality Evidence。",
+   "spaceLanguage": "无限图书馆、概念桥、行为钥匙门、预测/实绩竞技场、知识神殿到现实Gate。",
+   "axis": "SelfDoubt",
+   "rootObstacle": "C",
+   "districtId": "service",
+   "levels": [
+    {
+     "levelId": "25-1",
+     "chapterId": "chapter25",
+     "name": "无限知识图书馆",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK08"
+     ],
+     "baseKitLabel": "WK08",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "图书馆90×55m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "入口",
+     "mainPath": "书架→知识台→现实出口",
+     "realityToAdversity": "阅读不断增加Knowledge XP，但Exit不会因此解锁；只有绑定一个现实实践任务才出现路线。",
+     "coreMechanic": "允许学习，但检测Knowledge Mastery与Behavior Mastery差值。",
+     "enemyNote": "知识管理员不断推荐“再学一本”。",
+     "internalUnits": [
+      {
+       "unitId": "IU_25_1_3a3a12",
+       "displayName": "知识管理员影",
+       "count": 2,
+       "killable": false,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH25_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_KnowledgeGain",
+      "TRG_ActionBind",
+      "TRG_Exit"
+     ],
+     "triggerNote": "TRG_KnowledgeGain / TRG_ActionBind / TRG_Exit",
+     "navMeshCamera": "书架环路；出口位置固定。",
+     "realityVictory": "选择一个知识点并生成现实实践任务后离馆。",
+     "reusedAssets": "Library_Base + OVR_KnowDoGap"
+    },
+    {
+     "levelId": "25-2",
+     "chapterId": "chapter25",
+     "name": "概念转译桥",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK11",
+      "WK14"
+     ],
+     "baseKitLabel": "WK11/WK14",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "跨河桥100m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "桥头",
+     "mainPath": "概念石→Trigger板→Action板→桥面生成",
+     "realityToAdversity": "每个桥板必须由Concept+Trigger+Action三件组成；只有概念无法生成。",
+     "coreMechanic": "动作必须具体、可观察、可在60-300秒内启动。",
+     "enemyNote": "模糊词雾会覆盖不可执行表述。",
+     "internalUnits": [
+      {
+       "unitId": "IU_25_2_3487c6",
+       "displayName": "模糊词雾",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH25_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Concept",
+      "TRG_Trigger",
+      "TRG_Action",
+      "TRG_BridgeBuild"
+     ],
+     "triggerNote": "TRG_Concept / TRG_Trigger / TRG_Action / TRG_BridgeBuild",
+     "navMeshCamera": "桥段预制激活；不会动态烘焙。",
+     "realityVictory": "完成至少3块可执行桥板并过河。",
+     "reusedAssets": "Bridge_Base + PF_ConceptActionTile"
+    },
+    {
+     "levelId": "25-3",
+     "chapterId": "chapter25",
+     "name": "行为钥匙门",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK05"
+     ],
+     "baseKitLabel": "WK05",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "办公出口区45×25m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "走廊入口",
+     "mainPath": "知识钥匙墙→RealityEvidence槽→出口",
+     "realityToAdversity": "玩家拥有大量知识钥匙但全打不开门；Reality Evidence Token才匹配锁芯。",
+     "coreMechanic": "强调“知道”不是执行凭证。",
+     "enemyNote": "无敌人；钥匙视觉诱导。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_KnowledgeKey",
+      "TRG_EvidenceToken",
+      "TRG_DoorOpen"
+     ],
+     "triggerNote": "TRG_KnowledgeKey / TRG_EvidenceToken / TRG_DoorOpen",
+     "navMeshCamera": "简单直线布局。",
+     "realityVictory": "使用Reality Evidence打开门。",
+     "reusedAssets": "OfficeExit_Base + PF_RealityEvidenceTerminal"
+    },
+    {
+     "levelId": "25-4",
+     "chapterId": "chapter25",
+     "name": "验证竞技场",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK12",
+      "WK14"
+     ],
+     "baseKitLabel": "WK12/WK14",
+     "districtId": "office",
+     "dynamicBase": false,
+     "greyboxScale": "实验竞技场55×40m",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "预测台",
+     "mainPath": "左侧“我认为”→模拟→右侧“实际行为”→差值板",
+     "realityToAdversity": "先写预测，再进入短现实模拟，系统对比Prediction vs Actual。",
+     "coreMechanic": "失败同样产生有价值数据；目标是校准。",
+     "enemyNote": "精英“解释者”试图用故事覆盖实际录像。",
+     "internalUnits": [
+      {
+       "unitId": "IU_25_4_4b62f7",
+       "displayName": "解释者",
+       "count": 1,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH25_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Prediction",
+      "TRG_Actual",
+      "TRG_GapReview"
+     ],
+     "triggerNote": "TRG_Prediction / TRG_Actual / TRG_GapReview",
+     "navMeshCamera": "两侧对称布局；录像为游戏内行为回放。",
+     "realityVictory": "完成一次预测-行动-校准闭环。",
+     "reusedAssets": "ExperimentArena_Base + PF_BehaviorCompare"
+    },
+    {
+     "levelId": "25-5",
+     "chapterId": "chapter25",
+     "name": "知而不行者",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK08"
+     ],
+     "baseKitLabel": "WK08→开放世界Reality",
+     "districtId": "service",
+     "dynamicBase": false,
+     "greyboxScale": "知识神殿70×55m + Reality Route",
+     "firstRunMinutesMin": 15,
+     "firstRunMinutesMax": 25,
+     "spawnPoint": "神殿入口",
+     "mainPath": "理论战→Trigger定位→Reality Gate→真实开放世界Goal Action→Evidence回传",
+     "realityToAdversity": "所有知识攻击伤害极低；真正Core位于Reality Gate之后，必须离开神殿。",
+     "coreMechanic": "P1确认知道；P2映射触发；P3触发出现；P4允许第一次失败并定位断点；P5现实执行。",
+     "enemyNote": "Boss 44 知而不行者；Core=BehaviorTransfer。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_KnowledgeConfirmed",
+      "TRG_RealityGate",
+      "TRG_RealityAction",
+      "TRG_EvidenceReturn"
+     ],
+     "triggerNote": "TRG_KnowledgeConfirmed / TRG_RealityGate / TRG_RealityAction / TRG_EvidenceReturn",
+     "navMeshCamera": "跨Scene持续Quest State；返回神殿非必需，可远程结算。",
+     "realityVictory": "现实世界完成对应行为；DeathType=Embodiment。",
+     "reusedAssets": "KnowledgeTemple + RealWorldGoalModule + Boss_KnowDo_Module"
+    }
+   ],
+   "boss": {
+    "bossId": 44,
+    "name": "知而不行者",
+    "enemyType": "KnowNotDoer",
+    "chapterId": "chapter25",
+    "levelId": "25-5",
+    "bossType": "Knowledge / Transfer",
+    "coreTest": "知识是否真正跨越到现实行为。",
+    "attackGrammar": [
+     "再学一个",
+     "理解奖励",
+     "解释幻觉",
+     "收藏技能",
+     "模拟行动",
+     "复盘替代行动"
+    ],
+    "phases": [
+     "P1确认知道",
+     "P2行为映射",
+     "P3真实触发",
+     "P4失败定位断点",
+     "P5现实门"
+    ],
+    "fakeWeaknesses": [
+     "学更多",
+     "整理更多笔记"
+    ],
+    "coreMechanism": "Behavior Transfer Core",
+    "executionGate": "Reality Evidence发生",
+    "deathType": "Embodiment",
+    "deathTypeAtoms": [
+     "Embodiment"
+    ]
+   }
+  },
+  {
+   "chapterId": "chapter26",
+   "chapterNo": 26,
+   "title": "人生主线争夺战",
+   "core": "综合检验Behavioral Sovereignty：旧模式仍可出现，但下一步不再自动由过去裁决。",
+   "spaceLanguage": "完整Player Home、计划破坏日、连续城区多Boss、七日Persistent World、三层城市终局。",
+   "axis": "FailureFear",
+   "rootObstacle": "G",
+   "districtId": "residential",
+   "levels": [
+    {
+     "levelId": "26-1",
+     "chapterId": "chapter26",
+     "name": "清晨控制权",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [
+      "WK01"
+     ],
+     "baseKitLabel": "WK01 PlayerHome",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "住宅12×9m+楼道",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "床边，清晨",
+     "mainPath": "床→手机/洗漱/衣物/早餐→玄关→第一GoalAction",
+     "realityToAdversity": "所有常见行为分叉真实存在；系统不强迫“完美早晨”，只追踪第一个重要GoalAction何时启动。",
+     "coreMechanic": "Control Chain记录最早偏移点；可调用已掌握If-Then。",
+     "enemyNote": "低强度旧Boss残影按个人历史出现，不同时全开。",
+     "internalUnits": [
+      {
+       "unitId": "IU_26_1_b33d78",
+       "displayName": "旧Boss残影",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH26_L1_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_MorningStart",
+      "TRG_ControlShift",
+      "TRG_FirstGoalAction"
+     ],
+     "triggerNote": "TRG_MorningStart / TRG_ControlShift / TRG_FirstGoalAction",
+     "navMeshCamera": "住宅高复用；不增加过多Overlay。",
+     "realityVictory": "把当天第一个重要GoalAction真正启动。",
+     "reusedAssets": "PlayerHome_Base + PersonalizedMorningOverlay"
+    },
+    {
+     "levelId": "26-2",
+     "chapterId": "chapter26",
+     "name": "计划破坏日",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [],
+     "baseKitLabel": "开放世界多Base",
+     "districtId": "residential",
+     "dynamicBase": true,
+     "greyboxScale": "一整片街区，约300m有效路线",
+     "firstRunMinutesMin": 7,
+     "firstRunMinutesMax": 12,
+     "spawnPoint": "Player Home外",
+     "mainPath": "出门→交通→任务区→临时事件→重规划→目标点",
+     "realityToAdversity": "动态加入公交延误、商店关闭、临时消息、天气变化等，但所有变化事前可解释。",
+     "coreMechanic": "禁止因一个环节失败废弃整天；玩家必须重排优先级。",
+     "enemyNote": "环境事件/小型敌人，不设单一Boss。",
+     "internalUnits": [
+      {
+       "unitId": "IU_26_2_4da547",
+       "displayName": "破坏事件影",
+       "count": 4,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH26_L2_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_Disruption_01..N",
+      "TRG_Replan",
+      "TRG_GoalReach"
+     ],
+     "triggerNote": "TRG_Disruption_01..N / TRG_Replan / TRG_GoalReach",
+     "navMeshCamera": "开放世界流式；事件按Adversity Budget选择。",
+     "realityVictory": "在至少2次计划破坏后仍完成一个核心里程碑。",
+     "reusedAssets": "OpenWorld_District + DynamicDisruptionSet"
+    },
+    {
+     "levelId": "26-3",
+     "chapterId": "chapter26",
+     "name": "多Boss联合战",
+     "tier": "Standard",
+     "isBossLevel": false,
+     "worldKitIds": [],
+     "baseKitLabel": "开放世界多Base",
+     "districtId": "residential",
+     "dynamicBase": true,
+     "greyboxScale": "连续城区约400m有效路线",
+     "firstRunMinutesMin": 18,
+     "firstRunMinutesMax": 30,
+     "spawnPoint": "城市起点",
+     "mainPath": "住宅→地铁→办公区→项目室→Final Gate",
+     "realityToAdversity": "不同区域由不同Boss临时接管；Goal OS要求找Keystone Boss，而非全部清理。",
+     "coreMechanic": "玩家可战/绕/撤/换地；控制链显示哪个Boss真正阻挡Final Goal。",
+     "enemyNote": "2-4个已解锁Boss组合，自适应但不作弊。",
+     "internalUnits": [
+      {
+       "unitId": "IU_26_3_ff6a0a",
+       "displayName": "已解锁Boss残影",
+       "count": 3,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH26_L3_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_BossZone",
+      "TRG_KeystoneDetect",
+      "TRG_FinalGate"
+     ],
+     "triggerNote": "TRG_BossZone / TRG_KeystoneDetect / TRG_FinalGate",
+     "navMeshCamera": "跨区流式；每次最多1个高强Boss+低强干扰。",
+     "realityVictory": "识别并处理关键阻断，使Final Gate可达。",
+     "reusedAssets": "OpenWorld_MultiDistrict + BossAllianceController"
+    },
+    {
+     "levelId": "26-4",
+     "chapterId": "chapter26",
+     "name": "七日现实战役",
+     "tier": "Elite",
+     "isBossLevel": false,
+     "worldKitIds": [],
+     "baseKitLabel": "Persistent Open World",
+     "districtId": "residential",
+     "dynamicBase": true,
+     "greyboxScale": "7个游戏日，多区域",
+     "firstRunMinutesMin": 0,
+     "firstRunMinutesMax": 0,
+     "spawnPoint": "Day1 PlayerHome",
+     "mainPath": "每日Goal→现实扰动→失败/恢复→世界状态保存→Day7",
+     "realityToAdversity": "不是单张地图；失败、NPC状态、Boss适应、Goal进度跨日保留。",
+     "coreMechanic": "至少出现1次失败与1次恢复；评价Recovery、Transfer而非全胜。",
+     "enemyNote": "Boss根据历史低频插入；连续失败触发Challenge Ceiling。",
+     "internalUnits": [
+      {
+       "unitId": "IU_26_4_6ba424",
+       "displayName": "历史Boss残影",
+       "count": 2,
+       "killable": true,
+       "category": "Internal",
+       "spawnSocketId": "SPN_CH26_L4_Internal_01"
+      }
+     ],
+     "triggerIds": [
+      "TRG_DayStart",
+      "TRG_Failure",
+      "TRG_Recovery",
+      "TRG_Transfer"
+     ],
+     "triggerNote": "TRG_DayStart/End / TRG_Failure / TRG_Recovery / TRG_Transfer",
+     "navMeshCamera": "持久化存档为核心；每日只加载需要区域。",
+     "realityVictory": "七日中产生真实目标成果、一次恢复和一次迁移胜利。",
+     "reusedAssets": "PersistentWorld + GoalJourneyState"
+    },
+    {
+     "levelId": "26-5",
+     "chapterId": "chapter26",
+     "name": "旧命运",
+     "tier": "Boss",
+     "isBossLevel": true,
+     "worldKitIds": [
+      "WK01",
+      "WK14"
+     ],
+     "baseKitLabel": "WK01→开放世界→WK14",
+     "districtId": "residential",
+     "dynamicBase": false,
+     "greyboxScale": "Reality住宅+城市主路+Inner悬浮岛约100×100m",
+     "firstRunMinutesMin": 25,
+     "firstRunMinutesMax": 40,
+     "spawnPoint": "普通Player Home",
+     "mainPath": "Reality历史物→Adversity城市叠加→Inner悬浮岛→Future Gate→Reality下一动作",
+     "realityToAdversity": "Past Evidence全部保留；Boss调用旧Boss残影和失败记录，P4故意允许一次旧模式复发。",
+     "coreMechanic": "P1承认过去；P2拆模式；P3识别Boss Rush；P4复发不人格化；P5快速重新进入；Final执行现实动作。",
+     "enemyNote": "Boss 45 旧命运；Core=FutureVerdictAuthority。",
+     "internalUnits": [],
+     "triggerIds": [
+      "TRG_PastEvidence",
+      "TRG_BossRush",
+      "TRG_Relapse",
+      "TRG_Reentry",
+      "TRG_FutureGate"
+     ],
+     "triggerNote": "TRG_PastEvidence / TRG_BossRush / TRG_Relapse / TRG_Reentry / TRG_FutureGate",
+     "navMeshCamera": "终局道路始终朝前；旧岛不要求全清；返回Reality无长CG。",
+     "realityVictory": "跨过Future Gate后回现实并执行下一步；DeathType=AuthorityRevocation+Integration。",
+     "reusedAssets": "PlayerHome/OpenWorld/InnerCore + Boss_OldDestiny_Final"
+    }
+   ],
+   "boss": {
+    "bossId": 45,
+    "name": "旧命运",
+    "enemyType": "OldDestiny",
+    "chapterId": "chapter26",
+    "levelId": "26-5",
+    "bossType": "Final / Identity / Historical Prediction",
+    "coreTest": "过去事实是否拥有未来自动裁决权。",
+    "attackGrammar": [
+     "历史档案",
+     "高频统计",
+     "身份封印",
+     "未来预测",
+     "改变否定",
+     "复发证伪",
+     "多Boss切换"
+    ],
+    "phases": [
+     "P1承认过去",
+     "P2模式识别",
+     "P3Boss Rush",
+     "P4复发",
+     "P5重新进入",
+     "Final当前行动"
+    ],
+    "fakeWeaknesses": [
+     "否认过去",
+     "承诺永不复发",
+     "杀死旧我"
+    ],
+    "coreMechanism": "Future Verdict Authority",
+    "executionGate": "保留Past Evidence、撤销终审、执行Current Action",
+    "deathType": "AuthorityRevocation + Integration",
+    "deathTypeAtoms": [
+     "AuthorityRevocation",
+     "Integration"
+    ]
+   }
+  }
+ ]
+}

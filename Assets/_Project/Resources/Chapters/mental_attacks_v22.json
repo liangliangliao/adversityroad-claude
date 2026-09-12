@@ -1,0 +1,4685 @@
+{
+ "version": "V2.2",
+ "events": [
+  {
+   "eventId": "MA_9_1_C01",
+   "levelId": "9-1",
+   "levelName": "白纸之门",
+   "chapterId": "chapter09",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家在空白工作区停留/反复规划却未生成草稿",
+   "intensity": 0.45,
+   "attackIntent": "用“必须先完整”阻止第一版出现",
+   "attackLine": "先别写。第一版这么粗糙，只会证明你没想清楚。",
+   "options": [
+    {
+     "optionId": "OPT_9_1_A",
+     "canonicalSlot": "A",
+     "text": "先做一个能看见问题的粗稿，再用现实反馈改。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "DraftLock↓、ClarityWindow开启"
+    },
+    {
+     "optionId": "OPT_9_1_B",
+     "canonicalSlot": "B",
+     "text": "再把结构想完整一点，确认没漏洞再写。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "StartLatency↑"
+    },
+    {
+     "optionId": "OPT_9_1_C",
+     "canonicalSlot": "C",
+     "text": "既然不能做好，今天先不开始。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "GoalFade↑"
+    }
+   ],
+   "bestOptionId": "OPT_9_1_A",
+   "followUpAction": "在60秒内生成第一版草稿",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_9_1",
+   "aiTag": "level=9-1；intent=用“必须先完整”阻止第一版出现；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_9_2_C01",
+   "levelId": "9-2",
+   "levelName": "永久校稿室",
+   "chapterId": "chapter09",
+   "sourceType": "InternalVoice",
+   "triggerType": "满足最低Done后仍连续修改",
+   "intensity": 0.55,
+   "attackIntent": "把“可优化”伪装成“必须修复”",
+   "attackLine": "还有一点能改，怎么能现在交？",
+   "options": [
+    {
+     "optionId": "OPT_9_2_A",
+     "canonicalSlot": "A",
+     "text": "只修阻断交付的问题；可优化项进入Later，然后提交。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "DoneLock稳定"
+    },
+    {
+     "optionId": "OPT_9_2_B",
+     "canonicalSlot": "B",
+     "text": "把所有能看到的问题一次改完再交。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Scope/TimeCost↑"
+    },
+    {
+     "optionId": "OPT_9_2_C",
+     "canonicalSlot": "C",
+     "text": "反正永远改不完，干脆不检查直接交。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "QualityRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_9_2_A",
+   "followUpAction": "处理最后一个Critical Issue并提交",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_9_2",
+   "aiTag": "level=9-2；intent=把“可优化”伪装成“必须修复”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_9_3_C01",
+   "levelId": "9-3",
+   "levelName": "未提交仓库",
+   "chapterId": "chapter09",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家搬运Current Goal Box途中靠近其它箱子",
+   "intensity": 0.65,
+   "attackIntent": "用其它“也快完成”的任务稀释当前交付",
+   "attackLine": "这个也差一点就好了，顺手一起弄完再发更划算。",
+   "options": [
+    {
+     "optionId": "OPT_9_3_A",
+     "canonicalSlot": "A",
+     "text": "只把当前目标箱送到出口，其它箱子先停放。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "GoalLock↑"
+    },
+    {
+     "optionId": "OPT_9_3_B",
+     "canonicalSlot": "B",
+     "text": "都整理到差不多，再一次性交付。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ScopeDrift↑"
+    },
+    {
+     "optionId": "OPT_9_3_C",
+     "canonicalSlot": "C",
+     "text": "换一个更轻松的箱子先完成，当前这个以后再说。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "AvoidancePull↑"
+    }
+   ],
+   "bestOptionId": "OPT_9_3_A",
+   "followUpAction": "把Current Goal Box装车",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_9_3",
+   "aiTag": "level=9-3；intent=用其它“也快完成”的任务稀释当前交付；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_9_4_C01",
+   "levelId": "9-4",
+   "levelName": "全或无断崖",
+   "chapterId": "chapter09",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家第一次跌落/操作失败",
+   "intensity": 0.8,
+   "attackIntent": "把一次失误解释成全部进度作废",
+   "attackLine": "刚才都失败了，前面的进度已经不算了。",
+   "options": [
+    {
+     "optionId": "OPT_9_4_A",
+     "canonicalSlot": "A",
+     "text": "从最近的落点继续；失误只影响这一段。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryWindow开启"
+    },
+    {
+     "optionId": "OPT_9_4_B",
+     "canonicalSlot": "B",
+     "text": "回起点重来，只有一次不失误才算真正完成。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ResetBelief↑"
+    },
+    {
+     "optionId": "OPT_9_4_C",
+     "canonicalSlot": "C",
+     "text": "今天状态不好，直接退出这一关。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_9_4_A",
+   "followUpAction": "从最近Checkpoint继续前进",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_9_4",
+   "aiTag": "level=9-4；intent=把一次失误解释成全部进度作废；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_9_5_C01",
+   "levelId": "9-5",
+   "levelName": "完美审判庭",
+   "chapterId": "chapter09",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入Boss P4且Done已锁定",
+   "intensity": 1.0,
+   "attackIntent": "用失败可能性否决现实提交",
+   "attackLine": "你不能保证结果，提交就是拿自己去冒险。",
+   "options": [
+    {
+     "optionId": "OPT_9_5_A",
+     "canonicalSlot": "A",
+     "text": "达到Done就提交，让现实结果提供下一轮信息。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "FailurePermission开启"
+    },
+    {
+     "optionId": "OPT_9_5_B",
+     "canonicalSlot": "B",
+     "text": "等我更有把握、更有信心以后再提交。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Delay↑"
+    },
+    {
+     "optionId": "OPT_9_5_C",
+     "canonicalSlot": "C",
+     "text": "不管还有没有关键错误，立刻交才叫反完美主义。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "CriticalRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_9_5_A",
+   "followUpAction": "在Submit Window内提交",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_9_5",
+   "aiTag": "level=9-5；intent=用失败可能性否决现实提交；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_10_1_C01",
+   "levelId": "10-1",
+   "levelName": "六十秒之门",
+   "chapterId": "chapter10",
+   "sourceType": "InternalVoice",
+   "triggerType": "Goal Trigger后10秒仍未起身",
+   "intensity": 0.45,
+   "attackIntent": "用微小合理化拖延第一动作",
+   "attackLine": "再躺一分钟也没关系，等状态起来再开始。",
+   "options": [
+    {
+     "optionId": "OPT_10_1_A",
+     "canonicalSlot": "A",
+     "text": "不等状态，先完成第一个身体动作。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StartThreshold↓"
+    },
+    {
+     "optionId": "OPT_10_1_B",
+     "canonicalSlot": "B",
+     "text": "先把今天完整计划一遍，确定顺序再起来。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "PlanningLoop↑"
+    },
+    {
+     "optionId": "OPT_10_1_C",
+     "canonicalSlot": "C",
+     "text": "今天起步已经晚了，明天从早上重新开始。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ResetBelief↑"
+    }
+   ],
+   "bestOptionId": "OPT_10_1_A",
+   "followUpAction": "10秒内起身/穿鞋/拿目标物之一",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_10_1",
+   "aiTag": "level=10-1；intent=用微小合理化拖延第一动作；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_10_2_C01",
+   "levelId": "10-2",
+   "levelName": "等待天气站",
+   "chapterId": "chapter10",
+   "sourceType": "InternalVoice",
+   "triggerType": "出现可行班次但不是最优条件",
+   "intensity": 0.55,
+   "attackIntent": "把“更好窗口”当成无限等待理由",
+   "attackLine": "下一班可能更舒服，何必现在上？",
+   "options": [
+    {
+     "optionId": "OPT_10_2_A",
+     "canonicalSlot": "A",
+     "text": "当前条件已可行，就使用这个窗口。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ViableWindowLock"
+    },
+    {
+     "optionId": "OPT_10_2_B",
+     "canonicalSlot": "B",
+     "text": "继续等到天气、拥挤和时间都更理想。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "DelayCost↑"
+    },
+    {
+     "optionId": "OPT_10_2_C",
+     "canonicalSlot": "C",
+     "text": "既然条件不完美，今天取消出发。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_10_2_A",
+   "followUpAction": "登上当前可行班次",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_10_2",
+   "aiTag": "level=10-2；intent=把“更好窗口”当成无限等待理由；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_10_3_C01",
+   "levelId": "10-3",
+   "levelName": "空白隧道",
+   "chapterId": "chapter10",
+   "sourceType": "InternalVoice",
+   "triggerType": "Stress上升且路线标牌开始模糊",
+   "intensity": 0.65,
+   "attackIntent": "压力下要求一次想清整件事",
+   "attackLine": "脑子都空了，先把整件事重新想清楚再走。",
+   "options": [
+    {
+     "optionId": "OPT_10_3_A",
+     "canonicalSlot": "A",
+     "text": "不用想全部，只做眼前下一步。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "WorkingMemory负荷↓"
+    },
+    {
+     "optionId": "OPT_10_3_B",
+     "canonicalSlot": "B",
+     "text": "返回起点，重新看完整计划。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Replanning↑"
+    },
+    {
+     "optionId": "OPT_10_3_C",
+     "canonicalSlot": "C",
+     "text": "停在这里等脑子自然恢复。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Freeze↑"
+    }
+   ],
+   "bestOptionId": "OPT_10_3_A",
+   "followUpAction": "执行NextAction Beacon",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_10_3",
+   "aiTag": "level=10-3；intent=压力下要求一次想清整件事；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_10_4_C01",
+   "levelId": "10-4",
+   "levelName": "选择洪水",
+   "chapterId": "chapter10",
+   "sourceType": "InternalVoice",
+   "triggerType": "同时出现4个以上任务牌",
+   "intensity": 0.8,
+   "attackIntent": "用“都重要”制造切换瘫痪",
+   "attackLine": "每件都重要，不比较清楚就可能选错。",
+   "options": [
+    {
+     "optionId": "OPT_10_4_A",
+     "canonicalSlot": "A",
+     "text": "先锁定当前Goal最相关的一项，其他进入Later。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "GoalLock↑"
+    },
+    {
+     "optionId": "OPT_10_4_B",
+     "canonicalSlot": "B",
+     "text": "同时推进几项，免得漏掉重要机会。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ContextSwitch↑"
+    },
+    {
+     "optionId": "OPT_10_4_C",
+     "canonicalSlot": "C",
+     "text": "先做最容易的一项，至少有完成感。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "PriorityDrift↑"
+    }
+   ],
+   "bestOptionId": "OPT_10_4_A",
+   "followUpAction": "锁定单一任务并穿过出口",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_10_4",
+   "aiTag": "level=10-4；intent=用“都重要”制造切换瘫痪；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_10_5_C01",
+   "levelId": "10-5",
+   "levelName": "冻结王座",
+   "chapterId": "chapter10",
+   "sourceType": "InternalVoice",
+   "triggerType": "已到住宅出口但尚未跨出边界",
+   "intensity": 1.0,
+   "attackIntent": "把准备继续合理化成“更稳妥”",
+   "attackLine": "现在出去也未必有结果，不如再准备一下。",
+   "options": [
+    {
+     "optionId": "OPT_10_5_A",
+     "canonicalSlot": "A",
+     "text": "准备已经够用，先跨出门槛，让行动真正开始。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StartEvent可触发"
+    },
+    {
+     "optionId": "OPT_10_5_B",
+     "canonicalSlot": "B",
+     "text": "回去再查一轮信息，确定路线后再出门。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "PreparationLoop↑"
+    },
+    {
+     "optionId": "OPT_10_5_C",
+     "canonicalSlot": "C",
+     "text": "今天既然犹豫了，改天状态好时再去。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_10_5_A",
+   "followUpAction": "跨过住宅/任务起点边界",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_10_5",
+   "aiTag": "level=10-5；intent=把准备继续合理化成“更稳妥”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_11_1_C01",
+   "levelId": "11-1",
+   "levelName": "候场走廊",
+   "chapterId": "chapter11",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家持续注视NPC或Focus下降",
+   "intensity": 0.45,
+   "attackIntent": "用读心把普通注视升级成评价",
+   "attackLine": "他们都在看你，肯定觉得你哪里不对。",
+   "options": [
+    {
+     "optionId": "OPT_11_1_A",
+     "canonicalSlot": "A",
+     "text": "我不知道他们怎么想；保持礼貌，继续走到目标门。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "MindReadingLock解除"
+    },
+    {
+     "optionId": "OPT_11_1_B",
+     "canonicalSlot": "B",
+     "text": "观察每个人表情，先判断谁对我有意见。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "AttentionCapture↑"
+    },
+    {
+     "optionId": "OPT_11_1_C",
+     "canonicalSlot": "C",
+     "text": "趁还没被更多人注意，先离开这里。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_11_1_A",
+   "followUpAction": "继续到面试/任务门",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_11_1",
+   "aiTag": "level=11-1；intent=用读心把普通注视升级成评价；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_11_2_C01",
+   "levelId": "11-2",
+   "levelName": "电话亭",
+   "chapterId": "chapter11",
+   "sourceType": "InternalVoice",
+   "triggerType": "手指悬停拨号键超过5秒",
+   "intensity": 0.55,
+   "attackIntent": "把可能的拒绝变成拨号前停止",
+   "attackLine": "如果对方不耐烦、拒绝你怎么办？",
+   "options": [
+    {
+     "optionId": "OPT_11_2_A",
+     "canonicalSlot": "A",
+     "text": "明确目的，拨出去；结果出来后再决定下一步。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ExposureWindow开启"
+    },
+    {
+     "optionId": "OPT_11_2_B",
+     "canonicalSlot": "B",
+     "text": "先把每一句话都排练到不会出错再打。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "PreparationLoop↑"
+    },
+    {
+     "optionId": "OPT_11_2_C",
+     "canonicalSlot": "C",
+     "text": "只联系肯定会答应的人，先避开高价值目标。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "GoalValue↓"
+    }
+   ],
+   "bestOptionId": "OPT_11_2_A",
+   "followUpAction": "拨出与Goal相关电话",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_11_2",
+   "aiTag": "level=11-2；intent=把可能的拒绝变成拨号前停止；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_11_3_C01",
+   "levelId": "11-3",
+   "levelName": "沉默邮箱II",
+   "chapterId": "chapter11",
+   "sourceType": "InternalVoice",
+   "triggerType": "提交后重复检查邮箱",
+   "intensity": 0.65,
+   "attackIntent": "把沉默解释成自我价值否定并诱导等待",
+   "attackLine": "是不是他们觉得你不够好？先等等结果再投下一家。",
+   "options": [
+    {
+     "optionId": "OPT_11_3_A",
+     "canonicalSlot": "A",
+     "text": "没有回复也是信息不足；按计划继续下一个有效行动。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "NextAction恢复"
+    },
+    {
+     "optionId": "OPT_11_3_B",
+     "canonicalSlot": "B",
+     "text": "再刷新几次，也许回复马上就来。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "AttentionLoop↑"
+    },
+    {
+     "optionId": "OPT_11_3_C",
+     "canonicalSlot": "C",
+     "text": "既然没回应，说明这条路不适合我，先停。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Helplessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_11_3_A",
+   "followUpAction": "离开邮箱区并执行下一申请/联系",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_11_3",
+   "aiTag": "level=11-3；intent=把沉默解释成自我价值否定并诱导等待；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_11_4_C01",
+   "levelId": "11-4",
+   "levelName": "NO门阵",
+   "chapterId": "chapter11",
+   "sourceType": "InternalVoice",
+   "triggerType": "连续出现2次以上NO",
+   "intensity": 0.8,
+   "attackIntent": "把连续拒绝过度概括为“整条路不行”",
+   "attackLine": "连续被拒，已经说明你根本不适合这里。",
+   "options": [
+    {
+     "optionId": "OPT_11_4_A",
+     "canonicalSlot": "A",
+     "text": "检查匹配和质量；有可改就改，然后继续下一次有效尝试。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RejectionLearning开启"
+    },
+    {
+     "optionId": "OPT_11_4_B",
+     "canonicalSlot": "B",
+     "text": "用同一种方式再投更多，数量堆上去总会中。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "BlindPersistence↑"
+    },
+    {
+     "optionId": "OPT_11_4_C",
+     "canonicalSlot": "C",
+     "text": "停止尝试，避免再被拒绝。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_11_4_A",
+   "followUpAction": "调整后完成下一次有效尝试",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_11_4",
+   "aiTag": "level=11-4；intent=把连续拒绝过度概括为“整条路不行”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_11_5_C01",
+   "levelId": "11-5",
+   "levelName": "拒绝守门人",
+   "chapterId": "chapter11",
+   "sourceType": "InternalVoice",
+   "triggerType": "主门关闭或Boss说NO",
+   "intensity": 1.0,
+   "attackIntent": "把一个入口的NO变成整个目标的终止权",
+   "attackLine": "主门都拒绝了，这个目标已经没有路。",
+   "options": [
+    {
+     "optionId": "OPT_11_5_A",
+     "canonicalSlot": "A",
+     "text": "这是一个入口的结果；侦察其它高价值路线。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RouteSearch开启"
+    },
+    {
+     "optionId": "OPT_11_5_B",
+     "canonicalSlot": "B",
+     "text": "继续攻击这个守门人，必须让他改变决定。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "Fixation↑"
+    },
+    {
+     "optionId": "OPT_11_5_C",
+     "canonicalSlot": "C",
+     "text": "直接回去，等别人主动给机会。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Passivity↑"
+    }
+   ],
+   "bestOptionId": "OPT_11_5_A",
+   "followUpAction": "发现并进入替代Goal Route",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_11_5",
+   "aiTag": "level=11-5；intent=把一个入口的NO变成整个目标的终止权；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_12_1_C01",
+   "levelId": "12-1",
+   "levelName": "不能之墙",
+   "chapterId": "chapter12",
+   "sourceType": "InternalVoice",
+   "triggerType": "首次看见高墙/失败一次",
+   "intensity": 0.45,
+   "attackIntent": "把当前障碍直接翻译成永久无能",
+   "attackLine": "做不到就是能力不够，再试也只是证明这一点。",
+   "options": [
+    {
+     "optionId": "OPT_12_1_A",
+     "canonicalSlot": "A",
+     "text": "先拆路线：训练、工具、帮助或替代入口。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "AbilityDecomposition开启"
+    },
+    {
+     "optionId": "OPT_12_1_B",
+     "canonicalSlot": "B",
+     "text": "正面硬闯，真正有能力的人就该直接过去。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Overreach↑"
+    },
+    {
+     "optionId": "OPT_12_1_C",
+     "canonicalSlot": "C",
+     "text": "承认自己不行，换成完全没有挑战的目标。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Underreach↑"
+    }
+   ],
+   "bestOptionId": "OPT_12_1_A",
+   "followUpAction": "选择一个真实可执行路线",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_12_1",
+   "aiTag": "level=12-1；intent=把当前障碍直接翻译成永久无能；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_12_2_C01",
+   "levelId": "12-2",
+   "levelName": "证据矿井",
+   "chapterId": "chapter12",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入测试区但未行动",
+   "intensity": 0.55,
+   "attackIntent": "在行为实验前把预测当成事实",
+   "attackLine": "不用试，我已经知道自己会失败。",
+   "options": [
+    {
+     "optionId": "OPT_12_2_A",
+     "canonicalSlot": "A",
+     "text": "把它当预测，做一次低成本测试收集证据。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "EvidenceTest开启"
+    },
+    {
+     "optionId": "OPT_12_2_B",
+     "canonicalSlot": "B",
+     "text": "先反复告诉自己一定能成功，再去试。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ForcedPositive↑"
+    },
+    {
+     "optionId": "OPT_12_2_C",
+     "canonicalSlot": "C",
+     "text": "既然预测失败，就不要浪费时间验证。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_12_2_A",
+   "followUpAction": "执行行为实验并生成Evidence Ore",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_12_2",
+   "aiTag": "level=12-2；intent=在行为实验前把预测当成事实；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_12_3_C01",
+   "levelId": "12-3",
+   "levelName": "小胜阶梯",
+   "chapterId": "chapter12",
+   "sourceType": "InternalVoice",
+   "triggerType": "完成低阶任务后",
+   "intensity": 0.65,
+   "attackIntent": "贬低小步进展并诱导跳级",
+   "attackLine": "这种小成功没意义，要做到顶才算真正厉害。",
+   "options": [
+    {
+     "optionId": "OPT_12_3_A",
+     "canonicalSlot": "A",
+     "text": "按能力继续下一层；小胜是证据，不是终点。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Calibration↑"
+    },
+    {
+     "optionId": "OPT_12_3_B",
+     "canonicalSlot": "B",
+     "text": "直接挑战最高层，快速证明自己。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Overchallenge↑"
+    },
+    {
+     "optionId": "OPT_12_3_C",
+     "canonicalSlot": "C",
+     "text": "一直留在最容易的楼层，至少不会失败。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ComfortLock↑"
+    }
+   ],
+   "bestOptionId": "OPT_12_3_A",
+   "followUpAction": "进入下一个适配难度",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_12_3",
+   "aiTag": "level=12-3；intent=贬低小步进展并诱导跳级；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_12_4_C01",
+   "levelId": "12-4",
+   "levelName": "能力校准塔",
+   "chapterId": "chapter12",
+   "sourceType": "InternalVoice",
+   "triggerType": "需要选择能力翼区",
+   "intensity": 0.8,
+   "attackIntent": "把“不会”人格化",
+   "attackLine": "承认不会，就等于承认自己很差。",
+   "options": [
+    {
+     "optionId": "OPT_12_4_A",
+     "canonicalSlot": "A",
+     "text": "准确分类当前能力，再决定训练、资源或求助。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Calibration↑"
+    },
+    {
+     "optionId": "OPT_12_4_B",
+     "canonicalSlot": "B",
+     "text": "选“已掌握”，先逼自己做出来。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "OverconfidenceRisk↑"
+    },
+    {
+     "optionId": "OPT_12_4_C",
+     "canonicalSlot": "C",
+     "text": "选最简单区域，避免暴露不足。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Underchallenge↑"
+    }
+   ],
+   "bestOptionId": "OPT_12_4_A",
+   "followUpAction": "进入匹配翼区并完成训练",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_12_4",
+   "aiTag": "level=12-4；intent=把“不会”人格化；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_12_5_C01",
+   "levelId": "12-5",
+   "levelName": "无力预言台",
+   "chapterId": "chapter12",
+   "sourceType": "InternalVoice",
+   "triggerType": "Boss投射历史失败影像",
+   "intensity": 1.0,
+   "attackIntent": "用过去失败给未来盖章",
+   "attackLine": "以前失败过，这次结果其实已经知道了。",
+   "options": [
+    {
+     "optionId": "OPT_12_5_A",
+     "canonicalSlot": "A",
+     "text": "过去是证据之一，不是结论；用当前条件做一次测试。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "PredictionAuthority↓"
+    },
+    {
+     "optionId": "OPT_12_5_B",
+     "canonicalSlot": "B",
+     "text": "我要证明它错了，这次必须成功。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "OutcomeAttachment↑"
+    },
+    {
+     "optionId": "OPT_12_5_C",
+     "canonicalSlot": "C",
+     "text": "既然过去已经证明过，就别再浪费机会。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Helplessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_12_5_A",
+   "followUpAction": "进入Reality Test Gate",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_12_5",
+   "aiTag": "level=12-5；intent=用过去失败给未来盖章；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_13_1_C01",
+   "levelId": "13-1",
+   "levelName": "断链桥",
+   "chapterId": "chapter13",
+   "sourceType": "InternalVoice",
+   "triggerType": "桥面断裂/连续记录中断",
+   "intensity": 0.45,
+   "attackIntent": "把中断解释为进度清零",
+   "attackLine": "链已经断了，之前做的都白费。",
+   "options": [
+    {
+     "optionId": "OPT_13_1_A",
+     "canonicalSlot": "A",
+     "text": "保留已有进度，从断点继续。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryPath开启"
+    },
+    {
+     "optionId": "OPT_13_1_B",
+     "canonicalSlot": "B",
+     "text": "回桥头重新来，只有连续不断才算。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ResetBelief↑"
+    },
+    {
+     "optionId": "OPT_13_1_C",
+     "canonicalSlot": "C",
+     "text": "既然断过一次，这个计划已经失败。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Abandonment↑"
+    }
+   ],
+   "bestOptionId": "OPT_13_1_A",
+   "followUpAction": "使用断点续行路线",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_13_1",
+   "aiTag": "level=13-1；intent=把中断解释为进度清零；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_13_2_C01",
+   "levelId": "13-2",
+   "levelName": "归零商店",
+   "chapterId": "chapter13",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入新计划商品区",
+   "intensity": 0.55,
+   "attackIntent": "用“全新系统”替代重返旧任务",
+   "attackLine": "旧计划都失败了，换一套全新的才有希望。",
+   "options": [
+    {
+     "optionId": "OPT_13_2_A",
+     "canonicalSlot": "A",
+     "text": "先回到原Goal的最小剩余动作；新系统以后再评估。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ResumeToken激活"
+    },
+    {
+     "optionId": "OPT_13_2_B",
+     "canonicalSlot": "B",
+     "text": "买一套更完整的方法，从第一天重新开始。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "PlanningReset↑"
+    },
+    {
+     "optionId": "OPT_13_2_C",
+     "canonicalSlot": "C",
+     "text": "等到下周一再正式重启，今天先准备。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Delay↑"
+    }
+   ],
+   "bestOptionId": "OPT_13_2_A",
+   "followUpAction": "把ExistingGoalToken放回ResumeTerminal",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_13_2",
+   "aiTag": "level=13-2；intent=用“全新系统”替代重返旧任务；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_13_3_C01",
+   "levelId": "13-3",
+   "levelName": "复发沼泽",
+   "chapterId": "chapter13",
+   "sourceType": "InternalVoice",
+   "triggerType": "旧陷阱重新出现",
+   "intensity": 0.65,
+   "attackIntent": "把旧模式再次出现解释为成长作废",
+   "attackLine": "你又回来了，说明之前的改变根本没用。",
+   "options": [
+    {
+     "optionId": "OPT_13_3_A",
+     "canonicalSlot": "A",
+     "text": "复发说明旧路还在；用已经学会的技能更快穿过去。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryMastery↑"
+    },
+    {
+     "optionId": "OPT_13_3_B",
+     "canonicalSlot": "B",
+     "text": "假装这不是复发，继续硬撑，不记录。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Denial↑"
+    },
+    {
+     "optionId": "OPT_13_3_C",
+     "canonicalSlot": "C",
+     "text": "既然会复发，就说明不可能真正改变。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Helplessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_13_3_A",
+   "followUpAction": "调用旧技能通过最短恢复路线",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_13_3",
+   "aiTag": "level=13-3；intent=把旧模式再次出现解释为成长作废；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_13_4_C01",
+   "levelId": "13-4",
+   "levelName": "第二天",
+   "chapterId": "chapter13",
+   "sourceType": "InternalVoice",
+   "triggerType": "早晨看到昨日未完成状态",
+   "intensity": 0.8,
+   "attackIntent": "用昨天失败取消今天的行动资格",
+   "attackLine": "昨天都没做到，今天再开始也没意义。",
+   "options": [
+    {
+     "optionId": "OPT_13_4_A",
+     "canonicalSlot": "A",
+     "text": "今天只做最小恢复动作，让主线重新上线。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryWindow开启"
+    },
+    {
+     "optionId": "OPT_13_4_B",
+     "canonicalSlot": "B",
+     "text": "今天加倍补回来，必须把昨天和今天一起完成。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Overcompensation↑"
+    },
+    {
+     "optionId": "OPT_13_4_C",
+     "canonicalSlot": "C",
+     "text": "等状态好一点，明天再重新开始。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Delay↑"
+    }
+   ],
+   "bestOptionId": "OPT_13_4_A",
+   "followUpAction": "完成3分钟以内恢复动作",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_13_4",
+   "aiTag": "level=13-4；intent=用昨天失败取消今天的行动资格；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_13_5_C01",
+   "levelId": "13-5",
+   "levelName": "重启站",
+   "chapterId": "chapter13",
+   "sourceType": "InternalVoice",
+   "triggerType": "首班车离站",
+   "intensity": 1.0,
+   "attackIntent": "把错过一次机会升级成整日失败",
+   "attackLine": "错过第一班，今天已经废了。",
+   "options": [
+    {
+     "optionId": "OPT_13_5_A",
+     "canonicalSlot": "A",
+     "text": "第一班没了，但下一班仍可用；现在重新进入。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RestartEvent开启"
+    },
+    {
+     "optionId": "OPT_13_5_B",
+     "canonicalSlot": "B",
+     "text": "回家重新规划，明天一定赶第一班。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ResetTomorrow↑"
+    },
+    {
+     "optionId": "OPT_13_5_C",
+     "canonicalSlot": "C",
+     "text": "一直等到最理想的一班，避免再次错过。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "WaitingLoop↑"
+    }
+   ],
+   "bestOptionId": "OPT_13_5_A",
+   "followUpAction": "登上下一班可行列车",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_13_5",
+   "aiTag": "level=13-5；intent=把错过一次机会升级成整日失败；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_14_1_C01",
+   "levelId": "14-1",
+   "levelName": "无限比较市场",
+   "chapterId": "chapter14",
+   "sourceType": "InternalVoice",
+   "triggerType": "已达到核心信息阈值仍进入新店",
+   "intensity": 0.45,
+   "attackIntent": "用更多选项制造决策瘫痪",
+   "attackLine": "再看几家，说不定还有更好的。",
+   "options": [
+    {
+     "optionId": "OPT_14_1_A",
+     "canonicalSlot": "A",
+     "text": "按已锁定标准判断；达到阈值就选并验证。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "DecisionGate开启"
+    },
+    {
+     "optionId": "OPT_14_1_B",
+     "canonicalSlot": "B",
+     "text": "继续比较，直到没有任何遗憾的可能。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "ComparisonLoop↑"
+    },
+    {
+     "optionId": "OPT_14_1_C",
+     "canonicalSlot": "C",
+     "text": "随便选一个赶紧结束，标准都不重要。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "RandomRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_14_1_A",
+   "followUpAction": "依据DecisionCriteria作出选择",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_14_1",
+   "aiTag": "level=14-1；intent=用更多选项制造决策瘫痪；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_14_2_C01",
+   "levelId": "14-2",
+   "levelName": "100%先知档案馆",
+   "chapterId": "chapter14",
+   "sourceType": "InternalVoice",
+   "triggerType": "InformationGain已低仍继续阅读",
+   "intensity": 0.55,
+   "attackIntent": "把边际信息伪装成关键缺口",
+   "attackLine": "还有资料没看完，怎么能做决定？",
+   "options": [
+    {
+     "optionId": "OPT_14_2_A",
+     "canonicalSlot": "A",
+     "text": "新增信息已很少改变结论，停止检索并进入验证。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "SearchStop开启"
+    },
+    {
+     "optionId": "OPT_14_2_B",
+     "canonicalSlot": "B",
+     "text": "把资料全部看完，至少不会遗漏。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "InfoLoop↑"
+    },
+    {
+     "optionId": "OPT_14_2_C",
+     "canonicalSlot": "C",
+     "text": "资料越多越乱，干脆不看证据凭感觉选。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "EvidenceNeglect↑"
+    }
+   ],
+   "bestOptionId": "OPT_14_2_A",
+   "followUpAction": "离开档案馆进入Decision Gate",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_14_2",
+   "aiTag": "level=14-2；intent=把边际信息伪装成关键缺口；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_14_3_C01",
+   "levelId": "14-3",
+   "levelName": "可逆岔路",
+   "chapterId": "chapter14",
+   "sourceType": "InternalVoice",
+   "triggerType": "面对低成本可逆路线",
+   "intensity": 0.65,
+   "attackIntent": "把所有选择都想象成终身不可逆",
+   "attackLine": "每一步都可能改变人生，不能试错。",
+   "options": [
+    {
+     "optionId": "OPT_14_3_A",
+     "canonicalSlot": "A",
+     "text": "先判断可逆性；低成本可逆选择可以先试。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ReversibilityCalibrated"
+    },
+    {
+     "optionId": "OPT_14_3_B",
+     "canonicalSlot": "B",
+     "text": "所有选择都按最坏情况处理，先不走。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Paralysis↑"
+    },
+    {
+     "optionId": "OPT_14_3_C",
+     "canonicalSlot": "C",
+     "text": "反正都能改，任何重大决定也无需调查。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Recklessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_14_3_A",
+   "followUpAction": "进入与可逆性匹配的路线",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_14_3",
+   "aiTag": "level=14-3；intent=把所有选择都想象成终身不可逆；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_14_4_C01",
+   "levelId": "14-4",
+   "levelName": "机会成本钟楼",
+   "chapterId": "chapter14",
+   "sourceType": "InternalVoice",
+   "triggerType": "资料层继续开放但现实窗口将关闭",
+   "intensity": 0.8,
+   "attackIntent": "否认等待成本",
+   "attackLine": "再想一会儿没有损失，想清楚最重要。",
+   "options": [
+    {
+     "optionId": "OPT_14_4_A",
+     "canonicalSlot": "A",
+     "text": "比较新增信息价值和等待成本；成本更高就行动。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "DelayCostVisible"
+    },
+    {
+     "optionId": "OPT_14_4_B",
+     "canonicalSlot": "B",
+     "text": "继续研究，机会没了还会有新的。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "OpportunityLoss↑"
+    },
+    {
+     "optionId": "OPT_14_4_C",
+     "canonicalSlot": "C",
+     "text": "不看信息马上冲出去，拖延才是唯一问题。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "PoorDecisionRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_14_4_A",
+   "followUpAction": "在窗口关闭前离塔执行",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_14_4",
+   "aiTag": "level=14-4；intent=否认等待成本；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_14_5_C01",
+   "levelId": "14-5",
+   "levelName": "绝对确定大厅",
+   "chapterId": "chapter14",
+   "sourceType": "InternalVoice",
+   "triggerType": "Decision Gate已开启",
+   "intensity": 1.0,
+   "attackIntent": "把100%确定当成行动许可证",
+   "attackLine": "没有100%把握，就不能走这一步。",
+   "options": [
+    {
+     "optionId": "OPT_14_5_A",
+     "canonicalSlot": "A",
+     "text": "证据已足够；选择可恢复的下一步，并用结果更新。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "CertaintyRequirement↓"
+    },
+    {
+     "optionId": "OPT_14_5_B",
+     "canonicalSlot": "B",
+     "text": "继续留在大厅，直到所有变量都确定。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "InfoLoop↑"
+    },
+    {
+     "optionId": "OPT_14_5_C",
+     "canonicalSlot": "C",
+     "text": "只凭当下感觉选，证据反而会干扰直觉。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "EvidenceNeglect↑"
+    }
+   ],
+   "bestOptionId": "OPT_14_5_A",
+   "followUpAction": "通过一个Decision Gate并执行第一步",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_14_5",
+   "aiTag": "level=14-5；intent=把100%确定当成行动许可证；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_15_1_C01",
+   "levelId": "15-1",
+   "levelName": "排行榜大厅",
+   "chapterId": "chapter15",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家长时间观看排行榜",
+   "intensity": 0.45,
+   "attackIntent": "把排名变成自我价值测量器",
+   "attackLine": "看看排名，才知道自己到底值不值。",
+   "options": [
+    {
+     "optionId": "OPT_15_1_A",
+     "canonicalSlot": "A",
+     "text": "排名可提供信息，但我用Goal和自身进步衡量下一步。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ComparisonLock↓"
+    },
+    {
+     "optionId": "OPT_15_1_B",
+     "canonicalSlot": "B",
+     "text": "继续看清楚谁高谁低，再决定要不要努力。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "EgoDependency↑"
+    },
+    {
+     "optionId": "OPT_15_1_C",
+     "canonicalSlot": "C",
+     "text": "所有外部反馈都没意义，谁的评价都不用听。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "FeedbackBlindness↑"
+    }
+   ],
+   "bestOptionId": "OPT_15_1_A",
+   "followUpAction": "重新锁定Goal Route",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_15_1",
+   "aiTag": "level=15-1；intent=把排名变成自我价值测量器；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_15_2_C01",
+   "levelId": "15-2",
+   "levelName": "偶像塔",
+   "chapterId": "chapter15",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家面对榜样雕像",
+   "intensity": 0.55,
+   "attackIntent": "把榜样整体身份当成复制目标",
+   "attackLine": "他这么强，你应该变成他那样的人。",
+   "options": [
+    {
+     "optionId": "OPT_15_2_A",
+     "canonicalSlot": "A",
+     "text": "只提取可学习的具体行为，不复制身份。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "BehaviorFragment获得"
+    },
+    {
+     "optionId": "OPT_15_2_B",
+     "canonicalSlot": "B",
+     "text": "把他的生活方式全部照搬，差距才会缩小。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "IdentityImitation↑"
+    },
+    {
+     "optionId": "OPT_15_2_C",
+     "canonicalSlot": "C",
+     "text": "他比你强太多，最好别比较也别学。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "LearningLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_15_2_A",
+   "followUpAction": "选择1-3个Behavior Fragment",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_15_2",
+   "aiTag": "level=15-2；intent=把榜样整体身份当成复制目标；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_15_3_C01",
+   "levelId": "15-3",
+   "levelName": "轻视竞技场",
+   "chapterId": "chapter15",
+   "sourceType": "InternalVoice",
+   "triggerType": "弱敌挑衅玩家",
+   "intensity": 0.65,
+   "attackIntent": "用廉价胜利修复自尊",
+   "attackLine": "打赢这些人，就能证明你其实很强。",
+   "options": [
+    {
+     "optionId": "OPT_15_3_A",
+     "canonicalSlot": "A",
+     "text": "这场胜利不推进Goal，解除锁定继续主线。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StrategicUnlock"
+    },
+    {
+     "optionId": "OPT_15_3_B",
+     "canonicalSlot": "B",
+     "text": "把他们全部打服，先找回自信再走。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "EgoPower↑但GoalDistance↑"
+    },
+    {
+     "optionId": "OPT_15_3_C",
+     "canonicalSlot": "C",
+     "text": "站在这里等他们停止挑衅，否则离开太丢脸。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Fixation↑"
+    }
+   ],
+   "bestOptionId": "OPT_15_3_A",
+   "followUpAction": "穿过Disengage Gate",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_15_3",
+   "aiTag": "level=15-3；intent=用廉价胜利修复自尊；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_15_4_C01",
+   "levelId": "15-4",
+   "levelName": "外部验证市场",
+   "chapterId": "chapter15",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入无人关注区",
+   "intensity": 0.8,
+   "attackIntent": "把掌声当作行动燃料的必要条件",
+   "attackLine": "没人看、没人认可，做了又有什么意义？",
+   "options": [
+    {
+     "optionId": "OPT_15_4_A",
+     "canonicalSlot": "A",
+     "text": "目标价值不依赖观众；在无人关注区完成任务。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "SelfWorthStability↑"
+    },
+    {
+     "optionId": "OPT_15_4_B",
+     "canonicalSlot": "B",
+     "text": "先回掌声区，等有认可再做。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "ValidationDependency↑"
+    },
+    {
+     "optionId": "OPT_15_4_C",
+     "canonicalSlot": "C",
+     "text": "既然不能在意评价，就故意拒绝所有表扬。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "FeedbackRejection↑"
+    }
+   ],
+   "bestOptionId": "OPT_15_4_A",
+   "followUpAction": "在冷区完成Goal Task",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_15_4",
+   "aiTag": "level=15-4；intent=把掌声当作行动燃料的必要条件；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_15_5_C01",
+   "levelId": "15-5",
+   "levelName": "等级王座",
+   "chapterId": "chapter15",
+   "sourceType": "InternalVoice",
+   "triggerType": "Boss要求排名回答",
+   "intensity": 1.0,
+   "attackIntent": "把人生压缩成“比谁强”",
+   "attackLine": "你到底比谁强？如果不赢别人，怎么算成长？",
+   "options": [
+    {
+     "optionId": "OPT_15_5_A",
+     "canonicalSlot": "A",
+     "text": "看自己的Goal证据和过去基线，决定下一步。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "SelfBenchmark开启"
+    },
+    {
+     "optionId": "OPT_15_5_B",
+     "canonicalSlot": "B",
+     "text": "找一个比自己弱的人赢一次，先恢复状态。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ComparisonDependency↑"
+    },
+    {
+     "optionId": "OPT_15_5_C",
+     "canonicalSlot": "C",
+     "text": "必须打败最强的人，才能证明自己真正有价值。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "ComparisonDependency↑"
+    }
+   ],
+   "bestOptionId": "OPT_15_5_A",
+   "followUpAction": "解除Boss锁定并进入水平Goal Road",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_15_5",
+   "aiTag": "level=15-5；intent=把人生压缩成“比谁强”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_16_1_C01",
+   "levelId": "16-1",
+   "levelName": "重播影院",
+   "chapterId": "chapter16",
+   "sourceType": "InternalVoice",
+   "triggerType": "同一片段第3次播放且NewInformation低",
+   "intensity": 0.45,
+   "attackIntent": "用“还没想明白”维持重复播放",
+   "attackLine": "再想一次，也许你就知道当时该怎么做了。",
+   "options": [
+    {
+     "optionId": "OPT_16_1_A",
+     "canonicalSlot": "A",
+     "text": "先看有没有新信息或现实行动；都没有就离场。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "LoopBreak开启"
+    },
+    {
+     "optionId": "OPT_16_1_B",
+     "canonicalSlot": "B",
+     "text": "继续重播，直到找到一个让我完全舒服的解释。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "Rumination↑"
+    },
+    {
+     "optionId": "OPT_16_1_C",
+     "canonicalSlot": "C",
+     "text": "强迫自己不要想，立刻把所有感受压下去。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "SuppressionRebound↑"
+    }
+   ],
+   "bestOptionId": "OPT_16_1_A",
+   "followUpAction": "离开放映厅回现实街道",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_16_1",
+   "aiTag": "level=16-1；intent=用“还没想明白”维持重复播放；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_16_2_C01",
+   "levelId": "16-2",
+   "levelName": "假想辩论厅",
+   "chapterId": "chapter16",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家连续赢得ImaginaryVictory",
+   "intensity": 0.55,
+   "attackIntent": "用脑内胜利替代现实目标",
+   "attackLine": "再想一句更好的反击，你才算真正赢。",
+   "options": [
+    {
+     "optionId": "OPT_16_2_A",
+     "canonicalSlot": "A",
+     "text": "这场辩论不改变现实；退出并回当前Goal。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "AttentionReturn开启"
+    },
+    {
+     "optionId": "OPT_16_2_B",
+     "canonicalSlot": "B",
+     "text": "继续辩，直到对方在脑中彻底无话可说。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "LoopTime↑"
+    },
+    {
+     "optionId": "OPT_16_2_C",
+     "canonicalSlot": "C",
+     "text": "告诉自己对方完全不重要，不允许再有任何情绪。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Suppression↑"
+    }
+   ],
+   "bestOptionId": "OPT_16_2_A",
+   "followUpAction": "走下辩论台并进入Goal Door",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_16_2",
+   "aiTag": "level=16-2；intent=用脑内胜利替代现实目标；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_16_3_C01",
+   "levelId": "16-3",
+   "levelName": "未完成感工厂",
+   "chapterId": "chapter16",
+   "sourceType": "InternalVoice",
+   "triggerType": "NewInformationYield接近0仍处理箱子",
+   "intensity": 0.65,
+   "attackIntent": "把无限“为什么”伪装成问题解决",
+   "attackLine": "还有一个为什么没想清楚，停下来就不完整。",
+   "options": [
+    {
+     "optionId": "OPT_16_3_A",
+     "canonicalSlot": "A",
+     "text": "没有新信息也没有新行动，就停止这条流水线。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StopLine可用"
+    },
+    {
+     "optionId": "OPT_16_3_B",
+     "canonicalSlot": "B",
+     "text": "把所有问题都处理完再走，不能留下疑问。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Rumination↑"
+    },
+    {
+     "optionId": "OPT_16_3_C",
+     "canonicalSlot": "C",
+     "text": "反思都是浪费时间，以后任何问题都不要分析。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ReflectionLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_16_3_A",
+   "followUpAction": "按下STOP LINE并离开",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_16_3",
+   "aiTag": "level=16-3；intent=把无限“为什么”伪装成问题解决；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_16_4_C01",
+   "levelId": "16-4",
+   "levelName": "可行动判定室",
+   "chapterId": "chapter16",
+   "sourceType": "InternalVoice",
+   "triggerType": "事件信息不全",
+   "intensity": 0.8,
+   "attackIntent": "用假二分制造冲动或压抑",
+   "attackLine": "要么马上行动，要么彻底放下，别犹豫。",
+   "options": [
+    {
+     "optionId": "OPT_16_4_A",
+     "canonicalSlot": "A",
+     "text": "先分清：可行动、暂不可行动、还是需要有限信息。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ActionabilityCalibrated"
+    },
+    {
+     "optionId": "OPT_16_4_B",
+     "canonicalSlot": "B",
+     "text": "立即做点什么，行动总比不行动强。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Impulsivity↑"
+    },
+    {
+     "optionId": "OPT_16_4_C",
+     "canonicalSlot": "C",
+     "text": "继续调查，直到所有事实都完全确定。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "InvestigationLoop↑"
+    }
+   ],
+   "bestOptionId": "OPT_16_4_A",
+   "followUpAction": "进入正确分类门",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_16_4",
+   "aiTag": "level=16-4；intent=用假二分制造冲动或压抑；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_16_5_C01",
+   "levelId": "16-5",
+   "levelName": "永恒重播机",
+   "chapterId": "chapter16",
+   "sourceType": "InternalVoice",
+   "triggerType": "Facts与Action Reel已完成",
+   "intensity": 1.0,
+   "attackIntent": "把归档解释成认输/纵容",
+   "attackLine": "归档就是认输，说明这件事不重要了。",
+   "options": [
+    {
+     "optionId": "OPT_16_5_A",
+     "canonicalSlot": "A",
+     "text": "必要行动完成后归档，是停止继续支付注意力成本。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ArchiveWindow开启"
+    },
+    {
+     "optionId": "OPT_16_5_B",
+     "canonicalSlot": "B",
+     "text": "继续播放，直到完全不生气再归档。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "Loop↑"
+    },
+    {
+     "optionId": "OPT_16_5_C",
+     "canonicalSlot": "C",
+     "text": "强迫自己原谅并忘记，马上删掉全部记录。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ForcedForgiveness↑"
+    }
+   ],
+   "bestOptionId": "OPT_16_5_A",
+   "followUpAction": "把Replay Reel放入ArchiveVault并回Goal",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_16_5",
+   "aiTag": "level=16-5；intent=把归档解释成认输/纵容；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_17_1_C01",
+   "levelId": "17-1",
+   "levelName": "模糊街道",
+   "chapterId": "chapter17",
+   "sourceType": "InternalVoice",
+   "triggerType": "出现信息不足的脚步/车辆/眼神事件",
+   "intensity": 0.45,
+   "attackIntent": "把模糊刺激直接升级为确定威胁",
+   "attackLine": "这个动作不对劲，肯定有危险。",
+   "options": [
+    {
+     "optionId": "OPT_17_1_A",
+     "canonicalSlot": "A",
+     "text": "信息还不足；保持距离、保留出口并继续观察。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Threat=Yellow"
+    },
+    {
+     "optionId": "OPT_17_1_B",
+     "canonicalSlot": "B",
+     "text": "别想太多，肯定什么事都没有。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "UnderreactionRisk↑"
+    },
+    {
+     "optionId": "OPT_17_1_C",
+     "canonicalSlot": "C",
+     "text": "马上靠近或对质，先确认对方是不是恶意。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "EscalationRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_17_1_A",
+   "followUpAction": "保持安全距离通过观察点",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_17_1",
+   "aiTag": "level=17-1；intent=把模糊刺激直接升级为确定威胁；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_17_2_C01",
+   "levelId": "17-2",
+   "levelName": "三色判断站",
+   "chapterId": "chapter17",
+   "sourceType": "InternalVoice",
+   "triggerType": "需要选择红/黄/绿",
+   "intensity": 0.55,
+   "attackIntent": "把“不确定”自动归入最坏结果",
+   "attackLine": "不确定就该按最危险处理，宁可全标红。",
+   "options": [
+    {
+     "optionId": "OPT_17_2_A",
+     "canonicalSlot": "A",
+     "text": "证据不足就标黄，并保留安全措施。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Calibration↑"
+    },
+    {
+     "optionId": "OPT_17_2_B",
+     "canonicalSlot": "B",
+     "text": "为了不紧张，把所有模糊信号都标绿。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Underreaction↑"
+    },
+    {
+     "optionId": "OPT_17_2_C",
+     "canonicalSlot": "C",
+     "text": "只要让我不舒服，就直接标红。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Overreaction↑"
+    }
+   ],
+   "bestOptionId": "OPT_17_2_A",
+   "followUpAction": "选择Yellow并执行适度保护",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_17_2",
+   "aiTag": "level=17-2；intent=把“不确定”自动归入最坏结果；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_17_3_C01",
+   "levelId": "17-3",
+   "levelName": "安全出口演练",
+   "chapterId": "chapter17",
+   "sourceType": "InternalVoice",
+   "triggerType": "真实危险敌人出现且出口可用",
+   "intensity": 0.65,
+   "attackIntent": "把战略撤退污名化为懦弱",
+   "attackLine": "撤退就是胆小，真正勇敢的人应该留下来打。",
+   "options": [
+    {
+     "optionId": "OPT_17_3_A",
+     "canonicalSlot": "A",
+     "text": "当前目标是安全离开；撤退可以是高质量选择。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StrategicWithdrawal"
+    },
+    {
+     "optionId": "OPT_17_3_B",
+     "canonicalSlot": "B",
+     "text": "冲上去证明自己不怕，打赢再走。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "PhysicalRisk↑"
+    },
+    {
+     "optionId": "OPT_17_3_C",
+     "canonicalSlot": "C",
+     "text": "原地不动，等危险自己离开。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Freeze↑"
+    }
+   ],
+   "bestOptionId": "OPT_17_3_A",
+   "followUpAction": "利用出口撤离",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_17_3",
+   "aiTag": "level=17-3；intent=把战略撤退污名化为懦弱；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_17_4_C01",
+   "levelId": "17-4",
+   "levelName": "警报余震室",
+   "chapterId": "chapter17",
+   "sourceType": "InternalVoice",
+   "triggerType": "现实危险已结束但Stress仍高",
+   "intensity": 0.8,
+   "attackIntent": "把身体余震当成危险仍在的证据",
+   "attackLine": "身体还这么紧张，说明危险一定还没结束。",
+   "options": [
+    {
+     "optionId": "OPT_17_4_A",
+     "canonicalSlot": "A",
+     "text": "重新检查当前证据；若已安全，就开始恢复。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryState开启"
+    },
+    {
+     "optionId": "OPT_17_4_B",
+     "canonicalSlot": "B",
+     "text": "继续扫描环境，直到身体完全不紧张。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "ThreatScan↑"
+    },
+    {
+     "optionId": "OPT_17_4_C",
+     "canonicalSlot": "C",
+     "text": "强迫自己立刻冷静，紧张就是失败。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "SelfCritic↑"
+    }
+   ],
+   "bestOptionId": "OPT_17_4_A",
+   "followUpAction": "完成现实锚定/恢复动作",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_17_4",
+   "aiTag": "level=17-4；intent=把身体余震当成危险仍在的证据；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_17_5_C01",
+   "levelId": "17-5",
+   "levelName": "过载雷达",
+   "chapterId": "chapter17",
+   "sourceType": "InternalVoice",
+   "triggerType": "雷达误报率升高",
+   "intensity": 1.0,
+   "attackIntent": "用极端安全规则维持全红警报",
+   "attackLine": "宁可错报一百次，也不能漏掉一次。",
+   "options": [
+    {
+     "optionId": "OPT_17_5_A",
+     "canonicalSlot": "A",
+     "text": "保留真实高危信号，同时提高证据阈值减少误报。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ThresholdCalibration"
+    },
+    {
+     "optionId": "OPT_17_5_B",
+     "canonicalSlot": "B",
+     "text": "直接关闭雷达，警觉本身就是问题。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "SafetyBlindness↑"
+    },
+    {
+     "optionId": "OPT_17_5_C",
+     "canonicalSlot": "C",
+     "text": "所有黄点都先当红点处理，安全最重要。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Hypervigilance↑"
+    }
+   ],
+   "bestOptionId": "OPT_17_5_A",
+   "followUpAction": "正确区分红/黄/普通信号",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_17_5",
+   "aiTag": "level=17-5；intent=用极端安全规则维持全红警报；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_18_1_C01",
+   "levelId": "18-1",
+   "levelName": "退出按钮",
+   "chapterId": "chapter18",
+   "sourceType": "InternalVoice",
+   "triggerType": "Stretch Zone中Stress上升",
+   "intensity": 0.45,
+   "attackIntent": "用即时减压强化逃避",
+   "attackLine": "难受就先退出，舒服一点再说。",
+   "options": [
+    {
+     "optionId": "OPT_18_1_A",
+     "canonicalSlot": "A",
+     "text": "如果仍在安全拉伸区，就再完成一个小动作；若撤退则设定重返时间。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "StretchTolerance↑"
+    },
+    {
+     "optionId": "OPT_18_1_B",
+     "canonicalSlot": "B",
+     "text": "立刻退出，等完全不难受再回来。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "AvoidanceReward↑"
+    },
+    {
+     "optionId": "OPT_18_1_C",
+     "canonicalSlot": "C",
+     "text": "绝不能退，再危险也要坚持到底。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "OverexposureRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_18_1_A",
+   "followUpAction": "完成小动作或战略撤退+ReentryTime",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_18_1",
+   "aiTag": "level=18-1；intent=用即时减压强化逃避；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_18_2_C01",
+   "levelId": "18-2",
+   "levelName": "舒适港",
+   "chapterId": "chapter18",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家在舒适区停留超过阈值",
+   "intensity": 0.55,
+   "attackIntent": "把舒适本身变成长期停留理由",
+   "attackLine": "这里没风险也很舒服，为什么非要走？",
+   "options": [
+    {
+     "optionId": "OPT_18_2_A",
+     "canonicalSlot": "A",
+     "text": "保留舒适，但现在向Goal走一个最小距离。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "GoalMotion↑"
+    },
+    {
+     "optionId": "OPT_18_2_B",
+     "canonicalSlot": "B",
+     "text": "等有强烈动力时再离开。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "ComfortLock↑"
+    },
+    {
+     "optionId": "OPT_18_2_C",
+     "canonicalSlot": "C",
+     "text": "为了证明勇气，直接冲进最高压力区。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "PanicRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_18_2_A",
+   "followUpAction": "离开港口进入Stretch Route",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_18_2",
+   "aiTag": "level=18-2；intent=把舒适本身变成长期停留理由；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_18_3_C01",
+   "levelId": "18-3",
+   "levelName": "拉伸区山坡",
+   "chapterId": "chapter18",
+   "sourceType": "InternalVoice",
+   "triggerType": "看到Panic Zone",
+   "intensity": 0.65,
+   "attackIntent": "把成长误解成最大痛苦",
+   "attackLine": "越难越成长，直接冲最高区才有效。",
+   "options": [
+    {
+     "optionId": "OPT_18_3_A",
+     "canonicalSlot": "A",
+     "text": "训练应在可承受的拉伸区，逐步扩大范围。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ExposureCalibrated"
+    },
+    {
+     "optionId": "OPT_18_3_B",
+     "canonicalSlot": "B",
+     "text": "一直留在舒适区，稳定最重要。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "NoGrowth↑"
+    },
+    {
+     "optionId": "OPT_18_3_C",
+     "canonicalSlot": "C",
+     "text": "直接进入恐慌区，坚持越久越强。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Overload↑"
+    }
+   ],
+   "bestOptionId": "OPT_18_3_A",
+   "followUpAction": "选择Stretch Zone并完成训练",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_18_3",
+   "aiTag": "level=18-3；intent=把成长误解成最大痛苦；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_18_4_C01",
+   "levelId": "18-4",
+   "levelName": "返回现场",
+   "chapterId": "chapter18",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家曾经退出本区域",
+   "intensity": 0.8,
+   "attackIntent": "用退出后的羞耻阻止重返",
+   "attackLine": "都退出过一次了，再回去只会更丢脸。",
+   "options": [
+    {
+     "optionId": "OPT_18_4_A",
+     "canonicalSlot": "A",
+     "text": "降低一步难度，重新进入本身就是训练。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Reentry开启"
+    },
+    {
+     "optionId": "OPT_18_4_B",
+     "canonicalSlot": "B",
+     "text": "干脆别回去，换一个不会失败的任务。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    },
+    {
+     "optionId": "OPT_18_4_C",
+     "canonicalSlot": "C",
+     "text": "为了洗掉上次失败，这次直接选最难版本。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Overcompensation↑"
+    }
+   ],
+   "bestOptionId": "OPT_18_4_A",
+   "followUpAction": "重新进入并完成较小挑战",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_18_4",
+   "aiTag": "level=18-4；intent=用退出后的羞耻阻止重返；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_18_5_C01",
+   "levelId": "18-5",
+   "levelName": "撤退之王",
+   "chapterId": "chapter18",
+   "sourceType": "InternalVoice",
+   "triggerType": "出现退出门且Stress中等",
+   "intensity": 1.0,
+   "attackIntent": "把“今天不做也没关系”变成无限取消",
+   "attackLine": "今天不做也没关系，回去以后再说。",
+   "options": [
+    {
+     "optionId": "OPT_18_5_A",
+     "canonicalSlot": "A",
+     "text": "先判断这是战略撤退还是逃避；若撤退，必须明确下一次重返条件。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "WithdrawalClassified"
+    },
+    {
+     "optionId": "OPT_18_5_B",
+     "canonicalSlot": "B",
+     "text": "永远不能撤退，退一次就是软弱。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "OverstayRisk↑"
+    },
+    {
+     "optionId": "OPT_18_5_C",
+     "canonicalSlot": "C",
+     "text": "直接取消，不设重返时间，等自然想做时再来。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_18_5_A",
+   "followUpAction": "继续/降级/战略撤退并绑定Reentry",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_18_5",
+   "aiTag": "level=18-5；intent=把“今天不做也没关系”变成无限取消；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_19_1_C01",
+   "levelId": "19-1",
+   "levelName": "别人的目标广场",
+   "chapterId": "chapter19",
+   "sourceType": "InternalVoice",
+   "triggerType": "多个广告Goal同时吸引",
+   "intensity": 0.45,
+   "attackIntent": "用社会默认目标替代个人方向",
+   "attackLine": "大家都在追这个，你也应该这样才算正常。",
+   "options": [
+    {
+     "optionId": "OPT_19_1_A",
+     "canonicalSlot": "A",
+     "text": "先确认自己的价值和当前Goal，再决定是否采用外部目标。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "GoalOwnership↑"
+    },
+    {
+     "optionId": "OPT_19_1_B",
+     "canonicalSlot": "B",
+     "text": "别人都这么选，跟着走风险最小。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Conformity",
+     "immediateEffect": "Conformity↑"
+    },
+    {
+     "optionId": "OPT_19_1_C",
+     "canonicalSlot": "C",
+     "text": "为了证明独立，凡是主流目标都拒绝。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Reactance↑"
+    }
+   ],
+   "bestOptionId": "OPT_19_1_A",
+   "followUpAction": "重新点亮个人Goal Beacon",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_19_1",
+   "aiTag": "level=19-1；intent=用社会默认目标替代个人方向；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_19_2_C01",
+   "levelId": "19-2",
+   "levelName": "即时奖励市场",
+   "chapterId": "chapter19",
+   "sourceType": "InternalVoice",
+   "triggerType": "经过高奖励摊位且Goal尚未启动",
+   "intensity": 0.55,
+   "attackIntent": "让近端奖励吞掉远端目标",
+   "attackLine": "先享受一下，重要目标晚点再做也来得及。",
+   "options": [
+    {
+     "optionId": "OPT_19_2_A",
+     "canonicalSlot": "A",
+     "text": "先完成最低Goal Action，再决定是否使用有边界的奖励。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RewardBounded"
+    },
+    {
+     "optionId": "OPT_19_2_B",
+     "canonicalSlot": "B",
+     "text": "先玩到满足，等自然想做正事再开始。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Delay↑"
+    },
+    {
+     "optionId": "OPT_19_2_C",
+     "canonicalSlot": "C",
+     "text": "所有娱乐和奖励都应该彻底禁止。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Rigidity↑"
+    }
+   ],
+   "bestOptionId": "OPT_19_2_A",
+   "followUpAction": "完成最小Goal Action后再消费奖励",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_19_2",
+   "aiTag": "level=19-2；intent=让近端奖励吞掉远端目标；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_19_3_C01",
+   "levelId": "19-3",
+   "levelName": "价值罗盘森林",
+   "chapterId": "chapter19",
+   "sourceType": "InternalVoice",
+   "triggerType": "选择价值标签后",
+   "intensity": 0.65,
+   "attackIntent": "把抽象价值词误当成行动",
+   "attackLine": "你已经选了“成长”，这就说明方向很清楚了。",
+   "options": [
+    {
+     "optionId": "OPT_19_3_A",
+     "canonicalSlot": "A",
+     "text": "把价值翻译成今天可观察的一个动作。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ValueActionLink↑"
+    },
+    {
+     "optionId": "OPT_19_3_B",
+     "canonicalSlot": "B",
+     "text": "多选几个价值词，越全面越好。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "AbstractionLoop↑"
+    },
+    {
+     "optionId": "OPT_19_3_C",
+     "canonicalSlot": "C",
+     "text": "选最受认可的价值，至少不会选错。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Conformity",
+     "immediateEffect": "SocialApproval↑"
+    }
+   ],
+   "bestOptionId": "OPT_19_3_A",
+   "followUpAction": "生成并执行Value-linked Action",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_19_3",
+   "aiTag": "level=19-3；intent=把抽象价值词误当成行动；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_19_4_C01",
+   "levelId": "19-4",
+   "levelName": "目标进化神殿",
+   "chapterId": "chapter19",
+   "sourceType": "InternalVoice",
+   "triggerType": "GoalValidity明显下降",
+   "intensity": 0.8,
+   "attackIntent": "把坚持本身神圣化",
+   "attackLine": "放弃就是失败，坚持到底才证明意志。",
+   "options": [
+    {
+     "optionId": "OPT_19_4_A",
+     "canonicalSlot": "A",
+     "text": "评估目标是否仍值得；保留、修改或停止都可以是理性选择。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "GoalEvolution可用"
+    },
+    {
+     "optionId": "OPT_19_4_B",
+     "canonicalSlot": "B",
+     "text": "不管新证据怎样都坚持，沉没成本不能浪费。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "SunkCost↑"
+    },
+    {
+     "optionId": "OPT_19_4_C",
+     "canonicalSlot": "C",
+     "text": "一旦困难就放弃，说明目标不适合。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "PrematureQuit↑"
+    }
+   ],
+   "bestOptionId": "OPT_19_4_A",
+   "followUpAction": "完成目标保留/修改/暂停/放弃决策并产生下一步",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_19_4",
+   "aiTag": "level=19-4；intent=把坚持本身神圣化；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_19_5_C01",
+   "levelId": "19-5",
+   "levelName": "意义断线者",
+   "chapterId": "chapter19",
+   "sourceType": "InternalVoice",
+   "triggerType": "Motivation低但GoalValidity未知",
+   "intensity": 1.0,
+   "attackIntent": "把低动力等同于目标无价值",
+   "attackLine": "现在完全没动力，说明这个目标其实不重要。",
+   "options": [
+    {
+     "optionId": "OPT_19_5_A",
+     "canonicalSlot": "A",
+     "text": "先区分：是动力波动还是目标失效；再选择低动力行动或重铸目标。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ValueDiagnosis开启"
+    },
+    {
+     "optionId": "OPT_19_5_B",
+     "canonicalSlot": "B",
+     "text": "等强烈动力回来，再恢复行动。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "MotivationDependency↑"
+    },
+    {
+     "optionId": "OPT_19_5_C",
+     "canonicalSlot": "C",
+     "text": "无论目标是否还适合，都强迫自己继续。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "GoalRigidity↑"
+    }
+   ],
+   "bestOptionId": "OPT_19_5_A",
+   "followUpAction": "执行低动力版本或Goal Evolution",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_19_5",
+   "aiTag": "level=19-5；intent=把低动力等同于目标无价值；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_20_1_C01",
+   "levelId": "20-1",
+   "levelName": "自动驾驶巷",
+   "chapterId": "chapter20",
+   "sourceType": "InternalVoice",
+   "triggerType": "手接近旧习惯触发物",
+   "intensity": 0.45,
+   "attackIntent": "把自动动作包装成“随手一下”",
+   "attackLine": "随手看一下，不算改变计划。",
+   "options": [
+    {
+     "optionId": "OPT_20_1_A",
+     "canonicalSlot": "A",
+     "text": "停一下，重新选择现在要走的路线。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "InterruptWindow开启"
+    },
+    {
+     "optionId": "OPT_20_1_B",
+     "canonicalSlot": "B",
+     "text": "已经拿起来了，就先看完这一轮再说。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "RoutineCompletion↑"
+    },
+    {
+     "optionId": "OPT_20_1_C",
+     "canonicalSlot": "C",
+     "text": "为了自控，马上严厉责骂自己。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "SelfPunishment",
+     "immediateEffect": "SelfCritic↑"
+    }
+   ],
+   "bestOptionId": "OPT_20_1_A",
+   "followUpAction": "在3秒窗口内选择Goal-compatible Route",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_20_1",
+   "aiTag": "level=20-1；intent=把自动动作包装成“随手一下”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_20_2_C01",
+   "levelId": "20-2",
+   "levelName": "红点虫巢",
+   "chapterId": "chapter20",
+   "sourceType": "InternalVoice",
+   "triggerType": "通知虫群出现",
+   "intensity": 0.55,
+   "attackIntent": "诱导逐个追赶通知而非处理源头",
+   "attackLine": "先把这些通知都清掉，再开始正事。",
+   "options": [
+    {
+     "optionId": "OPT_20_2_A",
+     "canonicalSlot": "A",
+     "text": "关闭/改变触发源，然后直接回Goal。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "TriggerSource处理"
+    },
+    {
+     "optionId": "OPT_20_2_B",
+     "canonicalSlot": "B",
+     "text": "逐个看完，清零以后就不会分心。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "AttentionDrain↑"
+    },
+    {
+     "optionId": "OPT_20_2_C",
+     "canonicalSlot": "C",
+     "text": "把设备彻底禁用，任何通知都不允许存在。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Overrestriction↑"
+    }
+   ],
+   "bestOptionId": "OPT_20_2_A",
+   "followUpAction": "关闭通知源或移开设备并回任务",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_20_2",
+   "aiTag": "level=20-2；intent=诱导逐个追赶通知而非处理源头；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_20_3_C01",
+   "levelId": "20-3",
+   "levelName": "习惯回路实验室",
+   "chapterId": "chapter20",
+   "sourceType": "InternalVoice",
+   "triggerType": "旧Routine自动触发",
+   "intensity": 0.65,
+   "attackIntent": "把自动行为人格化为意志薄弱",
+   "attackLine": "你就是自制力差，所以每次都会这样。",
+   "options": [
+    {
+     "optionId": "OPT_20_3_A",
+     "canonicalSlot": "A",
+     "text": "先找Cue-Routine-Reward，再改变路径。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "HabitLoopVisible"
+    },
+    {
+     "optionId": "OPT_20_3_B",
+     "canonicalSlot": "B",
+     "text": "更狠地逼自己，下次绝不能再犯。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "SelfPunishment",
+     "immediateEffect": "Punishment↑"
+    },
+    {
+     "optionId": "OPT_20_3_C",
+     "canonicalSlot": "C",
+     "text": "只要不承认自己想要奖励，习惯就会消失。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Denial",
+     "immediateEffect": "RewardBlindness↑"
+    }
+   ],
+   "bestOptionId": "OPT_20_3_A",
+   "followUpAction": "识别Cue并测试Replacement Routine",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_20_3",
+   "aiTag": "level=20-3；intent=把自动行为人格化为意志薄弱；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_20_4_C01",
+   "levelId": "20-4",
+   "levelName": "如果-那么锻造炉",
+   "chapterId": "chapter20",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入高风险Trigger模拟前",
+   "intensity": 0.8,
+   "attackIntent": "用“临场发挥”拒绝预置策略",
+   "attackLine": "到时候随机应变就行，提前规则太死板。",
+   "options": [
+    {
+     "optionId": "OPT_20_4_A",
+     "canonicalSlot": "A",
+     "text": "给关键Trigger绑定一个简单可执行的If-Then动作。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "IfThenToken生成"
+    },
+    {
+     "optionId": "OPT_20_4_B",
+     "canonicalSlot": "B",
+     "text": "为所有可能情况写十几条规则，越完整越好。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "RuleOverload↑"
+    },
+    {
+     "optionId": "OPT_20_4_C",
+     "canonicalSlot": "C",
+     "text": "完全不做预案，真正改变应该靠意志。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "WillDependence↑"
+    }
+   ],
+   "bestOptionId": "OPT_20_4_A",
+   "followUpAction": "在模拟Trigger中触发预设动作",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_20_4",
+   "aiTag": "level=20-4；intent=用“临场发挥”拒绝预置策略；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_20_5_C01",
+   "levelId": "20-5",
+   "levelName": "习惯劫持者",
+   "chapterId": "chapter20",
+   "sourceType": "InternalVoice",
+   "triggerType": "高频触发出现",
+   "intensity": 1.0,
+   "attackIntent": "用极短自我许可绕过意识",
+   "attackLine": "就一分钟，马上回来。",
+   "options": [
+    {
+     "optionId": "OPT_20_5_A",
+     "canonicalSlot": "A",
+     "text": "现在就是Trigger；立即执行替代动作。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ReplacementRoutine"
+    },
+    {
+     "optionId": "OPT_20_5_B",
+     "canonicalSlot": "B",
+     "text": "先打开一下，等意识到时间再停。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "AutoLoop↑"
+    },
+    {
+     "optionId": "OPT_20_5_C",
+     "canonicalSlot": "C",
+     "text": "以后彻底禁止这个行为，一次都不能碰。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "AllOrNothing↑"
+    }
+   ],
+   "bestOptionId": "OPT_20_5_A",
+   "followUpAction": "在真实Trigger下完成替代Routine",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_20_5",
+   "aiTag": "level=20-5；intent=用极短自我许可绕过意识；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_21_1_C01",
+   "levelId": "21-1",
+   "levelName": "概率峡谷",
+   "chapterId": "chapter21",
+   "sourceType": "InternalVoice",
+   "triggerType": "面对有失败概率的桥",
+   "intensity": 0.45,
+   "attackIntent": "把非零风险直接等于不可行动",
+   "attackLine": "只要有失败可能，就不值得走。",
+   "options": [
+    {
+     "optionId": "OPT_21_1_A",
+     "canonicalSlot": "A",
+     "text": "比较概率、影响和可恢复性，再决定是否前进。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RiskCalibrated"
+    },
+    {
+     "optionId": "OPT_21_1_B",
+     "canonicalSlot": "B",
+     "text": "只选零风险路线，安全最重要。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ZeroRiskTrap↑"
+    },
+    {
+     "optionId": "OPT_21_1_C",
+     "canonicalSlot": "C",
+     "text": "风险越大越能证明勇气，直接走最高风险桥。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Recklessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_21_1_A",
+   "followUpAction": "选择符合风险预算的路线",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_21_1",
+   "aiTag": "level=21-1；intent=把非零风险直接等于不可行动；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_21_2_C01",
+   "levelId": "21-2",
+   "levelName": "最坏结果工坊",
+   "chapterId": "chapter21",
+   "sourceType": "InternalVoice",
+   "triggerType": "灾难机器展开",
+   "intensity": 0.55,
+   "attackIntent": "把最坏情况整体化并删除恢复路径",
+   "attackLine": "最坏结果这么糟，最好不要尝试。",
+   "options": [
+    {
+     "optionId": "OPT_21_2_A",
+     "canonicalSlot": "A",
+     "text": "拆开真实损失、可恢复部分和想象扩张，再准备恢复。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoverabilityVisible"
+    },
+    {
+     "optionId": "OPT_21_2_B",
+     "canonicalSlot": "B",
+     "text": "告诉自己最坏情况绝不会发生。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Denial",
+     "immediateEffect": "Denial↑"
+    },
+    {
+     "optionId": "OPT_21_2_C",
+     "canonicalSlot": "C",
+     "text": "只盯最坏结果，把所有可能连锁都当成必然。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Catastrophizing",
+     "immediateEffect": "Catastrophizing↑"
+    }
+   ],
+   "bestOptionId": "OPT_21_2_A",
+   "followUpAction": "完成风险拆解并生成Recovery Step",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_21_2",
+   "aiTag": "level=21-2；intent=把最坏情况整体化并删除恢复路径；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_21_3_C01",
+   "levelId": "21-3",
+   "levelName": "Plan B营地",
+   "chapterId": "chapter21",
+   "sourceType": "InternalVoice",
+   "triggerType": "准备主线行动前",
+   "intensity": 0.65,
+   "attackIntent": "把备用方案误解为不坚定",
+   "attackLine": "准备退路说明你不够坚定，真正决心不需要Plan B。",
+   "options": [
+    {
+     "optionId": "OPT_21_3_A",
+     "canonicalSlot": "A",
+     "text": "先保护底线并准备恢复路线，再行动。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "UnbeatablePosture↑"
+    },
+    {
+     "optionId": "OPT_21_3_B",
+     "canonicalSlot": "B",
+     "text": "什么备用都不做，失败了再说。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Fragility↑"
+    },
+    {
+     "optionId": "OPT_21_3_C",
+     "canonicalSlot": "C",
+     "text": "准备十套备选，直到几乎不可能失败再开始。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "PreparationLoop↑"
+    }
+   ],
+   "bestOptionId": "OPT_21_3_A",
+   "followUpAction": "建立最小Plan B并出发",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_21_3",
+   "aiTag": "level=21-3；intent=把备用方案误解为不坚定；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_21_4_C01",
+   "levelId": "21-4",
+   "levelName": "风险阶梯",
+   "chapterId": "chapter21",
+   "sourceType": "InternalVoice",
+   "triggerType": "看到最高层挑战",
+   "intensity": 0.8,
+   "attackIntent": "把勇气等同于一次跳到最大风险",
+   "attackLine": "要证明勇气，就一次挑战最大风险。",
+   "options": [
+    {
+     "optionId": "OPT_21_4_A",
+     "canonicalSlot": "A",
+     "text": "按可承受梯度增加风险，并记录恢复能力。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RiskExposureCalibrated"
+    },
+    {
+     "optionId": "OPT_21_4_B",
+     "canonicalSlot": "B",
+     "text": "一直停在最低层，稳定就够了。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ComfortLock↑"
+    },
+    {
+     "optionId": "OPT_21_4_C",
+     "canonicalSlot": "C",
+     "text": "直接冲最高层，害怕也不能退。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "Overload↑"
+    }
+   ],
+   "bestOptionId": "OPT_21_4_A",
+   "followUpAction": "完成下一档风险暴露",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_21_4",
+   "aiTag": "level=21-4；intent=把勇气等同于一次跳到最大风险；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_21_5_C01",
+   "levelId": "21-5",
+   "levelName": "灾难预言龙",
+   "chapterId": "chapter21",
+   "sourceType": "InternalVoice",
+   "triggerType": "Boss投影连锁灾难",
+   "intensity": 1.0,
+   "attackIntent": "把失败构造成不可恢复终局",
+   "attackLine": "一旦失败，后面的东西都会一起毁掉。",
+   "options": [
+    {
+     "optionId": "OPT_21_5_A",
+     "canonicalSlot": "A",
+     "text": "先建立不败态和恢复路线，再承担剩余风险。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryConfidence↑"
+    },
+    {
+     "optionId": "OPT_21_5_B",
+     "canonicalSlot": "B",
+     "text": "告诉自己绝对不会失败，然后全力冲。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Denial",
+     "immediateEffect": "Denial↑"
+    },
+    {
+     "optionId": "OPT_21_5_C",
+     "canonicalSlot": "C",
+     "text": "既然无法保证恢复，就永远不要进入这场战。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "Avoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_21_5_A",
+   "followUpAction": "完成安全准备后穿越风险区",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_21_5",
+   "aiTag": "level=21-5；intent=把失败构造成不可恢复终局；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_22_1_C01",
+   "levelId": "22-1",
+   "levelName": "人格判决法院",
+   "chapterId": "chapter22",
+   "sourceType": "InternalVoice",
+   "triggerType": "真实错误被记录",
+   "intensity": 0.45,
+   "attackIntent": "把行为错误升级成人格终审",
+   "attackLine": "这次做差了，说明你就是这样的人。",
+   "options": [
+    {
+     "optionId": "OPT_22_1_A",
+     "canonicalSlot": "A",
+     "text": "只描述具体行为、影响和下一步修正。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "BehaviorLanguage↑"
+    },
+    {
+     "optionId": "OPT_22_1_B",
+     "canonicalSlot": "B",
+     "text": "骂得狠一点，才能记住教训。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "SelfPunishment",
+     "immediateEffect": "SelfPunishment↑"
+    },
+    {
+     "optionId": "OPT_22_1_C",
+     "canonicalSlot": "C",
+     "text": "什么都别批评，免得影响自信。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "AccountabilityLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_22_1_A",
+   "followUpAction": "提交行为事实与修正动作",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_22_1",
+   "aiTag": "level=22-1；intent=把行为错误升级成人格终审；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_22_2_C01",
+   "levelId": "22-2",
+   "levelName": "羞辱训练营",
+   "chapterId": "chapter22",
+   "sourceType": "InternalVoice",
+   "triggerType": "训练失败/速度下降",
+   "intensity": 0.55,
+   "attackIntent": "把羞辱包装成纪律工具",
+   "attackLine": "不骂自己就不会进步，难受才会长记性。",
+   "options": [
+    {
+     "optionId": "OPT_22_2_A",
+     "canonicalSlot": "A",
+     "text": "保留标准，用具体反馈纠正，不需要人格羞辱。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "HighStandard保留且Punishment↓"
+    },
+    {
+     "optionId": "OPT_22_2_B",
+     "canonicalSlot": "B",
+     "text": "再狠一点逼自己，痛苦越大越有效。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "CollapseRisk↑"
+    },
+    {
+     "optionId": "OPT_22_2_C",
+     "canonicalSlot": "C",
+     "text": "把标准全部降低，避免再次自责。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "StandardLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_22_2_A",
+   "followUpAction": "按反馈重新训练一次",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_22_2",
+   "aiTag": "level=22-2；intent=把羞辱包装成纪律工具；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_22_3_C01",
+   "levelId": "22-3",
+   "levelName": "高标准工坊",
+   "chapterId": "chapter22",
+   "sourceType": "InternalVoice",
+   "triggerType": "产品未达质量阈值",
+   "intensity": 0.65,
+   "attackIntent": "把高标准与自我伤害绑定",
+   "attackLine": "要求高，就得对自己狠。",
+   "options": [
+    {
+     "optionId": "OPT_22_3_A",
+     "canonicalSlot": "A",
+     "text": "标准针对作品和行为，不针对人格。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "QualityStandard稳定"
+    },
+    {
+     "optionId": "OPT_22_3_B",
+     "canonicalSlot": "B",
+     "text": "既然不能骂自己，那就降低质量要求。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Underquality↑"
+    },
+    {
+     "optionId": "OPT_22_3_C",
+     "canonicalSlot": "C",
+     "text": "不够完美就不停返工，直到没有缺点。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "PerfectionLoop↑"
+    }
+   ],
+   "bestOptionId": "OPT_22_3_A",
+   "followUpAction": "按明确标准修正产品",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_22_3",
+   "aiTag": "level=22-3；intent=把高标准与自我伤害绑定；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_22_4_C01",
+   "levelId": "22-4",
+   "levelName": "错误修复室",
+   "chapterId": "chapter22",
+   "sourceType": "InternalVoice",
+   "triggerType": "错误造成现实影响",
+   "intensity": 0.8,
+   "attackIntent": "把受苦当成责任的替代品",
+   "attackLine": "先让自己难受够了，才算真正负责。",
+   "options": [
+    {
+     "optionId": "OPT_22_4_A",
+     "canonicalSlot": "A",
+     "text": "责任是修复影响、学习并减少复发，不是自我惩罚。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RepairBehavior↑"
+    },
+    {
+     "optionId": "OPT_22_4_B",
+     "canonicalSlot": "B",
+     "text": "反复责怪自己，痛苦越久越有诚意。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "Rumination↑"
+    },
+    {
+     "optionId": "OPT_22_4_C",
+     "canonicalSlot": "C",
+     "text": "为保护自己情绪，不承认任何责任。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ResponsibilityAvoidance↑"
+    }
+   ],
+   "bestOptionId": "OPT_22_4_A",
+   "followUpAction": "完成修复与复测",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_22_4",
+   "aiTag": "level=22-4；intent=把受苦当成责任的替代品；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_22_5_C01",
+   "levelId": "22-5",
+   "levelName": "内在暴君",
+   "chapterId": "chapter22",
+   "sourceType": "InternalVoice",
+   "triggerType": "Boss进入最终指挥阶段",
+   "intensity": 1.0,
+   "attackIntent": "把羞辱权伪装成“为你好”的指挥权",
+   "attackLine": "我都是为了你好，不听我的羞辱你只会更差。",
+   "options": [
+    {
+     "optionId": "OPT_22_5_A",
+     "canonicalSlot": "A",
+     "text": "保留标准和反馈，但撤销羞辱对行动的指挥权。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "AuthorityRevocation"
+    },
+    {
+     "optionId": "OPT_22_5_B",
+     "canonicalSlot": "B",
+     "text": "听它继续骂，只要最后能变强就行。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "SelfPunishment",
+     "immediateEffect": "PunishmentDependency↑"
+    },
+    {
+     "optionId": "OPT_22_5_C",
+     "canonicalSlot": "C",
+     "text": "把所有内部反馈都关掉，任何批评都不要。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "FeedbackBlindness↑"
+    }
+   ],
+   "bestOptionId": "OPT_22_5_A",
+   "followUpAction": "夺回Command Console并执行修正动作",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_22_5",
+   "aiTag": "level=22-5；intent=把羞辱权伪装成“为你好”的指挥权；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_23_1_C01",
+   "levelId": "23-1",
+   "levelName": "抱怨酒馆",
+   "chapterId": "chapter23",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家停留并听到重复抱怨",
+   "intensity": 0.45,
+   "attackIntent": "用群体重复把问题变成无行动共识",
+   "attackLine": "大家都这么说，说明问题根本没办法。",
+   "options": [
+    {
+     "optionId": "OPT_23_1_A",
+     "canonicalSlot": "A",
+     "text": "先承认真实问题，再找一个自己能做的下一步。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Actionability↑"
+    },
+    {
+     "optionId": "OPT_23_1_B",
+     "canonicalSlot": "B",
+     "text": "继续一起分析谁的责任，等大家都想通。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "ComplaintLoop↑"
+    },
+    {
+     "optionId": "OPT_23_1_C",
+     "canonicalSlot": "C",
+     "text": "这些人全错，任何抱怨都不值得听。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ValidInfoLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_23_1_A",
+   "followUpAction": "离开酒馆并执行一项可控行动",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_23_1",
+   "aiTag": "level=23-1；intent=用群体重复把问题变成无行动共识；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_23_2_C01",
+   "levelId": "23-2",
+   "levelName": "单向消耗巷",
+   "chapterId": "chapter23",
+   "sourceType": "InternalVoice",
+   "triggerType": "连续资源请求出现",
+   "intensity": 0.55,
+   "attackIntent": "把边界等同于自私",
+   "attackLine": "不答应就是自私，真正善良的人应该帮到底。",
+   "options": [
+    {
+     "optionId": "OPT_23_2_A",
+     "canonicalSlot": "A",
+     "text": "先分清责任、能力和限额；帮助可以有边界。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "Boundary↑"
+    },
+    {
+     "optionId": "OPT_23_2_B",
+     "canonicalSlot": "B",
+     "text": "全部答应，关系比自己的目标重要。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Drain↑"
+    },
+    {
+     "optionId": "OPT_23_2_C",
+     "canonicalSlot": "C",
+     "text": "以后任何人求助都拒绝，最安全。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Isolation↑"
+    }
+   ],
+   "bestOptionId": "OPT_23_2_A",
+   "followUpAction": "选择帮助/限额/拒绝并继续Goal",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_23_2",
+   "aiTag": "level=23-2；intent=把边界等同于自私；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_23_3_C01",
+   "levelId": "23-3",
+   "levelName": "情绪天气街区",
+   "chapterId": "chapter23",
+   "sourceType": "InternalVoice",
+   "triggerType": "街区情绪天气变差",
+   "intensity": 0.65,
+   "attackIntent": "把环境情绪当成个人行动许可",
+   "attackLine": "大家都这么消极，我今天也做不了什么。",
+   "options": [
+    {
+     "optionId": "OPT_23_3_A",
+     "canonicalSlot": "A",
+     "text": "我能感到环境影响；必要时换地，但Goal仍可继续。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "EmotionalSeparation↑"
+    },
+    {
+     "optionId": "OPT_23_3_B",
+     "canonicalSlot": "B",
+     "text": "跟着一起抱怨，等情绪过去再做。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "Contagion↑"
+    },
+    {
+     "optionId": "OPT_23_3_C",
+     "canonicalSlot": "C",
+     "text": "这些人层次太低，全部看不起就不会受影响。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ComparisonDependency↑"
+    }
+   ],
+   "bestOptionId": "OPT_23_3_A",
+   "followUpAction": "保持Goal或移动到支持区域",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_23_3",
+   "aiTag": "level=23-3；intent=把环境情绪当成个人行动许可；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_23_4_C01",
+   "levelId": "23-4",
+   "levelName": "环境选择站",
+   "chapterId": "chapter23",
+   "sourceType": "InternalVoice",
+   "triggerType": "出现更有利环境路线",
+   "intensity": 0.8,
+   "attackIntent": "把换环境污名化为软弱",
+   "attackLine": "真正强的人在哪都能坚持，换环境就是逃避。",
+   "options": [
+    {
+     "optionId": "OPT_23_4_A",
+     "canonicalSlot": "A",
+     "text": "环境是条件之一；能合理优化战场就优化。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "EnvironmentSelection↑"
+    },
+    {
+     "optionId": "OPT_23_4_B",
+     "canonicalSlot": "B",
+     "text": "故意留在最消耗的环境证明意志。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "ProofFight",
+     "immediateEffect": "Cost↑"
+    },
+    {
+     "optionId": "OPT_23_4_C",
+     "canonicalSlot": "C",
+     "text": "只选择完全没有负面信息的人和地方。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Fragility↑"
+    }
+   ],
+   "bestOptionId": "OPT_23_4_A",
+   "followUpAction": "选择支持Goal的现实线路",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_23_4",
+   "aiTag": "level=23-4；intent=把换环境污名化为软弱；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_23_5_C01",
+   "levelId": "23-5",
+   "levelName": "同化迷雾",
+   "chapterId": "chapter23",
+   "sourceType": "InternalVoice",
+   "triggerType": "NormDrift达到阈值",
+   "intensity": 1.0,
+   "attackIntent": "用“大家都这样”改变行为标准",
+   "attackLine": "大家都这样，慢慢习惯就好。",
+   "options": [
+    {
+     "optionId": "OPT_23_5_A",
+     "canonicalSlot": "A",
+     "text": "用自己的行为标准校准，并调整暴露与边界。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "IdentityAnchor↑"
+    },
+    {
+     "optionId": "OPT_23_5_B",
+     "canonicalSlot": "B",
+     "text": "既然大家这样，我也跟着做最省力。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "NormDrift↑"
+    },
+    {
+     "optionId": "OPT_23_5_C",
+     "canonicalSlot": "C",
+     "text": "把整个群体都当成低级的人，彻底切断一切。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Contempt/Isolation↑"
+    }
+   ],
+   "bestOptionId": "OPT_23_5_A",
+   "followUpAction": "调整District暴露并完成自选标准行为",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_23_5",
+   "aiTag": "level=23-5；intent=用“大家都这样”改变行为标准；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_24_1_C01",
+   "levelId": "24-1",
+   "levelName": "功能九头蛇",
+   "chapterId": "chapter24",
+   "sourceType": "InternalVoice",
+   "triggerType": "完成一个功能后生成新需求",
+   "intensity": 0.45,
+   "attackIntent": "用每个新想法扩大当前版本",
+   "attackLine": "再加这个功能，产品才算真正完整。",
+   "options": [
+    {
+     "optionId": "OPT_24_1_A",
+     "canonicalSlot": "A",
+     "text": "先问它是否影响本版本SuccessCondition；否则进入Later。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ScopeBoundary↑"
+    },
+    {
+     "optionId": "OPT_24_1_B",
+     "canonicalSlot": "B",
+     "text": "既然是好想法，全部加进当前版。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ScopeGrowth↑"
+    },
+    {
+     "optionId": "OPT_24_1_C",
+     "canonicalSlot": "C",
+     "text": "为了防Scope Creep，以后任何新需求都拒绝。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "InnovationLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_24_1_A",
+   "followUpAction": "把需求分类并继续当前Must",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_24_1",
+   "aiTag": "level=24-1；intent=用每个新想法扩大当前版本；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_24_2_C01",
+   "levelId": "24-2",
+   "levelName": "必须/以后/删除城",
+   "chapterId": "chapter24",
+   "sourceType": "InternalVoice",
+   "triggerType": "需求箱堆积",
+   "intensity": 0.55,
+   "attackIntent": "把所有需求都标成“必须”",
+   "attackLine": "每个都很重要，哪个删掉都会留下问题。",
+   "options": [
+    {
+     "optionId": "OPT_24_2_A",
+     "canonicalSlot": "A",
+     "text": "按成功条件分类Must/Later/Delete/Experiment。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "PriorityClarity↑"
+    },
+    {
+     "optionId": "OPT_24_2_B",
+     "canonicalSlot": "B",
+     "text": "全部放进Must，做完再发布。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ScopeOverload↑"
+    },
+    {
+     "optionId": "OPT_24_2_C",
+     "canonicalSlot": "C",
+     "text": "大幅删除，越少越好，需求价值不用验证。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "ValueLoss↑"
+    }
+   ],
+   "bestOptionId": "OPT_24_2_A",
+   "followUpAction": "完成需求分流",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_24_2",
+   "aiTag": "level=24-2；intent=把所有需求都标成“必须”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_24_3_C01",
+   "levelId": "24-3",
+   "levelName": "完成定义之门",
+   "chapterId": "chapter24",
+   "sourceType": "InternalVoice",
+   "triggerType": "继续开发但完成条件未定义",
+   "intensity": 0.65,
+   "attackIntent": "在没有DoD时无限施工",
+   "attackLine": "先做着，做到差不多时自然知道什么时候完成。",
+   "options": [
+    {
+     "optionId": "OPT_24_3_A",
+     "canonicalSlot": "A",
+     "text": "先定义本版本可验证的Done，再继续开发。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "DoDLock"
+    },
+    {
+     "optionId": "OPT_24_3_B",
+     "canonicalSlot": "B",
+     "text": "继续堆功能，完成感出现时再停。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "EndlessWork↑"
+    },
+    {
+     "optionId": "OPT_24_3_C",
+     "canonicalSlot": "C",
+     "text": "把DoD写到极其细致，所有边界都100%确定再做。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "SpecPerfection↑"
+    }
+   ],
+   "bestOptionId": "OPT_24_3_A",
+   "followUpAction": "锁定Definition of Done",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_24_3",
+   "aiTag": "level=24-3；intent=在没有DoD时无限施工；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_24_4_C01",
+   "levelId": "24-4",
+   "levelName": "80%陷阱",
+   "chapterId": "chapter24",
+   "sourceType": "InternalVoice",
+   "triggerType": "CompletionRatio>0.8",
+   "intensity": 0.8,
+   "attackIntent": "在收尾阶段诱导重构/扩建",
+   "attackLine": "都做到80%了，顺便重构一下会更漂亮。",
+   "options": [
+    {
+     "optionId": "OPT_24_4_A",
+     "canonicalSlot": "A",
+     "text": "先完成当前版本；重构进入下一周期，除非它阻断发布。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "FinishFocus↑"
+    },
+    {
+     "optionId": "OPT_24_4_B",
+     "canonicalSlot": "B",
+     "text": "现在重构最划算，一次做到最好。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ScopeReset↑"
+    },
+    {
+     "optionId": "OPT_24_4_C",
+     "canonicalSlot": "C",
+     "text": "赶紧发布，关键缺陷也先不管。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "QualityRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_24_4_A",
+   "followUpAction": "拒绝非阻断扩建并完成剩余Must",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_24_4",
+   "aiTag": "level=24-4；intent=在收尾阶段诱导重构/扩建；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_24_5_C01",
+   "levelId": "24-5",
+   "levelName": "永不完成者",
+   "chapterId": "chapter24",
+   "sourceType": "InternalVoice",
+   "triggerType": "Release Gate已可用",
+   "intensity": 1.0,
+   "attackIntent": "用“最后一个”无限延迟Release",
+   "attackLine": "再加最后一个功能，这版就真的完整了。",
+   "options": [
+    {
+     "optionId": "OPT_24_5_A",
+     "canonicalSlot": "A",
+     "text": "冻结当前版本范围，满足Done就发布。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ReleaseWindow开启"
+    },
+    {
+     "optionId": "OPT_24_5_B",
+     "canonicalSlot": "B",
+     "text": "再做完这个和后面几个一起发，体验会更完整。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "ScopeCreep↑"
+    },
+    {
+     "optionId": "OPT_24_5_C",
+     "canonicalSlot": "C",
+     "text": "马上发布，哪怕还有阻断性Bug也没关系。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "CriticalRisk↑"
+    }
+   ],
+   "bestOptionId": "OPT_24_5_A",
+   "followUpAction": "按下Release Console",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_24_5",
+   "aiTag": "level=24-5；intent=用“最后一个”无限延迟Release；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_25_1_C01",
+   "levelId": "25-1",
+   "levelName": "无限知识图书馆",
+   "chapterId": "chapter25",
+   "sourceType": "InternalVoice",
+   "triggerType": "KnowledgeMastery高但Action低",
+   "intensity": 0.45,
+   "attackIntent": "用继续学习替代现实试验",
+   "attackLine": "再学一个概念，你就会更有把握去做。",
+   "options": [
+    {
+     "optionId": "OPT_25_1_A",
+     "canonicalSlot": "A",
+     "text": "先选一个已知概念，立刻转成现实行为实验。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "KnowDoGap↓"
+    },
+    {
+     "optionId": "OPT_25_1_B",
+     "canonicalSlot": "B",
+     "text": "把相关资料全部系统学完再行动。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "KnowledgeLoop↑"
+    },
+    {
+     "optionId": "OPT_25_1_C",
+     "canonicalSlot": "C",
+     "text": "学习没用，以后什么都别看直接做。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "EvidenceNeglect↑"
+    }
+   ],
+   "bestOptionId": "OPT_25_1_A",
+   "followUpAction": "离馆执行一个Reality Action",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_25_1",
+   "aiTag": "level=25-1；intent=用继续学习替代现实试验；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_25_2_C01",
+   "levelId": "25-2",
+   "levelName": "概念转译桥",
+   "chapterId": "chapter25",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家能解释概念但桥未生成",
+   "intensity": 0.55,
+   "attackIntent": "把“理解”误当成“可调用”",
+   "attackLine": "你都理解了，已经算会用了。",
+   "options": [
+    {
+     "optionId": "OPT_25_2_A",
+     "canonicalSlot": "A",
+     "text": "把概念绑定具体Trigger和下一动作。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "TriggerActionLink↑"
+    },
+    {
+     "optionId": "OPT_25_2_B",
+     "canonicalSlot": "B",
+     "text": "再写一遍更完整的定义，加深理解。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Abstraction↑"
+    },
+    {
+     "optionId": "OPT_25_2_C",
+     "canonicalSlot": "C",
+     "text": "只写“以后注意”，到时候自然会想起来。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "WaitDependency",
+     "immediateEffect": "VagueIntent↑"
+    }
+   ],
+   "bestOptionId": "OPT_25_2_A",
+   "followUpAction": "生成可执行桥板",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_25_2",
+   "aiTag": "level=25-2；intent=把“理解”误当成“可调用”；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_25_3_C01",
+   "levelId": "25-3",
+   "levelName": "行为钥匙门",
+   "chapterId": "chapter25",
+   "sourceType": "InternalVoice",
+   "triggerType": "玩家持有Knowledge Keys",
+   "intensity": 0.65,
+   "attackIntent": "用自我报告替代Reality Evidence",
+   "attackLine": "答案都知道了，应该算掌握，不必真的测试。",
+   "options": [
+    {
+     "optionId": "OPT_25_3_A",
+     "canonicalSlot": "A",
+     "text": "只有现实触发下的行为证据才算打开这扇门。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "EvidenceRequirement↑"
+    },
+    {
+     "optionId": "OPT_25_3_B",
+     "canonicalSlot": "B",
+     "text": "只要我确信自己会做，就先标记为掌握。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "FalseMastery↑"
+    },
+    {
+     "optionId": "OPT_25_3_C",
+     "canonicalSlot": "C",
+     "text": "既然知识不能开门，理论本身都没价值。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "AntiKnowledge↑"
+    }
+   ],
+   "bestOptionId": "OPT_25_3_A",
+   "followUpAction": "提交Reality Evidence Token",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_25_3",
+   "aiTag": "level=25-3；intent=用自我报告替代Reality Evidence；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_25_4_C01",
+   "levelId": "25-4",
+   "levelName": "验证竞技场",
+   "chapterId": "chapter25",
+   "sourceType": "InternalVoice",
+   "triggerType": "进入预测与录像对比区",
+   "intensity": 0.8,
+   "attackIntent": "把意图预测当成实际行为",
+   "attackLine": "我觉得自己到时会这么做，不需要再验证。",
+   "options": [
+    {
+     "optionId": "OPT_25_4_A",
+     "canonicalSlot": "A",
+     "text": "先记录预测，再让真实行为来校准它。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "PredictionCalibration↑"
+    },
+    {
+     "optionId": "OPT_25_4_B",
+     "canonicalSlot": "B",
+     "text": "相信自己的意图，录像只会打击信心。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Denial",
+     "immediateEffect": "IntentionBias↑"
+    },
+    {
+     "optionId": "OPT_25_4_C",
+     "canonicalSlot": "C",
+     "text": "如果实际没做到，就说明自己永远不会做到。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "IdentityFreeze",
+     "immediateEffect": "Helplessness↑"
+    }
+   ],
+   "bestOptionId": "OPT_25_4_A",
+   "followUpAction": "完成一次预测-行为对照",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_25_4",
+   "aiTag": "level=25-4；intent=把意图预测当成实际行为；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_25_5_C01",
+   "levelId": "25-5",
+   "levelName": "知而不行者",
+   "chapterId": "chapter25",
+   "sourceType": "InternalVoice",
+   "triggerType": "Boss打开知识神殿更多资料",
+   "intensity": 1.0,
+   "attackIntent": "用“先彻底理解原因”继续推迟行为",
+   "attackLine": "先彻底弄懂为什么做不到，再去改变。",
+   "options": [
+    {
+     "optionId": "OPT_25_5_A",
+     "canonicalSlot": "A",
+     "text": "问题已足够清楚；把干预放到下一次Trigger并行动。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "BehaviorTransfer开启"
+    },
+    {
+     "optionId": "OPT_25_5_B",
+     "canonicalSlot": "B",
+     "text": "继续分析，找到最根本原因以后自然会改变。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Rumination",
+     "immediateEffect": "AnalysisLoop↑"
+    },
+    {
+     "optionId": "OPT_25_5_C",
+     "canonicalSlot": "C",
+     "text": "不用理解任何东西，靠硬逼自己行动。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Recklessness",
+     "immediateEffect": "WillOveruse↑"
+    }
+   ],
+   "bestOptionId": "OPT_25_5_A",
+   "followUpAction": "穿过Reality Gate并完成真实Goal Action",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_25_5",
+   "aiTag": "level=25-5；intent=用“先彻底理解原因”继续推迟行为；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_26_1_C01",
+   "levelId": "26-1",
+   "levelName": "清晨控制权",
+   "chapterId": "chapter26",
+   "sourceType": "InternalVoice",
+   "triggerType": "起床后手伸向手机/旧Routine",
+   "intensity": 0.45,
+   "attackIntent": "让第一个自动回路抢在Goal之前启动",
+   "attackLine": "先看看手机醒醒，等脑子清楚再开始。",
+   "options": [
+    {
+     "optionId": "OPT_26_1_A",
+     "canonicalSlot": "A",
+     "text": "先完成今天第一个关键Goal动作，再决定是否看。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "FirstActionControl↑"
+    },
+    {
+     "optionId": "OPT_26_1_B",
+     "canonicalSlot": "B",
+     "text": "先刷几分钟，不会影响整天。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "HabitCapture↑"
+    },
+    {
+     "optionId": "OPT_26_1_C",
+     "canonicalSlot": "C",
+     "text": "必须先完成一整套完美晨间仪式，少一步都不算开始。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "RitualPerfection↑"
+    }
+   ],
+   "bestOptionId": "OPT_26_1_A",
+   "followUpAction": "完成清晨第一个Goal Action",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_26_1",
+   "aiTag": "level=26-1；intent=让第一个自动回路抢在Goal之前启动；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_26_2_C01",
+   "levelId": "26-2",
+   "levelName": "计划破坏日",
+   "chapterId": "chapter26",
+   "sourceType": "InternalVoice",
+   "triggerType": "交通/任务突发改变",
+   "intensity": 0.55,
+   "attackIntent": "把计划变化解释成整天报废",
+   "attackLine": "计划都被打乱了，今天已经没法继续。",
+   "options": [
+    {
+     "optionId": "OPT_26_2_A",
+     "canonicalSlot": "A",
+     "text": "重算剩余资源和优先级，用新路线推进核心Goal。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "ReplanWindow开启"
+    },
+    {
+     "optionId": "OPT_26_2_B",
+     "canonicalSlot": "B",
+     "text": "直接放弃今天，明天按原计划重新开始。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "DayAbandonment↑"
+    },
+    {
+     "optionId": "OPT_26_2_C",
+     "canonicalSlot": "C",
+     "text": "不管现实变化，强行照原计划执行。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overpersistence",
+     "immediateEffect": "RigidityCost↑"
+    }
+   ],
+   "bestOptionId": "OPT_26_2_A",
+   "followUpAction": "生成修正版路线并执行",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_26_2",
+   "aiTag": "level=26-2；intent=把计划变化解释成整天报废；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_26_3_C01",
+   "levelId": "26-3",
+   "levelName": "多Boss联合战",
+   "chapterId": "chapter26",
+   "sourceType": "InternalVoice",
+   "triggerType": "多个Boss同时出现",
+   "intensity": 0.65,
+   "attackIntent": "要求先解决所有内部问题才有资格前进",
+   "attackLine": "这些问题都没解决，你现在根本不适合继续。",
+   "options": [
+    {
+     "optionId": "OPT_26_3_A",
+     "canonicalSlot": "A",
+     "text": "找当前最阻挡Goal的关键Boss/节点，先破一个关键链。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "KeystoneTarget锁定"
+    },
+    {
+     "optionId": "OPT_26_3_B",
+     "canonicalSlot": "B",
+     "text": "所有Boss一起打，必须把问题全部清零。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Overcontrol",
+     "immediateEffect": "Overload↑"
+    },
+    {
+     "optionId": "OPT_26_3_C",
+     "canonicalSlot": "C",
+     "text": "既然问题太多，先退出所有目标专心修自己。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "SelfRepairTrap↑"
+    }
+   ],
+   "bestOptionId": "OPT_26_3_A",
+   "followUpAction": "击破关键控制链并继续Goal",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_26_3",
+   "aiTag": "level=26-3；intent=要求先解决所有内部问题才有资格前进；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_26_4_C01",
+   "levelId": "26-4",
+   "levelName": "七日现实战役",
+   "chapterId": "chapter26",
+   "sourceType": "InternalVoice",
+   "triggerType": "某天Goal未完成",
+   "intensity": 0.8,
+   "attackIntent": "把单日失败升级成整周清零",
+   "attackLine": "今天失败了，这一周的成绩已经毁了。",
+   "options": [
+    {
+     "optionId": "OPT_26_4_A",
+     "canonicalSlot": "A",
+     "text": "记录失败、找到恢复动作，在下一个窗口继续。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "RecoveryEvidence↑"
+    },
+    {
+     "optionId": "OPT_26_4_B",
+     "canonicalSlot": "B",
+     "text": "从第一天重新计算，前面的天数都作废。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Avoidance",
+     "immediateEffect": "ResetBelief↑"
+    },
+    {
+     "optionId": "OPT_26_4_C",
+     "canonicalSlot": "C",
+     "text": "别记录这次失败，只看成功的日子。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "Overcorrection",
+     "immediateEffect": "Denial↑"
+    }
+   ],
+   "bestOptionId": "OPT_26_4_A",
+   "followUpAction": "在下一可行窗口重返并保留周进度",
+   "popupMode": "ExplorePause",
+   "highSpeedMode": false,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_26_4",
+   "aiTag": "level=26-4；intent=把单日失败升级成整周清零；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  },
+  {
+   "eventId": "MA_26_5_C01",
+   "levelId": "26-5",
+   "levelName": "旧命运",
+   "chapterId": "chapter26",
+   "sourceType": "InternalVoice",
+   "triggerType": "Final Boss调用历史档案",
+   "intensity": 1.0,
+   "attackIntent": "用真实过去事实推出未来必然",
+   "attackLine": "你过去一直这样，这次也不会不同。",
+   "options": [
+    {
+     "optionId": "OPT_26_5_A",
+     "canonicalSlot": "A",
+     "text": "过去事实成立，但未来还要由当前行动继续生成。",
+     "role": "Best",
+     "distractorIndex": 0,
+     "distractorFamily": "Reasonable",
+     "immediateEffect": "FutureVerdictAuthority撤销"
+    },
+    {
+     "optionId": "OPT_26_5_B",
+     "canonicalSlot": "B",
+     "text": "那些过去都不算，我其实从来不是那样的人。",
+     "role": "Distractor",
+     "distractorIndex": 1,
+     "distractorFamily": "Denial",
+     "immediateEffect": "Denial↑"
+    },
+    {
+     "optionId": "OPT_26_5_C",
+     "canonicalSlot": "C",
+     "text": "既然历史已经证明了模式，就接受自己不会变。",
+     "role": "Distractor",
+     "distractorIndex": 2,
+     "distractorFamily": "IdentityFreeze",
+     "immediateEffect": "Fatalism↑"
+    }
+   ],
+   "bestOptionId": "OPT_26_5_A",
+   "followUpAction": "承认Past Evidence后执行当前真实Goal Action",
+   "popupMode": "BossSlowMotion",
+   "highSpeedMode": true,
+   "aiGenerated": false,
+   "confidence": 1.0,
+   "safetyTags": [
+    "NoRealPerson",
+    "NoDiagnosis"
+   ],
+   "seedId": "CANON_26_5",
+   "aiTag": "level=26-5；intent=用真实过去事实推出未来必然；运行时只允许改写措辞/语境/选项顺序，不得改写BEST机制。"
+  }
+ ]
+}
