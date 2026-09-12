@@ -30,7 +30,27 @@ namespace AdversityRoad.World
     /// </summary>
     public static class ZoneBuilder
     {
-        public static string CurrentZoneId = "home";
+        static string _currentZoneId = "home";
+
+        /// <summary>
+        /// 玩家此刻所在区域的 id。
+        ///
+        /// 【为什么是属性不是字段】进一个关卡的路有五条——传送门、传送面板、
+        /// 生成场景进出、世界层切换、开局落点——但它们全都要写这一行。
+        /// 把写入口收成一处，"玩家刚进了哪一关、入口在哪儿"就只需要记一次
+        /// （见 <see cref="LevelTraverse"/>：外部敌人关卡判"走出去算通关"要用它）。
+        /// 读写用法与原来的公开字段完全一致，所有调用点一个字都不用改。
+        /// </summary>
+        public static string CurrentZoneId
+        {
+            get => _currentZoneId;
+            set
+            {
+                if (_currentZoneId == value) return;
+                _currentZoneId = value;
+                LevelTraverse.NoteEntered(IndexOfZone(value));
+            }
+        }
 
         // V2.0：区域表改为可在运行时追加——AI 生成的场景会作为**动态区域**注册进来，
         // 于是传送、雾色、剧情锁、存档里的当前区域都能像对待原生区域一样对待它。

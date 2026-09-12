@@ -22,6 +22,13 @@ namespace AdversityRoad.World
     ///      门会按玩家当前进度指向正确的那一对邻居；
     ///   ③ 以后调整章节顺序不用再回来改二十几处坐标。
     ///
+    /// 【外部心魔的关卡：这扇门就是通关条件】
+    /// 关底首领是外部心魔（别人、处境、环境）的那些关卡，通关方式是**从入口进来、
+    /// 朝出口方向走、从这扇向前门出去**，一场仗都不打也算过（打赢它同样算过）。
+    /// 于是这扇门在那些关卡里多担两件事：交战锁整个不生效（外部的东西没资格把人
+    /// 扣在原地），剧情锁对向前门不生效（穿过去正是解开它的动作）。
+    /// 判定见 LevelRules 与 LevelTraverse。
+    ///
     /// 【为什么不是"碰到就走"】
     /// 战斗中玩家的位移不完全受自己控制：翻滚 10m/s、绝招突进、被击退……
     /// 任何一次擦过门框都会被判成"我要换区域"。所以加了三道门槛：
@@ -67,6 +74,7 @@ namespace AdversityRoad.World
         bool _tracking;
         float _lastHint = -99f;
         int _signZone = -99;
+        bool _signEscape;
 
         void Awake() => GetComponent<Collider>().isTrigger = true;
 
@@ -91,16 +99,9 @@ namespace AdversityRoad.World
             var chapters = StoryManager.Chapters;
             if (chapters == null || chapters.Length == 0) return false;
 
-            var story = StoryManager.Instance;
-            int cur = story != null ? Mathf.Clamp(story.Chapter, 0, chapters.Length - 1) : 0;
-
-            int best = -1, bestDist = int.MaxValue;
-            for (int i = 0; i < chapters.Length; i++)
-            {
-                if (chapters[i].zoneIndex != homeZone) continue;
-                int d = Mathf.Abs(i - cur);
-                if (d < bestDist) { bestDist = d; best = i; }
-            }
+            // 「这个区此刻算哪一章」只解析一份：门的去向、关卡规则、目标行
+            // 三处必须给出同一个答案（见 LevelRules.ChapterIndexForZone）。
+            int best = LevelRules.ChapterIndexForZone(homeZone);
             if (best < 0) return false;
 
             int target = role == PortalRole.Back ? best - 1 : best + 1;
@@ -120,8 +121,14 @@ namespace AdversityRoad.World
             if (sign == null || Time.unscaledTime < _nextSignCheck) return;
             _nextSignCheck = Time.unscaledTime + 0.5f;
             bool ok = Resolve(out int z, out string name);
-            if (z == _signZone) return;
+            // 通关方式也要进标牌：同一扇门在"必须打倒"的关卡里只是去下一关的路，
+            // 在"穿过去就算通关"的关卡里它**本身就是通关条件**。标牌不说，
+            // 玩家只会照旧去找 Boss——规则改了，而他看到的东西没变。
+            bool escapeExit = ok && role == PortalRole.Forward && explicitZone < 0 &&
+                              LevelRules.ZoneClearsByEscape(homeZone, out _);
+            if (z == _signZone && escapeExit == _signEscape) return;
             _signZone = z;
+            _signEscape = escapeExit;
             if (!ok)
             {
                 sign.text = role == PortalRole.Back ? "起点" : "尽头";
@@ -129,9 +136,11 @@ namespace AdversityRoad.World
                 if (glow != null) glow.SetActive(false);
                 return;
             }
-            sign.text = (role == PortalRole.Back ? "← " : "→ ") + name;
+            sign.text = (role == PortalRole.Back ? "← " : "→ ") + name +
+                        (escapeExit ? "\n出口 · 走出去即通关" : "");
             sign.color = role == PortalRole.Back
-                ? new Color(0.85f, 0.85f, 0.7f) : new Color(0.7f, 0.95f, 1f);
+                ? new Color(0.85f, 0.85f, 0.7f)
+                : escapeExit ? new Color(0.6f, 1f, 0.72f) : new Color(0.7f, 0.95f, 1f);
             if (glow != null) glow.SetActive(true);
         }
 
@@ -168,8 +177,19 @@ namespace AdversityRoad.World
             _lastPlayerPos = pos;
             if (speed > WalkThroughSpeed || player.IsDodging) { _dwell = 0f; return; }
 
-            // ---- ③ 战斗中不放行 ----
-            if (EnemyEngaged(pos))
+            // ---- 外部心魔的关卡：这扇门就是通关方式本身 ----
+            // 判定与提示都在这里出完，后面两道锁按结果放行（见 TryEscapeClear）。
+            bool escapeClear = TryEscapeClear(pos, out int escapeChapter, out bool escapeBlocked);
+            if (escapeBlocked) { _dwell = 0f; return; }
+
+            // ---- ③ 战斗中不放行（外部心魔的关卡除外）----
+            //
+            // 【为什么外部关卡要整个绕开这道锁】这道锁的原意是"别让玩家从战斗里溜走"，
+            // 对内心心魔成立。但对外部心魔，**溜走就是正解**：玩家的原话是
+            // "即使有敌人来进行骚扰、追着攻击玩家，玩家完全可以不予理会、不应战无视"。
+            // 锁还在的话，被咬住的那一刻门就关了，规则改了等于没改。
+            // 两扇门都放开（回头门也一样）：外部的东西不该有权把人扣在原地。
+            if (!EscapeLevel() && EnemyEngaged(pos))
             {
                 _dwell = 0f;
                 Hint("战斗未了——先解决眼前的敌人，才能离开这片区域。");
@@ -177,8 +197,10 @@ namespace AdversityRoad.World
             }
 
             // ---- 剧情锁 ----
+            // 走出去就算通关的那一扇门不查这道锁：下一关此刻当然还锁着，
+            // 而"穿过这扇门"正是把它解开的动作，先查锁就等于永远走不出去。
             var story = StoryManager.Instance;
-            if (story != null && !story.ZoneUnlocked(targetZone))
+            if (!escapeClear && story != null && !story.ZoneUnlocked(targetZone))
             {
                 _dwell = 0f;
                 Hint("此路通往【" + targetName + "】，现在被心魔封锁——先打完当前这一关。");
@@ -189,7 +211,52 @@ namespace AdversityRoad.World
             _dwell += Time.deltaTime;
             if (_dwell < DwellTime) return;
 
+            if (escapeClear) CompleteEscape(escapeChapter);
             Teleport(player, targetZone, targetName);
+        }
+
+        /// <summary>这个区域的关底首领是不是外部心魔（与是不是当前章节无关）。</summary>
+        bool EscapeLevel()
+        {
+            // 开放城区与 AI 临时站点不在章节序列里，谈不上关卡规则
+            if (explicitZone >= 0) return false;
+            int idx = LevelRules.ChapterIndexForZone(homeZone);
+            return idx >= 0 && LevelRules.OfChapterIndex(idx) == LevelClearRule.Escape;
+        }
+
+        /// <summary>
+        /// 站进这扇门算不算"从入口穿到出口、这一关过了"。
+        ///
+        /// 只有**向前门**算：玩家的原话是"从一扇门的入口进来，然后朝着出口方向的门前进"，
+        /// 方向是规则的一部分。原路退回去不是通关，是退出去。
+        ///
+        /// <paramref name="blocked"/> = 这确实是外部关卡的出口门，但玩家还没真的横穿过来
+        /// （比如刚进关就在入口旁边打转）。这时门不放行，并把原因说清楚。
+        /// </summary>
+        bool TryEscapeClear(Vector3 pos, out int chapterIndex, out bool blocked)
+        {
+            chapterIndex = -1;
+            blocked = false;
+            if (role != PortalRole.Forward || explicitZone >= 0) return false;
+            if (!LevelRules.ZoneClearsByEscape(homeZone, out chapterIndex)) return false;
+
+            if (LevelTraverse.Crossed(homeZone, pos, out float crossed)) return true;
+
+            blocked = true;
+            Hint("不必应战，但这一关得真的穿过去——从入口那头一路走到这扇门，才算走出去了（已走 " +
+                 Mathf.RoundToInt(crossed) + "/" + Mathf.RoundToInt(LevelTraverse.MinDistance) + " 米）。", 3f);
+            return false;
+        }
+
+        /// <summary>不战而过：推进章节，并把"你没有打倒它"这件事说明白。</summary>
+        static void CompleteEscape(int chapterIndex)
+        {
+            var story = StoryManager.Instance;
+            if (story == null) return;
+            var ch = StoryManager.Chapters[chapterIndex];
+            GameEvents.RaiseSubtitle("〔通关〕" + ch.title +
+                " —— 你没有打倒它，你只是从这里走了出去。对外面的东西，这就够了。");
+            story.CompleteChapterByEscape(chapterIndex);
         }
 
         /// <summary>附近是否还有活着且已经进入战斗状态的敌人。</summary>

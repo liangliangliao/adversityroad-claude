@@ -77,6 +77,10 @@ namespace AdversityRoad.Core
             }
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
             BuildPlayer(startAt);
+            // 关卡入口重记一次：静态字段不随场景重载归零，而上一条 CurrentZoneId
+            // 若与重载前是同一个区，属性的写入口会因为"没变化"直接跳过。
+            // 这里玩家已经建出来了，记下的入口才是他真正站着的地方。
+            LevelTraverse.NoteEntered(zone);
             BuildCamera();
             EnemySpawnHook.Spawn = SpawnEnemy;   // Boss 战中召唤援军（明天之王/旧我）
             SpawnChapterEnemy();
@@ -89,6 +93,9 @@ namespace AdversityRoad.Core
             SpawnShadowGuardianIfEarned();
             EnsureV2Systems();
             BuildHUD();
+            // 经典关卡的顶部目标行：外部心魔的关卡要报"出口在哪、还差多远"，
+            // 否则通关条件从场上那个人换成了对面那扇门，而玩家看不到那扇门
+            ChapterObjectiveHud.Ensure();
             SetupChapterQuest();
             // 章节开场白挂到「进入世界」之后：开场页是标题，不是剧情弹窗，
             // 否则剧情面板会盖在标题上（两个模态同时开着，还互相抢 timeScale）
@@ -1532,12 +1539,17 @@ namespace AdversityRoad.Core
             string questId = "chapter_q_" + story.Chapter;
             foreach (var q in qm.activeQuests)
                 if (q.questId == questId) { GameEvents.RaiseQuestUpdated(questId); return; }
+
+            // 任务行按这一关的规则写：外部心魔写"穿过去或打倒它"，内心心魔写"击败"。
+            // 规则必须写在玩家一抬头就能看到的地方，不能只藏在进场那句字幕里。
+            var rule = LevelRules.Of(ch);
+            string bossLabel = EnemyCatalog.TierLabel(ch.enemyTier) + "·" +
+                               EnemyCatalog.TypeLabel(ch.enemyType);
             qm.AddQuest(new QuestData
             {
                 questId = questId,
-                title = ch.title + "：前往" + ZoneBuilder.ZoneNameOf(ch.zoneIndex) +
-                        "，击败【" + EnemyCatalog.TierLabel(ch.enemyTier) + "·" +
-                        EnemyCatalog.TypeLabel(ch.enemyType) + "】",
+                title = ch.title + "：前往" + ZoneBuilder.ZoneNameOf(ch.zoneIndex) + "，" +
+                        LevelRules.Objective(rule, bossLabel),
                 type = QuestType.Main,
                 sceneId = ZoneBuilder.ZoneIdOf(ch.zoneIndex),
                 relatedWeakness = Personalization.WeaknessAxis.Procrastination,
@@ -1545,7 +1557,8 @@ namespace AdversityRoad.Core
                 {
                     new QuestObjective
                     {
-                        description = "击败章节心魔",
+                        description = rule == LevelClearRule.Escape
+                            ? "穿过这一关（或击败章节心魔）" : "击败章节心魔",
                         targetEnemyId = ch.enemyId
                     }
                 }
@@ -1564,9 +1577,11 @@ namespace AdversityRoad.Core
                 return;
             }
             var ch = story.Current;
-            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题
+            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题，
+            // 末行把这一关的通关规则说清楚（外部心魔可以不战而过，内心心魔必须打倒）
             _battleFlow.ShowStory(story.CurrentAct.title,
-                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro, "出发");
+                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro +
+                "\n\n" + LevelRules.Brief(LevelRules.Of(ch)), "出发");
         }
 
         // ================= 工具 =================
