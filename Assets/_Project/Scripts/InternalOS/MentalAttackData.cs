@@ -59,6 +59,14 @@ namespace AdversityRoad.InternalOS
         /// <summary>策划稿里的原始位置 A/B/C。**运行时不按它排序**——顺序每次随机（第 5 节）。</summary>
         public string canonicalSlot;
         public string text;
+        /// <summary>
+        /// PRD 原文——仅当这一条为了压长度被改写过才有值。
+        ///
+        /// 改写只动措辞长度，机制、术语与它指向的动作一个字都没变；
+        /// 留底是为了能随时核对"改的到底是什么"，也让 PRD 那句
+        /// 「只增补，不删除、不替换」在数据里仍然成立。
+        /// </summary>
+        public string canonicalText;
         public string role;             // Best / Distractor
         public int distractorIndex;     // 0=best, 1=干扰项1, 2=干扰项2
         public string distractorFamily; // DistractorFamily 枚举名

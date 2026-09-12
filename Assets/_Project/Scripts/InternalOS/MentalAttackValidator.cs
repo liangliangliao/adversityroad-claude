@@ -26,13 +26,25 @@ namespace AdversityRoad.InternalOS
     /// </summary>
     public static class MentalAttackValidator
     {
-        // PRD 建议值：攻击句 10-36 汉字，选项 8-30 汉字（移动端可读）
+        // PRD 建议值：攻击句 10-36 汉字，选项 8-30 汉字（移动端可读）。
+        // 注意量的是**汉字数**，不是 string.Length：这批文案里混着
+        // Goal Action / SuccessCondition / Cue-Routine-Reward 这类机制术语，
+        // 半角字符按一个汉字算会把它们判成"超长"，而屏幕上它们只占半格。
         public const int AttackLineMin = 10;
         public const int AttackLineMax = 36;
         public const int OptionMin = 8;
         public const int OptionMax = 30;
         /// <summary>best 比最长的干扰项还长这么多字，就成了"最长的那条是答案"。</summary>
         public const int LengthBiasChars = 6;
+
+        /// <summary>显示宽度：汉字算 1，半角字符算 0.5——PRD 的"字"数的是汉字。</summary>
+        public static float DisplayWidth(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return 0f;
+            float w = 0f;
+            for (int i = 0; i < s.Length; i++) w += s[i] < 128 ? 0.5f : 1f;
+            return w;
+        }
 
         static MentalAttackIssue Err(MentalAttackChoiceEvent e, string code, string msg) =>
             new MentalAttackIssue { levelId = e != null ? e.levelId : "", eventId = e != null ? e.eventId : "",
@@ -127,26 +139,27 @@ namespace AdversityRoad.InternalOS
         {
             if (e == null) return;
 
-            int len = (e.attackLine ?? "").Length;
+            float len = DisplayWidth(e.attackLine);
             if (len < AttackLineMin || len > AttackLineMax)
                 into.Add(Warn(e, "LINE_LEN",
-                    "攻击句 " + len + " 字，建议 " + AttackLineMin + "-" + AttackLineMax + " 字。"));
+                    "攻击句 " + len.ToString("0.#") + " 字，建议 " + AttackLineMin + "-" + AttackLineMax + " 字。"));
 
-            int bestLen = 0, maxDistractor = 0;
+            float bestLen = 0f, maxDistractor = 0f;
             for (int i = 0; i < e.options.Count; i++)
             {
                 var o = e.options[i];
-                int ol = (o.text ?? "").Length;
+                float ol = DisplayWidth(o.text);
                 if (ol < OptionMin || ol > OptionMax)
                     into.Add(Warn(e, "OPT_LEN",
-                        "选项「" + o.text + "」" + ol + " 字，建议 " + OptionMin + "-" + OptionMax + " 字。"));
+                        "选项「" + o.text + "」" + ol.ToString("0.#") + " 字，建议 " +
+                        OptionMin + "-" + OptionMax + " 字。"));
                 if (o.IsBest) bestLen = ol;
                 else if (ol > maxDistractor) maxDistractor = ol;
             }
 
             if (bestLen - maxDistractor >= LengthBiasChars)
                 into.Add(Warn(e, "BEST_TOO_LONG",
-                    "best 比最长的干扰项多 " + (bestLen - maxDistractor) +
+                    "best 比最长的干扰项多 " + (bestLen - maxDistractor).ToString("0.#") +
                     " 字 —— 不读内容也能靠长度挑中答案。"));
         }
 

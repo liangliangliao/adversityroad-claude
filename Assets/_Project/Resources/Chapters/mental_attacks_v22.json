@@ -67,11 +67,12 @@
     {
      "optionId": "OPT_9_2_A",
      "canonicalSlot": "A",
-     "text": "只修阻断交付的问题；可优化项进入Later，然后提交。",
+     "text": "只修阻断交付的问题；可优化项进Later再提交。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "DoneLock稳定"
+     "immediateEffect": "DoneLock稳定",
+     "canonicalText": "只修阻断交付的问题；可优化项进入Later，然后提交。"
     },
     {
      "optionId": "OPT_9_2_B",
@@ -431,11 +432,12 @@
     {
      "optionId": "OPT_10_4_A",
      "canonicalSlot": "A",
-     "text": "先锁定当前Goal最相关的一项，其他进入Later。",
+     "text": "先锁定与Goal最相关的一项，其他进Later。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "GoalLock↑"
+     "immediateEffect": "GoalLock↑",
+     "canonicalText": "先锁定当前Goal最相关的一项，其他进入Later。"
     },
     {
      "optionId": "OPT_10_4_B",
@@ -691,11 +693,12 @@
     {
      "optionId": "OPT_11_4_A",
      "canonicalSlot": "A",
-     "text": "检查匹配和质量；有可改就改，然后继续下一次有效尝试。",
+     "text": "检查匹配和质量；有可改就改，再继续下一次有效尝试。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "RejectionLearning开启"
+     "immediateEffect": "RejectionLearning开启",
+     "canonicalText": "检查匹配和质量；有可改就改，然后继续下一次有效尝试。"
     },
     {
      "optionId": "OPT_11_4_B",
@@ -951,11 +954,12 @@
     {
      "optionId": "OPT_12_4_A",
      "canonicalSlot": "A",
-     "text": "准确分类当前能力，再决定训练、资源或求助。",
+     "text": "先分类当前能力，再决定训练、资源或求助。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "Calibration↑"
+     "immediateEffect": "Calibration↑",
+     "canonicalText": "准确分类当前能力，再决定训练、资源或求助。"
     },
     {
      "optionId": "OPT_12_4_B",
@@ -1003,11 +1007,12 @@
     {
      "optionId": "OPT_12_5_A",
      "canonicalSlot": "A",
-     "text": "过去是证据之一，不是结论；用当前条件做一次测试。",
+     "text": "过去是证据之一，不是结论；用当前条件测一次。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "PredictionAuthority↓"
+     "immediateEffect": "PredictionAuthority↓",
+     "canonicalText": "过去是证据之一，不是结论；用当前条件做一次测试。"
     },
     {
      "optionId": "OPT_12_5_B",
@@ -1159,11 +1164,12 @@
     {
      "optionId": "OPT_13_3_A",
      "canonicalSlot": "A",
-     "text": "复发说明旧路还在；用已经学会的技能更快穿过去。",
+     "text": "复发说明旧路还在；用学会的技能更快穿过去。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "RecoveryMastery↑"
+     "immediateEffect": "RecoveryMastery↑",
+     "canonicalText": "复发说明旧路还在；用已经学会的技能更快穿过去。"
     },
     {
      "optionId": "OPT_13_3_B",
@@ -1991,11 +1997,12 @@
     {
      "optionId": "OPT_16_4_A",
      "canonicalSlot": "A",
-     "text": "先分清：可行动、暂不可行动、还是需要有限信息。",
+     "text": "先分清可行动、暂不可行动、还是需要有限信息。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "ActionabilityCalibrated"
+     "immediateEffect": "ActionabilityCalibrated",
+     "canonicalText": "先分清：可行动、暂不可行动、还是需要有限信息。"
     },
     {
      "optionId": "OPT_16_4_B",
@@ -2199,11 +2206,12 @@
     {
      "optionId": "OPT_17_3_A",
      "canonicalSlot": "A",
-     "text": "当前目标是安全离开；撤退可以是高质量选择。",
+     "text": "当前目标是安全离开；撤退也是高质量选择。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "StrategicWithdrawal"
+     "immediateEffect": "StrategicWithdrawal",
+     "canonicalText": "当前目标是安全离开；撤退可以是高质量选择。"
     },
     {
      "optionId": "OPT_17_3_B",
@@ -2355,11 +2363,12 @@
     {
      "optionId": "OPT_18_1_A",
      "canonicalSlot": "A",
-     "text": "如果仍在安全拉伸区，就再完成一个小动作；若撤退则设定重返时间。",
+     "text": "还在拉伸区就多做一步；撤退就定重返时间。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "StretchTolerance↑"
+     "immediateEffect": "StretchTolerance↑",
+     "canonicalText": "如果仍在安全拉伸区，就再完成一个小动作；若撤退则设定重返时间。"
     },
     {
      "optionId": "OPT_18_1_B",
@@ -2563,11 +2572,12 @@
     {
      "optionId": "OPT_18_5_A",
      "canonicalSlot": "A",
-     "text": "先判断这是战略撤退还是逃避；若撤退，必须明确下一次重返条件。",
+     "text": "先判断是战略撤退还是逃避；撤退就必须明确重返条件。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "WithdrawalClassified"
+     "immediateEffect": "WithdrawalClassified",
+     "canonicalText": "先判断这是战略撤退还是逃避；若撤退，必须明确下一次重返条件。"
     },
     {
      "optionId": "OPT_18_5_B",
@@ -2615,11 +2625,12 @@
     {
      "optionId": "OPT_19_1_A",
      "canonicalSlot": "A",
-     "text": "先确认自己的价值和当前Goal，再决定是否采用外部目标。",
+     "text": "先确认价值和Goal，再决定要不要外部目标。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "GoalOwnership↑"
+     "immediateEffect": "GoalOwnership↑",
+     "canonicalText": "先确认自己的价值和当前Goal，再决定是否采用外部目标。"
     },
     {
      "optionId": "OPT_19_1_B",
@@ -2667,11 +2678,12 @@
     {
      "optionId": "OPT_19_2_A",
      "canonicalSlot": "A",
-     "text": "先完成最低Goal Action，再决定是否使用有边界的奖励。",
+     "text": "先完成最低Goal Action，再考虑有边界的奖励。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "RewardBounded"
+     "immediateEffect": "RewardBounded",
+     "canonicalText": "先完成最低Goal Action，再决定是否使用有边界的奖励。"
     },
     {
      "optionId": "OPT_19_2_B",
@@ -2771,11 +2783,12 @@
     {
      "optionId": "OPT_19_4_A",
      "canonicalSlot": "A",
-     "text": "评估目标是否仍值得；保留、修改或停止都可以是理性选择。",
+     "text": "评估目标是否仍值得；保留、修改或停止都是理性选择。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "GoalEvolution可用"
+     "immediateEffect": "GoalEvolution可用",
+     "canonicalText": "评估目标是否仍值得；保留、修改或停止都可以是理性选择。"
     },
     {
      "optionId": "OPT_19_4_B",
@@ -2823,11 +2836,12 @@
     {
      "optionId": "OPT_19_5_A",
      "canonicalSlot": "A",
-     "text": "先区分：是动力波动还是目标失效；再选择低动力行动或重铸目标。",
+     "text": "分清动力波动还是目标失效，再低动力行动或重铸。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "ValueDiagnosis开启"
+     "immediateEffect": "ValueDiagnosis开启",
+     "canonicalText": "先区分：是动力波动还是目标失效；再选择低动力行动或重铸目标。"
     },
     {
      "optionId": "OPT_19_5_B",
@@ -3031,11 +3045,12 @@
     {
      "optionId": "OPT_20_4_A",
      "canonicalSlot": "A",
-     "text": "给关键Trigger绑定一个简单可执行的If-Then动作。",
+     "text": "给关键Trigger绑定一个可执行的If-Then动作。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "IfThenToken生成"
+     "immediateEffect": "IfThenToken生成",
+     "canonicalText": "给关键Trigger绑定一个简单可执行的If-Then动作。"
     },
     {
      "optionId": "OPT_20_4_B",
@@ -3551,11 +3566,12 @@
     {
      "optionId": "OPT_22_4_A",
      "canonicalSlot": "A",
-     "text": "责任是修复影响、学习并减少复发，不是自我惩罚。",
+     "text": "责任是修复、学习、减少复发，不是自我惩罚。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "RepairBehavior↑"
+     "immediateEffect": "RepairBehavior↑",
+     "canonicalText": "责任是修复影响、学习并减少复发，不是自我惩罚。"
     },
     {
      "optionId": "OPT_22_4_B",
@@ -3915,11 +3931,12 @@
     {
      "optionId": "OPT_24_1_A",
      "canonicalSlot": "A",
-     "text": "先问它是否影响本版本SuccessCondition；否则进入Later。",
+     "text": "它是否影响本版本SuccessCondition；否则进入Later。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "ScopeBoundary↑"
+     "immediateEffect": "ScopeBoundary↑",
+     "canonicalText": "先问它是否影响本版本SuccessCondition；否则进入Later。"
     },
     {
      "optionId": "OPT_24_1_B",
@@ -4071,11 +4088,12 @@
     {
      "optionId": "OPT_24_4_A",
      "canonicalSlot": "A",
-     "text": "先完成当前版本；重构进入下一周期，除非它阻断发布。",
+     "text": "做完当前版本，重构下周期，除非阻断发布。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "FinishFocus↑"
+     "immediateEffect": "FinishFocus↑",
+     "canonicalText": "先完成当前版本；重构进入下一周期，除非它阻断发布。"
     },
     {
      "optionId": "OPT_24_4_B",
@@ -4539,11 +4557,12 @@
     {
      "optionId": "OPT_26_3_A",
      "canonicalSlot": "A",
-     "text": "找当前最阻挡Goal的关键Boss/节点，先破一个关键链。",
+     "text": "找最挡住Goal的那个Boss，先破这一条链。",
      "role": "Best",
      "distractorIndex": 0,
      "distractorFamily": "Reasonable",
-     "immediateEffect": "KeystoneTarget锁定"
+     "immediateEffect": "KeystoneTarget锁定",
+     "canonicalText": "找当前最阻挡Goal的关键Boss/节点，先破一个关键链。"
     },
     {
      "optionId": "OPT_26_3_B",
