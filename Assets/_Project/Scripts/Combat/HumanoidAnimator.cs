@@ -368,6 +368,11 @@ namespace AdversityRoad.Combat
 
         float _windupW;
 
+        /// <summary>形体前摇此刻实际施加的权重（0~1）与族别（-1=没有）。
+        /// 屏幕提示层关掉之后，这两个才是"身体到底有没有在做预备动作"的唯一证据。</summary>
+        public float WindupWeight => _windupW;
+        public int WindupShape => _windupKind;
+
         // 绕【角色自身的世界轴】旋转，而不是绕骨骼的局部轴：
         // 动捕骨架的局部轴朝向各家各样（Mixamo 的骨骼 Y 沿骨长），
         // 按局部轴拧出来的姿态在不同模型上完全不同，形体征兆就不可能"每次都一样"。

@@ -256,7 +256,16 @@ namespace AdversityRoad.AI
             _dangerRing == null ? 0f
             : _dangerRing.transform.position.y - (transform.position.y - 1f);
 
-        /// <summary>头顶警示记号在屏幕上的纵向位置；相机缺失或在身后返回 -9。</summary>
+        /// <summary>本次招串的名字与当前段号（日志用：验证"招式是否真的多变"）。</summary>
+        public string StringName => _string.stages != null ? _string.name : "";
+        public int StringStage => _stage;
+        public int StringLen => _string.stages != null ? _string.stages.Length : 0;
+
+        /// <summary>形体前摇此刻的施加权重与族别（屏幕提示关掉后，读招的唯一可测证据）。</summary>
+        public float WindupWeightNow => poser != null ? poser.WindupWeight : 0f;
+        public int WindupShapeNow => poser != null ? poser.WindupShape : -1;
+
+        /// <summary>敌人此刻在不在画面内（用头顶锚点做代理；相机缺失或在身后返回 -9）。</summary>
         public float MarkViewportY
         {
             get

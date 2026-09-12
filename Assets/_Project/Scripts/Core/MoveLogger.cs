@@ -229,7 +229,8 @@ namespace AdversityRoad.Core
                     // 而 foeSwing 这类窗口计数器每 6 秒还会归零——两件事叠在一起，
                     // "这一个敌人在这段时间里还手了几次"根本算不准。
                     "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
-                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeRingVis,foeRingDy,foeMarkVY,"
+                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeWindupW,foeWindupKind,foeOnScrY,"
+                    + "foeString,foeStage,"
                     + "foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
 
         /// <summary>
@@ -249,7 +250,7 @@ namespace AdversityRoad.Core
                     float d = (e.transform.position - p.transform.position).sqrMagnitude;
                     if (d < best) { best = d; near = e; }
                 }
-            if (near == null) return ",,,,,,,,,,,,,,,,,,,";
+            if (near == null) return ",,,,,,,,,,,,,,,,,,,,,";
             var sb = new StringBuilder(112);
             sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
               .Append(near.State).Append(',')
@@ -268,9 +269,15 @@ namespace AdversityRoad.Core
               .Append(F(near.TelegraphLeft)).Append(',')
               // 前摇"跑了多久"和"看不看得见"是两件事。上面三列量的是前者，
               // 下面三列量的是后者——玩家反馈的一直是后者。
-              .Append(B(near.RingVisible)).Append(',')
-              .Append(F(near.RingGroundDy)).Append(',')
+              // 【屏幕提示层已按产品要求关闭】所以这里量的不再是红圈/记号，
+              // 而是"身体到底有没有在做预备动作"：形体前摇的施加权重与族别，
+              // 外加敌人在不在画面内。看不懂招，可能是身体没演，也可能是人不在画面里，
+              // 这两种的修法完全不同。
+              .Append(F(near.WindupWeightNow)).Append(',')
+              .Append(near.WindupShapeNow).Append(',')
               .Append(F(near.MarkViewportY)).Append(',')
+              .Append(Q(near.StringName)).Append(',')
+              .Append(near.StringStage).Append('/').Append(near.StringLen).Append(',')
               .Append(Q(near.SwingBlockReason)).Append(',')
               .Append(F(near.HealthNow)).Append(',')
               .Append(F(near.PoiseNow)).Append(',')
