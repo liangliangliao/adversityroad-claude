@@ -969,6 +969,9 @@ namespace AdversityRoad.Combat
         /// <summary>休息动作片段的原始时长（秒）；无此片段返回 0。</summary>
         public float RestClipLength(string key) => Mecanim ? _mecanim.RawClipLength(key) : 0f;
 
+        /// <summary>某个姿态实际接到的片段名（前摇要播"这一招自己的起手段"，得先知道是哪一条）。</summary>
+        public string ActionClipName(PoseState p) => Mecanim ? _mecanim.ActionClipNameOf(p) : "";
+
         /// <summary>
         /// 播一段休息动作（坐下/躺下/睡觉/起身）。reverse=倒放（从椅子上站起来
         /// 就是"坐下"反过来放），hold=播完停在末帧（坐着、躺着都是持续状态），

@@ -1080,6 +1080,37 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>取招式动画的前多少作为"起手段"。</summary>
+        public const float WindupPortion = 0.35f;
+
+        /// <summary>
+        /// 前摇期间的身体：**播这一招自己的动画的起手段**，拉长到整个前摇时长。
+        ///
+        /// 【为什么要改】此前所有招式的前摇都播同一段 PoseState.Charge（Great Sword Power Up）。
+        /// 六个招式族的规律层是齐的（时长、记号、颜色、地面指示、形体叠加各不相同），
+        /// 唯独**动作动画本身每一招都长一样**——玩家要学的"看动作认招"因此无从学起：
+        /// 身体只说了"我要出手了"，没说"我要出哪一招"。
+        /// 现在把这一招自己的前 35% 以慢速播完整个前摇：
+        /// 高举过顶的劈斩、收到腰际的突刺、压低的扫腿，是这一招**本身**的动作慢放，
+        /// 不是另一段通用姿势。落刀时再从头全速播完整招，读起来就是"蓄—发"。
+        /// 找不到片段时退回原来的 Charge 姿势（绝不让前摇变成没有姿势）。
+        /// </summary>
+        void PlayWindupPose(float windup)
+        {
+            if (poser == null) return;
+            string clip = poser.ActionClipName(_attackPose);
+            float raw = string.IsNullOrEmpty(clip) ? 0f : poser.RestClipLength(clip);
+            if (raw > 0.05f && windup > 0.05f)
+            {
+                // 起手段有多长（秒）→ 要多慢才能铺满整个前摇
+                float segSec = raw * WindupPortion;
+                float speed = Mathf.Clamp(segSec / windup, 0.12f, 1f);
+                if (poser.PlayRestClip(clip, false, true, speed, 0.10f, 0f, WindupPortion) > 0f)
+                    return;
+            }
+            poser.SetPose(PoseState.Charge);
+        }
+
         void DoPhysicalAttack()
         {
             // ① 出手冷却：3.0~1.1 秒 → 1.5~0.6 秒。
@@ -1131,7 +1162,7 @@ namespace AdversityRoad.AI
                 CombatFeedback.EnemyCastShot(transform, Mathf.Min(windup, 1.1f),
                     profile.displayName + " · " + _spec.name, _spec.answer);
             }
-            if (poser != null) poser.SetPose(PoseState.Charge);
+            PlayWindupPose(windup);   // 前摇的身体 = 这一招自己的起手段（慢放）
             // 【出手由前摇时钟驱动，不再用 Invoke 排队】见 TickTelegraph 末尾。
             // 原来这里排一个 Invoke(OpenAttackHitbox, windup)，而好几条中止路径
             // （安抚、候场、被打进硬直、转 passive）只调了 ShowTelegraph(false)，
@@ -1300,7 +1331,7 @@ namespace AdversityRoad.AI
                 _teleMelee = true;
                 ShowTelegraph(true, false);
                 GameAudio.Play(GameAudio.Sfx.Alert, 0.45f, _spec.pitch + 0.1f);
-                if (poser != null) poser.SetPose(PoseState.Charge);
+                PlayWindupPose(ComboWindup);   // 连击段同样播该招自己的起手段
                 // 同样交给前摇时钟（见 DoPhysicalAttack 末尾的说明）
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）

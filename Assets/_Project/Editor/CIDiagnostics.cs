@@ -593,6 +593,56 @@ namespace AdversityRoad.EditorTools
             return ok;
         }
 
+        /// <summary>
+        /// 读招规律表：玩家要学的那套「固定规则」到底长什么样，一次全列出来。
+        ///
+        /// 判据是硬的：每一个敌人会用的招式，都必须能找到**它自己的动作片段**——
+        /// 找不到就没有起手段可放慢，前摇会退回那段所有招共用的通用姿势，
+        /// 「看动作认招」这件事对那一招就不成立。
+        /// </summary>
+        static bool DiagTelegraphRules(StringBuilder sb)
+        {
+            var prefab = Resources.Load<GameObject>("Characters/EnemyModel");
+            AdversityRoad.Combat.PlayableAnimator pa = null;
+            GameObject go = null;
+            if (prefab != null)
+            {
+                go = Object.Instantiate(prefab);
+                var an = go.GetComponentInChildren<Animator>() ?? go.AddComponent<Animator>();
+                pa = new AdversityRoad.Combat.PlayableAnimator(an, null);
+            }
+            bool ok = true;
+            sb.Append("[CIDIAG][读招] 每一招的固定规律（时长同族恒定，玩家据此学习）；")
+              .Append("前摇播该招动画的前 ")
+              .Append((AdversityRoad.AI.EnemyController.WindupPortion * 100f).ToString("0"))
+              .Append("% 放慢铺满\n");
+            var poses = new[]
+            {
+                AdversityRoad.Combat.PoseState.Attack, AdversityRoad.Combat.PoseState.AttackUp,
+                AdversityRoad.Combat.PoseState.SwordThrust, AdversityRoad.Combat.PoseState.HeavyAttack,
+                AdversityRoad.Combat.PoseState.AttackSpin, AdversityRoad.Combat.PoseState.PunchCross,
+                AdversityRoad.Combat.PoseState.AttackKick, AdversityRoad.Combat.PoseState.SideKick,
+                AdversityRoad.Combat.PoseState.SpinKick,  AdversityRoad.Combat.PoseState.JumpKick,
+                AdversityRoad.Combat.PoseState.Sweep,
+            };
+            foreach (var ps in poses)
+            {
+                var spec = AdversityRoad.Combat.TelegraphTable.Get(ps, false);
+                string clip = pa != null && pa.Valid ? pa.ActionClipNameOf(ps) : "";
+                sb.Append("[CIDIAG][读招]   ").Append(ps)
+                  .Append("  族=").Append(spec.kind)
+                  .Append(" 前摇=").Append(spec.windup.ToString("0.00")).Append('s')
+                  .Append(" 记号=").Append(spec.mark)
+                  .Append(" 应对=").Append(spec.answer)
+                  .Append("  起手段=").Append(clip.Length > 0 ? clip : "（无·退回通用姿势）");
+                if (clip.Length == 0) { sb.Append("  !! 这一招没有自己的动作片段"); ok = false; }
+                sb.Append('\n');
+            }
+            if (pa != null) pa.Destroy();
+            if (go != null) Object.DestroyImmediate(go);
+            return ok;
+        }
+
         /// <summary>玩法里角色·贰实际使用的动作库目录（与 PlayerAppearance.Rebuild 同源）。</summary>
         static string PlayerAnimsFolder() { return null; }
 
@@ -733,6 +783,7 @@ namespace AdversityRoad.EditorTools
                     ln.StartsWith("[CIDIAG][距离]") ||
                     ln.StartsWith("[CIDIAG][前摇]") ||
                     ln.StartsWith("[CIDIAG][关卡]") ||
+                    ln.StartsWith("[CIDIAG][读招]") ||
                     ln.StartsWith("[CIDIAG][平衡] 【设计方向】"))
                     sb.Append(ln).Append('\n');
             }
@@ -761,6 +812,7 @@ namespace AdversityRoad.EditorTools
                 DiagBalance(sb);
                 DiagReach(sb);
                 if (!DiagStoryLadder(sb)) exit = 1;
+                if (!DiagTelegraphRules(sb)) exit = 1;
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
                 // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。
