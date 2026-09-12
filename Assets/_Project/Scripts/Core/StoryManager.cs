@@ -33,8 +33,25 @@ namespace AdversityRoad.Core
         /// 完成三个目标动作并正常步行离场。少了这个开关，Boss 一改成可击杀，
         /// StoryManager.HandleEnemyKilled 就会在它倒下的那一刻直接推进章节，
         /// 于是"打死 Boss 通关"又回来了，两关的全部机制随之作废。
+        ///
+        /// 【与"外部心魔穿过去就算通关"的关系】这个开关也把第八章挡在那条新路之外
+        /// （见 <see cref="LevelRules.ZoneClearsByEscape"/>）。理由不是第八章的敌人
+        /// 不算外部——它们正是外部——而是这两关**本来就不要求打死 Boss**，
+        /// 而且它们自己的通关动作就已经是"走进去说完话""在注视下把事做完再走出去"。
+        /// 给它们再插一条门到门的捷径，只会把那两套机制架空。
         /// </summary>
         public bool advanceOnKill = true;
+
+        /// <summary>
+        /// 不战而过时的通关文案**首段替换**（留空则沿用 victory 原文）。
+        ///
+        /// 【为什么必须有这一条】victory 的第一句写的是"千眼闭合""镜像碎裂""牢笼散架"——
+        /// 那是打赢之后的画面。玩家一仗没打、直接从出口走出去，却看到一段
+        /// "你把它打碎了"的文字，游戏就在替他撒谎，而这一关本来要教的恰恰是
+        /// **不打也可以过去**。所以外部心魔的关卡各写一句"走出去"版本的首段，
+        /// 后面那些"这件事意味着什么 / 下一站去哪"原样保留（两种通关方式共用）。
+        /// </summary>
+        public string victoryByEscape = "";
     }
 
     /// <summary>
@@ -122,7 +139,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_gamble_king",
                 title = "公平线 其一 · 两元赌桌",
                 intro = "狭小的棋牌室，一张旧桌子，几枚硬币。\n【两元赖账王】输了两块钱，却笑着说：「才这点钱，你也计较？」\n四周的旁观者跟着笑。\n\n提示：桌上的账本记着事实——走近「账本对质」可令它当场语塞破绽；\n绕桌走位躲开硬币弹幕。\n击败【首领·两元赖账王】：核心不是金额，而是承诺。",
-                victory = "硬币在桌上发光，账本自动合上。\n核心不是金额，而是承诺；但追究也要看成本。\n\n棋牌室后门通向一座夜晚的停车场——\n那里停着一辆没结清的车。\n下一站：债务车影。"
+                victory = "硬币在桌上发光，账本自动合上。\n核心不是金额，而是承诺；但追究也要看成本。\n\n棋牌室后门通向一座夜晚的停车场——\n那里停着一辆没结清的车。\n下一站：债务车影。",
+                victoryByEscape = "你没有跟他算那两块钱。你合上账本起身走了——他还在那里笑，笑给谁听已经不重要了。"
             },
             new ChapterInfo
             {
@@ -131,7 +149,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_debt_car_king",
                 title = "公平线 其二 · 债务车影",
                 intro = "夜晚的停车场，一辆被强光照亮的幻影车。\n【新车债王】坐在车里：「我又不是不还，过段时间再说。」\n\n提示：它被「未结清的故事」护体——收集场中三张发光的欠条残片，\n护体即碎；小心车灯眩光（预警后闪避），欠款残影会从车后爬出。\n击败【首领·新车债王】：事实是，这件事还没有结清。",
-                victory = "幻影车灯熄灭，停车场安静下来。\n我可以坚持事实，但不能让一个未结清的故事长期占据生命中心。\n\n停车场深处的门通向一座畸形审判庭——\n在那里，被审判的不是账，而是你的感受。\n下一站：小题大做审判庭。"
+                victory = "幻影车灯熄灭，停车场安静下来。\n我可以坚持事实，但不能让一个未结清的故事长期占据生命中心。\n\n停车场深处的门通向一座畸形审判庭——\n在那里，被审判的不是账，而是你的感受。\n下一站：小题大做审判庭。",
+                victoryByEscape = "你没有去敲那扇车门。车灯还亮着，你从光里穿了过去——它照不到你要去的地方。"
             },
             new ChapterInfo
             {
@@ -151,7 +170,8 @@ namespace AdversityRoad.Core
                 enemyId = "enemy_cough_assassin",
                 title = "刺激线 其一 · 一声咳嗽的街道",
                 intro = "行人、车辆、议论声、咳嗽声……\n每一个声音都在拉扯你的注意力。\n\n在干扰中保持专注，击败【精英·咳声刺客】。\n提示：专注值被打空时锁定会失灵，用「定心格挡」反制心理攻击；\n广告牌下与公交站旁是噪声区——切「定心姿态」可减免。",
-                victory = "街道依旧喧嚣，但那些声音再也钻不进你的心里。\n\n街区西侧出现一条挂满眼睛的走廊——\n每一道目光都像在审判你。\n下一站：眼神审判走廊。"
+                victory = "街道依旧喧嚣，但那些声音再也钻不进你的心里。\n\n街区西侧出现一条挂满眼睛的走廊——\n每一道目光都像在审判你。\n下一站：眼神审判走廊。",
+                victoryByEscape = "你没有回头去找那声咳嗽是谁咳的。你一直往前走，走到了街的另一头。"
             },
             new ChapterInfo
             {
@@ -160,7 +180,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_thousand_eye_judge",
                 title = "刺激线 其二 · 眼神审判走廊",
                 intro = "狭长的走廊，两壁布满眼睛状的灯与镜面。\n每走一步，都有目光转过来。\n尽头的圆形镜厅里，【万眼审判者】睁开了一千只眼睛。\n\n提示：它会制造「虚假凝视点」幻影——攻击幻影只会消耗你自己；\n用「不读心盾」（键5/盾）让幻影显形、「注意力回收」（键6/收）清场后打真身。\n击败【首领·万眼审判者】：被看见，不等于被否定。",
-                victory = "千眼闭合，走廊的灯一盏盏暗下来。\n被看见不等于被否定——你不需要向每一道目光交代。\n\n走廊出口连着一个喧闹的十字路口，\n有人故意撞了你一下，等你回头。\n下一站：陌生挑衅路口。"
+                victory = "千眼闭合，走廊的灯一盏盏暗下来。\n被看见不等于被否定——你不需要向每一道目光交代。\n\n走廊出口连着一个喧闹的十字路口，\n有人故意撞了你一下，等你回头。\n下一站：陌生挑衅路口。",
+                victoryByEscape = "一千只眼睛一直睁着，你一直走。走到门口时它们还在看——看着你出去。"
             },
             new ChapterInfo
             {
@@ -169,7 +190,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_taunt_mirror",
                 title = "刺激线 其三 · 陌生挑衅路口",
                 intro = "城市十字路口：红绿灯、车流幻影、围观的人群。\n【挑衅镜像】站在路口中央——它长得像你，专门模仿你最冲动的样子。\n\n本关核心是「不被拖入战场」：\n它举起双手挑衅时（头顶亮起挑衅标记），打它=它变强并吸血；\n忍住不打，挑衅落空，它会自己露出大破绽。\n别追进车流幻影区（马路上会持续掉血）。\n击败【首领·挑衅镜像】：不是所有挑衅都值得回应。",
-                victory = "镜像碎裂——它模仿不了一个不接招的人。\n哪些敌人值得战斗、什么时候撤离、什么时候反击，你已经会判断了。\n\n可街心广场的方向，所有噪声正在被什么东西放大十倍。\n下一站：回到街心广场，终结【刺激放大器】。"
+                victory = "镜像碎裂——它模仿不了一个不接招的人。\n哪些敌人值得战斗、什么时候撤离、什么时候反击，你已经会判断了。\n\n可街心广场的方向，所有噪声正在被什么东西放大十倍。\n下一站：回到街心广场，终结【刺激放大器】。",
+                victoryByEscape = "它举着手等你出拳，你从它身边走了过去。它模仿不了一个不接招的人。"
             },
             new ChapterInfo
             {
@@ -179,6 +201,7 @@ namespace AdversityRoad.Core
                 title = "刺激线 其四 · 噪声放大（终战）",
                 intro = "熟悉的街道，陌生的震动。\n【刺激放大器】把每一声咳嗽、每一次转头、每一句低语都放大了十倍——\n整条街都成了针对你的证据。\n\n提示：幻影假目标用「不读心盾」显形、「注意力回收」清场；\n噪声放大可用定心格挡整个化解。\n击败【首领·刺激放大器】，夺回注意力的主权。",
                 victory = "放大器碎裂，街道恢复成普通的街道。\n咳嗽只是咳嗽，眼神只是眼神。\n【外界刺激线 · 完成】外界可以存在，但不能接管你。\n\n街道尽头东南侧出现一扇门——门里是一个你很熟悉的房间：\n杂乱、落灰，目标板被埋在最深处。\n【第三章 · 拖延与目标线】开启：行动会反过来制造信心。\n下一站：目标遗忘房。",
+                victoryByEscape = "放大器一直响到最后一秒。你没有去关它——你只是走出了它的声场。",
                 spawnOffset = new UnityEngine.Vector3(0, 1.1f, 9)
             },
 
@@ -208,7 +231,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_no_reply_king",
                 title = "拖延线 其三 · 求职沉默荒原",
                 intro = "荒原上漫天飘着简历纸片，五扇面试之门紧闭，只有一扇透着光。\n审判台上坐着一个不说话的王——它的武器是沉默，它的刀刃是拒信。\n\n击败【首领·无回应之王】，夺回「下一次投递」的勇气。\n提示：它会远程掷出拒信飞刃，靠近它、别停下脚步。",
-                victory = "王座崩塌，沉默被打破。\n没有回应不代表没有价值——你还能再投一次。\n\n最后一站：城市广场。\n你所有的拖延，正在那里凝成一个有你轮廓的影子。"
+                victory = "王座崩塌，沉默被打破。\n没有回应不代表没有价值——你还能再投一次。\n\n最后一站：城市广场。\n你所有的拖延，正在那里凝成一个有你轮廓的影子。",
+                victoryByEscape = "没有人回你，你也没有再站在原地等。你穿过荒原，去下一处投。"
             },
             new ChapterInfo
             {
@@ -228,7 +252,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_good_person_cage",
                 title = "边界线 其一 · 老实人消耗局",
                 intro = "一座不断扩张的大厅：四面是「请求入口」，写着时间、金钱、精力、情绪。\n请求膨胀者从入口涌来，内疚投手在远处掷来内疚。\n大厅中央的【好人牢笼】笑着说：「你人最好了。」\n\n提示：中央绿圈是你的边界圈——站入恢复边界、清除过度负责；\n被好人卡糊脸或被牢笼困住时，按「责任归还」（键3/还）清除与打破。\n击败【首领·好人牢笼】：帮助有边界，不是无限资源。",
-                victory = "牢笼散架成一地好人卡。\n善良不需要证明——它需要边界。\n\n大厅东北的门通向一座高大的法院：\n那里，有人正把不属于你的责任一件件推给你。\n下一站：责任转嫁法院。"
+                victory = "牢笼散架成一地好人卡。\n善良不需要证明——它需要边界。\n\n大厅东北的门通向一座高大的法院：\n那里，有人正把不属于你的责任一件件推给你。\n下一站：责任转嫁法院。",
+                victoryByEscape = "你没有为「我是不是好人」辩解一句。你只是没有停下来，径直走出了那扇门。"
             },
             new ChapterInfo
             {
@@ -237,7 +262,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_total_responsibility_judge",
                 title = "边界线 其二 · 责任转嫁法院",
                 intro = "高大的法院里，责任天平永远倾向你这一侧。\n审判席上的【全责法官】不停宣判：「这也是你的责任。」\n它会把一个个「责任球」抛向你——红色的不属于你，绿色的才是你的本分。\n\n提示：举起边界盾（格挡）把红球挡回去，就是「责任归还」；绿球别推开，接下它。\n击败【首领·全责法官】，学会准确承担属于自己的部分。",
-                victory = "责任天平终于回正。\n真正的负责不是什么都背，而是准确承担属于自己的那部分。\n\n可法院深处还有一条走不完的走廊——\n两侧的门后，全是等着你代付的账单。\n下一站：无限代付走廊（法院审判席西侧的门）。"
+                victory = "责任天平终于回正。\n真正的负责不是什么都背，而是准确承担属于自己的那部分。\n\n可法院深处还有一条走不完的走廊——\n两侧的门后，全是等着你代付的账单。\n下一站：无限代付走廊（法院审判席西侧的门）。",
+                victoryByEscape = "法槌还在敲，案子还挂在那里。你没有接下那份不属于你的卷宗，走出了法庭。"
             },
             new ChapterInfo
             {
@@ -246,7 +272,8 @@ namespace AdversityRoad.Core
                 enemyId = "boss_infinite_payer",
                 title = "边界线 其三 · 无限代付走廊（终战）",
                 intro = "一条望不到头的走廊，两侧的门上写着：\n时间、金钱、精力、情绪、注意力、责任、同情、解释。\n走廊上一道道「请求区」——**举着盾（格挡）通过 = 明确拒绝**；\n空手走过 = 默认代付，边界与关系被悄悄扣款。\n\n尽头的圆厅里，【无限代付者】等着你。\n它发动【索取冲击】（绿圈预警）时**举盾格挡** = 明确拒绝成功，它当场大破绽；\n没挡住就会被大量掏空。小心脚下的「代付之门」吸取区。\n击败【首领·无限代付者】：我不再无限代付。",
-                victory = "走廊塌缩成一扇普通的门。\n【边界与责任线 · 完成】我不是你的钱包，也不是你的替身人生——\n我可以帮，但由我决定帮什么、帮多少。\n\n可门外的城市忽然安静：路灯稀疏，胃里发空。\n【第五章 · 低谷与生存线】开启：低谷不是身份，而是一个阶段。\n下一站：饥饿荒巷（圆厅东北的门）。"
+                victory = "走廊塌缩成一扇普通的门。\n【边界与责任线 · 完成】我不是你的钱包，也不是你的替身人生——\n我可以帮，但由我决定帮什么、帮多少。\n\n可门外的城市忽然安静：路灯稀疏，胃里发空。\n【第五章 · 低谷与生存线】开启：低谷不是身份，而是一个阶段。\n下一站：饥饿荒巷（圆厅东北的门）。",
+                victoryByEscape = "两侧的门一直在开，账单一直在递。你一张也没接，走到了走廊尽头。"
             },
             // ================= 第五章 · 低谷与生存线 =================
             new ChapterInfo
@@ -256,7 +283,8 @@ namespace AdversityRoad.Core
                 enemyId = "enemy_hunger_hound",
                 title = "低谷线 其一 · 饥饿荒巷",
                 intro = "夜晚的小巷：垃圾桶、空纸箱、雨水洼。\n这一关不靠蛮力——**先找资源**：巷子里散落着水瓶与食物包，\n路灯下是安全区，尽头有一座「求助电话亭」（走近使用，大幅恢复）。\n\n【饥饿犬影】在暗处游荡：它们快、狠、成群，别在黑暗里恋战。\n击败【首领·饥饿犬影】：先照顾好基本生存，再谈别的。",
-                victory = "犬影散去，尽头餐馆的灯牌暖得晃眼。\n低谷里的第一课：先解决今晚的水和饭，天塌不下来。\n\n荒巷西侧的坡道通向地下车库——那里比外面更冷。\n下一站：车库寒夜。"
+                victory = "犬影散去，尽头餐馆的灯牌暖得晃眼。\n低谷里的第一课：先解决今晚的水和饭，天塌不下来。\n\n荒巷西侧的坡道通向地下车库——那里比外面更冷。\n下一站：车库寒夜。",
+                victoryByEscape = "犬影一路追到巷口。你没有跟它拼，你先走到了有灯、有饭的那一头。"
             },
             new ChapterInfo
             {
@@ -265,7 +293,8 @@ namespace AdversityRoad.Core
                 enemyId = "enemy_cold_wind_blade",
                 title = "低谷线 其二 · 车库寒夜",
                 intro = "寒冷的地下车库：整片区域都在吹走你的意志（意志条持续流失）。\n三座火盆是生命线——**烤火获得「暖意」**，离开后短时间内不怕冷。\n\n【寒风刃】在空旷处成形，专挑你离开火堆的时候动手。\n规划路线：从一个取暖点冲向下一个，中途别贪战。\n击败【首领·寒风刃】：低谷需要的是计划，不是硬扛。",
-                victory = "风停了。你在最后一堆火边坐了一会儿。\n硬扛不是坚强——知道去哪里取暖，才是。\n\n车库出口连着一条彻夜亮灯的走廊，消毒水味扑面而来。\n下一站：病房回廊。"
+                victory = "风停了。你在最后一堆火边坐了一会儿。\n硬扛不是坚强——知道去哪里取暖，才是。\n\n车库出口连着一条彻夜亮灯的走廊，消毒水味扑面而来。\n下一站：病房回廊。",
+                victoryByEscape = "风没有停。你没有跟风较劲，你走出了这层车库，去找有暖气的地方。"
             },
             new ChapterInfo
             {
@@ -314,7 +343,8 @@ namespace AdversityRoad.Core
                 enemyId = "enemy_past_judge",
                 title = "旧我线 其一 · 失败展览馆",
                 intro = "展览馆里，你的失败被一件件裱起来打上射灯：\n搞砸的演讲、亏掉的积蓄、断掉的关系、放弃的计划……\n【过去审判官】举着记录本逼你在每件展品前停留：「看清楚，这就是你。」\n\n注意中央那座展台——它是空的。\n失败可以被陈列，但没有资格坐上「定义你是谁」的位置。\n击败【首领·过去审判官】：失败是事实，不是身份。",
-                victory = "审判官的记录本散成纸屑，射灯一盏盏熄灭。\n展品还在——但它们只是发生过的事，不是你的名字。\n\n展览馆北门外立着一座高塔，塔壁上刻满旧话。\n下一站：意志塔。"
+                victory = "审判官的记录本散成纸屑，射灯一盏盏熄灭。\n展品还在——但它们只是发生过的事，不是你的名字。\n\n展览馆北门外立着一座高塔，塔壁上刻满旧话。\n下一站：意志塔。",
+                victoryByEscape = "审判官一直在念记录。你没有反驳，也没有站住听完——你穿过展厅，从北门出去了。"
             },
             new ChapterInfo
             {
@@ -365,6 +395,14 @@ namespace AdversityRoad.Core
 
         public bool AllCleared => Chapter >= Chapters.Length;
 
+        /// <summary>
+        /// 刚推进的那一章是**不战而过**通关的（而不是打倒关底心魔）。
+        ///
+        /// 通关面板据此选文案：一仗没打就走出去的人，不该读到"你把它打碎了"。
+        /// 只在推进的那一刻有意义，由推进入口各自置位。
+        /// </summary>
+        public static bool LastClearedByEscape { get; private set; }
+
         public ChapterInfo Current =>
             Chapter < Chapters.Length ? Chapters[Chapter] : null;
 
@@ -382,12 +420,21 @@ namespace AdversityRoad.Core
         void OnEnable() => GameEvents.OnEnemyKilled += HandleEnemyKilled;
         void OnDisable() => GameEvents.OnEnemyKilled -= HandleEnemyKilled;
 
+        /// <summary>
+        /// 打倒关底心魔 → 推进章节。
+        ///
+        /// 【这条路一条不拆】外部心魔的关卡现在还多了一条"穿过去"的路
+        /// （见 <see cref="CompleteChapterByEscape"/>），但玩家的原话是
+        /// "如果玩家执意要和外部敌人进行交战，并且把 boss 以及其他敌人全部消灭，
+        /// 那么同样这也可以通关"——所以击杀仍然照旧生效，两条路并行。
+        /// </summary>
         void HandleEnemyKilled(string enemyId)
         {
             var cur = Current;
             if (cur == null || enemyId != cur.enemyId) return;
             // 非击杀型章节（第八章）：打倒它不推进进度，通关条件另有其事
             if (!cur.advanceOnKill) return;
+            LastClearedByEscape = false;
             Advance();
         }
 
@@ -411,7 +458,50 @@ namespace AdversityRoad.Core
         {
             var cur = Current;
             if (cur == null || string.IsNullOrEmpty(enemyId) || enemyId != cur.enemyId) return;
+            LastClearedByEscape = false;
             Advance();
+        }
+
+        /// <summary>
+        /// 外部心魔关卡的通关入口：**从入口走到出口，从另一扇门出去**。
+        ///
+        /// 这是外部敌人与内心敌人的分界（见 <see cref="LevelRules"/>）：
+        /// 赖账的人、追着你咳嗽的人、盯着你的目光、逼你代付的人、饥饿与寒冷——
+        /// 它们留在那个地方，你穿过去就行，不必赢下每一场无谓的冲突。
+        /// 打死它们同样通关（HandleEnemyKilled 那条路一条不拆），只是不再是唯一的路。
+        ///
+        /// 调用方（<see cref="World.Portal"/>）已经核过三件事：这是当前子章、
+        /// 关底首领是外部心魔、玩家真的从入口横穿到了出口。这里只再核一遍章节序号，
+        /// 免得别处误调。
+        /// </summary>
+        public void CompleteChapterByEscape(int chapterIndex)
+        {
+            if (AllCleared || chapterIndex != Chapter) return;
+            var cur = Current;
+            if (cur == null || !cur.advanceOnKill) return;
+            if (LevelRules.Of(cur) != LevelClearRule.Escape) return;
+
+            // 通关演出要照实说。必须在 Advance 之前置位——Advance 当场就把
+            // OnChapterAdvanced 抛出去了，面板是在那个事件里取文案的。
+            LastClearedByEscape = true;
+
+            // 把这一章的心魔从场上收走。
+            //
+            // 【为什么要收】它没有被打倒，按说该留在它自己的地方——但噪声街区
+            // （2 号区）在章节表里出现两次：刺激线其一从这里走掉之后，终战还要回来。
+            // 不收的话，回访时场上会同时站着两个关底首领，玩家会以为是 Bug。
+            // 收走它不等于打倒它：胜利文案里说清楚了，"你只是走了出去"。
+            DespawnChapterEnemy(cur.enemyId);
+            Advance();
+        }
+
+        /// <summary>把某个心魔从场上清走（不计击杀、不发奖励、不记图鉴）。</summary>
+        static void DespawnChapterEnemy(string enemyId)
+        {
+            if (string.IsNullOrEmpty(enemyId)) return;
+            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
+                if (e != null && e.profile != null && e.profile.enemyId == enemyId)
+                    Destroy(e.gameObject);
         }
 
         /// <summary>调试/老玩家快进：跳过当前子章（视为已完成，不发奖励）。</summary>
@@ -419,9 +509,8 @@ namespace AdversityRoad.Core
         {
             if (AllCleared) return;
             // 清掉当前章节心魔（若在场），避免残留旧 Boss
-            foreach (var e in AdversityRoad.Core.ActorRegistry.Enemies)
-                if (e.profile != null && e.profile.enemyId == Current.enemyId)
-                    Destroy(e.gameObject);
+            DespawnChapterEnemy(Current.enemyId);
+            LastClearedByEscape = false;
             Advance();
         }
 

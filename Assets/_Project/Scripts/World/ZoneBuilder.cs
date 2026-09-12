@@ -30,7 +30,27 @@ namespace AdversityRoad.World
     /// </summary>
     public static class ZoneBuilder
     {
-        public static string CurrentZoneId = "home";
+        static string _currentZoneId = "home";
+
+        /// <summary>
+        /// 玩家此刻所在区域的 id。
+        ///
+        /// 【为什么是属性不是字段】进一个关卡的路有五条——传送门、传送面板、
+        /// 生成场景进出、世界层切换、开局落点——但它们全都要写这一行。
+        /// 把写入口收成一处，"玩家刚进了哪一关、入口在哪儿"就只需要记一次
+        /// （见 <see cref="LevelTraverse"/>：外部敌人关卡判"走出去算通关"要用它）。
+        /// 读写用法与原来的公开字段完全一致，所有调用点一个字都不用改。
+        /// </summary>
+        public static string CurrentZoneId
+        {
+            get => _currentZoneId;
+            set
+            {
+                if (_currentZoneId == value) return;
+                _currentZoneId = value;
+                LevelTraverse.NoteEntered(IndexOfZone(value));
+            }
+        }
 
         // V2.0：区域表改为可在运行时追加——AI 生成的场景会作为**动态区域**注册进来，
         // 于是传送、雾色、剧情锁、存档里的当前区域都能像对待原生区域一样对待它。
@@ -169,10 +189,19 @@ namespace AdversityRoad.World
             };
             ctx.playerSpawns = new[]
             {
-                ctx.zoneOrigins[0] + new Vector3(0, 1.1f, -5),
+                // 独居小屋：**在床边醒过来**，不是站在出门那扇门跟前。
+                // 原来的 (0,-5) 离南门只有 5.5 米，而自我怀疑低语在身后的 (4,5)——
+                // 序章其一的第一句是"这一次，你决定不再躺回床上"，而玩家实际上
+                // 一睁眼就已经站在门口了，往前半步就出关，低语连话都来不及说。
+                // 落点挪到床边（床占 x∈[-9,-6]、z∈[4.5,9.5]，这里留出 1.5 米），
+                // 于是出门要横穿整个房间，从低语和目标板前面走过去。
+                ctx.zoneOrigins[0] + new Vector3(-7.5f, 1.1f, 3),
                 ctx.zoneOrigins[1] + new Vector3(-18, 1.1f, 0),
                 ctx.zoneOrigins[2] + new Vector3(-40, 1.1f, 8),
-                ctx.zoneOrigins[3] + new Vector3(-38, 1.1f, 0),
+                // 求职荒原：落点从 -38 挪到 -35。回头门在 -40，触发体半宽 1.5，
+                // 而玩家胶囊半径 0.5——站在 -38 时身体正好蹭到触发体的边（-38.5），
+                // 从「传送」面板直达会被当场送回上一关。
+                ctx.zoneOrigins[3] + new Vector3(-35, 1.1f, 0),
                 ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0),
                 ctx.zoneOrigins[5] + new Vector3(0, 1.1f, -40),
                 ctx.zoneOrigins[6] + new Vector3(0, 1.1f, -32),
@@ -180,12 +209,20 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[8] + new Vector3(0, 1.1f, -38),
                 ctx.zoneOrigins[9] + new Vector3(0, 1.1f, -9),
                 ctx.zoneOrigins[10] + new Vector3(0, 1.1f, -24),
-                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -30),
-                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30),
+                // 【落点不能压在回头门的触发体里】门的触发体是 3×3×2.2，
+                // 而这三个区的落点离回头门只有 1 米——从传送门进来时那扇门会被
+                // "刚传送过"的判定暂时关掉，所以一直没炸；但从「传送」面板直达
+                // 不走那条判定，玩家一落地就站在回头门里，0.2 秒后被原样送回上一关。
+                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -26),
+                // 陌生挑衅路口：落点必须**在进来那扇门跟前**，而且不能落在马路上。
+                // 原来的 (0,-30) 有两个毛病：一是它就在南侧车流幻影臂里
+                //（x∈[-4,4]、z∈[-39,-9]，6 点/秒持续掉血），玩家一进关就开始扣血；
+                // 二是入口门在西南角，落点在正南三十米外，"从门里进来"读不出来。
+                ctx.zoneOrigins[12] + new Vector3(-26, 1.1f, -26),
                 ctx.zoneOrigins[13] + new Vector3(0, 1.1f, -13),
                 ctx.zoneOrigins[14] + new Vector3(0, 1.1f, -22),
-                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34),
-                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -26),
                 ctx.zoneOrigins[17] + new Vector3(0, 1.1f, -26),
                 ctx.zoneOrigins[18] + new Vector3(0, 1.1f, -30),
                 ctx.zoneOrigins[19] + new Vector3(0, 1.1f, -30),
@@ -195,7 +232,9 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[23] + new Vector3(0, 1.1f, -30),
                 ctx.zoneOrigins[24] + new Vector3(-96, 1.1f, 20),  // 开放城区：从家中醒来
                 ctx.zoneOrigins[25] + new Vector3(0, 1.1f, -46),   // 欠条长廊：从小商店门口起步
-                ctx.zoneOrigins[26] + new Vector3(0, 1.1f, -14)    // 回声教室：从教室门内起步
+                // 回声教室：从教室门内起步。走 EchoAt 与教室同一套放大系数——
+                // 落点、目标物、敌人、视线锥必须用同一个口径，各算各的就会错位。
+                ctx.zoneOrigins[26] + EchoAt(0, 1.1f, -14)    // 回声教室：从教室门内起步
             };
             ctx.enemySpawns = new[]
             {
@@ -225,7 +264,7 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[23] + new Vector3(0, 4.8f, 26),
                 ctx.zoneOrigins[24] + new Vector3(88, 1.1f, 35),   // 开放城区：边缘区小巷
                 ctx.zoneOrigins[25] + new Vector3(0, 1.1f, 6),     // 悬案法官：站在长廊中段
-                ctx.zoneOrigins[26] + new Vector3(6, 1.1f, 14)     // 后排低语者：教室最后一排
+                ctx.zoneOrigins[26] + EchoAt(6, 1.1f, 14)     // 后排低语者：教室里那一排
             };
 
             _spawnTable.Clear();
@@ -263,6 +302,80 @@ namespace AdversityRoad.World
 
             EnsureZoneLighting(ctx);
             EnsureSpawnPads(ctx);
+            EnsureSpawnsClearOfHazards(ctx);
+        }
+
+        /// <summary>
+        /// 落点保底之二：出生点不能落在**站着就掉血**的区里。
+        ///
+        /// 【为什么必须兜这一层】陌生挑衅路口的落点是 (0,-30)，而南侧那条车流幻影臂
+        /// 罩住 x∈[-4,4]、z∈[-39,-9]——玩家一进关就站在 6 点/秒的伤害区里，
+        /// 什么都没做生命就开始掉。这类错误靠肉眼审建场函数查不出来：危险区的坐标
+        /// 常常来自局部数组或循环变量（那四条臂就是一个 armDefs 数组摆出来的），
+        /// 静态扫源码根本对不上。
+        ///
+        /// 所以和 EnsureSpawnPads 一样：**建完世界拿真实碰撞体量一遍**。
+        /// 只认那种"站着就掉血/掉下去"的区；噪声区、寒冷区这类罩住整关的氛围区
+        /// 不算（车库寒夜整关都在 ColdZone 里，那是关卡主题）。
+        /// 命中了就沿着八个方向往外找第一个既不在危险区、脚下又有地的点，
+        /// 并把这件事记进日志——挪了位置还要让人知道是哪一关挪的。
+        /// </summary>
+        static void EnsureSpawnsClearOfHazards(WorldContext ctx)
+        {
+            if (ctx.playerSpawns == null) return;
+            Physics.SyncTransforms();
+            bool moved = false;
+            for (int z = 0; z < ctx.playerSpawns.Length; z++)
+            {
+                Vector3 c = ctx.playerSpawns[z];
+                if (!InsideHazard(c, out string what)) continue;
+
+                Vector3 safe = c;
+                bool found = false;
+                for (float r = 4f; r <= 28f && !found; r += 4f)
+                    for (int i = 0; i < 8 && !found; i++)
+                    {
+                        float a = i * Mathf.PI * 0.25f;
+                        Vector3 p = c + new Vector3(Mathf.Cos(a) * r, 0, Mathf.Sin(a) * r);
+                        if (InsideHazard(p, out _)) continue;
+                        // 脚下必须有地：躲开伤害区却掉进虚空不是修好，是换一种死法
+                        if (!Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out RaycastHit g, 8f,
+                                ~0, QueryTriggerInteraction.Ignore)) continue;
+                        safe = new Vector3(p.x, g.point.y + 1.1f, p.z);
+                        found = true;
+                    }
+
+                if (!found)
+                {
+                    Core.CloudDialogueService.AddLog("⚠ " + ZoneIdOf(z) + " 的落点在" + what +
+                        "里，而周围 28 米内找不到安全落点——这一关需要手工挪落点");
+                    continue;
+                }
+                Core.CloudDialogueService.AddLog(ZoneIdOf(z) + " 的落点原本在" + what +
+                    "里（进关即掉血），已挪到 " + safe.ToString("F0"));
+                ctx.playerSpawns[z] = safe;
+                moved = true;
+            }
+            // 传送面板/踩空兜底读的是这张静态副本，挪了就得同步刷新
+            if (!moved) return;
+            _spawnTable.Clear();
+            _spawnTable.AddRange(ctx.playerSpawns);
+        }
+
+        /// <summary>这个点是不是站在"站着就掉血/掉下去"的区里。</summary>
+        static bool InsideHazard(Vector3 at, out string what)
+        {
+            what = "";
+            var hits = Physics.OverlapSphere(at, 0.5f, ~0, QueryTriggerInteraction.Collide);
+            foreach (var h in hits)
+            {
+                if (h == null) continue;
+                if (h.GetComponentInParent<Combat.TrafficPhantomZone>() != null)
+                { what = "车流幻影区"; return true; }
+                if (h.GetComponentInParent<Combat.VoidFallZone>() != null)
+                { what = "坠落区"; return true; }
+            }
+            return false;
         }
 
         /// <summary>
@@ -843,9 +956,16 @@ namespace AdversityRoad.World
             Decoration(ctx, "GiantGavelHandle", o + new Vector3(0, 3.9f, 33.5f),
                 new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
 
-            // 传送门：回债务车影（公平线来路）/ 通往责任转嫁法院（边界线时代的通道）
+            // 传送门：回债务车影（南，来路）/ 通往责任转嫁法院（北，法官席侧后）
+            //
+            // 【为什么向前门在北边】上一版两扇门都开在南墙（±14, -35），相距 28 米。
+            // 于是这一关的动线是「进门 → 往北走到法官席 → 原路折回南墙出去」：
+            // 出口就在入口旁边，法槌完全可以绕开，"从一头走到另一头"这件事在这一关
+            // 根本不存在。现在向前门挪到法官席那一端（x=14 避开 18 米宽的席位本体，
+            // 也在旁观席 z∈[-26,14] 之外），入口到出口是一条贯穿 69 米中庭的直线，
+            // 中途必然从证据桌、浮动标签和法槌脚下走过。
             MakePortal(ctx, o + new Vector3(-14f, 0, -35), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(14f, 0, -35), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(14f, 0, 34), PortalRole.Forward);
         }
 
         /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
@@ -1129,9 +1249,15 @@ namespace AdversityRoad.World
                 shard.transform.rotation = Quaternion.Euler(0, ang * Mathf.Rad2Deg + 90f, 8f);
             }
 
-            // 传送门：回拖延沼泽 / 回独居小屋（安全屋——终局之后回家）
+            // 传送门：回拖延沼泽（南，来路）/ 往下一关（北，镜面平台外侧）
+            //
+            // 【为什么向前门在北边】上一版两扇门都开在展柜长廊的南端（±14, -42），
+            // 相距 28 米——玩家归档完三座展柜、穿过终局大门、在镜面平台打完旧我之后，
+            // 还要原路倒回四十多米回到进门的地方才能走。出口挪到镜面平台外侧之后，
+            // 整关是一条单向的路：展柜长廊 → 终局大门 → 镜面平台 → 出去。
+            // (16, 40) 在记忆碎片柱环（圆心 (0,30) 半径 15）之外，也在围墙 ±26/±46 之内。
             MakePortal(ctx, o + new Vector3(-14f, 0, -42), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(14f, 0, -42), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(16f, 0, 40), PortalRole.Forward);
         }
 
         /// <summary>旧事展柜：底座+半透明玻璃罩+内容物+回声光+标签，归档交互。</summary>
@@ -1485,9 +1611,17 @@ namespace AdversityRoad.World
             Lamp(ctx, o + new Vector3(16, 0, -16));
             Lamp(ctx, o + new Vector3(-16, 0, 16));
 
-            // 传送门：回眼神审判走廊（西南）/ 回噪声街区（东南，刺激线终战方向）
+            // 传送门：回眼神审判走廊（西南角）/ 去噪声街区（东北角，刺激线终战方向）
+            //
+            // 【为什么向前门挪到对角】上一版两扇门都在南沿（±30, -30）：沿着南边走
+            // 六十米就到了出口，而挑衅镜像站在路口正中央 (0,0)——整整三十米之外，
+            // 玩家可以全程不进它的视野。本关的题目恰恰是"要不要接招"，
+            // 连面都不用碰的话这道题就问不出来。
+            // 现在入口在西南角、出口在东北角，两点连线正好穿过路口中心，
+            // 玩家必须从镜像脚下走过去——接不接招仍然由他决定，但它一定会站在那里。
+            // 对角线也刚好避开四条车流幻影臂（它们沿两条轴向铺，|x| 或 |z| < 4）。
             MakePortal(ctx, o + new Vector3(-30f, 0, -30), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(30f, 0, -30), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(30f, 0, 30), PortalRole.Forward);
         }
 
         // ================= 第十四区：目标遗忘房（拖延与目标线 其一） =================
@@ -2422,13 +2556,16 @@ namespace AdversityRoad.World
             room.transform.position = o + new Vector3(0, 0, 25);
             Piece(ctx, room, "Broadcast_Floor", o + new Vector3(0, -0.25f, 25),
                 new Vector3(16, 0.5f, 14), new Color(0.32f, 0.3f, 0.34f), true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(-8, 2.1f, 25),
-                new Vector3(0.4f, 4.2f, 14), wallC, true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(8, 2.1f, 25),
-                new Vector3(0.4f, 4.2f, 14), wallC, true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(0, 2.1f, 32),
-                new Vector3(16, 4.2f, 0.4f), wallC, true);
-            Piece(ctx, room, "Broadcast_Ceiling", o + new Vector3(0, 4.3f, 25),
+            // 层高 5 米（比长廊高）：这间屋子北端现在立着通往下一关的传送门，
+            // 而门楣标牌挂在 4.2 米。照原来的 4.2 墙 / 4.3 吊顶做，那块牌子会整个
+            // 埋进顶板里——26 区的门厅当初就是为同一件事把层高从 4.3 提到 5 的。
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(-8, 2.5f, 25),
+                new Vector3(0.4f, 5f, 14), wallC, true);
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(8, 2.5f, 25),
+                new Vector3(0.4f, 5f, 14), wallC, true);
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(0, 2.5f, 32),
+                new Vector3(16, 5f, 0.4f), wallC, true);
+            Piece(ctx, room, "Broadcast_Ceiling", o + new Vector3(0, 5.05f, 25),
                 new Vector3(16.4f, 0.3f, 14), new Color(0.2f, 0.19f, 0.22f), false);
             // 门框——**没有门板**。这扇门没有关过
             Piece(ctx, room, "Broadcast_DoorPost", o + new Vector3(-2.2f, 1.6f, 18.2f),
@@ -2482,9 +2619,26 @@ namespace AdversityRoad.World
 
             DressDebtCorridor(ctx, o, floorC, wallC);
 
-            // 传送门用显式目标：本关不在 300 米网格上，按坐标反推的区号对不上
-            MakePortal(ctx, o + new Vector3(-6f, 0, -50), 8, "旧事回声馆");
-            MakePortal(ctx, o + new Vector3(6f, 0, -50), 26, "二十元回声教室");
+            // 传送门用显式目标：第八章两关的通关条件是自己的那套专属动作
+            //（走进广播室完成自行陈述 / 在注视下完成三个目标动作再步行离场），
+            // 显式目标门不参与按章节解析的那条"走出去即通关"的路，
+            // 免得给这两关额外开一条门到门的捷径（见 LevelRules.ZoneClearsByEscape）。
+            //
+            // 【两扇门各在一端】
+            // 上一版两扇门并排立在小商店里（±6, -50），相距 12 米：玩家从旧事回声馆
+            // 进来，站在原地一转身就是通往教室的门——长廊、每周门、悬案法官、
+            // 那扇一直开着的广播室门，一样都不必碰。
+            //
+            // 现在进来的门留在小商店（长廊最南端），出去的门放进**广播室北端**——
+            // 也就是这一关的终点本身。入口到出口是一条贯穿全程的单向路：
+            // 小商店 → 三道每周门 → 悬案法官（长廊中段 z=6）→ 广播室 → 出去。
+            //
+            // 出去那扇门必须挂在 room 底下：长廊每被隐瞒一次就长 14 米，整间广播室
+            // 随之往北挪（CorridorGrowthSystem 动的就是 room.position）。
+            // 门跟着屋子走，接缝才始终对得上。
+            MakePortal(ctx, o + new Vector3(0f, 0, -50), 8, "旧事回声馆");
+            MakePortal(ctx, o + new Vector3(4.8f, 0, 29.5f), 26, "二十元回声教室")
+                .transform.SetParent(room.transform, true);
         }
 
         // ================= 第 27 区：二十元回声教室（第八章 8-2） =================
@@ -2497,9 +2651,39 @@ namespace AdversityRoad.World
         /// 绕开无法通关。这条布局是本章防"回避成为最优解"的地基，
         /// 不是难度设计，是主题设计。
         /// </summary>
-        /// <summary>「完成本职」占用的椅位（相对区原点）：(col=-1, row=2) 那把椅子。
-        /// 目标交互物与装饰椅共用同一个坐标口径，才不会在同一格摆出两把椅子。</summary>
+        /// <summary>「完成本职」占用的椅位（**放大前**的原始坐标）：(col=-1, row=2) 那把椅子。
+        /// 目标交互物与装饰椅共用同一个坐标口径，才不会在同一格摆出两把椅子。
+        /// 落地时统一走 <see cref="EchoAt"/> 放大，两处都不会各算各的。</summary>
         static readonly Vector3 SeatSlot = new Vector3(-5f, 0.52f, -0.5f);
+
+        /// <summary>
+        /// 回声教室（8-2）的放大系数。
+        ///
+        /// 【为什么要放大，以及为什么是等比】
+        /// 玩家的原话是"这个物理场景空间设计太小，经常出现空间越界行为"。确实小：
+        /// 30×40 的教室里塞了 25 张 3.2 米宽的课桌，列距 5 米——**过道净宽只有 1.8 米**，
+        /// 而场上同时有十个单位（三名侧目者、放大镜围观者、身份钉兵、心虚投影、
+        /// 伪装同学、后排低语组两人、首领）。一米八的过道里躲一次冲击就会撞到桌子，
+        /// 跳一下更是直接上桌。
+        ///
+        /// 但这一关的验收第 39 条锁死了一件事：三个目标交互物必须落在视线锥里，
+        /// 「完成本职」要落在交叉处。锥子是**角度 + 射程**定义的，所以只要
+        /// **所有内部坐标等比放大、家具尺寸不变**，全场的角度关系一个都不会变，
+        /// 只有距离整体拉长——射程跟着乘同一个系数即可（见 GameBootstrap 里
+        /// 8-2 侧目者的 coneRange）。等比是这里唯一安全的改法：
+        /// 单独把某个方向拉宽，第 39 条就得重新验一遍。
+        ///
+        /// 1.3 倍：列距 5 → 6.5（过道净宽 1.8 → 3.3 米），教室 30×40 → 39×52。
+        /// </summary>
+        public const float EchoK = 1.3f;
+
+        /// <summary>回声教室内部坐标：原始坐标 → 放大后的相对区原点偏移。高度不放大。</summary>
+        public static Vector3 EchoAt(float x, float y, float z) =>
+            new Vector3(x * EchoK, y, z * EchoK);
+
+        /// <summary>回声教室放大后的半宽 / 半深（墙心所在）。</summary>
+        const float EchoHalfW = 15f * EchoK;   // 19.5
+        const float EchoHalfD = 20f * EchoK;   // 26
 
         static void BuildEchoClassroom(WorldContext ctx)
         {
@@ -2508,8 +2692,13 @@ namespace AdversityRoad.World
             Color floorC = new Color(0.35f, 0.33f, 0.3f);
             Color wallC = new Color(0.3f, 0.3f, 0.33f);
 
-            Box(ctx, "Classroom_Floor", o + new Vector3(0, -0.25f, 0), new Vector3(30, 0.5f, 40), floorC);
-            // 门外的小门厅：教室地板到 z=-20 为止，而门与传送门都在更外面。
+            // 整间教室按 EchoK 等比放大（见该常量的说明）：坐标乘系数，家具尺寸不动，
+            // 于是过道变宽而全场角度关系一个不变——视线锥的验收不用重验。
+            Vector3 seatAt = EchoAt(SeatSlot.x, SeatSlot.y, SeatSlot.z);
+
+            Box(ctx, "Classroom_Floor", o + EchoAt(0, -0.25f, 0),
+                new Vector3(30 * EchoK, 0.5f, 40 * EchoK), floorC);
+            // 门外的小门厅：教室地板到南墙为止，而门与传送门都在更外面。
             // 没有这块地，"走出去"这个终局动作的最后两步就是踩空。
             //
             // 【为什么门厅必须封起来】
@@ -2517,130 +2706,149 @@ namespace AdversityRoad.World
             // 看到的就是一块悬在夜色里的水泥板，板子上方是纯黑的天，远处露出半座城市轮廓。
             // 玩家截图里圈出来的"这是什么"，指的就是这片没有收口的空。
             // 现在它是一条真正的夜间教学楼走廊：两侧墙、吊顶、灯，尽头才是传送门。
-            Box(ctx, "Classroom_FoyerFloor", o + new Vector3(0, -0.25f, -24),
-                new Vector3(18, 0.5f, 10), new Color(0.33f, 0.31f, 0.29f));
+            Box(ctx, "Classroom_FoyerFloor", o + EchoAt(0, -0.25f, -24),
+                new Vector3(18 * EchoK, 0.5f, 10 * EchoK), new Color(0.33f, 0.31f, 0.29f));
             // 层高 5 米（比教室高）：门厅里有两扇传送门，而门楣标牌挂在 4.2 米——
             // 照教室的 4.3 米吊顶做，两块牌子会整个埋进顶板里，玩家看不到通往哪。
-            Box(ctx, "Foyer_Wall", o + new Vector3(-9, 2.5f, -24), new Vector3(1, 5f, 10), wallC);
-            Box(ctx, "Foyer_Wall", o + new Vector3(9, 2.5f, -24), new Vector3(1, 5f, 10), wallC);
-            Box(ctx, "Foyer_Wall", o + new Vector3(0, 2.5f, -29), new Vector3(18, 5f, 1), wallC);
-            Decoration(ctx, "Foyer_CeilingPan", o + new Vector3(0, 5.05f, -24),
-                new Vector3(18.4f, 0.3f, 10.4f), new Color(0.21f, 0.21f, 0.24f));
+            Box(ctx, "Foyer_Wall", o + EchoAt(-9, 2.5f, -24), new Vector3(1, 5f, 10 * EchoK), wallC);
+            Box(ctx, "Foyer_Wall", o + EchoAt(9, 2.5f, -24), new Vector3(1, 5f, 10 * EchoK), wallC);
+            Box(ctx, "Foyer_Wall", o + EchoAt(0, 2.5f, -29), new Vector3(18 * EchoK, 5f, 1), wallC);
+            // 顶板**有碰撞体**：见 Classroom_CeilingPan 那一段的理由，门厅同理。
+            Box(ctx, "Foyer_CeilingPan", o + EchoAt(0, 5.05f, -24),
+                new Vector3(18 * EchoK + 0.4f, 0.3f, 10 * EchoK + 0.4f), new Color(0.21f, 0.21f, 0.24f));
             // 教室（4.2 墙 / 4.45 顶）与门厅（4.9 顶）之间那条 0.45 米的高差要封上，
             // 不然从门厅回头看教室门，门楣上方是一条通到天上的黑缝
-            Decoration(ctx, "Foyer_WallHeader", o + new Vector3(0, 4.55f, -19.6f),
-                new Vector3(18f, 0.9f, 0.5f), wallC);
-            // 三面整墙 + 南墙留门洞（x∈[-3,3]）：整关的终局动作就是从这个洞走出去，
+            Box(ctx, "Foyer_WallHeader", o + EchoAt(0, 4.55f, -19.6f),
+                new Vector3(18 * EchoK, 0.9f, 0.5f), wallC);
+            // 三面整墙 + 南墙留门洞：整关的终局动作就是从这个洞走出去，
             // 用 Ring 封一圈等于把通关条件封死。
-            Box(ctx, "Classroom_Wall", o + new Vector3(0, 2.1f, 20), new Vector3(30, 4.2f, 1), wallC);
-            var clsW = Box(ctx, "Classroom_Wall", o + new Vector3(-15, 2.1f, 0), new Vector3(1, 4.2f, 40), wallC);
-            var clsE = Box(ctx, "Classroom_Wall", o + new Vector3(15, 2.1f, 0), new Vector3(1, 4.2f, 40), wallC);
+            // 【门洞不随房间放大】门就是门，6 米宽已经够两个人并排走；
+            // 跟着放大只会让"从这个洞走出去"变成"从这一整面缺口走出去"。
+            Box(ctx, "Classroom_Wall", o + new Vector3(0, 2.1f, EchoHalfD),
+                new Vector3(30 * EchoK, 4.2f, 1), wallC);
+            var clsW = Box(ctx, "Classroom_Wall", o + new Vector3(-EchoHalfW, 2.1f, 0),
+                new Vector3(1, 4.2f, 40 * EchoK), wallC);
+            var clsE = Box(ctx, "Classroom_Wall", o + new Vector3(EchoHalfW, 2.1f, 0),
+                new Vector3(1, 4.2f, 40 * EchoK), wallC);
             Player.CameraOcclusionFade.RegisterOccluder(clsW.GetComponent<Renderer>());
             Player.CameraOcclusionFade.RegisterOccluder(clsE.GetComponent<Renderer>());
-            Box(ctx, "Classroom_Wall", o + new Vector3(-9, 2.1f, -20), new Vector3(12, 4.2f, 1), wallC);
-            Box(ctx, "Classroom_Wall", o + new Vector3(9, 2.1f, -20), new Vector3(12, 4.2f, 1), wallC);
-            Decoration(ctx, "Classroom_CeilingPan", o + new Vector3(0, 4.3f, 0),
-                new Vector3(30.4f, 0.3f, 40), new Color(0.2f, 0.2f, 0.23f));
+            float southSeg = EchoHalfW - 3f;                       // 门洞半宽固定 3 米
+            Box(ctx, "Classroom_Wall", o + new Vector3(-(3f + southSeg / 2f), 2.1f, -EchoHalfD),
+                new Vector3(southSeg, 4.2f, 1), wallC);
+            Box(ctx, "Classroom_Wall", o + new Vector3(3f + southSeg / 2f, 2.1f, -EchoHalfD),
+                new Vector3(southSeg, 4.2f, 1), wallC);
+            // 【顶板必须挡得住】原来这块是 Decoration（无碰撞体），教室于是是个没盖的盒子：
+            // 站上课桌或别人头顶再跳一下，人就可能越过 4.2 米的墙沿出到场外，
+            // 而墙外没有地板。玩家报的"经常出现空间越界行为，比如跳起来"就是这件事。
+            // 顶板离地 4.15 米，远高于 2 米高的导航体，封顶不影响寻路，也不挡镜头
+            //（第三人称镜头贴在玩家身后 2.5 米左右）。
+            Box(ctx, "Classroom_CeilingPan", o + EchoAt(0, 4.3f, 0),
+                new Vector3(30 * EchoK + 0.4f, 0.3f, 40 * EchoK), new Color(0.2f, 0.2f, 0.23f));
 
             // 夜间半开灯：只开前半边。后排是暗的——低语正是从暗处来的
-            AddCeilingLight(o + new Vector3(0, 3.9f, 10), new Color(0.9f, 0.9f, 0.85f), 24, true);
-            AddCeilingLight(o + new Vector3(0, 3.9f, -2), new Color(0.85f, 0.86f, 0.82f), 20, true);
+            AddCeilingLight(o + EchoAt(0, 3.9f, 10), new Color(0.9f, 0.9f, 0.85f), 24, true);
+            AddCeilingLight(o + EchoAt(0, 3.9f, -2), new Color(0.85f, 0.86f, 0.82f), 20, true);
 
-            // 课桌组：前排四列 × 后排三排
+            // 课桌组：五列 × 五排。列距/排距随房间放大，桌子本身不放大——
+            // 多出来的全部变成过道（列距 5→6.5，净宽 1.8→3.3 米）。
             for (int row = 0; row < 5; row++)
                 for (int col = -2; col <= 2; col++)
                 {
                     float z = 12f - row * 5.5f;
-                    var deskGo = Box(ctx, "ClassDesk", o + new Vector3(col * 5f, 0.65f, z),
+                    var deskGo = Box(ctx, "ClassDesk", o + EchoAt(col * 5f, 0.65f, z),
                         new Vector3(3.2f, 0.16f, 1.5f), new Color(0.5f, 0.42f, 0.3f));
                     // 四条真腿 + 一块前挡板，代替原来那一片"居中的薄片"。
                     // 原写法从正面看是一块悬空的桌板下面吊着一张纸，斜视角下腿完全消失。
                     for (int lx = -1; lx <= 1; lx += 2)
                         for (int lz = -1; lz <= 1; lz += 2)
                             Decoration(ctx, "ClassDeskLeg",
-                                o + new Vector3(col * 5f + lx * 1.45f, 0.285f, z + lz * 0.6f),
+                                o + EchoAt(col * 5f, 0f, z) + new Vector3(lx * 1.45f, 0.285f, lz * 0.6f),
                                 new Vector3(0.12f, 0.57f, 0.12f), new Color(0.3f, 0.28f, 0.25f));
-                    Decoration(ctx, "ClassDeskFrontPlank", o + new Vector3(col * 5f, 0.45f, z + 0.7f),
+                    Decoration(ctx, "ClassDeskFrontPlank",
+                        o + EchoAt(col * 5f, 0f, z) + new Vector3(0, 0.45f, 0.7f),
                         new Vector3(3.0f, 0.34f, 0.08f), new Color(0.4f, 0.34f, 0.26f));
                     Player.CameraOcclusionFade.RegisterOccluder(deskGo.GetComponent<Renderer>());
                 }
 
-            // 讲台与黑板（前排锚点）
-            Box(ctx, "PodiumPlinth", o + new Vector3(0, 0.6f, 17), new Vector3(4.4f, 1.2f, 1.6f),
+            // 讲台与黑板（前排锚点）。黑板与钟贴着北墙内面，不跟着放大飘出去。
+            Box(ctx, "PodiumPlinth", o + EchoAt(0, 0.6f, 17), new Vector3(4.4f, 1.2f, 1.6f),
                 new Color(0.44f, 0.36f, 0.28f));
-            Decoration(ctx, "BlackboardPlank", o + new Vector3(0, 2.4f, 19.4f),
+            Decoration(ctx, "BlackboardPlank", o + new Vector3(0, 2.4f, EchoHalfD - 0.6f),
                 new Vector3(12f, 2.4f, 0.2f), new Color(0.18f, 0.24f, 0.2f));
 
             // ---- 目标动作一｜归还：教室前排，主视线锥中心 ----
             // 归还位落在讲台边的一张小方桌上：桌腿、桌面、上面那件要还的东西，三段都建出来。
             // 上一版只有最上面那一块，于是"归还"是一块浮在 1.35 米高处的黄板。
-            Decoration(ctx, "ReturnTablePlank", o + new Vector3(0, 1.05f, 15),
+            Vector3 returnAt = EchoAt(0, 0f, 15);
+            Decoration(ctx, "ReturnTablePlank", o + returnAt + new Vector3(0, 1.05f, 0),
                 new Vector3(2.0f, 0.12f, 1.4f), new Color(0.46f, 0.38f, 0.29f));
             for (int lx = -1; lx <= 1; lx += 2)
                 for (int lz = -1; lz <= 1; lz += 2)
                     Decoration(ctx, "ReturnTableLegPlank",
-                        o + new Vector3(lx * 0.85f, 0.5f, 15 + lz * 0.55f),
+                        o + returnAt + new Vector3(lx * 0.85f, 0.5f, lz * 0.55f),
                         new Vector3(0.11f, 1.0f, 0.11f), new Color(0.32f, 0.28f, 0.24f));
-            var giveBack = Box(ctx, "ObjectiveReturnDesk", o + new Vector3(0, 1.26f, 15),
+            var giveBack = Box(ctx, "ObjectiveReturnDesk", o + returnAt + new Vector3(0, 1.26f, 0),
                 new Vector3(1.2f, 0.3f, 0.9f), new Color(0.9f, 0.85f, 0.5f));
             var giveBackObj = giveBack.AddComponent<Shame.ObjectiveStation>();
             giveBackObj.objectiveId = Shame.ShameLineController.ObjReturn;
             giveBackObj.holdSeconds = 3.4f;
-            Plaque(o + new Vector3(0, 2.4f, 15), "归还（长按）", new Color(0.92f, 0.86f, 0.55f));
+            Plaque(o + returnAt + new Vector3(0, 2.4f, 0), "归还（长按）", new Color(0.92f, 0.86f, 0.55f));
 
             // ---- 目标动作二｜完成本职：自习座位，交叉视线区 ----
             // 自习座位原来是一块 1 米高的悬空板。现在它就是**那一列课桌后面的那把椅子**：
-            // 坐标取 (col=-1, row=2) 的椅位（x=-5, z=1-1.5=-0.5），坐高与全场椅子一致。
+            // 坐标取 (col=-1, row=2) 的椅位，坐高与全场椅子一致。
             // 装饰层会跳过这个椅位（见 DressEchoClassroom），不会和它叠成两把椅子。
-            var seat = Box(ctx, "ObjectiveSeatBench", o + SeatSlot,
+            var seat = Box(ctx, "ObjectiveSeatBench", o + seatAt,
                 new Vector3(1.4f, 0.14f, 1.15f), new Color(0.72f, 0.78f, 0.85f));
-            Decoration(ctx, "ObjectiveSeatBackPlank", o + SeatSlot + new Vector3(0, 0.5f, -0.5f),
+            Decoration(ctx, "ObjectiveSeatBackPlank", o + seatAt + new Vector3(0, 0.5f, -0.5f),
                 new Vector3(1.4f, 0.9f, 0.12f), new Color(0.66f, 0.72f, 0.8f));
             for (int lx = -1; lx <= 1; lx += 2)
                 for (int lz = -1; lz <= 1; lz += 2)
                     Decoration(ctx, "ObjectiveSeatPole",
-                        o + SeatSlot + new Vector3(lx * 0.58f, -0.28f, lz * 0.45f),
+                        o + seatAt + new Vector3(lx * 0.58f, -0.28f, lz * 0.45f),
                         new Vector3(0.09f, 0.46f, 0.09f), new Color(0.3f, 0.31f, 0.34f));
             var seatObj = seat.AddComponent<Shame.ObjectiveStation>();
             seatObj.objectiveId = Shame.ShameLineController.ObjOwnWork;
             seatObj.holdSeconds = 5.2f;
             seatObj.underMentalAttack = true;
-            Plaque(o + SeatSlot + new Vector3(0, 1.7f, 0), "完成本职（长按，期间会挨话）",
+            Plaque(o + seatAt + new Vector3(0, 1.7f, 0), "完成本职（长按，期间会挨话）",
                 new Color(0.8f, 0.86f, 0.92f));
 
             // ---- 搜查回响（可选支线）：别人的包。系统允许，也如实结账 ----
-            // 包放在课桌上（col=+1 那一列的桌面在 y=0.73、x=5、z=1）。
+            // 包放在课桌上（col=+1 那一列的桌面）。
             // "别人的包"必须看得出是别人放在座位上的，飘在过道半空里读不出这层意思。
-            var bag = Box(ctx, "OthersBagCrate", o + new Vector3(5f, 1.08f, 1f),
+            var bag = Box(ctx, "OthersBagCrate", o + EchoAt(5f, 0f, 1f) + new Vector3(0, 1.08f, 0),
                 new Vector3(1.1f, 0.7f, 0.8f), new Color(0.4f, 0.36f, 0.42f));
             bag.AddComponent<Shame.SearchEcho>();
 
             // ---- 目标动作三｜步行离场：教室门，要穿过全场视线锥 ----
+            // 门贴着南墙内面（墙心 -EchoHalfD，内面 +0.5），不跟着放大——门是门。
+            float exitZ = -EchoHalfD + 2.5f;
             var exit = new GameObject("ClassroomExit");
-            exit.transform.position = o + new Vector3(0, 1.5f, -18);
+            exit.transform.position = o + new Vector3(0, 1.5f, exitZ);
             var ec = exit.AddComponent<BoxCollider>();
             ec.isTrigger = true;
             ec.size = new Vector3(5f, 3f, 2f);
             exit.AddComponent<Shame.ClassroomExit>();
-            Box(ctx, "ExitDoorPost", o + new Vector3(-2.6f, 1.6f, -18),
+            Box(ctx, "ExitDoorPost", o + new Vector3(-2.6f, 1.6f, exitZ),
                 new Vector3(0.4f, 3.2f, 0.5f), new Color(0.5f, 0.42f, 0.3f));
-            Box(ctx, "ExitDoorPost", o + new Vector3(2.6f, 1.6f, -18),
+            Box(ctx, "ExitDoorPost", o + new Vector3(2.6f, 1.6f, exitZ),
                 new Vector3(0.4f, 3.2f, 0.5f), new Color(0.5f, 0.42f, 0.3f));
-            Plaque(o + new Vector3(0, 3.6f, -18), "门 · 走出去（不要冲刺）",
+            Plaque(o + new Vector3(0, 3.6f, exitZ), "门 · 走出去（不要冲刺）",
                 new Color(0.85f, 0.88f, 0.8f));
 
             // 恢复点：门口、教室两个后角。三处分散，"最近"才有意义
-            ShameRecoveryPad(ctx, o + new Vector3(-9, 0, -16));   // 门内一角
-            ShameRecoveryPad(ctx, o + new Vector3(-12, 0, 6));    // 西侧后排
-            ShameRecoveryPad(ctx, o + new Vector3(12, 0, 14));    // 东侧最后一排
+            ShameRecoveryPad(ctx, o + EchoAt(-9, 0, -16));   // 门内一角
+            ShameRecoveryPad(ctx, o + EchoAt(-12, 0, 6));    // 西侧后排
+            ShameRecoveryPad(ctx, o + EchoAt(12, 0, 14));    // 东侧最后一排
 
             DressEchoClassroom(ctx, o, wallC);
 
             // 传送门贴门厅尽头两角摆，不再堵在教室门的正对视线上。
             // 「步行离场」是本关的终局动作，玩家推门那一眼应该看见一条走廊，
             // 而不是两块正对着脸的发光板。
-            MakePortal(ctx, o + new Vector3(-5.8f, 0, -26f), 25, "欠条长廊");
-            MakePortal(ctx, o + new Vector3(5.8f, 0, -26f), 0, "独居小屋（安全屋）");
+            MakePortal(ctx, o + EchoAt(-5.8f, 0, -26f), 25, "欠条长廊");
+            MakePortal(ctx, o + EchoAt(5.8f, 0, -26f), 0, "独居小屋（安全屋）");
         }
 
         /// <summary>
@@ -2769,75 +2977,79 @@ namespace AdversityRoad.World
                 {
                     float z = 12f - row * 5.5f;
                     float x = col * 5f;
-                    // 这一格的椅子已经由「完成本职」目标物本体占着了，装饰层让开
+                    // 这一格的椅子已经由「完成本职」目标物本体占着了，装饰层让开。
+                    // 比对在**放大前**的坐标系里做：两边用的是同一套原始坐标。
                     bool taken = Mathf.Approximately(x, SeatSlot.x) &&
                                  Mathf.Approximately(z - 1.5f, SeatSlot.z);
+                    Vector3 chair = EchoAt(x, 0f, z - 1.5f);
                     if (!taken)
                     {
-                    Decoration(ctx, "ClassChairBench", o + new Vector3(x, 0.52f, z - 1.5f),
+                    Decoration(ctx, "ClassChairBench", o + chair + new Vector3(0, 0.52f, 0),
                         new Vector3(1.3f, 0.12f, 1.1f), new Color(0.44f, 0.37f, 0.28f));
-                    Decoration(ctx, "ClassChairBackPlank", o + new Vector3(x, 1.0f, z - 2.0f),
+                    Decoration(ctx, "ClassChairBackPlank", o + chair + new Vector3(0, 1.0f, -0.5f),
                         new Vector3(1.3f, 0.85f, 0.12f), new Color(0.46f, 0.39f, 0.3f));
                     for (int lx = -1; lx <= 1; lx += 2)
-                        Decoration(ctx, "ClassChairPole", o + new Vector3(x + lx * 0.55f, 0.24f, z - 1.5f),
+                        Decoration(ctx, "ClassChairPole", o + chair + new Vector3(lx * 0.55f, 0.24f, 0),
                             new Vector3(0.08f, 0.48f, 0.08f), new Color(0.3f, 0.3f, 0.33f));
                     }
 
                     // 桌上零星的书本与纸：只铺一半，空着的座位才读得出"夜里人不多"
+                    Vector3 desk = EchoAt(x, 0f, z);
                     if (rng.NextDouble() < 0.45)
-                        Decoration(ctx, "DeskBook", o + new Vector3(x + 0.4f, 0.78f, z + 0.1f),
+                        Decoration(ctx, "DeskBook", o + desk + new Vector3(0.4f, 0.78f, 0.1f),
                             new Vector3(0.7f, 0.1f, 0.5f),
                             new Color(0.55f + (float)rng.NextDouble() * 0.3f, 0.45f, 0.35f));
                     if (rng.NextDouble() < 0.3)
-                        Decoration(ctx, "DeskPaperBook", o + new Vector3(x - 0.5f, 0.74f, z - 0.2f),
+                        Decoration(ctx, "DeskPaperBook", o + desk + new Vector3(-0.5f, 0.74f, -0.2f),
                             new Vector3(0.5f, 0.02f, 0.36f), new Color(0.92f, 0.9f, 0.85f));
                 }
 
-            // 踢脚线 + 顶压条
+            // 踢脚线 + 顶压条（贴着墙内面，按放大后的墙位算，不跟着坐标一起飘）
             for (int side = -1; side <= 1; side += 2)
             {
-                Decoration(ctx, "Classroom_WallBase", o + new Vector3(side * 14.4f, 0.16f, 0),
-                    new Vector3(0.24f, 0.32f, 40f), trim);
-                Decoration(ctx, "Classroom_WallBase", o + new Vector3(side * 14.4f, 4.0f, 0),
-                    new Vector3(0.2f, 0.18f, 40f), trim);
+                Decoration(ctx, "Classroom_WallBase", o + new Vector3(side * (EchoHalfW - 0.6f), 0.16f, 0),
+                    new Vector3(0.24f, 0.32f, 40 * EchoK), trim);
+                Decoration(ctx, "Classroom_WallBase", o + new Vector3(side * (EchoHalfW - 0.6f), 4.0f, 0),
+                    new Vector3(0.2f, 0.18f, 40 * EchoK), trim);
             }
-            Decoration(ctx, "Classroom_WallBase", o + new Vector3(0, 0.16f, 19.4f),
-                new Vector3(30f, 0.32f, 0.24f), trim);
+            Decoration(ctx, "Classroom_WallBase", o + new Vector3(0, 0.16f, EchoHalfD - 0.6f),
+                new Vector3(30 * EchoK, 0.32f, 0.24f), trim);
 
             // 吊顶梁
             for (int i = 0; i < 5; i++)
-                Decoration(ctx, "Classroom_BeamPan", o + new Vector3(0, 4.05f, -16 + i * 9f),
-                    new Vector3(30.2f, 0.28f, 0.55f), new Color(0.18f, 0.18f, 0.21f));
+                Decoration(ctx, "Classroom_BeamPan", o + EchoAt(0, 4.05f, -16 + i * 9f),
+                    new Vector3(30 * EchoK + 0.2f, 0.28f, 0.55f), new Color(0.18f, 0.18f, 0.21f));
 
             // 东墙一排夜窗：玻璃 + 窗框，外面是黑的。夜自习的气氛全靠它
             for (int i = 0; i < 4; i++)
             {
-                float z = -12f + i * 8f;
-                Decoration(ctx, "ClassWindowPost", o + new Vector3(14.3f, 2.4f, z),
+                float z = EchoAt(0, 0, -12f + i * 8f).z;
+                Decoration(ctx, "ClassWindowPost", o + new Vector3(EchoHalfW - 0.7f, 2.4f, z),
                     new Vector3(0.18f, 2.6f, 4.4f), new Color(0.3f, 0.3f, 0.33f));
-                var gl = Decoration(ctx, "ClassWindowGlass", o + new Vector3(14.15f, 2.4f, z),
+                var gl = Decoration(ctx, "ClassWindowGlass", o + new Vector3(EchoHalfW - 0.85f, 2.4f, z),
                     new Vector3(0.06f, 2.3f, 4.0f), new Color(0.12f, 0.14f, 0.2f));
                 OpenWorld.VillaKit.Glass(gl, new Color(0.14f, 0.17f, 0.24f), 0.5f);
             }
 
             // 西墙一排储物柜
             for (int i = 0; i < 6; i++)
-                Decoration(ctx, "ClassLockerMachine", o + new Vector3(-14.0f, 1.1f, -10f + i * 4.2f),
+                Decoration(ctx, "ClassLockerMachine",
+                    o + new Vector3(-(EchoHalfW - 1.0f), 1.1f, EchoAt(0, 0, -10f + i * 4.2f).z),
                     new Vector3(0.7f, 2.2f, 3.6f), new Color(0.36f, 0.4f, 0.42f));
 
             // 黑板下沿的粉笔槽与几支粉笔；讲台侧面
-            Decoration(ctx, "BlackboardTrayRail", o + new Vector3(0, 1.14f, 19.2f),
+            Decoration(ctx, "BlackboardTrayRail", o + new Vector3(0, 1.14f, EchoHalfD - 0.8f),
                 new Vector3(12f, 0.14f, 0.34f), new Color(0.3f, 0.3f, 0.32f));
             for (int i = 0; i < 4; i++)
-                Decoration(ctx, "ChalkBook", o + new Vector3(-3f + i * 2f, 1.24f, 19.2f),
+                Decoration(ctx, "ChalkBook", o + new Vector3(-3f + i * 2f, 1.24f, EchoHalfD - 0.8f),
                     new Vector3(0.1f, 0.08f, 0.1f), new Color(0.93f, 0.92f, 0.88f));
-            Decoration(ctx, "PodiumPlinthFront", o + new Vector3(0, 0.6f, 16.2f),
+            Decoration(ctx, "PodiumPlinthFront", o + EchoAt(0, 0f, 17) + new Vector3(0, 0.6f, -0.8f),
                 new Vector3(4.4f, 1.2f, 0.14f), new Color(0.38f, 0.31f, 0.24f));
 
             // 灯：前半边亮着（带发光灯体），后半边只剩黑灯管——"灯只开了一半"要看得见
             for (int i = 0; i < 2; i++)
             {
-                Vector3 at = o + new Vector3(0, 3.85f, 4f + i * 9f);
+                Vector3 at = o + EchoAt(0, 3.85f, 4f + i * 9f);
                 Decoration(ctx, "ClassLampRail", at + new Vector3(0, 0.12f, 0),
                     new Vector3(6f, 0.12f, 0.4f), new Color(0.3f, 0.3f, 0.33f));
                 var tube = Decoration(ctx, "ClassLampGlow", at,
@@ -2846,7 +3058,7 @@ namespace AdversityRoad.World
             }
             for (int i = 0; i < 2; i++)   // 后半边：灯管在，但是灭的
             {
-                Vector3 at = o + new Vector3(0, 3.85f, -6f - i * 9f);
+                Vector3 at = o + EchoAt(0, 3.85f, -6f - i * 9f);
                 Decoration(ctx, "ClassLampRail", at + new Vector3(0, 0.12f, 0),
                     new Vector3(6f, 0.12f, 0.4f), new Color(0.28f, 0.28f, 0.3f));
                 Decoration(ctx, "ClassDarkTubeRail", at,
@@ -2859,24 +3071,27 @@ namespace AdversityRoad.World
             // 禁止把视线锥做成不可见——后排低语者与侧目者的锥子全在这半边，
             // 玩家必须看得见它们扫到哪里。所以这里摆的是**强度 0.35 的冷光**：
             // 亮到能读出人和桌子的轮廓，暗到与前半边一眼分得出来。
-            for (int i = 0; i < 4; i++)
+            // 【放大之后要多补两盏】教室从 30×40 变成 39×52，面积多了七成；
+            // 灯位跟着放大会把间距一起拉开，四盏在新尺寸下中间那一片会掉到门槛以下。
+            for (int i = 0; i < 6; i++)
                 SceneLighting.MakePoint("Court_Light",
-                    o + new Vector3(-7f + (i % 2) * 14f, 3.6f, -4f - (i / 2) * 10f),
-                    new Color(0.62f, 0.68f, 0.85f), 14f, null, 0.35f);
+                    o + EchoAt(-7f + (i % 2) * 14f, 3.6f, -2f - (i / 2) * 9f),
+                    new Color(0.62f, 0.68f, 0.85f), 15f, null, 0.35f);
             // 窗外的路灯：给东墙那排夜窗一点方向性，窗才像窗
             for (int i = 0; i < 2; i++)
-                SceneLighting.MakePoint("Court_Light", o + new Vector3(17f, 3.2f, -8f + i * 16f),
+                SceneLighting.MakePoint("Court_Light",
+                    o + new Vector3(EchoHalfW + 2f, 3.2f, EchoAt(0, 0, -8f + i * 16f).z),
                     new Color(0.85f, 0.78f, 0.6f), 16f, null, 0.5f);
 
             // 墙上的钟：夜里的自习室，时间是压力的一部分
-            Decoration(ctx, "ClassClockMachine", o + new Vector3(0, 3.2f, 19.3f),
+            Decoration(ctx, "ClassClockMachine", o + new Vector3(0, 3.2f, EchoHalfD - 0.7f),
                 new Vector3(1.1f, 1.1f, 0.14f), new Color(0.86f, 0.86f, 0.82f));
 
             // 门厅（现在是一条封好的走廊）：两盏带灯体的顶灯、三面踢脚、一条指示牌。
             // 玩家走出教室门的第一眼落在这里，它必须像个能站人的地方。
             for (int i = 0; i < 2; i++)
             {
-                Vector3 at = o + new Vector3(-4.5f + i * 9f, 3.6f, -24f);
+                Vector3 at = o + EchoAt(-4.5f + i * 9f, 3.6f, -24f);
                 AddCeilingLight(at + new Vector3(0, -0.2f, 0), new Color(0.72f, 0.74f, 0.82f), 15);
                 Decoration(ctx, "Foyer_LampRail", at + new Vector3(0, 0.12f, 0),
                     new Vector3(2.2f, 0.12f, 0.34f), new Color(0.3f, 0.3f, 0.33f));
@@ -2884,15 +3099,17 @@ namespace AdversityRoad.World
                     new Vector3(1.9f, 0.1f, 0.24f), new Color(0.92f, 0.92f, 0.88f));
                 OpenWorld.VillaKit.Emit(fb, new Color(0.92f, 0.92f, 0.88f), 1.5f);
             }
-            Decoration(ctx, "Foyer_WallBase", o + new Vector3(0, 0.16f, -28.6f),
-                new Vector3(18f, 0.32f, 0.24f), trim);
+            float foyerBackZ = EchoAt(0, 0, -29f).z;      // 门厅尽头墙的墙心
+            Decoration(ctx, "Foyer_WallBase", o + new Vector3(0, 0.16f, foyerBackZ + 0.6f),
+                new Vector3(18 * EchoK, 0.32f, 0.24f), trim);
             for (int side = -1; side <= 1; side += 2)
-                Decoration(ctx, "Foyer_WallBase", o + new Vector3(side * 8.5f, 0.16f, -24f),
-                    new Vector3(0.24f, 0.32f, 10f), trim);
+                Decoration(ctx, "Foyer_WallBase", o + EchoAt(side * 8.5f, 0.16f, -24f),
+                    new Vector3(0.24f, 0.32f, 10 * EchoK), trim);
             // 尽头墙上的一块楼层牌：走廊尽头总得有点可读的东西
-            Decoration(ctx, "Foyer_BoardPlank", o + new Vector3(0, 2.4f, -28.7f),
+            Decoration(ctx, "Foyer_BoardPlank", o + new Vector3(0, 2.4f, foyerBackZ + 0.56f),
                 new Vector3(3.6f, 1.4f, 0.12f), new Color(0.34f, 0.36f, 0.34f));
-            Plaque(o + new Vector3(0, 3.5f, -28.6f), "夜间自习 · 二层东", new Color(0.72f, 0.76f, 0.72f));
+            Plaque(o + new Vector3(0, 3.5f, foyerBackZ + 0.64f), "夜间自习 · 二层东",
+                new Color(0.72f, 0.76f, 0.72f));
         }
 
         /// <summary>
@@ -3480,7 +3697,7 @@ namespace AdversityRoad.World
         /// 最大不过 ±60 米，所以 round(x/300) 必然等于区号——不需要每个 Build 函数
         /// 再多传一个参数进来。
         /// </summary>
-        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
+        static GameObject MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
             => MakePortal(ctx, basePos, role, -1, null);
 
         /// <summary>
@@ -3490,26 +3707,36 @@ namespace AdversityRoad.World
         /// 更是压根没有章节号——它们都算不出"上一关/下一关"。
         /// 经典 24 关一律走上面那个按章节解析的版本，免得又退回"每扇门硬编码目标"的老问题。
         /// </summary>
-        public static void MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
+        public static GameObject MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
             string label = null)
             => MakePortal(ctx, basePos, PortalRole.Forward, targetZone, label);
 
-        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
+        static GameObject MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
             int explicitZone, string explicitLabel)
         {
-            int homeZone = Mathf.Clamp(Mathf.RoundToInt(basePos.x / 300f), 0, ZoneCount - 1);
+            int homeZone = ZoneAt(ctx, basePos);
             var root = new GameObject("Portal_" + ZoneIdOf(homeZone) + "_" + role);
             root.transform.position = basePos;
 
-            Box(ctx, "PortalPillar", basePos + new Vector3(-1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
+            // 门的每一件都挂在 root 底下。
+            //
+            // 【为什么要收成一个物体】原来只有标牌和触发体是 root 的子物体，门柱、
+            // 门楣、光幕、地台四件都是散落在场景根上的独立物体。只要这扇门需要跟着
+            // 什么东西移动，散件就会留在原地——欠条长廊的广播室会随隐瞒次数整间往北挪，
+            // 门若不是一个整体，挪完就剩一个触发体飘在空中，门框还立在十四米外。
+            var pillarL = Box(ctx, "PortalPillar", basePos + new Vector3(-1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
-            Box(ctx, "PortalPillar", basePos + new Vector3(1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
+            var pillarR = Box(ctx, "PortalPillar", basePos + new Vector3(1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
-            Decoration(ctx, "PortalTop", basePos + new Vector3(0, 3.4f, 0), new Vector3(3.7f, 0.4f, 0.5f),
+            var top = Decoration(ctx, "PortalTop", basePos + new Vector3(0, 3.4f, 0), new Vector3(3.7f, 0.4f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
             var glow = Decoration(ctx, "PortalGlow", basePos + new Vector3(0, 1.6f, 0),
                 new Vector3(2.7f, 2.8f, 0.15f),
                 role == PortalRole.Back ? new Color(0.85f, 0.8f, 0.55f) : new Color(0.55f, 0.85f, 1f));
+            pillarL.transform.SetParent(root.transform, true);
+            pillarR.transform.SetParent(root.transform, true);
+            top.transform.SetParent(root.transform, true);
+            glow.transform.SetParent(root.transform, true);
 
             // 门顶标牌（文字由 Portal 按解析结果实时刷新）
             var signGo = new GameObject("PortalSign");
@@ -3526,7 +3753,8 @@ namespace AdversityRoad.World
             // 有半米悬在虚空上，玩家往门里再走一步就掉下去。与其逐个挪几十扇门的坐标，
             // 不如让 MakePortal 自己铺一块比触发体更大的地台：任何门口从此都踩得住。
             Box(ctx, "GroundPad_Portal", basePos + new Vector3(0, -0.25f, 0),
-                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f));
+                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f))
+                .transform.SetParent(root.transform, true);
 
             var trigger = new GameObject("PortalTrigger");
             trigger.transform.SetParent(root.transform, false);
@@ -3540,6 +3768,31 @@ namespace AdversityRoad.World
             portal.explicitLabel = explicitLabel;
             portal.sign = tm;
             portal.glow = glow;
+            return root;
+        }
+
+        /// <summary>
+        /// 这个世界坐标落在哪个区。
+        ///
+        /// 【为什么不能再拿 x/300 去除】各区原点原本是 (300·i, 0, 0)，除一下就得到区号；
+        /// 但开放城区与第八章两关是后来插进来的，它们的原点是 7400 / 7800 / 8100——
+        /// 7400/300 = 24.67 四舍五入成 25，7800/300 正好等于 26。于是 24 区的门被记成
+        /// 25 区的、25 区的门被记成 26 区的。这三处目前全是显式目标门（不查 homeZone），
+        /// 所以一直没炸；但只要往那三个区里加一扇按章节解析的门，它立刻指错关。
+        /// 直接对着原点表找最近的那一个，坐标怎么排都不会错。
+        /// </summary>
+        static int ZoneAt(WorldContext ctx, Vector3 pos)
+        {
+            if (ctx == null || ctx.zoneOrigins == null || ctx.zoneOrigins.Length == 0)
+                return Mathf.Clamp(Mathf.RoundToInt(pos.x / 300f), 0, ZoneCount - 1);
+            int best = 0;
+            float bestDx = float.MaxValue;
+            for (int i = 0; i < ctx.zoneOrigins.Length; i++)
+            {
+                float dx = Mathf.Abs(pos.x - ctx.zoneOrigins[i].x);
+                if (dx < bestDx) { bestDx = dx; best = i; }
+            }
+            return best;
         }
 
         /// <summary>世界空间铭牌（3D 文字，常朝镜头）：给展品/展台等标注可读文本。</summary>

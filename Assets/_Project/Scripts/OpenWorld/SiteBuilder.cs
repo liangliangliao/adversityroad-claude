@@ -20,6 +20,14 @@ namespace AdversityRoad.OpenWorld
         public Vector3 origin;
         public Vector3 playerSpawn;
         public Vector3 exitPoint;
+
+        /// <summary>
+        /// 深处那一端的出口门（与落点相对的一头）。
+        ///
+        /// exitPoint 是"原路退回去"的那一块地，就在落点背后；这一个才是
+        /// **走到对面去**的那扇门。外部心魔的关卡靠它通关（见 SiteExitDoor）。
+        /// </summary>
+        public Vector3 farExit;
         public readonly List<Vector3> enemySpawns = new List<Vector3>();
         public readonly List<Vector3> propAnchors = new List<Vector3>();
         public SiteBlueprint blueprint;
@@ -186,7 +194,9 @@ namespace AdversityRoad.OpenWorld
             // 画面是一整面红墙，人动不了也看不见任何东西。
             inst.playerSpawn = FindClearSpawn(inst, d);
             inst.exitPoint = inst.playerSpawn - Vector3.up * 1.1f - Vector3.forward * 2.5f;
+            inst.farExit = FindClearExit(inst, d);
             BuildEntranceMarker(inst, bp);
+            BuildFarExitDoor(inst, chapter);
 
             // ---- 注册为动态区域（可传送、有名字、有雾色） ----
             inst.zoneIndex = ZoneBuilder.RegisterDynamicZone(inst.siteId, bp.siteName, inst.playerSpawn);
@@ -1085,7 +1095,13 @@ namespace AdversityRoad.OpenWorld
         static void BuildEntranceMarker(SiteInstance inst, SiteBlueprint bp)
         {
             float localZ = inst.exitPoint.z - inst.origin.z;
-            Sign(inst, new Vector3(0, 4.2f, localZ), "◀ " + bp.siteName + " · 出口");
+            // 这一块是**入口**，不是出口。
+            //
+            // 原来这里写的是"出口"，而深处那一端什么都没有——于是"从一扇门进、
+            // 从另一扇门出"这条规则在生成关卡里连方向都读不出来：玩家站在入口，
+            // 看到的牌子写着出口，自然就在原地找 Boss。现在两端各一块牌子，
+            // 各说各的用途：这一块是原路退出去（不算通关），对面那扇才是出口。
+            Sign(inst, new Vector3(0, 4.2f, localZ), "◀ " + bp.siteName + " · 入口（原路退出）");
             Deco(inst, "ExitPad", new Vector3(0, 0.07f, localZ),
                 new Vector3(5f, 0.06f, 3f), new Color(0.4f, 0.8f, 0.6f));
 
@@ -1102,7 +1118,7 @@ namespace AdversityRoad.OpenWorld
                 Deco(inst, "PathMark", new Vector3(0, 0.08f, z),
                     new Vector3(2.6f, 0.05f, 1.1f), new Color(0.95f, 0.82f, 0.45f, 1f));
             }
-            Sign(inst, new Vector3(0, 3.4f, spawnZ + dir * 9f), "▼ 往里走");
+            Sign(inst, new Vector3(0, 3.4f, spawnZ + dir * 9f), "▼ 往里走 · 出口在那一头");
         }
 
         /// <summary>只烘焙本场景（Children 收集）：不动主世界导航，卸载时一起消失。</summary>
@@ -1536,6 +1552,70 @@ namespace AdversityRoad.OpenWorld
             }
             // 全被占满（极少见）：退到场地中心，中心永远是布局留出的通行区
             return inst.origin + new Vector3(0, 1.1f, 0);
+        }
+
+        /// <summary>
+        /// 找出口：从与落点相对的那一端往里收，找第一块站得下人的空地。
+        ///
+        /// 与 FindClearSpawn 是一对，只是搜索方向相反——落点在南端，出口就在北端。
+        /// "一进一出"这个结构必须是几何上成立的，不能只是两块牌子。
+        /// </summary>
+        static Vector3 FindClearExit(SiteInstance inst, float d)
+        {
+            Physics.SyncTransforms();
+            float spawnZ = inst.playerSpawn.z - inst.origin.z;
+            float sign = spawnZ <= 0f ? 1f : -1f;        // 出口在落点的另一侧
+            for (int i = 0; i < 12; i++)
+            {
+                float z = sign * (d / 2f - 4f) - sign * i * 3.5f;
+                // 收到落点这一侧就停：出口不能比入口还靠里，那样"穿过去"就没有距离了
+                if (sign * (z - spawnZ) < LevelTraverse.MinDistance) break;
+                Vector3 at = inst.origin + new Vector3(0, 1.1f, z);
+                if (!Physics.CheckCapsule(at + Vector3.up * 0.4f, at - Vector3.up * 0.4f, 0.9f,
+                        ~0, QueryTriggerInteraction.Ignore))
+                    return at;
+            }
+            // 全被占满：退到那一端的边上。这里宁可让门贴着墙，也不能让它落在入口旁边——
+            // 出口离入口太近，"必须真的穿过去"那道检查就会把玩家永远挡在门外。
+            return inst.origin + new Vector3(0, 1.1f, sign * (d / 2f - 4f));
+        }
+
+        /// <summary>
+        /// 深处那一端的**出口门**：一道看得见的门框 + 能量幕 + 一块说明通关方式的牌子。
+        ///
+        /// 视觉语言与 V1 传送门、城里的 Site Gate 完全一致——玩家已经认得这是一扇门。
+        /// 牌子按这一关的规则写：外部心魔写"走出去即通关"，内心心魔如实写"打倒它才算"，
+        /// 免得玩家跑过去半天发现门不认。
+        /// </summary>
+        static void BuildFarExitDoor(SiteInstance inst, GoalChapterData chapter)
+        {
+            Vector3 local = inst.root.transform.InverseTransformPoint(inst.farExit);
+            bool escape = Core.LevelRules.Of(chapter) == Core.LevelClearRule.Escape;
+            Color tint = escape ? new Color(0.45f, 0.95f, 0.6f) : new Color(0.6f, 0.66f, 0.78f);
+
+            Box(inst, "ExitDoorPost", local + new Vector3(-1.9f, 0.6f, 0), new Vector3(0.5f, 3.4f, 0.5f), inst.cTrim);
+            Box(inst, "ExitDoorPost", local + new Vector3(1.9f, 0.6f, 0), new Vector3(0.5f, 3.4f, 0.5f), inst.cTrim);
+            Deco(inst, "ExitDoorTop", local + new Vector3(0, 2.4f, 0), new Vector3(4.3f, 0.4f, 0.5f), inst.cTrim);
+            Deco(inst, "ExitDoorVeil", local + new Vector3(0, 0.6f, 0), new Vector3(3.3f, 3.2f, 0.12f), tint);
+            Deco(inst, "ExitPadFar", local + new Vector3(0, -1.03f, 0), new Vector3(5f, 0.06f, 3f), tint);
+            Lamp(inst, local + new Vector3(-3.4f, -1.1f, 0));
+            Lamp(inst, local + new Vector3(3.4f, -1.1f, 0));
+            Sign(inst, local + new Vector3(0, 3.4f, 0),
+                escape ? "▲ 出口 · 走出去即通关" : "▲ 出口 · 打倒关底心魔后才算通关");
+
+            // 从落点铺一条引导带到这扇门：玩家要一眼看出"往那边走"是有去处的
+            float z0 = inst.playerSpawn.z - inst.origin.z, z1 = local.z;
+            for (int i = 1; i <= 8; i++)
+            {
+                float t = i / 9f;
+                Deco(inst, "PathMarkExit", new Vector3(0, 0.08f, Mathf.Lerp(z0, z1, t)),
+                    new Vector3(2.2f, 0.05f, 1f), new Color(0.65f, 0.9f, 0.72f, 1f));
+            }
+
+            var door = new GameObject("SiteFarExit");
+            door.transform.SetParent(inst.root.transform, false);
+            door.transform.localPosition = local;
+            SiteExitDoor.Attach(door, chapter.chapterId);
         }
 
         /// <summary>看不见但挡得住的边界墙（只有碰撞体，不渲染、不吃绘制开销）。</summary>

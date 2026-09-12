@@ -899,6 +899,9 @@ namespace AdversityRoad.AI
             p.displayName = TierLabel(tier) + "·" + TypeLabel(type);
             p.enemyId = uniqueId ? BaseId(type) + "_extra_" + (++_extraCounter) : BaseId(type);
             p.rangedAttack = RangedOf(type);
+            // 来处必须在 category 被 Boss 覆写**之前**独立写入：
+            // 它是关卡通关规则的唯一来源，不能被等级抹掉（见 EnemyOrigins）。
+            p.origin = EnemyOrigins.Of(type);
             if (tier == EnemyTier.Chief) p.category = EnemyCategory.Boss;
             return p;
         }
