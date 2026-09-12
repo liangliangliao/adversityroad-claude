@@ -31,7 +31,7 @@ namespace AdversityRoad.Combat
         // 单下从 10 出头抬到 14 上下，重击/绝招则跨过"一击见效"的观感门槛。
         // 「重击」的分级线（DamageResolver.HeavyPhysical=34）已同步上移，
         // 普通连段不会因为调高攻击力就变成每一下都击倒。
-        public float baseDamage = 20f;
+        public float baseDamage = DefaultBaseDamage;
         // 轻击体力：连打约 5.8 段/秒，旧值 8 → 47/秒消耗 vs 15/秒回复，3 秒即见底。
         // 降到 3 后连打消耗 ≈20/秒，配合回复提升后可长时间连打不断（体力只在
         // 闪避/蓄力等"大动作"上形成真实取舍，而不是卡住普通连段）。
@@ -95,6 +95,50 @@ namespace AdversityRoad.Combat
             new ComboStage { pose = PoseState.SwordThrust, dmg = 1.45f, posture = 14, lunge = 1.0f, windup = 0.065f, open = 0.15f, length = 0.34f, cancelAt = 0.19f },
             new ComboStage { pose = PoseState.AttackSpin,  dmg = 2.0f,  posture = 28, lunge = 0.6f, windup = 0.10f, open = 0.22f, length = 0.46f, cancelAt = 0.32f },
         };
+
+        /// <summary>
+        /// 一套完整连段的伤害倍率合计与耗时（CI 平衡诊断用，见 CIDiagnostics）。
+        ///
+        /// 时长按**链取消**算：前几段在 cancelAt 就能接下一段，只有最后一段要演完。
+        /// 这是玩家实际能打出的节奏，也是唯一有意义的分母——按 length 相加会
+        /// 高估三成，然后据此得出"其实没那么快"的错误结论。
+        /// </summary>
+        public static void ComboTotals(bool sword, out float dmgMult, out float seconds)
+        {
+            var chain = sword ? SwordChain : PunchChain;
+            dmgMult = 0f; seconds = 0f;
+            for (int i = 0; i < chain.Length; i++)
+            {
+                dmgMult += chain[i].dmg;
+                seconds += i == chain.Length - 1 ? chain[i].length : chain[i].cancelAt;
+            }
+        }
+
+        /// <summary>一套连段的削韧合计（CI 平衡诊断用）。</summary>
+        public static float ComboPosture(bool sword)
+        {
+            var chain = sword ? SwordChain : PunchChain;
+            float p = 0f;
+            foreach (var c in chain) p += c.posture;
+            return p;
+        }
+
+        /// <summary>基础伤害的默认值（CI 平衡诊断用：诊断不实例化玩家）。</summary>
+        public const float DefaultBaseDamage = 20f;
+
+        /// <summary>
+        /// 玩家伤害的**上限**：绝招（1 势）与必杀（3 势）相对基础伤害的倍率。
+        ///
+        /// 【为什么诊断必须看这两个数】上一版的平衡表只算了轻连段（合计 5.8 倍），
+        /// 于是得出"标准杂兵要挨两套连招"的结论，而实机里根本没人用连段收人头：
+        /// 一记裂地跳劈就是 10 倍（200 点原始伤害），一套必杀 16~21 倍（320~420 点）。
+        /// 拿最弱的那条路径去验证"敌人脆不脆"，只会得到一份好看的、错的报告。
+        /// </summary>
+        public static void PeakMultipliers(out float special, out float ultimate)
+        {
+            special = 10f;    // 踏空·裂地跳劈（SpAirSplit.mult，1 势里最高）
+            ultimate = 21f;   // 觉醒·乱舞满蓄（四段系数 6.1 × 基数 3.4）
+        }
 
         enum AttackBtn { None, Punch, Kick, Heavy }
 
@@ -181,6 +225,9 @@ namespace AdversityRoad.Combat
         Coroutine _ranwuRoutine;
 
         int _momentum;
+        /// <summary>攒够一点意势需要的命中次数（见 HitboxWindow 里的说明）。</summary>
+        public const int HitsPerMomentum = 4;
+        int _momentumHits;
         bool _critNext;
         float _lastPerfect;
         float _legHurtUntil;   // 腿部被击中：短时间移动变慢（打腿＝打机动力，攻防对称）
@@ -673,7 +720,10 @@ namespace AdversityRoad.Combat
             _buffered = AttackBtn.None;
             int nextDepth = _depth + 1;
             if (nextDepth > 3) nextDepth = 0;
-            var chain = btn == AttackBtn.Kick ? SwordChain : PunchChain;
+            // 【手里没剑就不该出剑招】剑键按下时，只有兵器真的在手上才走剑连；
+            // 空手、剑还插在鞘里、兵器放在兵器架上——三种情况一律走拳连。
+            // 从前这里无条件走剑连，于是空手也能挥出一套大剑的伤害与距离。
+            var chain = btn == AttackBtn.Kick && ArmedNow ? SwordChain : PunchChain;
             var s = chain[nextDepth];
             // 体力不足【不再中断连段】——此前静默 EndCombo 是"连打时突然卡住"的主因：
             // 满体力连打约 3 秒就见底，之后每次出招都失败，人站在原地不动。
@@ -816,6 +866,11 @@ namespace AdversityRoad.Combat
 
         void StartCharge()
         {
+            // 【这里曾经有一条重击后摇冷却，已撤销】
+            // 玩家的原话："不应该给玩家潜能加限制，这个游戏是开放能力的……
+            // 为了公平，应该提高敌人的战斗力。" 这是设计方向的决定，不是数值争论：
+            // 熟练度带来的胜率提升是这个游戏想要的东西，不该由系统按住。
+            // 连点重击造成的失衡改从**敌人那一侧**补（见 EnemyController 的四项）。
             if (!_player.Stats.SpendStamina(6f)) return;
             Fusion.Push(MoveToken.Heavy);   // 重击也是可入连招的元素
             EndCombo();
@@ -860,6 +915,7 @@ namespace AdversityRoad.Combat
         }
 
         Coroutine _heavyComboRoutine;
+
 
         /// <summary>蓄力释放二连击：巨剑跳劈 → 紧接巨剑旋风斩（快速无缝衔接）。
         /// 两段均【必中】（无法格挡/闪避/对攻化解）；攻击范围随蓄力大幅增大
@@ -1103,7 +1159,11 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, true,
                 blade ? new Color(0.7f, 0.9f, 1f) : new Color(1f, 0.75f, 0.45f));
-            if (weaponHitbox != null) weaponHitbox.SetShape(spec.Size, spec.center);
+            if (weaponHitbox != null)
+            {
+                RefreshReach();
+                weaponHitbox.SetShape(spec.Size, spec.center, pose);
+            }
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(
                 HitboxWindow(0.09f, 0.26f, dmg, spec.postureMult, spec.knockback, true));
@@ -1147,7 +1207,8 @@ namespace AdversityRoad.Combat
             float dmg = baseDamage * spec.damageMult * CritMult() * Fusion.FusionMult;
             CombatFeedback.SwingArc(transform, false, new Color(0.7f, 0.85f, 1f));
             if (weaponHitbox == null) return;
-            weaponHitbox.SetShape(spec.Size, spec.center);
+            RefreshReach();
+            weaponHitbox.SetShape(spec.Size, spec.center, PoseState.SwordThrust);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(
                 HitboxWindow(0.1f, 0.18f, dmg, spec.postureMult, spec.knockback, true));
@@ -1502,6 +1563,46 @@ namespace AdversityRoad.Combat
         /// 设计原则：招式越强范围越大——蓄力/绝招终结 > 连段末段 > 起手轻击；
         /// 形状对应轨迹——突刺长而窄（直线）、横斩横宽（横扫弧）、撩斩纵高（下→上弧）、
         /// 旋风斩/扫堂腿环身 360°、跳劈罩住落点、扫堂贴地。</summary>
+        // ===== 够不够得着：按真实的手臂长 / 腿长 / 刃长算 =====
+        //
+        // 玩家的原话："一个人拿一米长的棍子能恰好够着 1~3 米内的物体，
+        // 但如果他手里没有那根棍子，显然不应该够得着。"
+        // 此前这个工程里每一招的判定框长度都是写死的常量，与手里有没有兵器无关：
+        // 空手横斩照样伸到身前 1.85 米。这两个成员把"手里有什么"接进判定。
+        Player.PlayerAppearance _appearanceRef;
+        float _reachAt = -1f;
+
+        /// <summary>兵器此刻是不是真的握在手上（空手 / 未出鞘 / 放在兵器架上都算否）。</summary>
+        public bool ArmedNow
+        {
+            get
+            {
+                if (_appearanceRef == null) _appearanceRef = GetComponentInChildren<Player.PlayerAppearance>();
+                return _appearanceRef == null || _appearanceRef.IsWeaponDrawn;
+            }
+        }
+
+        /// <summary>
+        /// 刷新实测攻击距离并写进判定框。每次出招前调一次——
+        /// 拔刀/收刀、换兵器、换角色都会改变这三个长度，只在装配时量一次是不够的。
+        /// 同一帧内重复调用只量一次（一次出招会经过好几个设形点）。
+        /// </summary>
+        public void RefreshReach()
+        {
+            if (weaponHitbox == null) return;
+            if (Mathf.Approximately(_reachAt, Time.time)) return;
+            _reachAt = Time.time;
+            if (_appearanceRef == null) _appearanceRef = GetComponentInChildren<Player.PlayerAppearance>();
+            Transform model = _appearanceRef != null ? _appearanceRef.ModelRoot : null;
+            Transform weapon = _appearanceRef != null && _appearanceRef.IsWeaponDrawn
+                ? (_appearanceRef.WeaponInHand
+                   ?? (_anim != null ? _anim.weaponPivot : null))
+                : null;
+            // 玩家侧的"手里有没有东西"是确知的（IsWeaponDrawn 明确回答了这件事），
+            // 所以 bladeKnown 恒为真：出鞘就按量到的刃长算，收鞘/空手就按 0 算。
+            weaponHitbox.reach = ReachModel.Measure(transform, model, weapon, true);
+        }
+
         public static void PoseHitShape(PoseState p, out Vector3 size, out Vector3 center)
         {
             // 判定框统一由招式规格表派生（轨迹 → 形状）：改数值只改 MoveTable 一处，
@@ -1547,7 +1648,8 @@ namespace AdversityRoad.Combat
                 size *= shapeScale;
                 center.z *= shapeScale;
             }
-            weaponHitbox.SetShape(size, center);
+            RefreshReach();
+            weaponHitbox.SetShape(size, center, shapePose);
             if (_hitboxRoutine != null) StopCoroutine(_hitboxRoutine);
             _hitboxRoutine = StartCoroutine(HitboxWindow(windup, open, dmg, posture, knockback,
                 buildMomentum, unblockable));
@@ -1559,7 +1661,19 @@ namespace AdversityRoad.Combat
             yield return new WaitForSeconds(windup);
             weaponHitbox.onHit = h =>
             {
-                if (buildMomentum) AddMomentum(1);
+                // 【意势按命中次数攒，不是一击一势】
+                // 原本每命中一次就 +1 势：轻连段第一下落地就有 1 势（绝招 ×7~10），
+                // 第三下落地就满 3 势（必杀四段合计 ×16~21 = 320~420 点原始伤害）。
+                // 也就是说"打三下 → 必杀 → 死"是任何一档敌人的通用解，
+                // 而这条路径上敌人的生命几乎不参与——这正是"敌人非常容易被打死"
+                // 在改了生命之后依然如故的原因：杀他们的从来不是连段。
+                // 绝招的 7~21 倍是**花资源换来的爆发**，那资源就必须真的稀缺：
+                // 4 次命中 ≈ 一整套连段 = 1 势，攒满必杀要 12 次命中 ≈ 3 套连段。
+                if (buildMomentum && ++_momentumHits >= HitsPerMomentum)
+                {
+                    _momentumHits = 0;
+                    AddMomentum(1);
+                }
                 if (Dyn() != null) _dynamics.OnHitLanded(dmg >= heavyDamage);
                 // 连段计数（伤害衰减用）：命中即累加，断手复位
                 if (Time.time - _lastComboHitTime > 1.5f) _comboHits = 0;
@@ -1918,7 +2032,10 @@ namespace AdversityRoad.Combat
 
             if (dmg.physicalDamage > 0)
             {
-                float phys = dmg.physicalDamage * partProf.damage;
+                // 命中质量：与敌人侧同一套规则（见 Hitbox.ApplyHitQuality）。
+                // 攻防两侧用同一份判据，玩家才可能从挨打里学到"它这一下是够到了还是擦到"。
+                float quality = dmg.hitQuality > 0.001f ? dmg.hitQuality : 1f;
+                float phys = dmg.physicalDamage * partProf.damage * quality;
                 // 敌方偷袭：从背后被打 = 趁其不备，1.4 倍伤害且格挡无效（格挡只护正面）
                 // 背刺判定收窄：原来 Dot>0.35 等于把身后 138° 的整个扇区都算背刺，
                 // 被围住时总有一个敌人落在里面——玩家举着盾却一直"挡不住"，

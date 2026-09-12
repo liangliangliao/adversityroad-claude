@@ -84,7 +84,7 @@ namespace AdversityRoad.UI
             var mrt = _move.rectTransform;
             mrt.anchorMin = mrt.anchorMax = new Vector2(1f, 1f);
             mrt.pivot = new Vector2(1f, 1f);
-            mrt.anchoredPosition = new Vector2(-24f, -226f);
+            mrt.anchoredPosition = new Vector2(-24f, -232f);
             mrt.sizeDelta = new Vector2(700f, 40f);
 
             // 第三行：**搓杆时的整条链**。"看不到角色自己的移动节奏"这句话，
@@ -105,7 +105,7 @@ namespace AdversityRoad.UI
             var srt = _spin.rectTransform;
             srt.anchorMin = srt.anchorMax = new Vector2(1f, 1f);
             srt.pivot = new Vector2(1f, 1f);
-            srt.anchoredPosition = new Vector2(-24f, -262f);
+            srt.anchoredPosition = new Vector2(-24f, -274f);
             srt.sizeDelta = new Vector2(760f, 40f);
 
             // 第四行：**此刻画面上真正在播的动画**。
@@ -124,7 +124,7 @@ namespace AdversityRoad.UI
             var art = _anim4.rectTransform;
             art.anchorMin = art.anchorMax = new Vector2(1f, 1f);
             art.pivot = new Vector2(1f, 1f);
-            art.anchoredPosition = new Vector2(-24f, -298f);
+            art.anchoredPosition = new Vector2(-24f, -316f);
             art.sizeDelta = new Vector2(900f, 40f);
 
             // 第五行：**最近那个敌人**的动画实况。
@@ -144,8 +144,44 @@ namespace AdversityRoad.UI
             var ert = _foe5.rectTransform;
             ert.anchorMin = ert.anchorMax = new Vector2(1f, 1f);
             ert.pivot = new Vector2(1f, 1f);
-            ert.anchoredPosition = new Vector2(-24f, -334f);
+            ert.anchoredPosition = new Vector2(-24f, -358f);
             ert.sizeDelta = new Vector2(900f, 40f);
+
+            // 第六行：**最近那个敌人的战斗实况**（滚动 6 秒）。
+            //
+            // 【为什么加这一行】"敌人被压着打、起不来"这件事我改了四轮：
+            // 每一轮都是读代码推理、改参数、在 CI 里算一张表说"这样应该就对了"，
+            // 然后实机反馈"没变化"。四次都这样，说明我对运行时到底发生了什么的
+            // 模型是错的，而错在哪儿光看代码看不出来——CI 那张表算的是**规则**，
+            // 不是**实况**。规则算得再对，只要有一条我没想到的路径绕过去，结果就是零。
+            //
+            // 这一行直接量出实况：它有百分之多少的时间在硬直、进硬直分别走的哪条路
+            //（受击/破防/前摇被打断）、它到底挥出过几刀、霸体挡下过几次。
+            // 打一场再看这一行，就能一次分清三件事：
+            //   · 硬直占比高 → 还是被锁，闸没关严；
+            //   · 硬直占比低但出手=0 → 它有机会却不出手（问题在出手冷却/攻击令牌）；
+            //   · 硬直占比低、出手也有 → 规则已经对了，剩下的是手感取舍。
+            var c6 = new GameObject("FoeCombatText");
+            c6.transform.SetParent(go.transform, false);
+            _foe6 = c6.AddComponent<Text>();
+            _foe6.font = _text.font;
+            _foe6.fontSize = 24;
+            _foe6.alignment = TextAnchor.UpperRight;
+            _foe6.color = new Color(1f, 0.7f, 0.85f);
+            _foe6.raycastTarget = false;
+            _foe6.horizontalOverflow = HorizontalWrapMode.Overflow;
+            var crt = _foe6.rectTransform;
+            crt.anchorMin = crt.anchorMax = new Vector2(1f, 1f);
+            crt.pivot = new Vector2(1f, 1f);
+            // 【整栈行距从 36 改成 42】行高是 40，而原来每行只隔 36——
+            // 也就是说**任意相邻两行都压着 4 像素**，一直如此，只是勉强还读得出来。
+            // 我加第六行时写了 y=-370，那儿已经坐着 _slip5（滑行诊断），
+            // 两行 40 高的文字完全重叠，截图上读出来是
+            // "硬直占比 0% (0.0/2:幅 -进硬直 敞脚击00破防0峰值单帧…"——
+            // 我专门为了看实况加的这一行，自己把自己盖掉了。
+            // 现在行距 42 > 行高 40，整栈八行一条都不压；两行"敌人"排在一起。
+            crt.anchoredPosition = new Vector2(-24f, -400f);
+            crt.sizeDelta = new Vector2(1000f, 40f);
 
             // ===== 动作横幅：每做出一个动作，屏幕中下方打出它用的动画 =====
             // 右上角那几行是**状态**（此刻在播什么），密、小、一直在变，
@@ -193,7 +229,7 @@ namespace AdversityRoad.UI
             var srt5 = _slip5.rectTransform;
             srt5.anchorMin = srt5.anchorMax = new Vector2(1f, 1f);
             srt5.pivot = new Vector2(1f, 1f);
-            srt5.anchoredPosition = new Vector2(-24f, -370f);
+            srt5.anchoredPosition = new Vector2(-24f, -442f);
             srt5.sizeDelta = new Vector2(900f, 40f);
 
             // 第六行：镜头。**「见自己」是这一行里唯一真正要紧的**——
@@ -210,13 +246,14 @@ namespace AdversityRoad.UI
             var srt6 = _cam6.rectTransform;
             srt6.anchorMin = srt6.anchorMax = new Vector2(1f, 1f);
             srt6.pivot = new Vector2(1f, 1f);
-            srt6.anchoredPosition = new Vector2(-24f, -406f);
+            srt6.anchoredPosition = new Vector2(-24f, -484f);
             srt6.sizeDelta = new Vector2(900f, 40f);
         }
 
         Text _anim4, _slip5, _cam6;
 
         Text _foe5;
+        Text _foe6;   // 敌人战斗实况（硬直占比 / 进硬直路径 / 出手次数）
         Text _banner;           // 动作横幅（事件式，播完淡出）
         Image _bannerBg;
         float _bannerUntil;     // 横幅显示到什么时候（unscaledTime）
@@ -382,6 +419,19 @@ namespace AdversityRoad.UI
                                             : new Color(1f, 0.85f, 0.6f);
                     }
                     else _foe5.text = "";
+
+                    // 第六行：同一个敌人的战斗实况（见构造里的推导）
+                    if (_foe6 != null)
+                    {
+                        if (near != null)
+                        {
+                            _foe6.text = near.TraceLine();
+                            // 硬直占比超过三分之一就标红：那已经越过了本该被预算挡住的线
+                            _foe6.color = near.StaggerDuty > 0.34f
+                                ? new Color(1f, 0.4f, 0.4f) : new Color(1f, 0.7f, 0.85f);
+                        }
+                        else _foe6.text = "";
+                    }
                 }
                 // ---- 动作横幅：起播时刻一变，就是"又做了一个动作" ----
                 // 用「片段名 + 起播时刻」当身份：连按同一招时片段名不变，

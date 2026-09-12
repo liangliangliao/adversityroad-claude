@@ -43,6 +43,15 @@ namespace AdversityRoad.Combat
             if (p == null) return;
             if (Vector3.Distance(transform.position, p.transform.position) > 1.6f) return;
 
+            // 伸手去拿的那一下。此前拾取是"走过去、东西凭空消失"——
+            // 补给在低谷线上是玩法的重点，却没有任何身体动作，读起来像穿模。
+            // 主库是一整套巨剑动作，没有任何"拿东西"的片段；UAL 的 PickUp_Table
+            // 正是这个缺口，这才是"补充"该补的地方（见 PlayableAnimator.UalAlwaysOn）。
+            // 拾取不该把腿停住（那会让移动变成滑行）——PlayFirstClip 在源头
+            // 就把按名字播的片段标成"上半身表演"，这里不必再标一遍。
+            var poser = p.GetComponentInChildren<HumanoidAnimator>();
+            if (poser != null) poser.PlayFirstClip(1.5f, 0.12f, "pickup_table", "interact");
+
             p.Stats.hp = Mathf.Min(p.Stats.maxHp, p.Stats.hp + hpRestore);
             GameEvents.RaisePlayerHpChanged(p.Stats.hp, p.Stats.maxHp);
             p.Stats.RestoreAxis(Personalization.WeaknessAxis.WillpowerCollapse, willRestore);

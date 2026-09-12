@@ -39,8 +39,33 @@ namespace AdversityRoad.Player
         public bool HasSheathWeapon => _sheath != null;
 
         /// <summary>兵器此刻在不在手上（无鞘武器视为一直在手）。动画层据此
-        /// 在持剑动作集与空手动作集之间切换。</summary>
+        /// 在持剑动作集与空手动作集之间切换；攻击距离也据此决定算不算刃长。</summary>
         public bool IsWeaponDrawn => _weaponHidden ? false : (_sheath == null || _sheath.IsDrawn);
+
+        /// <summary>当前骨架所在的模型根（量手臂/腿长用，见 ReachModel）。</summary>
+        public Transform ModelRoot =>
+            visualRoot != null && visualRoot.childCount > 0 ? visualRoot.GetChild(0) : null;
+
+        /// <summary>此刻真正握在手里的兵器（量刃长用）。没拔出来/放下了就是 null。</summary>
+        public Transform WeaponInHand
+        {
+            get
+            {
+                if (!IsWeaponDrawn) return null;
+                // 【要挑真的看得见的那一把】WeaponObjects 的第一项是模型自带兵器，
+                // 而换上外装武器之后自带的那把是被关掉渲染的——拿它去量刃长会量出 0，
+                // 于是一个明明握着剑的角色会被当成"刃长不明"。按渲染器是否开着来挑。
+                Transform fallback = null;
+                foreach (var t in WeaponObjects())
+                {
+                    if (t == null) continue;
+                    if (fallback == null) fallback = t;
+                    foreach (var r in t.GetComponentsInChildren<Renderer>(true))
+                        if (r != null && r.enabled) return t;
+                }
+                return fallback;
+            }
+        }
 
         /// <summary>
         /// 拔剑 / 收剑的候选片段（前面的优先）。
@@ -310,7 +335,18 @@ namespace AdversityRoad.Player
             // 两个模型都不可用才落到程序化方块骨骼。不染色：保持模型原本材质/肤色。
             Rig = null;
             string modelName = Preset == 1 ? "PlayerModel2" : "PlayerModel";
-            string animsFolder = Preset == 1 ? "Characters/Anims2" : null;
+            // 【角色·贰用的是默认动作库，不是 Anims2】
+            // Anims2 目录里只有拔剑/收剑两条通用片段，它在 PlayableAnimator 里的角色是
+            // **公共补充库**（ExtraFolder），两个角色都从那里取这两条——它当主库不成立。
+            // 从前这里传 "Characters/Anims2" 也没出事，是因为那个目录凑不出 idle/walk/run，
+            // PlayableAnimator 判 Valid=false，HumanoidAnimator.TryEnableMecanim 于是
+            // 回退到默认库——角色·贰实际跑的一直是角色·壹那 84 条调好的 Mixamo 片段。
+            // 9 月 6 日接入 UAL 之后，UAL 里的 Idle_Loop/Walk_Loop/Jog_Fwd_Loop
+            // 被 idle/walk/run 的候选链取中，Anims2 从此"有效"了，
+            // 那条回退**再也不会触发**：角色·贰被换成了一套 UAL 通用动作。
+            // 这就是"角色2动作动画完全不对、不知道哪来的动作"的全部成因。
+            // 依赖一条失败回退来得到正确结果，本来就是不该有的写法——直接写明用默认库。
+            string animsFolder = null;
             bool built = poser != null && MecanimCharacter.TryBuild(visualRoot, poser, true,
                 baseMaterial, WeaponKind.Sword, -1f, modelName, animsFolder);
             if (!built && Preset == 1 && poser != null)

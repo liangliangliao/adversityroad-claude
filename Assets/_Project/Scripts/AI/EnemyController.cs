@@ -19,6 +19,8 @@ namespace AdversityRoad.AI
     public class EnemyController : MonoBehaviour
     {
         public EnemyProfile profile = new EnemyProfile();
+        /// <summary>已经乘进 profile.maxHealth 的「敌人强度」倍率（见 ApplyToughness）。</summary>
+        float _toughApplied = 1f;
         public Hitbox attackHitbox;
         public Transform[] patrolPoints;
 
@@ -44,9 +46,296 @@ namespace AdversityRoad.AI
 
         float _attackCd, _mentalCd, _rangedCd, _staggerTimer, _tauntTimer;
         float _flinchCd;          // 受击霸体冷却：期间轻击不再打断（防无限硬直）
+        // ---- 连续硬直的三道闸（见 TakeHit 里「防连锁硬直」那段的推导）----
+        /// <summary>硬直连锁的统计窗口（秒）：窗口内被打进硬直越多次，硬直越短、霸体越长。</summary>
+        public const float StaggerChainWindow = 6f;
+
+        /// <summary>
+        /// 【硬直占空比上限】任意 6 秒里最多 2 秒可以处于硬直，超过就一律拒绝进硬直。
+        ///
+        /// 前四版我加的都是**渐近**的规则（递减、霸体冷却、起身窗、保底窗），
+        /// 每一条单独看都对，合起来却仍然挡不住"一直被压着"——因为它们都留了余地，
+        /// 而玩家手快就能把每一条余地填满。四轮实机反馈说的都是同一件事。
+        ///
+        /// 这一条不留余地：它是一个**硬上限**，与打了几下、打中哪儿、
+        /// 走的是哪条进硬直的路（受击/破防/打断前摇）统统无关。
+        /// 超预算之后敌人照常掉血、照常播受击反应，但不再进硬直状态——
+        /// 也就是说它在任何 6 秒里都至少有 4 秒是能动、能走、能出手的。
+        /// 唯一的例外是完美闪避/精准格挡打出的破绽（ForceBreak 直接调用）：
+        /// 那是玩家读招的确定奖励，本来就该无条件成立。
+        /// </summary>
+        // ③ 2.0 → 1.2 秒（占空比 33% → 20%）。实测硬直仍是挡住敌人的第一大项（34.7%）。
+        // 预算是硬夹在时长上的，改小立刻见效；玩家的输出一点没少，
+        // 少的是"对方被按在地上的时间"。
+        public const float StaggerBudget = 1.2f;
+
+        /// <summary>
+        /// 受击反应四档的硬直时长（秒）。索引 = HitReactionTier 的返回值。
+        ///   0 微颤   —— 不进硬直（只播 0.1 秒的一颤，正在出的招照常挥完）
+        ///   1 小踉跄 —— 四肢命中
+        ///   2 大踉跄 —— 胸腹命中 / 头部轻击 / 重击打四肢
+        ///   3 击倒   —— 头部重击，或一击打掉超过一成血
+        /// </summary>
+        public static readonly float[] StaggerSeconds = { 0f, 0.35f, 0.75f, 1.5f };
+
+        /// <summary>
+        /// 受击反应分档：打中哪儿 + 这一下真正打进去多少 → 反应有多大。
+        ///
+        /// 【为什么用「真正打进去的伤害」而不是招式的原始数值】
+        /// 旧的判据是 DamageResolver.IsHeavy(dmg)，读的是招式表里写的原始削韧/伤害，
+        /// 那个数在挥出去之前就定了——**与打中哪个部位、对方防御多高全都无关**。
+        /// 于是砍中小腿和砍中脑袋是同一个反应，一记被高防御吃掉大半的重击
+        /// 也照样把人打倒。这里改用 final（过完防御与部位系数之后真正掉的血），
+        /// 再叠一层部位本身的基准档：这才是"按伤害程度区分"该有的读法。
+        ///
+        /// 部位基准取自 BodyPartTable 的设计意图：头是唯一的会心区（反应最大），
+        /// 胸腹是基准，四肢伤害低但削韧高（所以是小踉跄而不是没反应），
+        /// 手脚末端只是擦到（微颤，连招都打不断）。
+        /// </summary>
+        int HitReactionTier(BodyPart part, float landed, bool heavy) =>
+            HitReactionTierOf(part, landed, heavy, profile.maxHealth);
+
+        /// <summary>同上，静态版：CI 诊断要在不生成敌人的情况下把这张表打出来。</summary>
+        public static int HitReactionTierOf(BodyPart part, float landed, bool heavy, float maxHealth)
+        {
+            int t;
+            switch (part)
+            {
+                case BodyPart.Head: t = 2; break;
+                case BodyPart.Chest:
+                case BodyPart.Abdomen: t = 1; break;
+                case BodyPart.Extremity: t = -1; break;
+                default: t = 0; break;   // 四肢：伤害低，反应也小
+            }
+            if (heavy) t += 1;
+            // 一击打掉超过一成血：不论打中哪儿都算大事
+            if (maxHealth > 0.01f && landed >= maxHealth * 0.12f) t += 1;
+            return Mathf.Clamp(t, 0, 3);
+        }
+
+        /// <summary>受击反应档位的中文名（诊断与调试叠层共用一份说法）。</summary>
+        public static string TierLabel(int tier)
+        {
+            switch (Mathf.Clamp(tier, 0, 3))
+            {
+                case 0: return "微颤(不打断)";
+                case 1: return "小踉跄";
+                case 2: return "大踉跄";
+                default: return "击倒";
+            }
+        }
+        float _poiseArmorUntil;   // 起身/破防恢复后的霸体窗：期间照常掉血，但不再被打进硬直
+        bool _wakeArmor;          // 起身后的**第一记反击**带霸体：不打断它的前摇（见 TakeHit 的打断段）
+
+        // ---- 战斗实况统计（滚动 6 秒窗口）----
+        // 【为什么要有这一组】前四版我都是读代码推理、改参数、在 CI 里算一张表说
+        // "这样应该就对了"，然后实机反馈"没变化"。四次都这样，说明我对运行时到底
+        // 发生了什么的模型是错的，而错在哪儿光看代码看不出来。
+        // 这组计数器把一场真实战斗里的关键事实直接量出来：敌人有多少比例的时间
+        // 在硬直、进硬直分别走的哪条路、它到底挥出过几刀、霸体挡下过几次打断。
+        // 打开「调试数据」就显示在右上角。有了它，下一轮就不必再猜。
+        float _winStart;
+        float _winStagger;          // 窗口内处于硬直的累计秒数
+        int _winFlinch;             // 因受击进硬直的次数
+        int _winPosture;            // 因韧性击破进硬直的次数
+        int _winInterrupt;          // 因前摇被打断进硬直的次数
+        int _winSwing;              // 真正挥出去的招数
+        int _winArmorSave;          // 霸体/预算挡下打断的次数
+        int _winTeleStart;          // 亮起过几次前摇
+        int _winTeleCancel;         // 其中被打断了几次（前摇没演完 = 玩家看不到规律）
+        bool _swingFiring;          // 正在"前摇结束→挥出"这一瞬：此时熄灭前摇不算被打断
+        // 上一个"有内容"的窗口的底稿：打完停手之后截图仍读得到（见 TraceLine）
+        float _lastStagger, _lastAt = -99f;
+        int _lastFlinch, _lastPosture, _lastInterrupt, _lastSwing, _lastArmorSave;
+
+        /// <summary>
+        /// "刚挨打不能立刻还手"这条规则最多能连续压制多久（秒）。
+        /// 超过就无条件放行——否则只要玩家不停手，它就永远等不到那 0.55 秒的空档。
+        /// </summary>
+        public const float DizzySuppressCap = 0.5f;
+        /// <summary>"刚挨打不还手"的窗口长度。**出手判据与日志判据必须读同一个数**——
+        /// 之前判据写 0.25、日志里 WhyNoSwing 写 0.55，于是日志把一批**根本没被挡住**
+        /// 的帧记成了"挨打眩晕"，那栏 48% 是虚高的。分成两个字面量就一定会再次漂移。</summary>
+        public const float DizzyWindow = 0.25f;
+        float _dizzyBlocked;        // 已经被上面那条规则连续挡了多久
+
+        /// <summary>脱手多久之后韧性开始回复（秒）。</summary>
+        public const float PostureCalm = 1.2f;
+        /// <summary>韧性每秒回复的比例（占满值）。</summary>
+        public const float PostureRegenPerSec = 0.25f;
+        float _lastPostureHitAt = -99f;
+
+        /// <summary>硬直预算是否已经用完（用完则本窗口内不再进硬直）。</summary>
+        bool PoiseBudgetSpent => _winStagger >= StaggerBudget;
+
+        /// <summary>
+        /// 把一次硬直的时长按【本窗口剩余预算】截断。
+        ///
+        /// 【为什么"入口拦一道"不够，必须在时长上硬夹】上一版我只在进硬直的入口
+        /// 判 PoiseBudgetSpent。实机数据（玩家截图）打脸得很干脆：
+        ///     硬直占比 43% (2.6/6.0s)  进硬直 受击1/破防2/打断0  出手0
+        /// 上限写的是 33%（2.0/6.0s），实际 43%。原因是入口判据看的是**进的那一刻**：
+        /// 一次 2.4 秒的破防在预算还剩着的时候获批，进去之后一路烧到 2.4 秒——
+        /// 预算是在它已经进去之后才被烧穿的，入口那一道根本管不着。
+        /// 夹在时长上就没有这个缝：无论从哪条路进、进几次，
+        /// 一个窗口里的硬直总时长都不可能超过预算。
+        /// </summary>
+        float ClampStagger(float seconds) =>
+            Mathf.Min(seconds, Mathf.Max(0f, StaggerBudget - _winStagger));
+
+        /// <summary>此刻是否被"刚挨打不还手"挡住（纯判定，无副作用）。
+        /// forced=被连续挡满 DizzySuppressCap 秒后的无条件放行。
+        /// 出手分支与日志栏都调这一个，不再各写一套。</summary>
+        bool DizzyNow(out bool forced)
+        {
+            forced = _dizzyBlocked > DizzySuppressCap;
+            if (forced) return false;
+            bool dizzy = Time.time - _lastHurtT <= DizzyWindow;
+            if (dizzy && (Time.time < _poiseArmorUntil || PoiseBudgetSpent)) dizzy = false;
+            return dizzy;
+        }
+
+        /// <summary>
+        /// 「出手 0」的时候，把**是什么在挡着它**直接写出来。
+        /// 两次实机取样出手都是 0，而我只能靠猜是冷却、是令牌、还是别的——
+        /// 结果真正的原因（连续挨打就永远等不到那段空档）猜了六版都没猜到。
+        /// 这一栏之后就不用猜了。判据一律走 DizzyNow / 同一组状态，
+        /// **不允许在这里另写一套阈值**——那会让日志描述一个并不存在的代码。
+        /// </summary>
+        string WhyNoSwing()
+        {
+            if (State == EnemyState.Dead) return "";
+            if (holdPosition) return "[候场]";
+            if (passive || undying) return "[非战型]";
+            if (State == EnemyState.Stagger) return "[硬直中]";
+            if (_player != null &&
+                Vector3.Distance(transform.position, _player.position) > profile.AttackRange * 1.2f)
+                return "[够不到]";
+            bool forcedNow;
+            if (DizzyNow(out forcedNow))
+                return "[挨打眩晕" + _dizzyBlocked.ToString("0.0") + "s]";
+            if (_attackCd > 0f) return "[冷却" + _attackCd.ToString("0.0") + "s]";
+            // 在够得着的距离上却还没进入 Attack 状态——这一档以前没有，
+            // 于是这些帧被上面那条 0.55 秒的错判吸收成了"挨打眩晕"。
+            if (State != EnemyState.Attack) return "[未进攻击态]";
+            return "[无令牌]";
+        }
+
+        // ---- 供日志逐帧落盘的只读视图（见 MoveLogger.FoeColumns）----
+        // 截图只能给一个瞬时快照，且常常不是在交手中截的；落进日志才有时间序列。
+        public float StaggerWindowSeconds => _winStagger;
+        public int WinFlinch => _winFlinch;
+        public int WinPosture => _winPosture;
+        public int WinInterrupt => _winInterrupt;
+        public int WinSwing => _winSwing;
+        public int WinArmorSave => _winArmorSave;
+        public int WinTeleStart => _winTeleStart;
+        public int WinTeleCancel => _winTeleCancel;
+        /// <summary>
+        /// 前摇警示此刻**在不在屏幕上真的看得见**（日志用）。
+        ///
+        /// 到目前为止我量的一直是"前摇跑了多久"——那证明的是它**运行**了，
+        /// 不是它**被看见**了。玩家说"完全没有任何前兆"，而我的数说前摇演完了 21/29 次，
+        /// 这两句话能同时成立，只可能是我量错了对象。这三个只读量补上那一半：
+        ///   RingVisible  红圈的 GameObject 激活且渲染器开着
+        ///   RingGroundDy 红圈距离脚底的高度（正常应 ≈0.05m；负数=埋在地里）
+        ///   MarkViewportY 头顶「！」在屏幕上的纵向位置（0~1 在画面内，越界=看不到）
+        /// </summary>
+        public bool RingVisible
+        {
+            get
+            {
+                if (_dangerRing == null || !_dangerRing.activeInHierarchy) return false;
+                var r = _dangerRing.GetComponent<MeshRenderer>();
+                return r != null && r.enabled && r.isVisible;
+            }
+        }
+
+        /// <summary>红圈相对脚底的高度（脚底 = 根节点下方 1 米，见 GameBootstrap 的胶囊）。</summary>
+        public float RingGroundDy =>
+            _dangerRing == null ? 0f
+            : _dangerRing.transform.position.y - (transform.position.y - 1f);
+
+        /// <summary>本次招串的名字与当前段号（日志用：验证"招式是否真的多变"）。</summary>
+        public string StringName => _string.stages != null ? _string.name : "";
+        public int StringStage => _stage;
+        public int StringLen => _string.stages != null ? _string.stages.Length : 0;
+
+        /// <summary>此刻敌人动作层真正在播的片段名（日志用）。</summary>
+        public string PlayingClipNow => poser != null ? poser.PlayingClip : "";
+
+        /// <summary>形体前摇此刻的施加权重与族别（屏幕提示关掉后，读招的唯一可测证据）。</summary>
+        public float WindupWeightNow => poser != null ? poser.WindupWeight : 0f;
+        public int WindupShapeNow => poser != null ? poser.WindupShape : -1;
+
+        /// <summary>
+        /// 敌人的**身体**此刻在不在画面内（0~1 在画面内；相机缺失或在镜头身后返回 -9）。
+        ///
+        /// 【上一版这里用错了锚点】我拿头顶警示记号当代理，而那个锚点挂在根节点上方
+        /// 3.3 米——根节点本身在身体中心，所以它在头顶再往上约 2.3 米。
+        /// 交战中位距离只有 2.1 米，这个点**按几何必然**出画面上沿：
+        /// 实机日志里 64% 的前摇帧"不在画面内"，量的其实是那个虚点，不是敌人。
+        /// 差点又据此下一个错结论。锚点改成 transform.position（身体中心）。
+        /// </summary>
+        public float MarkViewportY
+        {
+            get
+            {
+                var cam = Camera.main;
+                if (cam == null) return -9f;
+                Vector3 vp = cam.WorldToViewportPoint(transform.position);
+                return vp.z <= 0f ? -9f : vp.y;
+            }
+        }
+
+        /// <summary>此刻是否处于前摇，以及还剩多久（日志用；不在前摇时为 0）。</summary>
+        public float TelegraphLeft => _telegraphing ? Mathf.Max(0f, _windupTotal - _telegraphT) : 0f;
+        public float HealthNow => _hp;
+        public float PoiseNow => _posture;
+        public float AttackCooldown => Mathf.Max(0f, _attackCd);
+        /// <summary>此刻是什么在挡着它出手（不出手时才有值）。</summary>
+        public string SwingBlockReason => WhyNoSwing();
+
+        /// <summary>最近这一窗口里处于硬直的时间占比（右上角据此标红）。</summary>
+        // 分母是整个窗口，不是"已经过去多久"——后者在窗口开头会算出 >1 的占比，
+        // 实测日志里 foeStaggerPct 出现过 2.002，那是分母的错，不是硬直真的超了。
+        public float StaggerDuty => _winStagger / StaggerChainWindow;
+
+        /// <summary>右上角诊断行：这一个敌人最近 6 秒的战斗实况。</summary>
+        public string TraceLine()
+        {
+            // 本窗口还没打起来，就显示上一个有内容的窗口（60 秒内有效）——
+            // 打完停手再截图也读得到，标上「上一段」以免和当下混淆。
+            bool live = _winFlinch + _winPosture + _winInterrupt + _winSwing > 0;
+            if (!live && Time.time - _lastAt < 60f)
+                return "【实况·上一段】硬直 " + _lastStagger.ToString("0.0") + "/"
+                     + StaggerBudget.ToString("0.0") + "s预算 (整窗 "
+                     + (_lastStagger / StaggerChainWindow * 100f).ToString("0") + "%)"
+                     + "  进硬直 受击" + _lastFlinch + "/破防" + _lastPosture
+                     + "/打断" + _lastInterrupt
+                     + "  出手" + _lastSwing + "  霸体挡下" + _lastArmorSave;
+            // 【分母必须是整窗，不能是"已过去多久"】上一版写的是
+            // _winStagger / (Time.time - _winStart)：窗口刚开头时分母极小，
+            // 于是 1.8 秒硬直在第 1.9 秒被显示成 94%，看着像上限完全失效。
+            // 实际那一次是 1.8/2.0 的预算、正好被夹在上限上——数字没错，是分母错了。
+            // 现在统一按整个 6 秒窗口算，并把预算用了多少直接写出来。
+            return "【实况】硬直 " + _winStagger.ToString("0.0") + "/"
+                 + StaggerBudget.ToString("0.0") + "s预算 (整窗 "
+                 + (_winStagger / StaggerChainWindow * 100f).ToString("0") + "%)"
+                 + "  进硬直 受击" + _winFlinch + "/破防" + _winPosture + "/打断" + _winInterrupt
+                 + "  出手" + _winSwing + (_winSwing > 0 ? "" : WhyNoSwing())
+                 + "  霸体挡下" + _winArmorSave
+                 + (PoiseBudgetSpent ? "  [预算用尽]" : "")
+                 + (Time.time < _poiseArmorUntil ? "  [霸体窗]" : "")
+                 + (_wakeArmor ? "  [起身霸体]" : "");
+        }
+        int _staggerChain;        // 6 秒窗口内已经被打进硬直几次
+        float _staggerChainUntil; // 这个窗口什么时候过期
         float _defendCd;          // 防御冷却：闪避/格挡后短时间内不再防（防无敌化）
         PoseState _attackPose = PoseState.Attack;   // 本次出手选中的招式（多样化）
-        int _comboLeft;           // 精英/首领的连击追加段数
+        int _comboLeft;           // 本串连招还剩几段
+        AttackString _string;     // 本次出手选中的招串（见 EnemyMoveSet）
+        int _stage;               // 打到第几段
         float _strafeDir = 1f, _strafeFlipT;        // 交战游走（像人一样找角度）
         Vector3 _lastSelfPos;     // 位移驱动动画：任何来源的移动都要迈脚，不许滑行
         float _measuredSpeed;
@@ -67,6 +356,8 @@ namespace AdversityRoad.AI
 
         /// <summary>连击追加段的前摇（秒）：比起手短，但绝不为零。</summary>
         public const float ComboWindup = 0.34f;
+        /// <summary>远程发弹的前摇时长（与进度条、形体征兆共用同一个数）。</summary>
+        public const float RangedWindup = 0.5f;
 
         /// <summary>是否正处于攻击前摇（威胁指示器据此在屏幕边缘标出看不见的敌人）。</summary>
         public bool Telegraphing => _telegraphing;
@@ -162,6 +453,9 @@ namespace AdversityRoad.AI
         void Awake()
         {
             _agent = GetComponent<NavMeshAgent>();
+            // 记下这个 Agent 本来的避让档位：倒地期间会临时关掉，起身要恢复成原值，
+            // 而不是恢复成某个我在这里猜的常量。
+            if (_agent != null) _avoidanceDefault = _agent.obstacleAvoidanceType;
             _anim = GetComponentInChildren<Animator>();
         }
 
@@ -169,7 +463,7 @@ namespace AdversityRoad.AI
         // 之后才注入，Awake 里读取会拿到默认值。
         void Start()
         {
-            _hp = profile.maxHealth;
+            ApplyToughness(true);
             _posture = profile.posture;
             _agent.speed = profile.MoveSpeed;
             _tauntTimer = Random.Range(4f, 9f);
@@ -239,6 +533,11 @@ namespace AdversityRoad.AI
         /// </summary>
         void ShowTelegraph(bool on, bool perilous = false)
         {
+            // 统计前摇有没有演完：亮起算一次，还没打出去就熄掉算一次被打断。
+            // "前兆没有前兆"这件事光看代码看不出来——前兆的代码明明齐全，
+            // 要看的是它有多少次真的演到底。这两个数直接落进日志（见 MoveLogger）。
+            if (on && !_telegraphing) _winTeleStart++;
+            else if (!on && _telegraphing && !_swingFiring) _winTeleCancel++;
             _telegraphing = on;
             _telegraphT = 0f;
             if (!on)
@@ -252,9 +551,11 @@ namespace AdversityRoad.AI
 
             _spec = TelegraphTable.Get(_attackPose, perilous);
 
+            // 头顶记号与脚下红圈属于"屏幕提示层"，默认不显示（见 GameDebug.TelegraphOverlays）：
+            // 读招要靠身体和节拍，不靠符号。
             if (_alertMark != null)
             {
-                _alertMark.text = _spec.mark;
+                _alertMark.text = Core.GameDebug.TelegraphOverlays ? _spec.mark : "";
                 _alertMark.color = _spec.color;
             }
             if (_dangerRingMat != null)
@@ -265,7 +566,7 @@ namespace AdversityRoad.AI
             }
             if (_dangerRing != null)
             {
-                _dangerRing.SetActive(true);
+                _dangerRing.SetActive(Core.GameDebug.TelegraphOverlays);
                 // 指示器按招式轨迹取形：横斩是横向宽弧、突刺是细长直线、扫腿是贴地宽环。
                 // 「往哪躲」于是有画面依据，而不是全场统一一个圆圈。
                 _dangerRingBaseScale = new Vector3(_spec.ring.x, 0.03f, _spec.ring.y);
@@ -275,7 +576,7 @@ namespace AdversityRoad.AI
                     new Vector3(0, -0.95f + _spec.ringHeight, _spec.ring.y * 0.28f);
             }
             // 教学提示：只在玩家还没见过这一族时说一次（说多了就成了噪声）
-            if (NoteTelegraphSeen(_spec.kind, perilous))
+            if (Core.GameDebug.TelegraphOverlays && NoteTelegraphSeen(_spec.kind, perilous))
                 GameEvents.RaiseSubtitle("【" + _spec.name + "】" + _spec.answer);
         }
 
@@ -313,9 +614,16 @@ namespace AdversityRoad.AI
             // 形体征兆：随进度加深的预备姿态（高举/后拉/压低……）——
             // 这是关了 UI 也读得出来的那一层
             if (poser != null) poser.SetWindup((int)_spec.kind, p01);
+            // 【前摇走满 ⇒ 出手】这是这一刀唯一的触发点。
+            // 好处是它和"前摇还剩多久"用的是同一个时钟：玩家看到的进度条涨满，
+            // 和刀真正落下来，永远是同一瞬间——不可能再出现"圈才涨到一半，刀已经到了"。
+            if (_teleMelee && _telegraphT >= _windupTotal) OpenAttackHitbox();
         }
 
         float _windupTotal;   // 本次前摇的总时长（进度条与形体征兆按它归一化）
+        /// <summary>本次前摇走满之后接的是近战挥击（true）还是远程发弹（false）。
+        /// 远程那一发仍由 Invoke(FireProjectile) 排，时钟不许替它出刀。</summary>
+        bool _teleMelee;
         float _lastCastShot = -99f;   // 上次绝招特写的时刻（节流：特写贵在稀有）
 
         void Update()
@@ -323,6 +631,48 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Dead) return;
             float dt = Time.deltaTime;
             _attackCd -= dt; _mentalCd -= dt; _rangedCd -= dt; _flinchCd -= dt; _defendCd -= dt;
+            // 滚动窗口：既给硬直占空比上限当分母，也给右上角那行实况当数据源
+            if (Time.time - _winStart > StaggerChainWindow)
+            {
+                // 【窗口翻页前先留一份底】否则打完手一停，6 秒一到全部归零，
+                // 截图永远只截得到一排 0——上一版玩家发来的正是这样一张图。
+                // 有内容才留底：安静的窗口不该把上一场真实数据冲掉。
+                if (_winFlinch + _winPosture + _winInterrupt + _winSwing > 0)
+                {
+                    _lastStagger = _winStagger; _lastFlinch = _winFlinch;
+                    _lastPosture = _winPosture; _lastInterrupt = _winInterrupt;
+                    _lastSwing = _winSwing; _lastArmorSave = _winArmorSave;
+                    _lastAt = Time.time;
+                }
+                _winStart = Time.time;
+                _winStagger = 0f;
+                _winFlinch = _winPosture = _winInterrupt = _winSwing = _winArmorSave = 0;
+                _winTeleStart = _winTeleCancel = 0;
+            }
+            if (State == EnemyState.Stagger) _winStagger += dt;
+
+            // ---- 韧性回复（此前完全没有，这是"一套连段就破防"的根）----
+            // 【实测的账】标准杂兵韧性 40，而玩家一套完整剑连的削韧是
+            // 10+12+14+28 = 64，还没算部位系数（打四肢是 ×1.35~1.5）。
+            // 也就是说**一套连段必定破防，还多出二十几点带进下一次**。
+            // 而破防 = 2.4 秒破绽 + 韧性回满，于是"打一套→破防→破绽里再打一套→
+            // 再破防"可以一直转下去。玩家截图里的「破防 2 次、占比 43%」就是它。
+            //
+            // 所有有韧性/架势系统的作品都给它回复（只狼的躯干值会自己降、
+            // 魂系的 poise 有恢复窗、仁王的气会回）：不回复的韧性条不是"架势"，
+            // 是一根**只减不增的第二血条**，破防也就成了必然事件而不是打出来的成果。
+            // 脱手 1.2 秒后按每秒 25% 回复；被打就重新计时。
+            // 【"挨打眩晕"的累加放在顶层】只要它最近挨过打、又不在硬直里，
+            // 就一直在被那条"刚挨打不还手"的规则压着——不管它此刻处于哪个状态。
+            // 放在 Attack 分支里累加是错的（见那里的注释）。
+            if (Time.time - _lastHurtT <= DizzyWindow && State != EnemyState.Stagger)
+                _dizzyBlocked += dt;
+            else if (State != EnemyState.Stagger && Time.time - _lastHurtT > 1.0f)
+                _dizzyBlocked = 0f;
+
+            if (State != EnemyState.Stagger && Time.time - _lastPostureHitAt > PostureCalm)
+                _posture = Mathf.Min(profile.posture,
+                    _posture + profile.posture * PostureRegenPerSec * dt);
             TickTelegraph(dt);
 
             // 实时同步生命值/韧性到头顶状态条（不依赖事件，任何来源的变化都可见）
@@ -454,10 +804,51 @@ namespace AdversityRoad.AI
             if (State == EnemyState.Stagger)
             {
                 _staggerTimer -= dt;
+                // ===== 躺在地上的人不该被推着走 =====
+                // 玩家反馈"敌人倒地时会在地上漂移"。机制是两条叠在一起：
+                //  ① StopMoving() 只在**进入**硬直的那一帧调了一次，它清的是那一帧的
+                //     速度；而倒地要躺 0.35~2.4 秒，这中间没有任何东西再按住它。
+                //  ② NavMeshAgent 即使 isStopped = true **仍然参与彼此避让**——
+                //     别的敌人和玩家从旁边挤过去，会把这个躺着的人推开。
+                //     倒在地上的人不是一个"会让路的人"，它此刻根本不该参与避让。
+                // 所以硬直期间每帧按住速度，并关掉避让；起身时再恢复。
+                // 击飞位移那一小段除外——那是有意的位移，不能被清零。
+                if (AgentReady && Time.time >= _knockFlyUntil)
+                {
+                    _agent.velocity = Vector3.zero;
+                    _agent.isStopped = true;
+                    _agent.obstacleAvoidanceType =
+                        UnityEngine.AI.ObstacleAvoidanceType.NoObstacleAvoidance;
+                }
                 UpdateEmotion("慌乱");
                 if (_staggerTimer <= 0)
                 {
+                    // 站起来了，重新参与避让（否则它以后永远从别人身上穿过去）
+                    if (AgentReady) _agent.obstacleAvoidanceType = _avoidanceDefault;
                     State = EnemyState.Chase;
+                    // 【起身霸体窗】倒地爬起来的那一下不能再被打回去。
+                    // 这是动作游戏的通行规则（起身无敌帧 / 受身）：没有它，
+                    // 玩家只要贴着倒地的敌人一直按，敌人就永远停在"倒下—爬起—又倒下"，
+                    // 一次还手都没有。这里不给无敌（伤害照吃），只给**不被打进硬直**——
+                    // 追打仍然有收益，但对方拿回了出招的权利。
+                    // 倒地起身比普通踉跄长：爬起来本来就更慢、更该被保护。
+                    // 【保底还手窗】被连续打进硬直 3 次以上之后，这一次恢复必定给到
+                    // 1.2 秒不受硬直的时间。前面的递减是"越来越短"，这一条是"一定有"——
+                    // 递减是渐近的，玩家手快就仍然可能把每一次间隙都填满；
+                    // 有了这条硬保证，"根本起不来"在规则上就不可能成立。
+                    float guard = _downed ? 0.9f : 0.45f;
+                    if (_staggerChain >= 3) guard = Mathf.Max(guard, 1.2f);
+                    _poiseArmorUntil = Time.time + guard;
+                    // 【起身反击】光有霸体窗还不够：出手冷却是 1.1~3.0 秒，
+                    // 硬直结束时它多半还在冷却里，于是"拿回了控制权却依然不还手"，
+                    // 玩家看到的仍然是一路被压着打。大作里敌人是**带着招爬起来的**
+                    // （魂系起身挥刀、只狼的兵卒起身反击），这里对齐：
+                    // 硬直结束把出手冷却压到 0.3 秒，配合上面的霸体窗，
+                    // 它这一刀能真的挥出来而不是刚抬手又被打断。
+                    _attackCd = Mathf.Min(_attackCd, 0.3f);
+                    // 起身反击必须**带霸体**，否则它就是一个更快的挨打循环：
+                    // 见 TakeHit 打断段里那条注释——起身→出招→前摇被打断→再硬直。
+                    _wakeArmor = true;
                     if (poser != null)
                     {
                         // 被击倒的要先播"起身过程"（倒地片段倒放：腿脚先动、身体渐立），
@@ -500,7 +891,13 @@ namespace AdversityRoad.AI
                     bool isBoss = profile.category == EnemyCategory.Boss;
                     // 围攻礼让（大作群战规则）：远处先逼近到「待战环」；只有抢到攻击令牌的
                     // 敌人才继续挤进近身发动攻击，其余在待战环外绕圈施压，不堆挤玩家身体。
-                    float standoff = profile.AttackRange + 1.8f;
+                    // 待战环 +1.8 → #52 收到 +0.8 → 现在回到 **+1.4 米**。
+                    // 收到 0.8 是我收过头了：前摇从 2.6 米处起手，而不是 3.6 米，
+                    // 手机屏幕上那 0.6 秒几乎读不出来——这直接加重了"没有前兆"的观感。
+                    // 1.4 米是折中：比 #52 之前逼得近（"够不到"仍然会明显下降），
+                    // 但前摇重新起在一个看得清的距离上。
+                    // 往回收的只有敌人这一侧的数，玩家侧一个字没动。
+                    float standoff = profile.AttackRange + 1.4f;
                     if (dist > standoff)
                     {
                         MoveTowards(_player.position, dt);   // 尚在环外：拉近到待战环，无需令牌
@@ -508,7 +905,8 @@ namespace AdversityRoad.AI
                     else if (isBoss || Combat.CombatDirector.TryAcquire(this, isBoss))
                     {
                         MoveTowards(_player.position, dt);   // 抢到攻击位：贴身
-                        if (dist <= profile.AttackRange) State = EnemyState.Attack;
+                        RefreshReach();
+                        if (dist <= ReachGate) State = EnemyState.Attack;
                     }
                     else
                     {
@@ -530,7 +928,12 @@ namespace AdversityRoad.AI
                     UpdateEmotion("狰狞");
                     StopMoving();
                     FaceTarget();
-                    if (dist > profile.AttackRange * 1.2f)
+                    // 【已经起手就把这一招打完】原本只要 dist 超过 AttackRange×1.2
+                    // 就退回 Chase——而玩家每一刀都把它推过这条线（实测 54%~82%），
+                    // 于是前摇一次次被距离判定取消。承诺之后不再中途退出：
+                    // 够不着就在落刀的一瞬踏前一步补上（AttackStep 本来就在做这件事）。
+                    bool committed2 = _telegraphing || Time.time < _swingUntil;
+                    if (dist > profile.AttackRange * 1.2f && !committed2)
                     {
                         Combat.CombatDirector.Release(this);   // 脱离攻击态：归还攻击令牌
                         State = EnemyState.Chase; break;
@@ -538,8 +941,35 @@ namespace AdversityRoad.AI
                     // 受击眩晕：刚被打中 0.55s 内头脑发懵，没有能力立即反击——
                     // 攻势停止后才逐步恢复出手（被打了不能若无其事地还手）；
                     // 攻击令牌（围攻礼让）：取到令牌才真正出手，否则只在下方走位伺机
-                    if (_attackCd <= 0 && Time.time - _lastHurtT > 0.55f &&
-                        Combat.CombatDirector.TryAcquire(this, profile.category == EnemyCategory.Boss))
+                    // ============ 这里是"敌人从不还手"的真正出口 ============
+                    // 实机两次取样，出手都是 0。而原因和硬直无关：
+                    // `Time.time - _lastHurtT > 0.55f` 要求它**连续 0.55 秒没有挨打**
+                    // 才允许出手。玩家一套剑连的链取消间隔是 0.19~0.32 秒——
+                    // 也就是说只要玩家不停手，这个条件**永远不可能成立**。
+                    // 它不需要被打进硬直，只要挨打比每 0.55 秒更密就够了。
+                    // 我前六版全部在改硬直，而真正把它按住的是这一行。
+                    //
+                    // 这条规则的本意（"刚被打中不能若无其事地还手"）是对的，
+                    // 但它没有上限，于是变成了无条件的压制。补两个出口，
+                    // 两个都对齐大作里"霸体期就是反击窗"的做法：
+                    //   ① 已经进入霸体窗 / 硬直预算用尽——那正是它该反击的时刻；
+                    //   ② 被这条规则连续挡住超过 DizzySuppressCap 秒，无条件放行。
+                    // 放行时一并给起身霸体，否则这一刀刚抬手就又被打断（#44 的教训）。
+                    // ② "刚挨打不还手"的窗口 0.55 → 0.25 秒（实测挡住 23.7% 的帧）。
+                    // 0.55 秒本来就长过玩家的连打间隔，等于永久压制；
+                    // 0.25 秒仍然保留"被打中的一瞬间不能若无其事地挥回来"这个观感，
+                    // 但不再是一条只要对方不停手就永不打开的闸。
+                    bool forced;
+                    bool dizzy = DizzyNow(out forced);
+                    // 【累加不在这里做】见 Update 顶层：这段代码只在 Attack 状态跑，
+                    // 而实机日志里敌人 35% 的时间在 Stagger、还有 Chase/MentalAttack，
+                    // 那些帧根本走不到这儿，累加器攒不起来；一回到 Attack 又被清零。
+                    // 实测 1.2 秒的保底放行**整场只触发过 1 帧**（[挨打眩晕1.1s] × 1）。
+                    if (forced) { _wakeArmor = true; _dizzyBlocked = 0f; }
+                    // 被玩家正在打的这一个，令牌也不该跟别人抢——它就是当前的交战对象。
+                    if (_attackCd <= 0 && !dizzy &&
+                        (forced || Time.time - _lastHurtT < 3f ||
+                         Combat.CombatDirector.TryAcquire(this, profile.category == EnemyCategory.Boss)))
                     { DoPhysicalAttack(); break; }
                     // 出手间隙像人一样左右游走找角度（而非钉在原地干等）；
                     // 挥击动作进行中绝不游走——脚下滑动会毁掉出招画面（漂移感）
@@ -656,12 +1086,6 @@ namespace AdversityRoad.AI
         }
 
         // 出手招式池：普通敌人用基础拳脚剑技，精英/首领追加重斩/旋风/腿法大招
-        static readonly PoseState[] BasicMoves =
-            { PoseState.Attack, PoseState.AttackUp, PoseState.SwordThrust,
-              PoseState.PunchCross, PoseState.AttackKick };
-        static readonly PoseState[] EliteMoves =
-            { PoseState.HeavyAttack, PoseState.AttackSpin, PoseState.SpinKick,
-              PoseState.SideKick, PoseState.JumpKick };
 
         /// <summary>
         /// 敌人招式的伤害/击退：统一从 EnemyMoveTable 取，不再散落魔数。
@@ -695,9 +1119,59 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>前摇基底定格在这一招动画的多前面（近乎第一帧）。
+        /// 取一丁点而不是一段：基底越静止，反向蓄势姿态越读得出来，
+        /// 落刀时"从静到动"的对比也越大。</summary>
+        public const float WindupHold = 0.06f;
+
+        /// <summary>
+        /// 前摇期间的身体：**定住在起手的那一帧，再叠上这一族反方向的蓄势姿态**。
+        ///
+        /// 【#67~#73 我走错的那条路，日志把它钉死了】
+        /// 我让前摇直接播"这一招自己的动画"（0→35% 慢放），落刀再从 35% 续上。
+        /// 实测 36 次前摇里 **33 次（92%）前摇最后一帧与出手第一帧是同一条片段**——
+        /// 也就是说攻击真正打出来的那一瞬间，画面上什么都没变：
+        /// 片段没换、姿势没换，唯一的差别是播放速度由慢变快。
+        /// 于是玩家要分辨的是「同一个动作的慢速版」与「正常速版」，
+        /// 在 2 米、0.6 秒、手机屏幕上这不是一个可分辨的信号。
+        /// 把屏幕符号全部关掉之后这是唯一线索，读不出来是必然的。
+        ///
+        /// 【读招的本质：预备动作的方向与攻击相反】
+        /// 劈之前要举高（向上），刺之前要收刀到腰（向后），扫之前要压低。
+        /// ApplyWindup 里那六族反向姿态本来就是照这个写的，
+        /// 但叠在"已经在向前挥的攻击动画"上就被抵消掉了，主视觉还是攻击本身。
+        /// 所以基底不能是正在走的攻击动画——要**定住**，让反向姿态成为唯一在动的东西。
+        ///
+        /// 现在的做法：
+        ///   基底 = 这一招动画的**第一帧附近定格**（速度压到极低、hold 住），
+        ///          保留"他握着什么、重心在哪"这层信息，但它本身不动；
+        ///   叠加 = 该族的反向蓄势姿态，由 ApplyWindup 拉满并保持；
+        ///   落刀 = 从 0 全速播完整招，同时反向姿态在 0.05 秒内卸掉。
+        /// 于是出手那一瞬有两件事同时发生：**定格的身体开始动 + 蓄势姿态弹开**。
+        /// 这才是"来了"这个信号本身，而且不依赖任何符号。
+        /// </summary>
+        void PlayWindupPose(float windup)
+        {
+            if (poser == null) return;
+            string clip = poser.ActionClipName(_attackPose);
+            float raw = string.IsNullOrEmpty(clip) ? 0f : poser.RestClipLength(clip);
+            if (raw > 0.05f && windup > 0.05f)
+            {
+                // 只取最前面一丁点并 hold 住：基底近乎定格，反向蓄势姿态才是动的那个。
+                if (poser.PlayRestClip(clip, false, true, 0.12f, 0.10f, 0f, WindupHold) > 0f)
+                    return;
+            }
+            poser.SetPose(PoseState.Charge);
+        }
+
         void DoPhysicalAttack()
         {
-            _attackCd = Mathf.Lerp(3.0f, 1.1f, profile.aggression);   // 更主动地找时机出手
+            // ① 出手冷却：3.0~1.1 秒 → 1.5~0.6 秒。
+            // 实测（movelog 131 秒 / 交战 41 秒）敌人只出手 6 次 = 0.15 次/秒，
+            // 而玩家 1.38 次/秒——攻防比 9.5 : 1。冷却本身挡掉了 12.6% 的帧。
+            // 玩家侧不做任何限制（他的原话：这个游戏是开放能力的），
+            // 差距只能从敌人这一侧补，这是四项里最直接的一项。
+            _attackCd = Mathf.Lerp(1.5f, 0.6f, profile.aggression);
             StopMoving();   // 蓄势前摇(Charge/聚气)即刻硬停：前摇期间原地不动，不前滑漂移
             TriggerAnim("Attack");
 
@@ -705,10 +1179,16 @@ namespace AdversityRoad.AI
             // 且有概率追加 1-2 段连击（高手连招压制）
             bool elite = profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f;
             bool useElite = elite && Random.value < (profile.category == EnemyCategory.Boss ? 0.45f : 0.25f);
-            var pool = useElite ? EliteMoves : BasicMoves;
-            _attackPose = pool[Random.Range(0, pool.Length)];
-            _comboLeft = profile.category == EnemyCategory.Boss ? Random.Range(1, 3)
-                       : elite && Random.value < 0.4f ? 1 : 0;
+            // 【按流派选一整串连招，而不是从十招里随机抓一招】
+            // 原来每个敌人——拳法也好、重武器也好——都抓同一个池子，
+            // 这就是"招式单一、变化太少"的成因：流派只决定要不要显示武器。
+            // 现在变化来自招串（每个流派几串、长度节奏各异），
+            // 规律仍来自招式族（同族前摇时长全场恒定），两者不冲突。
+            var set = EnemyMoveSet.For(archetype, useElite);
+            _string = set[Random.Range(0, set.Length)];
+            _stage = 0;
+            _attackPose = _string.stages[0];
+            _comboLeft = _string.stages.Length - 1;
 
             // 危险攻击（大作红光警示）：精英重招/Boss 有概率使出【不可格挡】的危险一击——
             // 头顶亮「危」、红圈更大更亮，只能闪避不能格挡，教玩家读招而非无脑格挡
@@ -724,6 +1204,7 @@ namespace AdversityRoad.AI
             // 敌人的强弱改由出手频率/连段长度/招式选择体现，而不是偷玩家的反应时间。
             float windup = Mathf.Max(MinWindup, TelegraphTable.Get(_attackPose, _perilous).windup);
             _windupTotal = windup;
+            _teleMelee = true;
             ShowTelegraph(true, _perilous);
             GameAudio.Play(GameAudio.Sfx.Alert, _perilous ? 0.75f : 0.55f, _spec.pitch);
             // 【绝招特写】不可格挡的大招值得一个镜头：把施展者框进画面、报出招名与应对，
@@ -733,25 +1214,48 @@ namespace AdversityRoad.AI
             // 两道克制：只有【首领】的不可格挡技才给特写，且同一个敌人 9 秒内最多一次。
             // 特写贵在稀有——杂兵每记红光都推一次镜头，镜头就成了噪声，
             // 玩家反而更看不清战场（这是"知道何时不特写"的那一半）。
-            if (_perilous && profile.category == EnemyCategory.Boss &&
+            if (Core.GameDebug.TelegraphOverlays && _perilous &&
+                profile.category == EnemyCategory.Boss &&
                 Time.time - _lastCastShot > 9f)
             {
                 _lastCastShot = Time.time;
                 CombatFeedback.EnemyCastShot(transform, Mathf.Min(windup, 1.1f),
                     profile.displayName + " · " + _spec.name, _spec.answer);
             }
-            if (poser != null) poser.SetPose(PoseState.Charge);
-            Invoke(nameof(OpenAttackHitbox), windup);
+            PlayWindupPose(windup);   // 前摇的身体 = 这一招自己的起手段（慢放）
+            // 【出手由前摇时钟驱动，不再用 Invoke 排队】见 TickTelegraph 末尾。
+            // 原来这里排一个 Invoke(OpenAttackHitbox, windup)，而好几条中止路径
+            // （安抚、候场、被打进硬直、转 passive）只调了 ShowTelegraph(false)，
+            // **没有取消那个已经排进队列的 Invoke**。那一刀于是会在下一次前摇
+            // 刚亮起 0.1~0.4 秒时落下来——前摇还剩半截，刀已经到脸上。
+            // 实测就是这样：10 次前摇里 6 次在还剩 0.21~0.52 秒时就出手了。
+            // 让时钟当唯一的裁判，这一整类"排队残留"就不存在了。
         }
 
         /// <summary>起手：播挥击动作。判定框延迟到动画的接触帧才开启（FireHitbox），
         /// 刀/脚真正碰到对方身体的那一刻伤害与特效同步出现。</summary>
         void OpenAttackHitbox()
         {
+            // 【_swingFiring 必须在 ShowTelegraph(false) 之前置位】
+            // 它原本写在这行下面第六行，也就是说 ShowTelegraph(false) 执行时它永远是
+            // false —— 于是**每一次打出去的招都被记成了一次"前摇被打断"**。
+            // #53/#54 我据此算出的"前摇打断率 86%"是这个计数错误的产物，不是实机事实：
+            // 三份日志里 teleCancel 恒等于 teleStart 就是这么来的。
+            if (State == EnemyState.Dead || attackHitbox == null) { ShowTelegraph(false); return; }
+            // 自保：这一刀只认"本次前摇走满"这一个来源。
+            // 没在前摇里、或前摇还没走满，就不是这一次该出的刀（历史上的排队残留）。
+            if (!_telegraphing || _telegraphT < _windupTotal - 0.02f) return;
+            _swingFiring = true;   // 这一次 ShowTelegraph(false) 是"打出去了"，不是被打断
             ShowTelegraph(false);
-            if (State == EnemyState.Dead || attackHitbox == null) return;
+            _swingFiring = false;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
+            // 【从头全速播完整招】前摇只把基底定格在动画最前面（WindupHold），
+            // 没有吃掉动作本身，所以这里从 0 播就是完整的一次挥击。
+            // 出手瞬间画面上有两件事同时发生：定格的身体开始动 + 反向蓄势姿态弹开——
+            // 这个"从静到动"的对比就是信号本身，不需要任何符号。
             if (poser != null) poser.SetPose(_attackPose);
+            _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
+            _winSwing++;
             float contact = ContactDelay(_attackPose);
             _swingUntil = Time.time + contact + 0.45f;
             StartCoroutine(AttackStep(contact));   // 踏前一步接上距离（替代滑行）
@@ -774,7 +1278,10 @@ namespace AdversityRoad.AI
             float gap = to.magnitude - profile.AttackRange * 0.75f;
             if (gap <= 0.05f || dur <= 0.01f) yield break;
             Vector3 dir = to.normalized;
-            float total = Mathf.Min(gap, 0.9f);   // 封顶 0.9m：踏一步，不是冲刺
+            // 封顶 0.9 → 1.3m：击退把它推开 0.26~0.49 米是常态，
+            // 0.9 米的一步在"被推出去之后还要补回来"的情况下常常差一点点。
+            // 仍然是一步，不是冲刺。
+            float total = Mathf.Min(gap, 1.3f);
             float moved = 0f, t = 0f;
             while (t < dur && State != EnemyState.Dead)
             {
@@ -793,6 +1300,55 @@ namespace AdversityRoad.AI
             }
         }
 
+        // ===== 敌人这一侧的"够不够得着"，规矩与玩家完全一致 =====
+        // 只给玩家上几何距离约束、敌人照旧凭空够到，那就是单方面削玩家。
+        float _reachAt = -1f;
+
+        /// <summary>
+        /// 它真正够得到的距离：实测的最长一条（兵器或腿）＋ 对方身体半径。
+        ///
+        /// 【为什么必须有这条】判定框现在按几何裁剪了，而 AI 判"该不该出手"用的是
+        /// profile.AttackRange（1.8~2.3m），那是当年按**没有裁剪**的判定框调出来的数。
+        /// 两边一旦对不上，敌人就会在自己够不到的距离上挥空——
+        /// 而"进入攻击距离却打不到人"正是 EnemyMoveTable 开头那段注释警告过的事。
+        /// 取两者的较小值：手里有兵器时这条线约 2.2m，压根不会限制它（AttackRange 最大 2.3）；
+        /// 只有在它确实够不到的时候才把它逼得再走近一点——那本来就该走近。
+        /// </summary>
+        float ReachGate
+        {
+            get
+            {
+                if (attackHitbox == null || !attackHitbox.reach.valid) return profile.AttackRange;
+                var r = attackHitbox.reach;
+                float best = Mathf.Max(r.LimitOf(Combat.ReachLimb.Weapon),
+                                       r.LimitOf(Combat.ReachLimb.Leg));
+                // 对方的受击体半径：刀碰到的是身体表面，不是他的中心点。
+                best += Combat.MecanimCharacter.TargetHeight * 0.17f;
+                return Mathf.Min(profile.AttackRange, best);
+            }
+        }
+
+        /// <summary>刷新这个敌人的实测攻击距离（手臂/腿/刃长）并写进判定框。</summary>
+        void RefreshReach()
+        {
+            if (attackHitbox == null) return;
+            if (Mathf.Approximately(_reachAt, Time.time)) return;
+            _reachAt = Time.time;
+            Transform model = poser != null && poser.MocapModel != null
+                ? poser.MocapModel
+                : (transform.childCount > 0 ? transform.GetChild(0) : null);
+            // 【用游戏自己认定的那把兵器】poser.weaponPivot 就是刀光挂上去的那个节点，
+            // 装配时由 MecanimCharacter.TryBuild / WeaponFactory 写入。
+            // 之前这里另找了一套（FindWeaponInModel），和装配用的不是同一条路——
+            // 判定距离认的兵器，必须就是画面上那把。
+            Transform weapon = poser != null ? poser.weaponPivot : null;
+            // 认不出兵器时 bladeKnown=false：兵器系招式不裁，保持原设计。
+            // 把"认不出"当成"空手"，会让一个握着长刀的敌人够不到人——
+            // 玩家实测到的正是这个：赤手空拳比敌人的长刀还够得远。
+            attackHitbox.reach = Combat.ReachModel.Measure(
+                transform, model, weapon, weapon != null);
+        }
+
         void FireHitbox()
         {
             if (State == EnemyState.Dead || attackHitbox == null) return;
@@ -800,7 +1356,10 @@ namespace AdversityRoad.AI
             // 判定框按招式轨迹取形：突刺细长（侧移可躲开）、横斩横宽、回旋斩环身 360°、
             // 重砸罩住一片。此前敌人所有招共用一个固定方盒，玩家读了招也无从"往哪躲"。
             var spec = Combat.EnemyMoveTable.Get(_attackPose);
-            attackHitbox.SetShape(spec.Size, spec.center);
+            // 【敌人走同一条规矩】够不够得着按它自己的手臂/腿/刃长算。
+            // 只给玩家上这条规则等于单方面削玩家，和「差距一律从敌人侧补」是反的。
+            RefreshReach();
+            attackHitbox.SetShape(spec.Size, spec.center, _attackPose);
             // 危险攻击：不可格挡（须闪避）+ 伤害/击退加成，兑现红光警示的威胁
             // 手臂伤情：出手明显变弱（打手臂的收益在这里兑现，玩家看得到）
             float armWeak = Time.time < _armHurtUntil ? 0.7f : 1f;
@@ -823,8 +1382,10 @@ namespace AdversityRoad.AI
                 Vector3.Distance(transform.position, _player.position) < profile.AttackRange * 1.6f)
             {
                 _comboLeft--;
-                var pool = Random.value < 0.5f ? BasicMoves : EliteMoves;
-                _attackPose = pool[Random.Range(0, pool.Length)];
+                // 招串的下一段——不是再随机抓一招。一串连招的节奏要能被记住。
+                _stage++;
+                _attackPose = _string.stages != null && _stage < _string.stages.Length
+                    ? _string.stages[_stage] : PoseState.Attack;
                 FaceTarget();
                 // 【连击段同样要有前摇】——此前这里直接排 OpenAttackHitbox，
                 // 也就是说敌人一套连招里只有第一下亮「！」，第二、三下是**零征兆**打到脸上。
@@ -833,10 +1394,11 @@ namespace AdversityRoad.AI
                 // 本作对玩家的承诺是「任何一次会造成伤害的攻击，出手前必定有可见警示」。
                 _perilous = false;   // 连击段不做不可格挡（不可格挡只出现在有完整前摇的起手）
                 _windupTotal = ComboWindup;
+                _teleMelee = true;
                 ShowTelegraph(true, false);
                 GameAudio.Play(GameAudio.Sfx.Alert, 0.45f, _spec.pitch + 0.1f);
-                if (poser != null) poser.SetPose(PoseState.Charge);
-                Invoke(nameof(OpenAttackHitbox), ComboWindup);
+                PlayWindupPose(ComboWindup);   // 连击段同样播该招自己的起手段
+                // 同样交给前摇时钟（见 DoPhysicalAttack 末尾的说明）
             }
             // 一套连招收尾：归还攻击令牌（让别的敌人有机会进攻——围攻礼让）
             else
@@ -869,9 +1431,14 @@ namespace AdversityRoad.AI
             FaceTarget();
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("凝念");
+            // 【远程这一发以前没设 _windupTotal】于是进度归一化的分母是 0，
+            // p01 恒为 0——红圈从头到尾停在最小那一档、形体征兆也不推进，
+            // 等于把"涨满即出手"这层信息整个抹掉了。补上它自己的 0.5 秒。
+            _windupTotal = RangedWindup;
+            _teleMelee = false;   // 这一次前摇后面接的是弹，不是刀
             ShowTelegraph(true);
             GameAudio.Play(GameAudio.Sfx.Alert, 0.4f);
-            Invoke(nameof(FireProjectile), 0.5f);
+            Invoke(nameof(FireProjectile), RangedWindup);
         }
 
         void FireProjectile()
@@ -1081,9 +1648,33 @@ namespace AdversityRoad.AI
 
             if (_telegraphing && !dmg.unblockable)
             {
-                // 霸体：精英/首领对轻击不吃打断（但重击/绝招仍打得断）
-                bool superArmor = (profile.category == EnemyCategory.Boss || profile.aggression >= 0.6f)
-                                  && !DamageResolver.IsHeavy(dmg);
+                // 【这里原来是"一直在踉跄"的真正出口，而且是我上一版亲手造的】
+                // 打断前摇走的是 ForceBreak(0.9f)，它**不看霸体窗、不吃硬直递减**，
+                // 是一条独立于上面那三道闸之外的进硬直通路。
+                // 而我上一版加的"起身反击"把出手冷却压到 0.3 秒，等于让敌人
+                // 一爬起来就进前摇——于是循环变成：
+                //     起身 → 0.3 秒后进前摇 → 玩家下一刀打断 → 硬直 0.9 秒 → 起身 …
+                // 它比改之前更起不来。这是我的回归，不是原有的老问题。
+                // 修法与大作一致：**起身反击自带霸体**（魂系起身挥刀打不断、
+                // 只狼兵卒起身反击有韧性），霸体窗内的前摇也一样打不断。
+                // 【前摇霸体改成全体，不再只给精英/首领】
+                // 玩家的原话："敌人的攻击没有任何前兆，很难预测和躲避。"
+                // 而前兆这套东西是齐的（同族恒定的 0.58~0.82 秒起手、
+                // 颜色即应对、头顶记号、地面红圈、起手音效、画面外方向箭头）。
+                // 真正的问题是**前兆几乎从来没有演完过**：玩家每秒出手 1.38 次，
+                // 而一次前摇要 0.6~0.8 秒——绝大多数前摇刚亮起就被下一刀打断，
+                // ShowTelegraph(false)，攻击取消。于是玩家从没机会把"高举过顶=0.78 秒后横斩"
+                // 这条规律看完整一次，自然也就学不会；偶尔漏过来的那一下，
+                // 读起来就是"毫无征兆"。
+                // **一个从没被看完的前兆，等于没有前兆。**
+                // 大作的通行做法是让敌人一旦起手就基本吃定这一招（魂系/只狼的敌人
+                // 极少被轻击打断），玩家的收益来自闪/挡/弹反，而不是"用连打把它的招洗掉"。
+                // 所以：普通攻击不再能打断前摇；**重击与绝招仍然打得断**，
+                // 完美闪避/精准格挡的破绽也照旧——读招抢攻的正收益一点没少。
+                bool superArmor = !DamageResolver.IsHeavy(dmg)
+                                  || _wakeArmor
+                                  || Time.time < _poiseArmorUntil
+                                  || PoiseBudgetSpent;
                 Vector3 mid = _player != null
                     ? (transform.position + _player.position) * 0.5f + Vector3.up * 1.3f
                     : transform.position + Vector3.up * 1.3f;
@@ -1091,11 +1682,20 @@ namespace AdversityRoad.AI
                 {
                     // 打不断：明确告诉玩家"这一下没能打断，它的招还会出来"——
                     // 招还带着前摇，所以仍然躲得掉，玩家知道该准备闪了
+                    _winArmorSave++;
                     CombatFeedback.DamageNumber(mid, "霸体·未打断", new Color(0.8f, 0.8f, 0.85f), 1.1f);
                 }
                 else
                 {
-                    ForceBreak(0.9f);   // 出招被打断 + 短硬直：读招抢攻的正收益
+                    // 打断的硬直也走硬直递减：短时间内反复打断它的前摇，
+                    // 每次能定住的时间越来越短（与被打进硬直共用同一个 6 秒窗口）。
+                    // 读招抢攻的收益仍在（招被取消掉了），只是不能靠它把人钉死。
+                    if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                    _staggerChainUntil = Time.time + StaggerChainWindow;
+                    _staggerChain++;
+                    _winInterrupt++;
+                    ForceBreak(ClampStagger(
+                        0.9f * Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1))));
                     CombatFeedback.DamageNumber(mid, "打断！", new Color(1f, 0.85f, 0.35f), 1.4f);
                     CombatFeedback.WeaponClash(mid);
                 }
@@ -1116,8 +1716,12 @@ namespace AdversityRoad.AI
             if (BodyPartTable.IsLeg(part)) _legHurtUntil = Time.time + 2.2f;
             else if (BodyPartTable.IsArm(part)) _armHurtUntil = Time.time + 2.2f;
 
+            // 命中质量（接触体积 × 刃位，见 Hitbox.ApplyHitQuality）：
+            // 擦到边、用剑柄怼、够到极限距离都打不透；刃中段罩满才吃满伤害。
+            // 0 表示这一击没走判定框（投射物/心理攻击），按 1 处理。
+            float quality = dmg.hitQuality > 0.001f ? dmg.hitQuality : 1f;
             float final = DamageResolver.ResolvePhysical(dmg.physicalDamage, profile.defense)
-                * sneakMult * partDmgMult;
+                * sneakMult * partDmgMult * quality;
             // 破绽期（韧性击破硬直）吃 1.6 倍伤害：奖励削韧打法。
             // 处决（大作破韧终结）：破绽期用重击/大招命中 = 巨额增伤 + 横幅 + 强顿帧慢镜，
             // 把「削韧破防→抓破绽猛攻」的循环做成有仪式感的收益。
@@ -1143,7 +1747,9 @@ namespace AdversityRoad.AI
                 _hp -= final;
                 if (minHpFloor > 0f) _hp = Mathf.Max(_hp, profile.maxHealth * minHpFloor);
             }
-            _posture -= dmg.postureDamage * partPostureMult * externalDamageMult;
+            // 削韧同样吃命中质量：擦到边不该和扎实的一刀削掉一样多的架势
+            _posture -= dmg.postureDamage * partPostureMult * externalDamageMult * quality;
+            _lastPostureHitAt = Time.time;   // 被削就重新计时，脱手才回（见 PostureCalm）
 
             // 受击反馈：命中点冲击（火花+白闪盘+顿帧）/ 闪红 / 伤害数字 / 血花 / 击退
             Color sparkCol = State == EnemyState.Stagger
@@ -1179,7 +1785,11 @@ namespace AdversityRoad.AI
             }
             // 伤害数字按部位分色分号：头部会心最大最亮，四肢偏冷色且带削韧提示。
             // （部位名由 HitReactionOverlay 在接触点弹出，这里不重复文字，只统一颜色语言）
-            CombatFeedback.DamageNumber(transform.position, Mathf.RoundToInt(final).ToString(),
+            // 命中质量够好/够差时在数字后面缀一个短标签：让"为什么这一下打得多/打得少"
+            // 从画面上就读得出来，而不是只在代码里成立（"贴身·力不透" / "刃中·扎实" / "擦到"）。
+            string qtag = Combat.Hitbox.QualityLabel(dmg);
+            CombatFeedback.DamageNumber(transform.position,
+                Mathf.RoundToInt(final).ToString() + (qtag.Length > 0 ? "  " + qtag : ""),
                 execution ? new Color(1f, 0.6f, 0.15f)
                 : headshot ? new Color(1f, 0.55f, 0.25f)
                 : State == EnemyState.Stagger ? new Color(1f, 0.85f, 0.25f)
@@ -1196,9 +1806,26 @@ namespace AdversityRoad.AI
                 // 上一版直接 ×0.85 当米用：巨剑横斩 knockback 4.5 → 一记轻击把人推开
                 // 3.8 米，连招直接脱靶。动作游戏的普通连段推开量在 0.2~0.8 米，
                 // 目的是「打得动」而不是「打飞」——推远了反而接不上下一段。
+                // 【出招承诺期间几乎不吃击退】这是三份日志找了九轮才找到的那条。
+                //
+                // 日志（183 秒）逐敌人算下来：每挨一下把敌人往后推 0.26~0.49 米，
+                // 而**54%~82% 的命中把它推到了自己够不着的距离之外**（>2.6 米）。
+                // 敌人的中位距离是 2.17~2.56 米，正好卡在 AttackRange×1.2 的边界上。
+                // 于是循环是：走进距离 → 起手 → 挨一刀被推出距离 →
+                // Attack 状态因 dist 超限直接退回 Chase、前摇取消 → 再走回来。
+                //
+                // 这一条同时解释了三个一直对不上的数：
+                //   前摇打断率 86%（它不是被"打断"，是被**推出去**的）
+                //   够不到 31%、Chase 占交战时间 44%
+                //   以及出手次数在三份日志里纹丝不动地都是 6 次——
+                //   我前面改的硬直/眩晕/冷却全都不是瓶颈，位移才是。
+                // 大作的通行做法：敌人一旦进入出招承诺，击退大幅衰减
+                //（魂系/怪猎里正在出招的敌人几乎推不动）。
+                bool committedNow = _telegraphing || Time.time < _swingUntil;
+                float kbScale = committedNow ? 0.15f : 1f;
                 Vector3 kb = DamageResolver.KnockbackDir(dmg.sourcePosition, transform.position)
-                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f);
-                StartCoroutine(KnockSlide(kb));
+                             * Mathf.Min(dmg.knockback * 0.09f, 0.8f) * kbScale;
+                if (kb.sqrMagnitude > 1e-4f) StartCoroutine(KnockSlide(kb));
             }
 
             if (statusBar != null)
@@ -1218,13 +1845,63 @@ namespace AdversityRoad.AI
             // 轻击=踉跄小硬直并打断正在进行的攻击；重击=直接击倒趴地；
             // 受击霸体冷却防止无限连打硬直，Boss 霸体更长（可打出但不能锁死）
             bool heavyHit = fbHeavy;
-            if (_posture > 0 && State != EnemyState.Stagger && (_flinchCd <= 0f || heavyHit))
+            // ================= 防连锁硬直（这一段是新的，理由写在这里） =================
+            // 玩家反馈：「敌人被打倒、进防御状态之后，只要一直追打就基本无还手之力，
+            // 一路被动到死」。旧代码里有三处让这件事必然发生：
+            //   ① 这行原本是 (_flinchCd <= 0f || heavyHit)——**重击无条件绕过霸体冷却**。
+            //      而"重击"的门槛是削韧≥22 或伤害≥34，旋风绝斩、蓄力跳劈、所有绝招
+            //      全都够线。于是连着放重招 = 每一下都进硬直，每次 1.5 秒，永远起不来。
+            //   ② 倒地起身没有任何保护，爬起来的那一帧就能被打回去（见起身霸体窗）。
+            //   ③ 硬直没有递减：第七次被打进硬直和第一次一样长。
+            // 大型动作游戏对这三件事都有成文的做法，这里逐条对应：
+            //   ① 韧性/霸体（魂系 poise、只狼躯干）：重击不再免检，只是把霸体冷却
+            //      **削掉一截**——连着放重招仍然更容易打出硬直，但不再是每下必中。
+            //   ② 起身无敌帧 / 受身（几乎所有格斗与动作游戏）：见上面的 _poiseArmorUntil。
+            //   ③ 硬直递减 / 连段比例衰减（格斗游戏的 proration、God of War 的眩晕衰减）：
+            //      同一个 6 秒窗口内每多被打进一次硬直，硬直时间乘 0.72、霸体冷却加长，
+            //      于是连段一定会结束，敌人一定会拿回一次出手机会。
+            // 三条都**不减少伤害**：追打的收益一点没变，变的只是"对方还有没有还手的机会"。
+            bool poiseArmored = Time.time < _poiseArmorUntil;
+            // 硬直预算用尽 = 本窗口内一律不再进硬直（见 StaggerBudget）
+            if (PoiseBudgetSpent) poiseArmored = true;
+            bool canFlinch = !poiseArmored && _flinchCd <= 0f;
+            // 重击打在霸体上：不进硬直，但把霸体冷却削掉 0.35 秒——
+            // "重招更容易打断对方"这条直觉保留下来，只是不再是必然。
+            if (!canFlinch && heavyHit && !poiseArmored) _flinchCd -= 0.35f;
+
+            // ---- 受击反应分档：按【打中哪儿 + 这一下真正打进去多少】决定反应大小 ----
+            // 玩家的原话：「踉跄状态没有根据伤害程度做区分，头部被打中应当非常明显，
+            // 胸部次之，依次类推，不是每次踉跄反应都非常大」。这条判断是对的：
+            // 旧代码只有两档（重击 1.5 秒击倒 / 其余一律 0.42 秒踉跄），
+            // 而"重击"的门槛读的是**招式的原始数值**，与打中哪个部位完全无关——
+            // 砍中小腿和砍中脑袋给出的是同一个反应。
+            // 分档之后：擦到手脚只是微微一颤（而且**不打断它正在出的招**），
+            // 四肢是小踉跄，胸腹是标准踉跄，头部才是大反应，头部重击才击倒。
+            int tier = HitReactionTier(part, final, heavyHit);
+            // 【0 档不进硬直】这是"不是每次反应都很大"的关键一半：
+            // 微颤只播一个 0.1 秒的一颤，敌人正在挥的那一刀照常挥完。
+            // 大作里打四肢/末端本来就打不断一记已经挥出去的重招。
+            bool microFlinch = tier == 0 && _posture > 0 && State != EnemyState.Stagger;
+            if (microFlinch)
+            {
+                // 正在挥招的当口不要把它的招从画面上抹掉（与下面那段同理）
+                if (poser != null && Time.time > _swingUntil) poser.SetPose(PoseState.Flinch);
+                canFlinch = false;   // 不消耗霸体冷却，也不进下面的硬直分支
+            }
+            if (_posture > 0 && State != EnemyState.Stagger && canFlinch)
             {
                 // 受击霸体冷却 1.1→0.7s（Boss 2.4→1.9s）：原值下杂兵在一整套连段里
                 // 只踉跄一次，剩下四五下全程站着不动——这是"打上去没反应/攻击力弱"
                 // 最刺眼的一处。缩短后普通敌人几乎每两下就吃一次硬直，但仍保留
                 // 霸体窗口，不至于被彻底连到死。
-                _flinchCd = profile.category == EnemyCategory.Boss ? 1.9f : 0.7f;
+                // 连锁计数：6 秒窗口内每多被打进一次硬直，霸体冷却越长、硬直越短
+                if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                _staggerChainUntil = Time.time + StaggerChainWindow;
+                _staggerChain++;
+                _winFlinch++;
+                float chainDecay = Mathf.Max(0.35f, Mathf.Pow(0.72f, _staggerChain - 1));
+                _flinchCd = (profile.category == EnemyCategory.Boss ? 1.9f : 0.7f)
+                            * (1f + 0.45f * (_staggerChain - 1));
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
                 CancelInvoke(nameof(FireProjectile));
@@ -1232,11 +1909,14 @@ namespace AdversityRoad.AI
                 if (attackHitbox != null) attackHitbox.DisableHitbox();
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = heavyHit ? 1.5f : 0.42f;
+                // 1 档=小踉跄 0.35s、2 档=大踉跄 0.75s、3 档=击倒 1.5s
+                _staggerTimer = ClampStagger(StaggerSeconds[Mathf.Clamp(tier, 1, 3)] * chainDecay);
                 StopMoving();
-                // 重击=被撞飞重重倒地（受击状态可视化），恢复时播起身过程。
+                // 只有 3 档（头部重击 / 一击超过一成血的重击）才真的被打倒在地。
+                // 此前是"任何重击都倒地"，于是一套连段里人一直在地上，起来又倒——
+                // 那正是"一路被压着打"最直接的来源。
                 // 击飞很远（大击退）时播【腾空后翻滚】——飞出去是真实空翻而非僵直漂移
-                if (heavyHit)
+                if (tier >= 3)
                 {
                     _downed = true;
                     // 「击飞」是少数招式的特权，不是重击的默认表现。
@@ -1263,24 +1943,56 @@ namespace AdversityRoad.AI
                     }
                 }
                 else if (poser != null)
-                    poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
+                {
+                    // 反应大小也要**看得见**：2 档走重受击片段，1 档走普通受击。
+                    // 只改时长不改动作，画面上仍然是"每次都一样大"。
+                    if (tier >= 2) poser.SetHitPose(dmg.physicalDamage * 2f, dmg.knockback);
+                    else poser.SetHitPose(dmg.physicalDamage * 0.5f, dmg.knockback);
+                }
             }
             // 霸体冷却期间也要【看得出挨了打】：不打断攻防逻辑，但受击动作必播
             //（此前霸体期间连受击动画都不播，就是"被踢了一脚却站着没反应"的原因）。
             // 仅在自己不处于挥击相位时播，避免把正在出的招从画面上抹掉。
-            else if (!guardedHit && State != EnemyState.Stagger &&
+            else if (!microFlinch && !guardedHit && State != EnemyState.Stagger &&
                      Time.time > _swingUntil && poser != null)
             {
                 poser.SetHitPose(dmg.physicalDamage, dmg.knockback);
             }
 
-            if (_posture <= 0)
+            // 【加了 State != Stagger 这一条】此前没有它，于是破防可以在**已经处于硬直中**
+            // 再次触发，并把 _staggerTimer 重新拨回 2.4 秒。而韧性一破就回满、
+            // 玩家一套连段的削韧（10+12+14+28=64）本来就高过标准杂兵的韧性（40），
+            // 于是"打一套 -> 破防 -> 硬直里继续打 -> 再破防 -> 计时器重置"闭环成立。
+            // 玩家截图里的「破防2、受击1、占比 43%」正是这个形状：
+            // 进硬直只有三次，时间却烧掉 2.6 秒。
+            // 【韧性不许欠债】实机日志里 foePoise 最低到过 **-90.8**。
+            // 原因是这个分支被 poiseArmored / State==Stagger 挡下时，韧性**不重置**，
+            // 于是继续往负数里减，攒出一大笔"破防债"；等霸体窗一过、
+            // 硬直一解除，_posture <= 0 立刻成立，当场兑现一次破防。
+            // 也就是说霸体窗和硬直预算并没有真的挡住破防，只是把它**推迟**了。
+            // 破防被霸体吸收掉就该是吸收掉：韧性回满，债一笔勾销。
+            if (_posture <= 0 && (poiseArmored || State == EnemyState.Stagger))
             {
+                _posture = profile.posture;
+                if (statusBar != null) statusBar.SetPosture(_posture, profile.posture);
+            }
+            if (_posture <= 0 && !poiseArmored && State != EnemyState.Stagger)
+            {
+                _winPosture++;
                 // 韧性击破=破绽：明确提示 + 破绽期吃 1.6 倍伤害
+                //
+                // 【也走同一套递减】破防本来就是"削韧打法"的正收益，不该削弱；
+                // 但破防之后韧性是**回满**的，如果 2.4 秒的破绽每次都一样长，
+                // 削韧流就变成了另一条无限连——玩家一直打，敌人一直在破绽里。
+                // 递减之后第一次破防仍是完整的 2.4 秒（该给的仪式感一点不少），
+                // 短时间内反复破防才会缩短。破绽结束同样给一个霸体窗。
+                if (Time.time > _staggerChainUntil) _staggerChain = 0;
+                _staggerChainUntil = Time.time + StaggerChainWindow;
+                _staggerChain++;
                 _posture = profile.posture;
                 State = EnemyState.Stagger;
             Combat.CombatDirector.Release(this);   // 进入硬直/破绽：立即让出攻击令牌
-                _staggerTimer = 2.4f;
+                _staggerTimer = ClampStagger(2.4f * Mathf.Max(0.4f, Mathf.Pow(0.75f, _staggerChain - 1)));
                 StopMoving();
                 CancelInvoke(nameof(OpenAttackHitbox));
                 CancelInvoke(nameof(FireHitbox));
@@ -1377,10 +2089,17 @@ namespace AdversityRoad.AI
         /// <summary>重击击飞：受击位移（二次强减速）。distance=总飞行距离、dur=时长。
         /// 小击退=极短栽倒（≈1.4m/0.15s，当场倒地）；大击退=飞很远（配合腾空后翻滚，
         /// 5m+/0.55s），位移与空翻同步，不再是僵直漂移。</summary>
+        /// <summary>击飞位移的截止时刻：这段时间里的位移是有意的，硬直分支不许清零它。</summary>
+        float _knockFlyUntil;
+        /// <summary>这个 Agent 原本的避让档位（倒地时临时关掉，起身恢复）。</summary>
+        UnityEngine.AI.ObstacleAvoidanceType _avoidanceDefault =
+            UnityEngine.AI.ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+
         System.Collections.IEnumerator KnockFly(Vector3 dir, float distance, float dur)
         {
             dir.y = 0;
             if (dir.sqrMagnitude < 0.01f) yield break;
+            _knockFlyUntil = Time.time + dur;
             dir = dir.normalized;
             // 二次减速位移积分 ∫3k²=1 → 峰值速度系数使总位移=distance
             float peak = distance * 3f / dur;
@@ -1394,6 +2113,38 @@ namespace AdversityRoad.AI
                 else transform.position += dir * sp * Time.deltaTime;
                 yield return null;
             }
+        }
+
+        /// <summary>
+        /// 把设置面板里的「敌人强度」落到这一个敌人的生命上。
+        ///
+        /// profile 是每个实例各自一份（EnemyCatalog.Create 每次 new 一个），
+        /// 所以直接改它的 maxHealth 是安全的，血条、minHpFloor、回血都会跟着走。
+        /// _toughApplied 记着已经乘过多少，改档时先除回去再乘新的——
+        /// 否则连按几次开关会把生命累乘上天，而那种 bug 在实机上表现为
+        /// "调了一下就再也打不死了"，和这次要修的问题正好是一对。
+        ///
+        /// full=false 时保留当前血量**百分比**：战斗中途改档不会把一个残血敌人
+        /// 直接治满，也不会把满血敌人一秒打死。
+        /// </summary>
+        public void ApplyToughness(bool full)
+        {
+            float want = Mathf.Clamp(Core.GameDebug.EnemyToughness, 0.25f, 12f);
+            if (!full && Mathf.Approximately(want, _toughApplied)) return;
+            float frac = profile.maxHealth > 0.01f ? Mathf.Clamp01(_hp / profile.maxHealth) : 1f;
+            profile.maxHealth = profile.maxHealth / Mathf.Max(0.01f, _toughApplied) * want;
+            _toughApplied = want;
+            _hp = full ? profile.maxHealth : profile.maxHealth * frac;
+            if (statusBar != null) statusBar.SetHealth(_hp, profile.maxHealth);
+        }
+
+        /// <summary>场上所有敌人立刻按新档位重算生命（设置面板改档时调）。返回处理了几个。</summary>
+        public static int ApplyToughnessAll()
+        {
+            var all = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            int n = 0;
+            foreach (var e in all) { if (e == null) continue; e.ApplyToughness(false); n++; }
+            return n;
         }
 
         void Die()

@@ -115,6 +115,39 @@ namespace AdversityRoad.AI
             }
         }
 
+        /// <summary>
+        /// 全局生命调校系数（只乘生命，不动伤害与韧性）。
+        ///
+        /// 【为什么需要它】目录里那张 60~160 的生命表，是在
+        /// GameDebug.TankyEnemies 默认为 true（全工程伤害 ×0.1）的年代写下的——
+        /// 也就是说这张表从来没有在真实伤害下被验证过。把那个调试开关关掉之后，
+        /// 表里的数字第一次原样生效，于是一套完整剑连（4 段合计 5.8 倍基础伤害
+        /// ≈ 107 点，链取消下约 0.9 秒）就能打空一个 100 血的标准杂兵。
+        /// 玩家的原话是"敌人很容易就被打死"——不是通关规则改了，是这张表
+        /// 一直缺一个从没有人算过的换算。
+        ///
+        /// 【怎么定的】按"打倒需要几套完整剑连"反推，不是拍脑袋：
+        ///   见习 ≈1 套、标准 ≈2 套、精英 ≈3.5 套、首领 ≈5.5 套。
+        /// 换算成秒是 0.9 / 1.9 / 3.4 / 5.2 秒的**不间断输出**——实战里还要闪、
+        /// 要拉开、要读招，真实时长是这个数的三到五倍。
+        /// 首领没有定得更高，是因为"血条一击只掉 2%"读起来就是"打不动"，
+        /// 而那正是上一轮"敌人有无限的生命"的观感来源。首领该靠削韧破防、
+        /// 抓破绽处决（重击 ×2.8）来缩短，而不是靠堆一条磨不完的血条。
+        ///
+        /// 这一行的实际结果由 CI 每次构建打成一张表（见 CIDiagnostics 的「平衡」段），
+        /// 改这个数就能在下一次构建的日志里直接看到几套连招——不必靠猜，也不必靠手感回忆。
+        /// </summary>
+        public static float HealthTuning(EnemyTier t)
+        {
+            switch (t)
+            {
+                case EnemyTier.Novice: return 2.0f;
+                case EnemyTier.Elite: return 2.5f;
+                case EnemyTier.Chief: return 2.8f;
+                default: return 2.2f;
+            }
+        }
+
         public static float TierScale(EnemyTier t)
         {
             switch (t)
@@ -852,7 +885,9 @@ namespace AdversityRoad.AI
             }
 
             float k = TierStat(tier);
-            p.maxHealth *= k;
+            // 生命另乘一道全局调校：目录里那张表是在"伤害 ×0.1"的年代写的，
+            // 从没在真实伤害下算过。理由与取值见 HealthTuning。
+            p.maxHealth *= k * HealthTuning(tier);
             p.posture *= k;
             p.physicalDamage *= Mathf.Lerp(1f, k, 0.8f);
             p.mentalDamage *= Mathf.Lerp(1f, k, 0.8f);

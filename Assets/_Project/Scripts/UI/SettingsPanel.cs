@@ -15,10 +15,11 @@ namespace AdversityRoad.UI
     public class SettingsPanel : MonoBehaviour
     {
         GameObject _panel;    // 滚动内容（1720 高）
+        RectTransform _contentRt;
         GameObject _frame;    // 外框（装得下屏幕的那一层，显示/隐藏与置顶都走它）
         readonly List<(Button btn, MentalIntensity val)> _intensityBtns =
             new List<(Button, MentalIntensity)>();
-        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn;
+        Button _softenBtn, _recoveryBtn, _followBtn, _debugBtn, _deleteBtn, _perfBtn, _ualBtn, _toughBtn;
         Button _lockModeBtn, _aimAssistBtn;
         Button _footLockBtn, _leanBtn, _headFollowBtn, _upperBtn, _magnetBtn, _gradingBtn, _neutralBtn;
         Button _postFxBtn, _singleClipBtn;
@@ -62,7 +63,8 @@ namespace AdversityRoad.UI
             viewRt.anchorMin = new Vector2(0f, 0f);
             viewRt.anchorMax = new Vector2(1f, 1f);
             viewRt.offsetMin = new Vector2(8f, 8f);
-            viewRt.offsetMax = new Vector2(-8f, -78f);   // 顶部让出关闭按钮那一条
+            // 顶部让出两条固定区：关闭按钮那一行，再加下面那条常驻的调试开关
+            viewRt.offsetMax = new Vector2(-8f, -212f);
 
             _panel = UiUtil.MakePanel(viewGo.transform, "SettingsPanel", new Vector2(1100, 1720),
                 new Color(0.08f, 0.08f, 0.12f, 0.97f));
@@ -83,24 +85,90 @@ namespace AdversityRoad.UI
 
             UiUtil.MakeButton(frame.transform, "关闭", new Vector2(1f, 1f), new Vector2(-90, -40),
                 new Vector2(140, 60), new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 24);
-            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 上下拖动查看全部设置", 20,
+            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 下方可上下拖动 · 调试开关常驻在这里", 20,
                 TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.5f));
             UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(230, -40), new Vector2(420, 30));
 
             _frame = frame;
+            _contentRt = contentRt;
 
-            var title = UiUtil.MakeText(_panel.transform, "Title", "设 置 · 心理安全", 38,
+            // ===== 调试数据开关：钉在**外框**上，不在滚动内容里 =====
+            //
+            // 这颗开关我先后放过三个位置，玩家三次都说"没看到"。
+            // 前几次都是在猜坐标，而真正的原因和坐标无关：它在滚动内容里，
+            // 内容有 1720 高、视口只有七百多，且 Toggle() 不重置滚动位置——
+            // 上一次往下翻过，再打开时内容还停在下面，最顶上的这一行正好在可视区之外。
+            // 玩家看到的就是"面板打开了，开关不在"。
+            //
+            // 放到外框上之后，滚动位置、兄弟层级、视口裁剪这三个可能原因一次全排除：
+            // 它和关闭按钮一样是固定的，面板一打开必然在眼前。
+            // 状态也不再只靠颜色区分——颜色在不同屏幕上未必读得出来，直接写"开/关"。
+            // 第一行两个并排：调试数据 | 动作库
+            _perfBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-256, -112), new Vector2(500, 58), Off, () =>
+                {
+                    PerfHud.Enabled = !PerfHud.Enabled;
+                    Refresh();
+                }, 22);
+            _ualBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(256, -112), new Vector2(500, 58), Off, () =>
+                {
+                    Core.GameDebug.PreferUalClips = !Core.GameDebug.PreferUalClips;
+                    // 立刻重建：映射表是在构造里读的，不重建这颗开关就是个摆设
+                    int n = Combat.HumanoidAnimator.RebuildAllMecanim();
+                    GameEvents.RaiseSubtitle("动作库已切换（重建了 " + n + " 个角色的动画层）。");
+                    Refresh();
+                }, 22);
+
+            // 第二行整宽：调试模式（敌人耐揍）
+            //
+            // 【它原来在滚动内容的 y=-736】视口只有 640 高，也就是说面板一打开它就在
+            // 可视区**下面**，必须往下滚才看得到；而它上下两排按钮各只隔 16 像素，
+            // 夹在中间更挑不出来。玩家说"被其他按钮遮挡"——几何上并没有叠在一起，
+            // 但读起来就是这个感受，而结论一样：看不到。
+            // 三个都是调试开关，一起钉在固定区，两行放下，不占额外高度。
+            _debugBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(-256, -174), new Vector2(500, 58), Off, () =>
+                {
+                    GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
+                    Refresh();
+                }, 22);
+
+            // 第二行右半：敌人强度（连续档位，立刻对场上所有敌人生效）
+            //
+            // 【为什么这颗按钮存在】"敌人太容易被打死"这种事只有实机打过才知道
+            // 合适的值是多少，而我这边改一个常量要等一次二十多分钟的构建，
+            // 一来一回一小时、还只试得了一个值。做成档位之后，同一局里就能
+            // 把 ×1 到 ×8 全试一遍，定下来的那个告诉我，我再设成默认。
+            // 改档立刻重算场上每个敌人的生命，并且**保留当前血量百分比**——
+            // 不需要退出重进，也不会把打了一半的敌人治满。
+            _toughBtn = UiUtil.MakeButton(frame.transform, "", new Vector2(0.5f, 1f),
+                new Vector2(256, -174), new Vector2(500, 58), Off, () =>
+                {
+                    var steps = GameDebug.ToughnessSteps;
+                    float cur = GameDebug.EnemyToughness;
+                    int i = 0;
+                    for (int k = 0; k < steps.Length; k++)
+                        if (Mathf.Approximately(steps[k], cur)) { i = k; break; }
+                    GameDebug.EnemyToughness = steps[(i + 1) % steps.Length];
+                    int n = AI.EnemyController.ApplyToughnessAll();
+                    // 报出**换算之后的实际血量**，不是只报倍率：倍率读不出手感，
+                    // "标准杂兵 660 血、约 6 套连招"才是可以拿去和实机对照的东西。
+                    float std = AI.EnemyCatalog.Create(
+                        AI.EnemyType.CoughAssassin, AI.EnemyTier.Standard).maxHealth
+                        * GameDebug.EnemyToughness;
+                    GameEvents.RaiseSubtitle("敌人强度 ×" + GameDebug.EnemyToughness.ToString("0.#")
+                        + "：标准杂兵 " + std.ToString("0") + " 血（约 "
+                        + (std / 107f).ToString("0.#") + " 套完整剑连），场上 " + n + " 个敌人已更新。");
+                    Refresh();
+                }, 22);
+
+            // 标题带包体号：装上去之后"这是第几个包"必须一眼可见，
+            // 否则"改了没变化"永远分不清是改错了还是装的旧包（见 GameDebug.BuildTag）。
+            var title = UiUtil.MakeText(_panel.transform, "Title",
+                "设 置 · 心理安全　#" + Core.GameDebug.BuildTag, 38,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
             UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(700, 52));
-
-            // 【调试数据放在最上面】这颗开关我先后放过两个位置，玩家两次都说"没显示出来"。
-            // 与其继续猜是滚动没生效还是他没翻到，不如把它挪到标题正下方——
-            // 面板一打开、一行都不用滚就在眼前。同时暂停菜单里也有一条直达的开关。
-            _perfBtn = MakeToggle("调试数据（FPS / 帧时 / 穿墙位移 / 漂移 / 动画状态）", -108, () =>
-            {
-                PerfHud.Enabled = !PerfHud.Enabled;
-                Refresh();
-            });
 
             var l1 = UiUtil.MakeText(_panel.transform, "L1", "心理攻击强度", 26,
                 TextAnchor.MiddleLeft, Color.white);
@@ -123,12 +191,12 @@ namespace AdversityRoad.UI
                 _intensityBtns.Add((btn, lv.Item2));
             }
 
-            _softenBtn = MakeToggle("台词柔化（降低攻击性表达）", -290, () =>
+            _softenBtn = MakeToggle("台词柔化（降低攻击性表达）", -300, () =>
             {
                 if (Safety != null) Safety.softenDialogue = !Safety.softenDialogue;
                 Refresh();
             });
-            _recoveryBtn = MakeToggle("恢复模式（停止一切心理攻击）", -380, () =>
+            _recoveryBtn = MakeToggle("恢复模式（停止一切心理攻击）", -390, () =>
             {
                 if (Safety != null)
                 {
@@ -137,18 +205,10 @@ namespace AdversityRoad.UI
                 }
                 Refresh();
             });
-            _followBtn = MakeToggle("镜头自动跟随", -470, () =>
+            _followBtn = MakeToggle("镜头自动跟随", -480, () =>
             {
                 var cam = FindObjectOfType<ThirdPersonCamera>();
                 if (cam != null) cam.autoFollow = !cam.autoFollow;
-                Refresh();
-            });
-            // 【-560 这一行本来是三个控件叠在一起】骨骼后处理/单片段两颗 545 宽的
-            // 按钮在 -564，把这颗 760 宽的整个盖住了——"调试模式"一直点不到。
-            // 挪到 -650 与 -822 之间那段空档里。
-            _debugBtn = MakeToggle("调试模式（敌人耐揍，不易被打死）", -736, () =>
-            {
-                GameDebug.TankyEnemies = !GameDebug.TankyEnemies;
                 Refresh();
             });
 
@@ -441,9 +501,36 @@ namespace AdversityRoad.UI
             if (_followBtn != null)
                 _followBtn.GetComponent<Image>().color = cam != null && cam.autoFollow ? On : Off;
             if (_debugBtn != null)
+            {
                 _debugBtn.GetComponent<Image>().color = GameDebug.TankyEnemies ? On : Off;
+                var dl = _debugBtn.GetComponentInChildren<Text>();
+                if (dl != null)
+                    dl.text = GameDebug.TankyEnemies
+                        ? "■ 调试模式：开（伤害 ×0.1）"
+                        : "□ 调试模式：关";
+            }
+            if (_toughBtn != null)
+            {
+                float t = GameDebug.EnemyToughness;
+                _toughBtn.GetComponent<Image>().color = t > 1.01f ? On : Off;
+                var tl = _toughBtn.GetComponentInChildren<Text>();
+                if (tl != null) tl.text = "敌人强度：×" + t.ToString("0.#") + "（点击切换）";
+            }
             if (_perfBtn != null)
+            {
                 _perfBtn.GetComponent<Image>().color = PerfHud.Enabled ? On : Off;
+                var pl = _perfBtn.GetComponentInChildren<Text>();
+                if (pl != null)
+                    pl.text = PerfHud.Enabled ? "■ 调试数据：开" : "□ 调试数据：关";
+            }
+            if (_ualBtn != null)
+            {
+                bool ual = Core.GameDebug.PreferUalClips;
+                _ualBtn.GetComponent<Image>().color = ual ? On : Off;
+                var ul = _ualBtn.GetComponentInChildren<Text>();
+                if (ul != null)
+                    ul.text = ual ? "■ 动作库：UAL 全量" : "□ 动作库：主库+UAL补位";
+            }
             if (_lockModeBtn != null)
             {
                 _lockModeBtn.GetComponentInChildren<Text>().text =
@@ -557,6 +644,9 @@ namespace AdversityRoad.UI
         {
             if (_frame.activeSelf) { Hide(); return; }
             _deleteArmed = false;
+            // 回到顶部：面板是隐藏而不是销毁，滚动位置会留在上次翻到的地方，
+            // 下次打开等于从中间开始看——这正是"开关没显示出来"的直接成因之一
+            if (_contentRt != null) _contentRt.anchoredPosition = Vector2.zero;
             Refresh();
             _frame.SetActive(true);
             _frame.transform.SetAsLastSibling();

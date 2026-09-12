@@ -71,6 +71,8 @@ namespace AdversityRoad.OpenWorld
                 _anim.SetArmed(false);   // 路人是平民，用空手那一套
             }
 
+            IdleVariety();
+
             if (Time.time < _nextCheck) return;
             _nextCheck = Time.time + 2.5f;
 
@@ -86,6 +88,38 @@ namespace AdversityRoad.OpenWorld
             }
 
             MaybeFlagHostileIntent();
+        }
+
+        float _nextIdleAct;
+
+        /// <summary>
+        /// 站定时偶尔做点别的：一街人全是同一个待机循环，看久了就是一排复制粘贴。
+        ///
+        /// 按时段挑动作而不是随机挑——傍晚活动时段有人在跳舞、白天办事时段
+        /// 有人在讲话、夜里举着灯，时段本身就是"这个人此刻在干什么"的解释。
+        /// 只在真正停下来时播（速度阈值），走着播会和移动层打架。
+        /// </summary>
+        void IdleVariety()
+        {
+            if (_anim == null) return;
+            if (_agent.velocity.sqrMagnitude > 0.04f) return;   // 还在走，不插动作
+            if (Time.time < _nextIdleAct) return;
+            // 每个人的间隔各不相同，否则一街人会**同时**做同一个动作，比不做还怪
+            _nextIdleAct = Time.time + Random.Range(9f, 22f);
+
+            switch (_phase)
+            {
+                case 2:   // 傍晚活动：跳舞 / 聊天
+                    _anim.PlayFirstClip(1f, 0.3f,
+                        Random.value < 0.35f ? "dance_loop" : "idle_talking_loop");
+                    break;
+                case 1:   // 白天办事：讲话
+                    _anim.PlayFirstClip(1f, 0.3f, "idle_talking_loop");
+                    break;
+                default:  // 夜里：举灯
+                    _anim.PlayFirstClip(1f, 0.3f, "idle_torch_loop", "idle_talking_loop");
+                    break;
+            }
         }
 
         /// <summary>0 = 在家 / 1 = 工作或办事 / 2 = 活动与出行。</summary>

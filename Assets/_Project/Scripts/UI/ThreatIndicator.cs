@@ -130,6 +130,16 @@ namespace AdversityRoad.UI
 
         void LateUpdate()
         {
+            // 【这一整套屏幕记号都属于"文字/符号提示"，默认关闭】
+            //
+            // 玩家的要求是：判断与预测只能来自**敌人身体的动作**与**固定的节拍规律**，
+            // 屏幕上不给任何文字或符号。
+            // 我上一版只关了敌人头顶的那一枚记号，漏了这里——而这里才是"不断持续出现「危」"
+            // 的真正来源：它专门给**画面外正在起手**的敌人画箭头加「危」/「！」，
+            // 而交战中敌人经常在画面边缘之外，于是它几乎一直亮着。
+            // 受击方向标（挨打之后那一下红标）不在此列：那是"已经发生"的反馈，
+            // 不是"即将发生"的预告，不构成对攻击的预警。
+            if (!Core.GameDebug.TelegraphOverlays) { HideAllThreatMarks(); return; }
             if (_player == null)
             {
                 var pc = AdversityRoad.Core.ActorRegistry.Player;
@@ -246,6 +256,17 @@ namespace AdversityRoad.UI
             var grt = m.glyph.GetComponent<RectTransform>();
             grt.localRotation = (glyph == "▲" || glyph == "◆") ? Quaternion.identity
                 : Quaternion.Inverse(m.rt.localRotation);
+        }
+
+        /// <summary>只收起"预告类"记号（前摇标、在场标），受击方向标不受影响。</summary>
+        void HideAllThreatMarks()
+        {
+            for (int i = 0; i < Pool; i++)
+                if (_marks[i].rt != null && _marks[i].rt.gameObject.activeSelf)
+                    _marks[i].rt.gameObject.SetActive(false);
+            for (int i = 0; i < SoftPool; i++)
+                if (_soft[i].rt != null && _soft[i].rt.gameObject.activeSelf)
+                    _soft[i].rt.gameObject.SetActive(false);
         }
 
         void HideAll()

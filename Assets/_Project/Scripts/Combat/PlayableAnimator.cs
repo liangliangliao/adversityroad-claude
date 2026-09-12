@@ -171,8 +171,111 @@ namespace AdversityRoad.Combat
             A(PoseState.Flinch,      2.1f,  0.02f, 0.20f, false, "hit reaction", "stunned", "dizzy"),
             A(PoseState.Charge,      0.85f, 0f,    1f,    true,  "great sword power up", "great sword casting", "warming up", "charge"),
             // 翻滚：闪避时长会自动匹配片段长度（PlayerController），完整呈现整个滚翻
-            A(PoseState.Dodge,       1.7f,  0.10f, 1f,    false, "stand to roll", "forward roll", "sprinting forward roll", "dive roll"),
+            // 闪避改成变体池：CI 诊断里这一条是「变体×2 Stand To Roll | Stand To Roll」——
+            // 同一个片段接了两次，等于没有变化。把 UAL 的 Roll 并进来，
+            // 翻滚才真的会换个样子。这也是"补充"而不是"替换"：主库那条仍排在前面。
+            AP(PoseState.Dodge,      1.7f,  0.10f, 1f,           "stand to roll", "forward roll", "sprinting forward roll", "dive roll", "roll"),
         };
+
+        /// <summary>
+        /// 通用动作库（Quaternius UAL）的姿态映射，与主库分开成一张表。
+        ///
+        /// 【为什么必须分开，而不是拼在主表尾巴上】运行时是
+        /// `if (!_actionIndex.ContainsKey(pose))`——**先注册的赢**。
+        /// 主库 84 条几乎盖满了所有姿态，所以拼在尾巴上的 UAL 条目
+        /// **一条都永远赢不了**：它们被加载、在每个角色的 Playable 图里各占一个槽位、
+        /// 每帧都要过一遍，却永远播不到。玩家的原话是"没看到其在某些地方实际生效"——
+        /// 就是这个意思，而我当初把它们叫作"补位"，等于给"永远不生效"起了个好听的名字。
+        ///
+        /// 分成两张表之后，谁排在前面由开关决定（见 GameDebug.PreferUalClips）：
+        /// 默认仍是主库优先（那 84 条是调了很久的），打开开关则 UAL 优先，
+        /// 于是这 33 个动作全都真的能在游戏里看到、能和主库逐个对比。
+        /// 调动画本来就需要 A/B，而不是"信我说接进去了"。
+        /// </summary>
+        static readonly ActionDef[] UalMap =
+        {
+            A(PoseState.PunchJab,    1.9f,  0.12f, 0.70f, false, "punch_jab"),
+            A(PoseState.PunchCross,  1.85f, 0.12f, 0.70f, false, "punch_cross"),
+            A(PoseState.Attack,      1.7f,  0.15f, 0.72f, false, "sword_attack"),
+            A(PoseState.HeavyAttack, 1.45f, 0.10f, 0.80f, false, "sword_attack"),
+            A(PoseState.Guard,       1.0f,  0f,    1f,    true,  "sword_idle"),
+            A(PoseState.Hit,         1.5f,  0.08f, 0.78f, false, "hit_chest"),
+            A(PoseState.HitHeavy,    1.25f, 0.05f, 0.86f, false, "hit_head", "hit_chest"),
+            A(PoseState.Flinch,      2.1f,  0.02f, 0.22f, false, "hit_chest", "hit_head"),
+            A(PoseState.Death,       1.0f,  0f,    1f,    true,  "death01"),
+            A(PoseState.Knockdown,   1.25f, 0.04f, 1f,    true,  "death01"),
+            // 【这一条删掉了】闪避的 Roll 已经在主表的变体池里（AP(PoseState.Dodge…)），
+            // 这里再写一次不会"更优先"，只会把**同一个片段对象**往图里接第二遍：
+            // CI 诊断上一轮打出来的正是「Dodge 变体×3 Stand To Roll | Roll | Roll」——
+            // 轮换到第二第三个变体时播的是同一段，等于变体池少了一个。
+            A(PoseState.JumpUp,      1.2f,  0.05f, 0.85f, false, "jump_start"),
+            A(PoseState.FallLoop,    1.0f,  0f,    1f,    true,  "jump_loop"),
+            A(PoseState.Land,        1.3f,  0f,    0.85f, false, "jump_land"),
+            A(PoseState.LandHard,    1.1f,  0f,    0.92f, false, "jump_land"),
+            A(PoseState.CrouchIdle,  1.0f,  0f,    1f,    true,  "crouch_idle_loop"),
+            A(PoseState.Charge,      1.0f,  0f,    1f,    false, "spell_simple_enter"),
+            A(PoseState.ChargeLoop,  1.0f,  0f,    1f,    true,  "spell_simple_idle_loop"),
+            A(PoseState.CastProjectile, 1.3f, 0.08f, 0.82f, false, "spell_simple_shoot"),
+            A(PoseState.Cast,        1.0f,  0f,    1f,    false, "spell_simple_exit", "spell_simple_shoot"),
+        };
+
+        /// <summary>
+        /// UAL 姿态表参与建图的方式：**只补主库没占到的姿态**。
+        ///
+        /// 【#41 我在这里造了一个严重回归，这一版修回来】那一版我把默认顺序改成
+        /// 只有 ActionMap，理由写的是"主库 84 条把 41 个姿态占满了，UAL 一条都赢不了"。
+        /// 那句话**只对角色·壹成立**。角色·贰的主库是 Characters/Anims2，
+        /// 里面只有两条拔刀/收刀片段——它的攻击、受击、死亡、闪避、跳跃、施法
+        /// 全部来自 UalMap。把 UalMap 从默认路径里摘掉，等于把角色·贰的
+        /// **全部动作动画一次性删光**。玩家的原话是"角色2所有动作动画全部改坏了"，
+        /// 那是字面准确的描述，不是夸张。我当时只验了角色·壹。
+        ///
+        /// 而 #41 真正要解决的问题是另一件事：UalMap 的条目会作为**变体**
+        /// 混进主库已经占住的姿态（诊断里的 Attack [变体×2] … | Sword_Attack），
+        /// 让双手巨剑随机播出单手剑的挥击。那个问题的正解不是删掉整张表，
+        /// 而是让 UAL 条目**只在该姿态还空着时**才注册：
+        ///   · 角色·壹：41 个姿态全被主库占满 → UAL 一条都不进，变体不再被稀释；
+        ///   · 角色·贰：姿态全空 → UAL 全部进来，动作回来了。
+        /// 一条规则同时满足两边，而不是二选一。
+        /// </summary>
+        static IEnumerable<ActionDef> OrderedActionMap =>
+            Core.GameDebug.PreferUalClips
+                ? System.Linq.Enumerable.Concat(UalMap, ActionMap)
+                : System.Linq.Enumerable.Concat(ActionMap, UalMap);
+
+        /// <summary>这条 ActionDef 是不是 UAL 补位表里的（补位只在姿态空着时注册）。</summary>
+        static bool IsUalFallback(ActionDef d)
+        {
+            for (int i = 0; i < UalMap.Length; i++)
+                if (ReferenceEquals(UalMap[i].keys, d.keys)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// 默认模式下仍要接进图里的 UAL 片段（按名字播，不占姿态）。
+        ///
+        /// 这些是主库真的没有、而且已经有调用点的动作：
+        /// 坐下/坐姿/坐着说话/起身（HomeComforts 的沙发与床）、跪姿修理（浇花）、
+        /// 伸手拿东西（补给拾取，主库整套巨剑动作里没有任何"拿东西"）、
+        /// 通用交互兜底、路人的跳舞/讲话/举灯。
+        /// 蹲伏前进（Crouch_Fwd_Loop）走移动层，不在这张表里。
+        /// 翻滚（Roll）由主表的闪避变体池接，也不在这里。
+        ///
+        /// 【为什么要有这张白名单】不在表上的 UAL 片段默认**不接进图**。
+        /// 每接一条就是每个角色的 Playable 图里多一个输入口、每帧多过一遍，
+        /// 而场上同时有玩家 + 敌人 + 路人。上一版把 31 条全接了，
+        /// 单角色 AnimationClipPlayable 从 86 涨到 121（+41%），
+        /// 换来的是 20 条永远播不到（姿态被主库占着）+ 若干条只在调试时才看的。
+        /// 打开「UAL 优先」开关时这张白名单失效，31 条全部接入，供动作库面板逐条预览。
+        /// </summary>
+        static readonly HashSet<string> UalAlwaysOn = new HashSet<string>
+        {
+            "sitting_enter", "sitting_exit", "sitting_idle_loop", "sitting_talking_loop",
+            "fixing_kneeling", "interact", "pickup_table",
+            "dance_loop", "idle_talking_loop", "idle_torch_loop",
+        };
+
+
 
         /// <summary>
         /// 由帧数据反推播放速度的【可读性上限】。
@@ -329,6 +432,30 @@ namespace AdversityRoad.Combat
               .Append(" 条；本角色 AnimationClipPlayable 合计 ")
               .Append(_actionCount + _dirs.Count + DirBase)
               .Append("（每帧都要过一遍，场上每个角色各一份）").Append(NL);
+            // UAL 到底有几条真的进了图。默认只接白名单 + 变体池里点名的那几条，
+            // 打开「UAL 优先」才全量接入（见 UalAlwaysOn / OrderedActionMap）。
+            // 这一行是给"接了一堆永远播不到的片段"留的照妖镜：
+            // 数字和下面列出的名字对不上预期，就是有东西悄悄溜进了每帧的开销里。
+            sb.Append("    UAL 接进动作层 ").Append(_ualInGraph.Count).Append(" 条")
+              .Append(Core.GameDebug.PreferUalClips ? "（UAL 优先：全量）" : "（默认：只补主库空着的姿态）")
+              .Append(_ualInGraph.Count > 0 ? "：" : "").Append(string.Join("、", _ualInGraph.ToArray()))
+              .Append(NL);
+            // 同一个姿态的变体池里出现重复片段 = 轮换到它时等于没换。
+            // 上一轮就出过「Dodge 变体×3 Stand To Roll | Roll | Roll」，
+            // 靠人眼在几十行表里看出来太不可靠，让它自己报。
+            foreach (var kv in _actionVariants)
+            {
+                if (kv.Value.Count < 2) continue;
+                var seen = new HashSet<string>();
+                foreach (int vi in kv.Value)
+                    if (!seen.Add(ClipNameAt(vi)))
+                    {
+                        sb.Append("    !! ").Append(kv.Key)
+                          .Append(" 的变体池里「").Append(ClipNameAt(vi))
+                          .Append("」出现了不止一次——轮换到它时等于没换").Append(NL);
+                        break;
+                    }
+            }
             foreach (var kv in _actionIndex)
             {
                 sb.Append("    ").Append(kv.Key.ToString().PadRight(16));
@@ -383,6 +510,8 @@ namespace AdversityRoad.Combat
         static float WalkNaturalSpeed => MecanimCharacter.TargetHeight * 0.878f;
         static float RunNaturalSpeed => MecanimCharacter.TargetHeight * 2.098f;
         readonly Dictionary<PoseState, int> _actionIndex = new Dictionary<PoseState, int>();
+        /// <summary>实际接进图里的 UAL 片段名（诊断用；见 DescribeActionSet）。</summary>
+        readonly List<string> _ualInGraph = new List<string>();
         string[] _actionName;   // 动作层每个槽位的片段名（只给调试叠层用）
         // 变体池：同一姿态的多条片段 + 轮换游标（见 AP / NextVariant）
         readonly Dictionary<PoseState, List<int>> _actionVariants =
@@ -433,7 +562,19 @@ namespace AdversityRoad.Combat
         /// 而 Anims2 本身缺 idle/walk/run，作为"主库"是不成立的（会整体回退）。
         /// 于是把它降级成补充库：谁做主库都行，主库没有的名字从这里补进来。
         /// </summary>
+        /// <summary>默认主库（角色·壹）。角色·贰走 Characters/Anims2，见 PlayerAppearance。</summary>
+        const string DefaultFolder = "Characters/Anims";
+
         const string ExtraFolder = "Characters/Anims2";
+
+        /// <summary>
+        /// 通用动作库（Quaternius UAL）烘焙产物：45 个动作，已由 UalRetargetBaker
+        /// 重定向到本工程的 Mixamo 骨架，是普通的 Generic .anim，和主库一样按名字用。
+        /// 排在最后：主库与 Anims2 里已有的同名片段优先，UAL 只补空缺。
+        /// </summary>
+        const string UalFolder = "Characters/AnimsUAL";
+
+        static readonly string[] ExtraFolders = { ExtraFolder, UalFolder };
 
         /// <summary>
         /// 动作库文件清单（**按文件名寻址**，与片段内部叫什么无关）。
@@ -479,7 +620,7 @@ namespace AdversityRoad.Combat
         public PlayableAnimator(Animator animator, string animsFolder = null)
         {
             _animator = animator;
-            _folder = string.IsNullOrEmpty(animsFolder) ? "Characters/Anims" : animsFolder;
+            _folder = string.IsNullOrEmpty(animsFolder) ? DefaultFolder : animsFolder;
             Build();
         }
 
@@ -491,6 +632,16 @@ namespace AdversityRoad.Combat
         /// <summary>该招式是否有对应的动捕片段（如翻滚：有专用片段就播片段，
         /// 没有则由上层程序化翻滚兜底）。</summary>
         public bool HasAction(PoseState p) => Valid && _actionIndex.ContainsKey(p);
+
+        /// <summary>某个姿态实际接到的片段名（诊断用；没有则空串）。
+        /// 用来逐条比对两个角色是不是真的在用同一套片段——"有片段"与
+        /// "是对的那条片段"是两回事，角色·贰就是栽在这两者的差别上。</summary>
+        public string ActionClipNameOf(PoseState p)
+        {
+            if (!Valid || !_actionIndex.TryGetValue(p, out int i)) return "";
+            string n = ClipNameAt(i);
+            return n == "?" ? "" : n;
+        }
 
         /// <summary>招式片段的有效播放时长（考虑起手偏移与倍速；无片段返回 0）。</summary>
         public float ActionLength(PoseState p) =>
@@ -520,21 +671,32 @@ namespace AdversityRoad.Combat
                 string k = Norm(c.name);
                 if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
             }
-            // 补充库（见 ExtraFolder）：主库同名的不覆盖，只补主库没有的
-            if (_folder != ExtraFolder)
-                foreach (var c in Resources.LoadAll<AnimationClip>(ExtraFolder))
+            // 补充库（见 ExtraFolder / UalFolder）：主库同名的不覆盖，只补主库没有的
+            // ualClips 记下哪些片段来自 UAL：下面"未映射片段全部接入"那一步要按来源
+            // 区别对待（见 UalAlwaysOn）——主库的全接，UAL 的只接白名单上的。
+            // 主库自己提供了哪些片段——下面校验 idle/walk/run 时只认这一批。
+            var ownClips = new HashSet<AnimationClip>(byName.Values);
+            var ualClips = new HashSet<AnimationClip>();
+            foreach (var folder in ExtraFolders)
+            {
+                if (_folder == folder) continue;
+                foreach (var c in Resources.LoadAll<AnimationClip>(folder))
                 {
                     if (c == null) continue;
                     string k = Norm(c.name);
-                    if (k.Length > 0 && k != "mixamo.com" && !byName.ContainsKey(k)) byName[k] = c;
+                    if (k.Length == 0 || k == "mixamo.com") continue;
+                    if (folder == UalFolder) ualClips.Add(c);
+                    if (!byName.ContainsKey(k)) byName[k] = c;
                 }
+            }
             // 按文件名补齐（见 LibraryFiles）：没有命名 .meta 的 FBX 只能这样寻址
             foreach (var f in LibraryFiles)
             {
                 string fileKey = Norm(f);
                 if (fileKey.Length == 0 || byName.ContainsKey(fileKey)) continue;
                 var byPath = Resources.Load<AnimationClip>(_folder + "/" + f)
-                             ?? Resources.Load<AnimationClip>(ExtraFolder + "/" + f);
+                             ?? Resources.Load<AnimationClip>(ExtraFolder + "/" + f)
+                             ?? Resources.Load<AnimationClip>(UalFolder + "/" + f);
                 if (byPath != null) byName[fileKey] = byPath;
             }
 
@@ -556,13 +718,29 @@ namespace AdversityRoad.Combat
             //
             // 修法：把工程里**实际存在的文件名**放在候选链最前面，让精确匹配
             // 稳定命中；后面的模糊候选保留，作为换素材时的兼容。
+            // 末尾三条 UAL 候选是**兜底**：主库这三条一直在，正常永远轮不到它们。
+            // 但 idle/walk/run 缺任何一条整个动捕层就整体回退成方块骨骼
+            //（下面那句 `if (… == null) { Valid = false; return; }`），
+            // 而换角色、改目录、漏拷文件都可能让某一条落空——留一层兜底，
+            // 代价是三个名字，收益是不会一次性丢掉全部动捕。
             var idle = Pick(byName, "maria wprop j j ong@idle",
-                            "breathing idle", "standing idle", "idle");
+                            "breathing idle", "standing idle", "idle", "idle_loop");
             var walk = Pick(byName, "maria wprop j j ong@walking",
-                            "great sword walk", "walking", "walk");
+                            "great sword walk", "walking", "walk", "walk_loop");
             var run  = Pick(byName, "maria wprop j j ong@running",
-                            "great sword run", "running", "run");
+                            "great sword run", "running", "run", "sprint_loop", "jog_fwd_loop");
             if (idle == null || walk == null || run == null) { Valid = false; return; }
+            // 【补充库不许把一个凑不齐的自定义主库救活】
+            // idle/walk/run 三条的候选链末尾有 UAL 兜底（idle_loop / walk_loop /
+            // jog_fwd_loop），那是给**默认主库**留的最后一道保险。
+            // 可是对"角色专属动作库"来说，靠 UAL 凑齐这三条就等于把
+            // HumanoidAnimator.TryEnableMecanim 里那条"无效则回退默认库"永久关掉，
+            // 于是这个角色悄悄换成了一套通用动作，而且不报任何错——
+            // 角色·贰就是这么被换掉的，CI 全绿了十几次。
+            // 自定义主库必须用**它自己目录里的**片段撑起这三条，否则判无效、走回退。
+            if (_folder != DefaultFolder &&
+                (!ownClips.Contains(idle) || !ownClips.Contains(walk) || !ownClips.Contains(run)))
+            { Valid = false; return; }
             // 临战架势有两套：持剑（Great Sword Idle）与空手（Fighting Idle）。
             // 收刀之后仍端着持剑架势，人会显得手里凭空还握着什么。
             var combatIdle = Pick(byName, "great sword idle", "fighting idle", "combat idle", "sword and shield idle") ?? idle;
@@ -585,8 +763,25 @@ namespace AdversityRoad.Combat
             var actionList =
                 new List<(PoseState? pose, AnimationClip clip, float speed, bool hold, float start, float end)>();
             var connected = new HashSet<AnimationClip>();
-            foreach (var m in ActionMap)
+            // 同一个姿态下的去重。connected 只挡"已被**别的**招式占用"，
+            // 挡不住同一个姿态被两张表各接一次同一个片段——上一轮 CI 打出来的
+            // 「Dodge 变体×3 Stand To Roll | Roll | Roll」就是这么来的：
+            // 变体轮换到第二第三个时播的是同一段，池子白开了两个槽位。
+            var posed = new Dictionary<PoseState, HashSet<AnimationClip>>();
+            bool TakePose(PoseState p, AnimationClip c)
             {
+                if (!posed.TryGetValue(p, out var set)) posed[p] = set = new HashSet<AnimationClip>();
+                return set.Add(c);
+            }
+            foreach (var m in OrderedActionMap)
+            {
+                // 【补位表只在姿态还空着时注册】这是 #41 那个回归的正解：
+                // 角色·壹的 41 个姿态被主库占满 → UAL 一条都不进（变体不被稀释）；
+                // 角色·贰的主库只有两条拔刀片段、姿态全空 → UAL 全部进来。
+                // 一条规则同时满足两边。开关打开时 UalMap 排在最前，此时它不是补位，
+                // 是主角，所以那种情况下不套这条。
+                if (!Core.GameDebug.PreferUalClips && IsUalFallback(m) && posed.ContainsKey(m.pose))
+                    continue;
                 if (m.pool)
                 {
                     // 变体池：keys 里每一条都接进来（已被别的招式占用的片段跳过），
@@ -595,13 +790,14 @@ namespace AdversityRoad.Combat
                     {
                         var v = Pick(byName, k);
                         if (v == null || connected.Contains(v)) continue;
+                        if (!TakePose(m.pose, v)) continue;
                         actionList.Add((m.pose, v, m.speed, m.hold, m.start, m.end));
                         connected.Add(v);
                     }
                     continue;
                 }
                 var clip = Pick(byName, m.keys);
-                if (clip != null)
+                if (clip != null && TakePose(m.pose, clip))
                 {
                     actionList.Add((m.pose, clip, m.speed, m.hold, m.start, m.end));
                     connected.Add(clip);
@@ -622,10 +818,21 @@ namespace AdversityRoad.Combat
             // 未映射到招式的片段也全部接入（休息动作、拔刀收刀、动作库预览按名字播）。
             // 按【片段对象】去重：同一片段可能同时以内部名和文件名两个键存在于 byName，
             // 不去重会给同一个片段开两个混合器输入口。
+            // UAL 例外：不在白名单上的默认不接（见 UalAlwaysOn），
+            // 打开「UAL 优先」开关时全部接入，供动作库面板逐条预览与 A/B。
+            // 白名单只对**主库确实齐全**的角色生效（也就是角色·壹的 Characters/Anims）。
+            // 角色·贰的主库是 Anims2（两条片段），UAL 就是它的动作库本身——
+            // 对它套白名单等于把它的动作删光。这也是 #41 那个回归的第二条腿。
+            bool ualAll = Core.GameDebug.PreferUalClips;
             var listed = new HashSet<AnimationClip>(connected);
             foreach (var kv in byName)
-                if (!locoOnly.Contains(kv.Value) && listed.Add(kv.Value))
+            {
+                if (locoOnly.Contains(kv.Value)) continue;
+                if (!ualAll && ualClips.Contains(kv.Value) && !UalAlwaysOn.Contains(Norm(kv.Value.name)))
+                    continue;
+                if (listed.Add(kv.Value))
                     actionList.Add(((PoseState?)null, kv.Value, 1f, false, 0f, 1f));
+            }
 
             // ---- 方向移动片段：收集 + 实测每一条的行进方向与自然速度 ----
             // 必须在**建图之前**做：实测走的是 clip.SampleAnimation，它直接往骨骼上写姿态，
@@ -673,6 +880,7 @@ namespace AdversityRoad.Combat
                 _actionHold[i] = hold;
                 _actionRawLen[i] = clip.length;
                 _actionName[i] = clip.name;
+                if (ualClips.Contains(clip) && !_ualInGraph.Contains(clip.name)) _ualInGraph.Add(clip.name);
             }
 
             for (int u = 0; u < unarmedPose.Count; u++) _unarmedIndex[unarmedPose[u]] = unarmedFrom + u;
@@ -833,6 +1041,12 @@ namespace AdversityRoad.Combat
             Add(PickFile(byName, "crouch walk back", "Crouch Walk Back"), 180f, CrouchTier, false);
             Add(PickFile(byName, "crouched sneaking left", "Crouched Sneaking Left"), -90f, CrouchTier, false);
             Add(PickFile(byName, "crouched sneaking right", "Crouched Sneaking Right"), 90f, CrouchTier, false);
+            // 蹲伏**前进**：主库压根没有这一条。CI 的移动表可以直接看出来——
+            // 蹲伏档只有 -180°（后退）和 90°（右），没有 0°。而蹲着往前走是最常用的方向，
+            // 缺了它就只能去混最近的那条（侧移或后退），读起来是"蹲着横挪着往前"。
+            // UAL 的 Crouch_Fwd_Loop 填的正是这个洞——这才是"补充已有动作库"的样子：
+            // 不去和调好的片段抢位置，只补它确实没有的方向。
+            Add(PickFile(byName, "crouch_fwd_loop", "Crouch_Fwd_Loop"), 0f, CrouchTier, false);
             return list;
         }
 
@@ -850,7 +1064,8 @@ namespace AdversityRoad.Combat
             if (byName.TryGetValue(Norm(key), out var c) && c != null) return c;
             var byPath = Resources.Load<AnimationClip>(_folder + "/" + file);
             if (byPath != null) return byPath;
-            return Resources.Load<AnimationClip>(ExtraFolder + "/" + file);
+            return Resources.Load<AnimationClip>(ExtraFolder + "/" + file)
+                   ?? Resources.Load<AnimationClip>(UalFolder + "/" + file);
         }
 
         /// <summary>

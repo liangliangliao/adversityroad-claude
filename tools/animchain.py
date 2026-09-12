@@ -43,6 +43,16 @@ for d in DIRS:
         stem = os.path.splitext(os.path.basename(f))[0]
         files.setdefault(norm(stem), os.path.relpath(f, ROOT))
 
+# UAL 烘焙产物：.anim 由 UalRetargetBaker 在导入时生成，仓库里没有实体文件，
+# 而这个检查跑在没有 Unity 的 lint 作业里。清单是它们存在的唯一凭据。
+UAL_LIST = ROOT / "Assets/_Project/Animations/UAL/UAL_CLIPS.txt"
+if UAL_LIST.exists():
+    for line in io.open(UAL_LIST, encoding="utf-8"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        files.setdefault(norm(line), "Animations/UAL/(烘焙) " + line)
+
 pa = read(PA)
 pac = strip_comments(pa)
 
@@ -99,7 +109,7 @@ def parse_map_full(name):
         out.append((pose, keys, sp, st, en, hold, kind == "AP"))
     return out
 
-armed_rows   = parse_map_full("ActionMap")
+armed_rows   = parse_map_full("ActionMap") + parse_map_full("UalMap")
 unarmed_rows = parse_map_full("UnarmedMap")
 action_rows  = armed_rows + unarmed_rows
 
@@ -118,7 +128,10 @@ for m in re.finditer(r'Add\(\s*(?:PickFile\(\s*byName\s*,\s*"([^"]+)"\s*,\s*"([^
     disp = m.group(2) or m.group(3)
     ring_rows.append((m.group(4), m.group(5), key, disp))
 
-action_map  = parse_map("ActionMap")
+# UalMap 是与主表并列的第二张姿态表，先后由 GameDebug.PreferUalClips 决定。
+# 默认顺序是主库在前，所以 UAL 的条目在默认下几乎都赢不了——这不是问题，
+# 是那个开关存在的理由；但它们必须被解析进来，否则会被当成"加载了没人用"。
+action_map  = parse_map("ActionMap") + parse_map("UalMap")
 unarmed_map = parse_map("UnarmedMap")
 
 # 方向环槽位（Add(PickFile(...)) 与 Add(walk/run,...)）
@@ -137,7 +150,11 @@ mapped = {}                     # norm(file) -> [用途...]
 pose_clip = {}                  # PoseState -> norm(file) 或 None
 for pose, keys in action_map:
     hit = resolve(keys)
-    pose_clip[pose] = hit
+    # 运行时是 `if (!_actionIndex.ContainsKey(pose))`——**先注册的赢**。
+    # 这里以前写成直接赋值（最后一条赢），与运行时相反：表尾新增的补位条目
+    # 会把前面那条已经调好的片段整个盖掉，于是报出一堆并不存在的"静默空转"。
+    if pose_clip.get(pose) is None:
+        pose_clip[pose] = hit
     if hit: mapped.setdefault(hit, []).append("招式 " + pose)
 for pose, keys in unarmed_map:
     hit = resolve(keys)

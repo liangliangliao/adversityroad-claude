@@ -216,7 +216,78 @@ namespace AdversityRoad.Core
                     "camBoom,camBoomWant,camLift,camStuck,seeSelf,camTight,upperOnly," +
                     "extMove,extSrc,faceSnap,legsWalking,blendMix,depen,deep,rollback," +
                     "visStep,hipLeak,hipRaw,pinOn,bodyLX,bodyLZ,bindX,bindZ," +
-                    "enemies,spawnCount,held,event\n";
+                    "enemies,spawnCount,held," +
+                    // ---- 最近那个敌人的战斗实况（见 EnemyController 的窗口统计）----
+                    // 【为什么补这一组】此前 89 列全是玩家自己的移动与动画，
+                    // 敌人那一侧一个字都没有。而"敌人被压着打、从不还手"这件事
+                    // 前后改了八版，每一版都只能靠一张截图上的一行字来判断，
+                    // 而截图既抓不到时间序列，也常常不是在交手中截的。
+                    // 落进日志之后，"它有多久在硬直、什么在挡着它出手"就是可以
+                    // 逐帧回放的曲线，而不是一个瞬时快照。
+                    // foeId 必须有：日志记的是"最近的那个敌人"，而最近的敌人会换人。
+                    // 没有 id 就只能把不同敌人的计数拼在一起看量级，
+                    // 而 foeSwing 这类窗口计数器每 6 秒还会归零——两件事叠在一起，
+                    // "这一个敌人在这段时间里还手了几次"根本算不准。
+                    "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
+                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeWindupW,foeWindupKind,foeOnScrY,"
+                    + "foeString,foeStage,foeClip,"
+                    + "foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
+
+        /// <summary>
+        /// 最近那个敌人的战斗实况列（13 列 + 末尾的 event 由调用方补）。
+        /// 顺序必须与 Header 里那一段严格一致——列数对不上会让后面每一列都错位，
+        /// 而错位的日志比没有日志更坏（见本文件末尾的列数自检）。
+        /// </summary>
+        static string FoeColumns()
+        {
+            AI.EnemyController near = null;
+            float best = float.MaxValue;
+            var p = ActorRegistry.Player;
+            if (p != null)
+                foreach (var e in ActorRegistry.Enemies)
+                {
+                    if (e == null || e.State == AI.EnemyState.Dead) continue;
+                    float d = (e.transform.position - p.transform.position).sqrMagnitude;
+                    if (d < best) { best = d; near = e; }
+                }
+            if (near == null) return ",,,,,,,,,,,,,,,,,,,,,,";
+            var sb = new StringBuilder(112);
+            sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
+              .Append(near.State).Append(',')
+              .Append(F(near.StaggerWindowSeconds)).Append(',')
+              .Append(F(near.StaggerDuty)).Append(',')
+              .Append(near.WinFlinch).Append(',')
+              .Append(near.WinPosture).Append(',')
+              .Append(near.WinInterrupt).Append(',')
+              .Append(near.WinSwing).Append(',')
+              .Append(near.WinArmorSave).Append(',')
+              // 前摇有没有演完：起了几次 / 被打断几次 / 此刻还剩多久。
+              // "敌人攻击没有前兆"这件事，光看前兆的代码是查不出来的——
+              // 代码齐全，问题在它几乎从没演到底。这三列就是用来量这件事的。
+              .Append(near.WinTeleStart).Append(',')
+              .Append(near.WinTeleCancel).Append(',')
+              .Append(F(near.TelegraphLeft)).Append(',')
+              // 前摇"跑了多久"和"看不看得见"是两件事。上面三列量的是前者，
+              // 下面三列量的是后者——玩家反馈的一直是后者。
+              // 【屏幕提示层已按产品要求关闭】所以这里量的不再是红圈/记号，
+              // 而是"身体到底有没有在做预备动作"：形体前摇的施加权重与族别，
+              // 外加敌人在不在画面内。看不懂招，可能是身体没演，也可能是人不在画面里，
+              // 这两种的修法完全不同。
+              .Append(F(near.WindupWeightNow)).Append(',')
+              .Append(near.WindupShapeNow).Append(',')
+              .Append(F(near.MarkViewportY)).Append(',')
+              .Append(Q(near.StringName)).Append(',')
+              .Append(near.StringStage).Append('/').Append(near.StringLen).Append(',')
+              // 前摇期间身上到底在播哪一段片段——这一列缺了很久，
+              // 而"身体在演"与"演的是这一招自己的起手段"是两件事。
+              .Append(Q(near.PlayingClipNow)).Append(',')
+              .Append(Q(near.SwingBlockReason)).Append(',')
+              .Append(F(near.HealthNow)).Append(',')
+              .Append(F(near.PoiseNow)).Append(',')
+              .Append(F(near.AttackCooldown)).Append(',')
+              .Append(F(p != null ? Vector3.Distance(near.transform.position, p.transform.position) : 0f));
+            return sb.ToString();
+        }
 
         static string F(float v) => v.ToString("F3", CultureInfo.InvariantCulture);
         static string B(bool v) => v ? "1" : "0";
@@ -444,7 +515,8 @@ namespace AdversityRoad.Core
               .Append(F(_anim != null ? _anim.DbgHipBind.y : 0f)).Append(',')
               .Append(ActorRegistry.Enemies.Length).Append(',')
               .Append(ActorRegistry.SpawnCount).Append(',')
-              .Append(Q(held2.ToString())).Append(",\n");
+              .Append(Q(held2.ToString())).Append(',')
+              .Append(FoeColumns()).Append(",\n");
 
             // 一次性列数自检：状态行的字段数必须等于表头。少一列多一列都会让
             // 后面**每一列都错位**，而错位的日志比没有日志更坏——它会让我信心十足地

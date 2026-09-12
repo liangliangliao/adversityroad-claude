@@ -74,9 +74,50 @@ def rects_of(path):
         ph = max(heights) if "ScrollRect" in code else heights[0]
     return ph, out
 
+# ---------- 第二类：直接写 rectTransform 的"多行读数"版面 ----------
+# 【为什么要补这一类】上面那套只查挂在 _panel.transform 下、用 UiUtil.MakeButton
+# 建出来的控件。而 PerfHud 那种右上角的多行诊断读数是自建 Canvas、
+# 直接写 rectTransform.anchoredPosition —— 一条都查不到。
+# 结果我给它加第六行时写了 y=-370，而 -370 上已经坐着第五行，
+# 两行 40 高的文字完全重叠，截图上读出来是两行字咬在一起。
+# 这一类同样是纯算术题，同样编译器不管、运行时不报，同样只有截图才发现。
+RECT = re.compile(
+    r"(\w+)\.anchoredPosition\s*=\s*" + V + r"\s*;(?:[^;]*;){0,3}?\s*\1\.sizeDelta\s*=\s*" + V,
+    re.S)
+
+def rows_of(path):
+    src = path.read_text(encoding="utf-8")
+    code = "\n".join("" if l.strip().startswith("//") else l for l in src.split("\n"))
+    methods = [m.start() for m in re.finditer(
+        r"^\s*(?:public\s+|static\s+|private\s+)*(?:void|Button|GameObject|Text|Image)\s+\w+\s*\(",
+        code, re.M)]
+    out = []
+    for m in RECT.finditer(code):
+        x, y, w, h = (float(m.group(i)) for i in (2, 3, 4, 5))
+        if w < 50 or h < 10:
+            continue
+        scope = max([q for q in methods if q < m.start()], default=-1)
+        out.append((x, y, w, h, code[:m.start()].count("\n") + 1, scope, m.group(1)))
+    return out
+
+
 def main():
     bad = 0
     files = sorted(pathlib.Path("Assets/_Project/Scripts/UI").glob("*.cs"))
+    for f in files:
+        rows = rows_of(f)
+        for a in range(len(rows)):
+            for b in range(a + 1, len(rows)):
+                A, B = rows[a], rows[b]
+                if A[5] != B[5]:
+                    continue
+                if abs(A[0] - B[0]) * 2 < A[2] + B[2] - 1 and \
+                   abs(A[1] - B[1]) * 2 < A[3] + B[3] - 1:
+                    print(f"{f}:{A[4]}: 读数行 {A[6]} 与第 {B[4]} 行的 {B[6]} 重叠 —— "
+                          f"(x={A[0]:.0f} y={A[1]:.0f} {A[2]:.0f}x{A[3]:.0f}) 压着 "
+                          f"(x={B[0]:.0f} y={B[1]:.0f} {B[2]:.0f}x{B[3]:.0f})，"
+                          f"两行字会咬在一起，谁都读不出来")
+                    bad += 1
     for f in files:
         ph, rs = rects_of(f)
         for a in range(len(rs)):
