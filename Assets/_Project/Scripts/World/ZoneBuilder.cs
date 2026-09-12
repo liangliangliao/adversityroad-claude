@@ -189,10 +189,19 @@ namespace AdversityRoad.World
             };
             ctx.playerSpawns = new[]
             {
-                ctx.zoneOrigins[0] + new Vector3(0, 1.1f, -5),
+                // 独居小屋：**在床边醒过来**，不是站在出门那扇门跟前。
+                // 原来的 (0,-5) 离南门只有 5.5 米，而自我怀疑低语在身后的 (4,5)——
+                // 序章其一的第一句是"这一次，你决定不再躺回床上"，而玩家实际上
+                // 一睁眼就已经站在门口了，往前半步就出关，低语连话都来不及说。
+                // 落点挪到床边（床占 x∈[-9,-6]、z∈[4.5,9.5]，这里留出 1.5 米），
+                // 于是出门要横穿整个房间，从低语和目标板前面走过去。
+                ctx.zoneOrigins[0] + new Vector3(-7.5f, 1.1f, 3),
                 ctx.zoneOrigins[1] + new Vector3(-18, 1.1f, 0),
                 ctx.zoneOrigins[2] + new Vector3(-40, 1.1f, 8),
-                ctx.zoneOrigins[3] + new Vector3(-38, 1.1f, 0),
+                // 求职荒原：落点从 -38 挪到 -35。回头门在 -40，触发体半宽 1.5，
+                // 而玩家胶囊半径 0.5——站在 -38 时身体正好蹭到触发体的边（-38.5），
+                // 从「传送」面板直达会被当场送回上一关。
+                ctx.zoneOrigins[3] + new Vector3(-35, 1.1f, 0),
                 ctx.zoneOrigins[4] + new Vector3(-48, 1.1f, 0),
                 ctx.zoneOrigins[5] + new Vector3(0, 1.1f, -40),
                 ctx.zoneOrigins[6] + new Vector3(0, 1.1f, -32),
@@ -200,12 +209,20 @@ namespace AdversityRoad.World
                 ctx.zoneOrigins[8] + new Vector3(0, 1.1f, -38),
                 ctx.zoneOrigins[9] + new Vector3(0, 1.1f, -9),
                 ctx.zoneOrigins[10] + new Vector3(0, 1.1f, -24),
-                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -30),
-                ctx.zoneOrigins[12] + new Vector3(0, 1.1f, -30),
+                // 【落点不能压在回头门的触发体里】门的触发体是 3×3×2.2，
+                // 而这三个区的落点离回头门只有 1 米——从传送门进来时那扇门会被
+                // "刚传送过"的判定暂时关掉，所以一直没炸；但从「传送」面板直达
+                // 不走那条判定，玩家一落地就站在回头门里，0.2 秒后被原样送回上一关。
+                ctx.zoneOrigins[11] + new Vector3(0, 1.1f, -26),
+                // 陌生挑衅路口：落点必须**在进来那扇门跟前**，而且不能落在马路上。
+                // 原来的 (0,-30) 有两个毛病：一是它就在南侧车流幻影臂里
+                //（x∈[-4,4]、z∈[-39,-9]，6 点/秒持续掉血），玩家一进关就开始扣血；
+                // 二是入口门在西南角，落点在正南三十米外，"从门里进来"读不出来。
+                ctx.zoneOrigins[12] + new Vector3(-26, 1.1f, -26),
                 ctx.zoneOrigins[13] + new Vector3(0, 1.1f, -13),
                 ctx.zoneOrigins[14] + new Vector3(0, 1.1f, -22),
-                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -34),
-                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[15] + new Vector3(0, 1.1f, -30),
+                ctx.zoneOrigins[16] + new Vector3(0, 1.1f, -26),
                 ctx.zoneOrigins[17] + new Vector3(0, 1.1f, -26),
                 ctx.zoneOrigins[18] + new Vector3(0, 1.1f, -30),
                 ctx.zoneOrigins[19] + new Vector3(0, 1.1f, -30),
@@ -863,9 +880,16 @@ namespace AdversityRoad.World
             Decoration(ctx, "GiantGavelHandle", o + new Vector3(0, 3.9f, 33.5f),
                 new Vector3(0.6f, 3.4f, 0.6f), new Color(0.4f, 0.3f, 0.18f));
 
-            // 传送门：回债务车影（公平线来路）/ 通往责任转嫁法院（边界线时代的通道）
+            // 传送门：回债务车影（南，来路）/ 通往责任转嫁法院（北，法官席侧后）
+            //
+            // 【为什么向前门在北边】上一版两扇门都开在南墙（±14, -35），相距 28 米。
+            // 于是这一关的动线是「进门 → 往北走到法官席 → 原路折回南墙出去」：
+            // 出口就在入口旁边，法槌完全可以绕开，"从一头走到另一头"这件事在这一关
+            // 根本不存在。现在向前门挪到法官席那一端（x=14 避开 18 米宽的席位本体，
+            // 也在旁观席 z∈[-26,14] 之外），入口到出口是一条贯穿 69 米中庭的直线，
+            // 中途必然从证据桌、浮动标签和法槌脚下走过。
             MakePortal(ctx, o + new Vector3(-14f, 0, -35), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(14f, 0, -35), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(14f, 0, 34), PortalRole.Forward);
         }
 
         /// <summary>浮动标签：漂浮的否定之词——立牌 + 文字 + 触发判定（事实之刃击碎）。</summary>
@@ -1149,9 +1173,15 @@ namespace AdversityRoad.World
                 shard.transform.rotation = Quaternion.Euler(0, ang * Mathf.Rad2Deg + 90f, 8f);
             }
 
-            // 传送门：回拖延沼泽 / 回独居小屋（安全屋——终局之后回家）
+            // 传送门：回拖延沼泽（南，来路）/ 往下一关（北，镜面平台外侧）
+            //
+            // 【为什么向前门在北边】上一版两扇门都开在展柜长廊的南端（±14, -42），
+            // 相距 28 米——玩家归档完三座展柜、穿过终局大门、在镜面平台打完旧我之后，
+            // 还要原路倒回四十多米回到进门的地方才能走。出口挪到镜面平台外侧之后，
+            // 整关是一条单向的路：展柜长廊 → 终局大门 → 镜面平台 → 出去。
+            // (16, 40) 在记忆碎片柱环（圆心 (0,30) 半径 15）之外，也在围墙 ±26/±46 之内。
             MakePortal(ctx, o + new Vector3(-14f, 0, -42), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(14f, 0, -42), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(16f, 0, 40), PortalRole.Forward);
         }
 
         /// <summary>旧事展柜：底座+半透明玻璃罩+内容物+回声光+标签，归档交互。</summary>
@@ -1505,9 +1535,17 @@ namespace AdversityRoad.World
             Lamp(ctx, o + new Vector3(16, 0, -16));
             Lamp(ctx, o + new Vector3(-16, 0, 16));
 
-            // 传送门：回眼神审判走廊（西南）/ 回噪声街区（东南，刺激线终战方向）
+            // 传送门：回眼神审判走廊（西南角）/ 去噪声街区（东北角，刺激线终战方向）
+            //
+            // 【为什么向前门挪到对角】上一版两扇门都在南沿（±30, -30）：沿着南边走
+            // 六十米就到了出口，而挑衅镜像站在路口正中央 (0,0)——整整三十米之外，
+            // 玩家可以全程不进它的视野。本关的题目恰恰是"要不要接招"，
+            // 连面都不用碰的话这道题就问不出来。
+            // 现在入口在西南角、出口在东北角，两点连线正好穿过路口中心，
+            // 玩家必须从镜像脚下走过去——接不接招仍然由他决定，但它一定会站在那里。
+            // 对角线也刚好避开四条车流幻影臂（它们沿两条轴向铺，|x| 或 |z| < 4）。
             MakePortal(ctx, o + new Vector3(-30f, 0, -30), PortalRole.Back);
-            MakePortal(ctx, o + new Vector3(30f, 0, -30), PortalRole.Forward);
+            MakePortal(ctx, o + new Vector3(30f, 0, 30), PortalRole.Forward);
         }
 
         // ================= 第十四区：目标遗忘房（拖延与目标线 其一） =================
@@ -2442,13 +2480,16 @@ namespace AdversityRoad.World
             room.transform.position = o + new Vector3(0, 0, 25);
             Piece(ctx, room, "Broadcast_Floor", o + new Vector3(0, -0.25f, 25),
                 new Vector3(16, 0.5f, 14), new Color(0.32f, 0.3f, 0.34f), true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(-8, 2.1f, 25),
-                new Vector3(0.4f, 4.2f, 14), wallC, true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(8, 2.1f, 25),
-                new Vector3(0.4f, 4.2f, 14), wallC, true);
-            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(0, 2.1f, 32),
-                new Vector3(16, 4.2f, 0.4f), wallC, true);
-            Piece(ctx, room, "Broadcast_Ceiling", o + new Vector3(0, 4.3f, 25),
+            // 层高 5 米（比长廊高）：这间屋子北端现在立着通往下一关的传送门，
+            // 而门楣标牌挂在 4.2 米。照原来的 4.2 墙 / 4.3 吊顶做，那块牌子会整个
+            // 埋进顶板里——26 区的门厅当初就是为同一件事把层高从 4.3 提到 5 的。
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(-8, 2.5f, 25),
+                new Vector3(0.4f, 5f, 14), wallC, true);
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(8, 2.5f, 25),
+                new Vector3(0.4f, 5f, 14), wallC, true);
+            Piece(ctx, room, "Broadcast_Wall", o + new Vector3(0, 2.5f, 32),
+                new Vector3(16, 5f, 0.4f), wallC, true);
+            Piece(ctx, room, "Broadcast_Ceiling", o + new Vector3(0, 5.05f, 25),
                 new Vector3(16.4f, 0.3f, 14), new Color(0.2f, 0.19f, 0.22f), false);
             // 门框——**没有门板**。这扇门没有关过
             Piece(ctx, room, "Broadcast_DoorPost", o + new Vector3(-2.2f, 1.6f, 18.2f),
@@ -2502,9 +2543,26 @@ namespace AdversityRoad.World
 
             DressDebtCorridor(ctx, o, floorC, wallC);
 
-            // 传送门用显式目标：本关不在 300 米网格上，按坐标反推的区号对不上
-            MakePortal(ctx, o + new Vector3(-6f, 0, -50), 8, "旧事回声馆");
-            MakePortal(ctx, o + new Vector3(6f, 0, -50), 26, "二十元回声教室");
+            // 传送门用显式目标：第八章两关的通关条件是自己的那套专属动作
+            //（走进广播室完成自行陈述 / 在注视下完成三个目标动作再步行离场），
+            // 显式目标门不参与按章节解析的那条"走出去即通关"的路，
+            // 免得给这两关额外开一条门到门的捷径（见 LevelRules.ZoneClearsByEscape）。
+            //
+            // 【两扇门各在一端】
+            // 上一版两扇门并排立在小商店里（±6, -50），相距 12 米：玩家从旧事回声馆
+            // 进来，站在原地一转身就是通往教室的门——长廊、每周门、悬案法官、
+            // 那扇一直开着的广播室门，一样都不必碰。
+            //
+            // 现在进来的门留在小商店（长廊最南端），出去的门放进**广播室北端**——
+            // 也就是这一关的终点本身。入口到出口是一条贯穿全程的单向路：
+            // 小商店 → 三道每周门 → 悬案法官（长廊中段 z=6）→ 广播室 → 出去。
+            //
+            // 出去那扇门必须挂在 room 底下：长廊每被隐瞒一次就长 14 米，整间广播室
+            // 随之往北挪（CorridorGrowthSystem 动的就是 room.position）。
+            // 门跟着屋子走，接缝才始终对得上。
+            MakePortal(ctx, o + new Vector3(0f, 0, -50), 8, "旧事回声馆");
+            MakePortal(ctx, o + new Vector3(4.8f, 0, 29.5f), 26, "二十元回声教室")
+                .transform.SetParent(room.transform, true);
         }
 
         // ================= 第 27 区：二十元回声教室（第八章 8-2） =================
@@ -3500,7 +3558,7 @@ namespace AdversityRoad.World
         /// 最大不过 ±60 米，所以 round(x/300) 必然等于区号——不需要每个 Build 函数
         /// 再多传一个参数进来。
         /// </summary>
-        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
+        static GameObject MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role)
             => MakePortal(ctx, basePos, role, -1, null);
 
         /// <summary>
@@ -3510,26 +3568,36 @@ namespace AdversityRoad.World
         /// 更是压根没有章节号——它们都算不出"上一关/下一关"。
         /// 经典 24 关一律走上面那个按章节解析的版本，免得又退回"每扇门硬编码目标"的老问题。
         /// </summary>
-        public static void MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
+        public static GameObject MakePortal(WorldContext ctx, Vector3 basePos, int targetZone,
             string label = null)
             => MakePortal(ctx, basePos, PortalRole.Forward, targetZone, label);
 
-        static void MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
+        static GameObject MakePortal(WorldContext ctx, Vector3 basePos, PortalRole role,
             int explicitZone, string explicitLabel)
         {
-            int homeZone = Mathf.Clamp(Mathf.RoundToInt(basePos.x / 300f), 0, ZoneCount - 1);
+            int homeZone = ZoneAt(ctx, basePos);
             var root = new GameObject("Portal_" + ZoneIdOf(homeZone) + "_" + role);
             root.transform.position = basePos;
 
-            Box(ctx, "PortalPillar", basePos + new Vector3(-1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
+            // 门的每一件都挂在 root 底下。
+            //
+            // 【为什么要收成一个物体】原来只有标牌和触发体是 root 的子物体，门柱、
+            // 门楣、光幕、地台四件都是散落在场景根上的独立物体。只要这扇门需要跟着
+            // 什么东西移动，散件就会留在原地——欠条长廊的广播室会随隐瞒次数整间往北挪，
+            // 门若不是一个整体，挪完就剩一个触发体飘在空中，门框还立在十四米外。
+            var pillarL = Box(ctx, "PortalPillar", basePos + new Vector3(-1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
-            Box(ctx, "PortalPillar", basePos + new Vector3(1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
+            var pillarR = Box(ctx, "PortalPillar", basePos + new Vector3(1.6f, 1.6f, 0), new Vector3(0.5f, 3.2f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
-            Decoration(ctx, "PortalTop", basePos + new Vector3(0, 3.4f, 0), new Vector3(3.7f, 0.4f, 0.5f),
+            var top = Decoration(ctx, "PortalTop", basePos + new Vector3(0, 3.4f, 0), new Vector3(3.7f, 0.4f, 0.5f),
                 new Color(0.3f, 0.5f, 0.7f));
             var glow = Decoration(ctx, "PortalGlow", basePos + new Vector3(0, 1.6f, 0),
                 new Vector3(2.7f, 2.8f, 0.15f),
                 role == PortalRole.Back ? new Color(0.85f, 0.8f, 0.55f) : new Color(0.55f, 0.85f, 1f));
+            pillarL.transform.SetParent(root.transform, true);
+            pillarR.transform.SetParent(root.transform, true);
+            top.transform.SetParent(root.transform, true);
+            glow.transform.SetParent(root.transform, true);
 
             // 门顶标牌（文字由 Portal 按解析结果实时刷新）
             var signGo = new GameObject("PortalSign");
@@ -3546,7 +3614,8 @@ namespace AdversityRoad.World
             // 有半米悬在虚空上，玩家往门里再走一步就掉下去。与其逐个挪几十扇门的坐标，
             // 不如让 MakePortal 自己铺一块比触发体更大的地台：任何门口从此都踩得住。
             Box(ctx, "GroundPad_Portal", basePos + new Vector3(0, -0.25f, 0),
-                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f));
+                new Vector3(5.2f, 0.5f, 4.4f), new Color(0.32f, 0.34f, 0.4f))
+                .transform.SetParent(root.transform, true);
 
             var trigger = new GameObject("PortalTrigger");
             trigger.transform.SetParent(root.transform, false);
@@ -3560,6 +3629,31 @@ namespace AdversityRoad.World
             portal.explicitLabel = explicitLabel;
             portal.sign = tm;
             portal.glow = glow;
+            return root;
+        }
+
+        /// <summary>
+        /// 这个世界坐标落在哪个区。
+        ///
+        /// 【为什么不能再拿 x/300 去除】各区原点原本是 (300·i, 0, 0)，除一下就得到区号；
+        /// 但开放城区与第八章两关是后来插进来的，它们的原点是 7400 / 7800 / 8100——
+        /// 7400/300 = 24.67 四舍五入成 25，7800/300 正好等于 26。于是 24 区的门被记成
+        /// 25 区的、25 区的门被记成 26 区的。这三处目前全是显式目标门（不查 homeZone），
+        /// 所以一直没炸；但只要往那三个区里加一扇按章节解析的门，它立刻指错关。
+        /// 直接对着原点表找最近的那一个，坐标怎么排都不会错。
+        /// </summary>
+        static int ZoneAt(WorldContext ctx, Vector3 pos)
+        {
+            if (ctx == null || ctx.zoneOrigins == null || ctx.zoneOrigins.Length == 0)
+                return Mathf.Clamp(Mathf.RoundToInt(pos.x / 300f), 0, ZoneCount - 1);
+            int best = 0;
+            float bestDx = float.MaxValue;
+            for (int i = 0; i < ctx.zoneOrigins.Length; i++)
+            {
+                float dx = Mathf.Abs(pos.x - ctx.zoneOrigins[i].x);
+                if (dx < bestDx) { bestDx = dx; best = i; }
+            }
+            return best;
         }
 
         /// <summary>世界空间铭牌（3D 文字，常朝镜头）：给展品/展台等标注可读文本。</summary>
