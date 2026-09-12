@@ -70,6 +70,7 @@ namespace AdversityRoad.Goals
         {
             if (goal == null) return;
             EnsureLegacyChapters(goal);
+            EnsureInternalChapters(goal);
             // 障碍多就多给几关，但无论如何不低于强制下限
             int want = Mathf.Clamp(CountOpenObstacles(goal), MinAiChapters, MaxAiChapters);
 
@@ -107,6 +108,60 @@ namespace AdversityRoad.Goals
                 goal.legacyChapterIds.Add(bp.chapterId);
             }
             GoalOS.Save();
+        }
+
+        /// <summary>
+        /// 第 9-26 章按目标相关性动态插入（V2.2 增补，18 条内部障碍线）。
+        ///
+        /// 【为什么和 Legacy 分开走一遍】
+        /// 两份库回答的不是同一个问题：Legacy 回答"外面有什么挡着你"（不公、噪声、他人索取），
+        /// 这一份回答"你自己有什么挡着你"（不敢交付、启动不了、停不下来）。
+        /// 同一个目标常常两边都有——先插外部线再插内部线，旅程上才会两种都出现。
+        ///
+        /// 最多 3 条：这 18 章每章 5 关，一次插太多会让一条旅程全是内心戏。
+        /// </summary>
+        public static void EnsureInternalChapters(GoalData goal)
+        {
+            if (goal == null) return;
+
+            var chapters = InternalOS.InternalChapterBridge.SelectFor(goal, 3);
+            for (int i = 0; i < chapters.Count; i++)
+            {
+                var ch = chapters[i];
+                var axis = InternalOS.InternalChapterBridge.AxisOf(ch);
+                GoalObstacle match = null;
+                foreach (var ob in goal.obstacles)
+                    if (ob.axis == axis && !ob.removed) { match = ob; break; }
+
+                var bp = InternalOS.InternalChapterBridge.ToBlueprint(ch, goal, match);
+                if (bp == null || goal.FindChapter(bp.chapterId) != null) continue;
+                goal.chapters.Add(bp);
+                goal.legacyChapterIds.Add(bp.chapterId);
+            }
+            GoalOS.Save();
+        }
+
+        /// <summary>
+        /// 把第 9-26 章的**单关**登记进当前目标，好让它能像别的关卡一样被搭建与进入。
+        ///
+        /// 关卡选择面板直通这 90 关时走的就是这条路：SiteGate/GoalWorldBinder 只认
+        /// goal.chapters 里的蓝图，不先登记就会报"找不到这一关的蓝图"。
+        /// </summary>
+        public static GoalChapterData EnsureInternalLevel(GoalData goal, string levelId)
+        {
+            var lv = InternalOS.InternalChapterCatalog.Level(levelId);
+            if (goal == null || lv == null) return null;
+
+            string cid = InternalOS.InternalChapterBridge.ChapterIdOfLevel(levelId);
+            var exist = goal.FindChapter(cid);
+            if (exist != null) return exist;
+
+            var bp = InternalOS.InternalChapterBridge.ToLevelBlueprint(lv, goal);
+            if (bp == null) return null;
+            goal.chapters.Add(bp);
+            goal.legacyChapterIds.Add(bp.chapterId);
+            GoalOS.Save();
+            return bp;
         }
 
         /// <summary>玩家预设章节（方案 5.1 UserPreset / 验收标准 12）：可编辑、可关闭、可调强度。</summary>

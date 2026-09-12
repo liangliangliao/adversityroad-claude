@@ -228,6 +228,15 @@ namespace AdversityRoad.OpenWorld
                     " · 行动力 " + Mathf.RoundToInt(player.Stats.actionPower) +
                     " · 蹲伏 " + (player.IsCrouched ? "是" : "否"));
             }
+
+            // 第 9-26 章的某一关：把规则驱动拉起来。
+            //
+            // 【为什么必须在这里挂】没有它，这 90 关就只是"能走进去的房间"——
+            // 触发点不响、三选一不弹、Execution Gate 无人判，玩家会以为这一关什么都没有。
+            // 场景是通用管线建的，规则是这一关自己的，两件事在这一行接上。
+            var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapterId);
+            if (internalLevel != null) InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
+
             return true;
         }
 
@@ -283,6 +292,10 @@ namespace AdversityRoad.OpenWorld
                 ZoneBuilder.CurrentZoneId = _returnZoneId;
             else if (OpenWorldBuilder.CityZoneIndex >= 0)
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
+
+            // 内部障碍线的关卡：走出来就收线（撤退也是合法结局，不算失败告终）
+            var runner = InternalOS.InternalLevelRunner.Active;
+            if (runner != null) runner.Leave(runner.GatePassed);
 
             ClearInsideState();
             GameEvents.RaiseSubtitle("你从那个地方走了出来——它是为这条旅程建的，也会随这条旅程收起。");

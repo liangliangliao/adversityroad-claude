@@ -156,7 +156,16 @@ namespace AdversityRoad.UI
                 }
             }
 
-            // ---- 第二段：经典 24 关 + 开放城区（附加可选）----
+            // ---- 第二段：第 9-26 章 · 内部障碍线（90 关，单开一张表）----
+            //
+            // 只占一格：那 90 关自己有两级列表（18 章 → 5 关），
+            // 摊平塞进这张定尺版面会把下面的经典关卡挤出屏幕。
+            Header(ref slot, "◈ 第 9-26 章 · 内部障碍线（18 章 × 5 关 · 全部内部敌人）");
+            Cell(ref slot,
+                "打开内部障碍线\n18 章 90 关 · Boss 28-45\n点击展开章节列表",
+                new Color(0.24f, 0.22f, 0.34f, 0.96f), OpenInternalLevels);
+
+            // ---- 第三段：经典 24 关 + 开放城区（附加可选）----
             Header(ref slot, "◇ 经典关卡与开放城区（附加可选）");
             for (int zone = 0; zone < ZoneBuilder.ZoneCount; zone++)
             {
@@ -207,6 +216,18 @@ namespace AdversityRoad.UI
             lrt.offsetMax = new Vector2(-8, -4);
             _buttons.Add(btn.gameObject);
             slot++;
+        }
+
+        static InternalLevelPanel _internalPanel;
+
+        /// <summary>打开内部障碍线那张表（第一次用时才建）。</summary>
+        void OpenInternalLevels()
+        {
+            Hide();
+            var canvas = UiUtil.MainCanvas();
+            if (canvas == null) return;
+            if (_internalPanel == null) _internalPanel = InternalLevelPanel.Create(canvas.transform);
+            _internalPanel.Show();
         }
 
         /// <summary>直达生成场景：走 SiteGate 的同一套进场流程（台词接管 + 规则播报）。</summary>

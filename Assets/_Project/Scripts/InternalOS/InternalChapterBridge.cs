@@ -137,6 +137,26 @@ namespace AdversityRoad.InternalOS
             return bp;
         }
 
+        /// <summary>单关蓝图的 chapterId 前缀：`internal_level_9_1` 就是 9-1 那一关。</summary>
+        public const string LevelChapterPrefix = "internal_level_";
+
+        public static string ChapterIdOfLevel(string levelId) =>
+            LevelChapterPrefix + (levelId ?? "").Replace('-', '_');
+
+        /// <summary>
+        /// 反查：一处生成场景是不是第 9-26 章的某一关。
+        ///
+        /// 有了它，SiteGate 进场时才知道该不该把 InternalLevelRunner 拉起来——
+        /// 否则这 90 关就只是"能走进去的房间"，没有触发点、没有三选一、没有 Execution Gate。
+        /// </summary>
+        public static InternalLevelData LevelOfChapterId(string chapterId)
+        {
+            if (string.IsNullOrEmpty(chapterId) || !chapterId.StartsWith(LevelChapterPrefix))
+                return null;
+            string levelId = chapterId.Substring(LevelChapterPrefix.Length).Replace('_', '-');
+            return InternalChapterCatalog.Level(levelId);
+        }
+
         public static InternalLevelData BossLevelOf(InternalChapterInfo ch)
         {
             if (ch == null) return null;
@@ -160,7 +180,7 @@ namespace AdversityRoad.InternalOS
 
             var bp = new GoalChapterData
             {
-                chapterId = "internal_level_" + lv.levelId.Replace('-', '_'),
+                chapterId = ChapterIdOfLevel(lv.levelId),
                 source = ChapterSource.Legacy,
                 linkedGoalId = goal != null ? goal.goalId : "",
                 chapterName = lv.levelId + "《" + lv.name + "》",

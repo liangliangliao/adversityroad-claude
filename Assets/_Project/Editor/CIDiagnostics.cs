@@ -684,6 +684,65 @@ namespace AdversityRoad.EditorTools
             for (int i = 0; i < issues.Count; i++)
                 if (!issues[i].error) sb.Append("[CIDIAG][三选一]   ").Append(issues[i]).Append('\n');
 
+            // 【玩家够不够得着】数据全绿不等于这 90 关能被玩到。
+            //
+            // 这条是被一次真实的交付缺口换来的：数据、系统、这份报告全绿，
+            // 而 InternalLevelRunner 的调用者是 0 个——旅程生成只调 Legacy，
+            // 关卡选择只读经典区域表，90 关一关都走不到。玩家的原话是
+            // "为什么我测试没看到新增的关卡"。编译和校验都发现不了这种漏，
+            // 因为漏的不是某一行写错，而是**两头都对，中间没接**。
+            // 所以这里造一个每条障碍轴都有的假目标，真的跑一遍插入，看它到底给不给章节。
+            var probeGoal = new AdversityRoad.Goals.GoalData { goalId = "cidiag_probe" };
+            foreach (AdversityRoad.Personalization.WeaknessAxis ax
+                     in System.Enum.GetValues(typeof(AdversityRoad.Personalization.WeaknessAxis)))
+                probeGoal.obstacles.Add(new AdversityRoad.Goals.GoalObstacle
+                {
+                    obstacleId = "probe_" + ax, label = ax.ToString(), axis = ax
+                });
+
+            int before = probeGoal.chapters.Count;
+            var picked = AdversityRoad.InternalOS.InternalChapterBridge.SelectFor(probeGoal, 3);
+            for (int i = 0; i < picked.Count; i++)
+            {
+                var bp = AdversityRoad.InternalOS.InternalChapterBridge.ToBlueprint(picked[i], probeGoal, null);
+                if (bp != null) probeGoal.chapters.Add(bp);
+            }
+            int made = probeGoal.chapters.Count - before;
+            sb.Append("[CIDIAG][内部线] 十条障碍轴的假目标 → 选中 ").Append(picked.Count)
+              .Append(" 章、成蓝图 ").Append(made).Append(" 份\n");
+            if (made == 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 按障碍轴一章都插不进去——这 90 关在旅程里将永远不出现\n");
+                ok = false;
+            }
+
+            // 单关也必须能变成可搭建的蓝图，否则关卡选择那条直通路是死的。
+            var probeLevel = levels.Count > 0
+                ? AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[0], probeGoal) : null;
+            if (probeLevel == null || probeLevel.site == null || probeLevel.site.rooms.Count == 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 单关蓝图建不出场景——关卡选择里点进去会是一片空地\n");
+                ok = false;
+            }
+            else
+            {
+                // chapterId ↔ levelId 必须能来回认，SiteGate 靠它决定拉不拉规则驱动。
+                var back = AdversityRoad.InternalOS.InternalChapterBridge
+                    .LevelOfChapterId(probeLevel.chapterId);
+                if (back == null || back.levelId != levels[0].levelId)
+                {
+                    sb.Append("[CIDIAG][内部线] !! chapterId 反查不回关卡——进场不会拉起规则驱动\n");
+                    ok = false;
+                }
+                else
+                {
+                    sb.Append("[CIDIAG][内部线] 单关直通链路通：")
+                      .Append(levels[0].levelId).Append(" → ").Append(probeLevel.chapterId)
+                      .Append(" → 场景「").Append(probeLevel.site.siteName)
+                      .Append("」").Append(probeLevel.site.rooms.Count).Append(" 个房间\n");
+                }
+            }
+
             return ok;
         }
 
