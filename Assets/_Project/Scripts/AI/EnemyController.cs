@@ -261,6 +261,9 @@ namespace AdversityRoad.AI
         public int StringStage => _stage;
         public int StringLen => _string.stages != null ? _string.stages.Length : 0;
 
+        /// <summary>此刻敌人动作层真正在播的片段名（日志用）。</summary>
+        public string PlayingClipNow => poser != null ? poser.PlayingClip : "";
+
         /// <summary>形体前摇此刻的施加权重与族别（屏幕提示关掉后，读招的唯一可测证据）。</summary>
         public float WindupWeightNow => poser != null ? poser.WindupWeight : 0f;
         public int WindupShapeNow => poser != null ? poser.WindupShape : -1;
@@ -1232,7 +1235,11 @@ namespace AdversityRoad.AI
             ShowTelegraph(false);
             _swingFiring = false;
             GameAudio.Play(GameAudio.Sfx.Swing, 0.55f);
-            if (poser != null) poser.SetPose(_attackPose);
+            // 【接着前摇往下打，不要从头重播】前摇已经把这一招的前 35% 慢放完了；
+            // 从 0 重播会让画面"弹回起点"，而且出刀的前三分之一和前摇一模一样，
+            // 玩家因此分不出"还在蓄"与"已经打出来"。从 35% 全速续上，
+            // 整段就是一个连续动作：慢慢抬起 → 加速甩出。那个加速就是"来了"。
+            if (poser != null) poser.PlayActionFrom(_attackPose, WindupPortion);
             _wakeArmor = false;   // 这一刀已经挥出来了，起身霸体到此为止
             _winSwing++;
             float contact = ContactDelay(_attackPose);

@@ -230,7 +230,7 @@ namespace AdversityRoad.Core
                     // "这一个敌人在这段时间里还手了几次"根本算不准。
                     "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
                     "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeWindupW,foeWindupKind,foeOnScrY,"
-                    + "foeString,foeStage,"
+                    + "foeString,foeStage,foeClip,"
                     + "foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
 
         /// <summary>
@@ -250,7 +250,7 @@ namespace AdversityRoad.Core
                     float d = (e.transform.position - p.transform.position).sqrMagnitude;
                     if (d < best) { best = d; near = e; }
                 }
-            if (near == null) return ",,,,,,,,,,,,,,,,,,,,,";
+            if (near == null) return ",,,,,,,,,,,,,,,,,,,,,,";
             var sb = new StringBuilder(112);
             sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
               .Append(near.State).Append(',')
@@ -278,6 +278,9 @@ namespace AdversityRoad.Core
               .Append(F(near.MarkViewportY)).Append(',')
               .Append(Q(near.StringName)).Append(',')
               .Append(near.StringStage).Append('/').Append(near.StringLen).Append(',')
+              // 前摇期间身上到底在播哪一段片段——这一列缺了很久，
+              // 而"身体在演"与"演的是这一招自己的起手段"是两件事。
+              .Append(Q(near.PlayingClipNow)).Append(',')
               .Append(Q(near.SwingBlockReason)).Append(',')
               .Append(F(near.HealthNow)).Append(',')
               .Append(F(near.PoiseNow)).Append(',')

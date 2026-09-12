@@ -974,6 +974,35 @@ namespace AdversityRoad.Combat
         /// <summary>休息动作片段的原始时长（秒）；无此片段返回 0。</summary>
         public float RestClipLength(string key) => Mecanim ? _mecanim.RawClipLength(key) : 0f;
 
+        /// <summary>
+        /// **接着前摇往下打**：把这一招从 start01 处全速播完，而不是从头重播。
+        ///
+        /// 【为什么必须有它】前摇播的是这一招动画的前 35%（慢放），
+        /// 而落刀原本走 SetPose——SetPose 从 0 重新播整条片段。
+        /// 于是画面上是"慢慢抬手 → 啪地弹回起点 → 快速挥出"：
+        /// 那一下弹回正好发生在最需要看清的瞬间，而且出刀的前三分之一
+        /// 与刚看了大半秒的前摇**长得一模一样**，玩家分不出"还在蓄"和"已经打出来了"。
+        /// 接着往下播之后，整段是连续的一个动作：慢慢抬起 → **加速甩出**，
+        /// 那个加速的瞬间才是"来了"这个信号本身。
+        ///
+        /// 先走 SetPose（遮罩、上半身接管、_pose 这些该设的照设），
+        /// 再用 PlayNamed 把播放起点挪到 start01；取不到片段就保持 SetPose 的结果。
+        /// 判定框时序不受影响：ContactDelay 是每招固定的常数，与片段播到哪一帧无关。
+        /// </summary>
+        public void PlayActionFrom(PoseState p, float start01, float fade = 0.06f)
+        {
+            SetPose(p);
+            if (!Mecanim) return;
+            string clip = _mecanim.ActionClipNameOf(p);
+            if (string.IsNullOrEmpty(clip)) return;
+            _mecanim.PlayNamed(clip, false, false, 1f, fade, Mathf.Clamp01(start01), 1f);
+        }
+
+        /// <summary>此刻动作层真正在播的那条片段（日志用）。
+        /// "身体在不在演预备动作"和"演的是哪一段"是两件事：
+        /// 形体叠加的权重只回答前者，这一列才回答后者。</summary>
+        public string PlayingClip => Mecanim ? _mecanim.LastActionClip : "";
+
         /// <summary>某个姿态实际接到的片段名（前摇要播"这一招自己的起手段"，得先知道是哪一条）。</summary>
         public string ActionClipName(PoseState p) => Mecanim ? _mecanim.ActionClipNameOf(p) : "";
 
