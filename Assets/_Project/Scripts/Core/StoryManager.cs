@@ -73,13 +73,32 @@ namespace AdversityRoad.Core
                 theme = "事实可以成立，判词不能终审——由我决定何时说、对谁说、用什么措辞说。" },
         };
 
+        /// <summary>
+        /// 【关卡首领的等级：不许再出现"关底目标其实是个杂兵"】
+        ///
+        /// 玩家反馈"前两关的 boss 完全不堪一击"，查下来是字面属实的：
+        ///     序章其一 自我怀疑低语  见习 → 70 × 0.55 × 2.0 = 生命 77
+        ///     序章其二 明日幻影      标准 → 90 × 1.0  × 2.2 = 生命 198
+        ///     第一章三个首领         首领 → 120~135 × 2.1 × 2.8 = 生命 706~794
+        /// 一套剑连打 116 点——**序章其一的关底目标撑不满一套连招**（0.7 套）。
+        /// 而 EnemyCatalog.TierStat(见习)=0.55 是**往下乘**的：把关卡目标挂成见习，
+        /// 等于让它比一个普通杂兵还弱。
+        ///
+        /// 现在的规矩：**关卡目标最低 Elite**，正式章节的首领一律 Chief。
+        /// 难度的坡度由各自的基础属性承担（序章两个是 70/90，第一章是 120~135），
+        /// 而不是靠把关底目标降级成杂兵。
+        /// 第二章其一「咳声刺客」原本是 Elite，排在第一章三个 Chief 之后却更弱，
+        /// 一并提到 Chief。
+        /// 这条规矩由 CIDiagnostics.DiagStoryLadder 每次构建核对：
+        /// 任何一关的目标撑不满 1.5 套剑连就报红。
+        /// </summary>
         public static readonly ChapterInfo[] Chapters =
         {
             // ================= 序章 · 觉醒 =================
             new ChapterInfo
             {
                 actIndex = 0, zoneIndex = 0,
-                enemyType = EnemyType.SelfDoubtWhisper, enemyTier = EnemyTier.Novice,
+                enemyType = EnemyType.SelfDoubtWhisper, enemyTier = EnemyTier.Elite,
                 enemyId = "enemy_selfdoubt_whisper",
                 title = "序章 其一 · 独居小屋",
                 intro = "深夜，独居的房间。桌上的计划落满灰尘，角落里传来熟悉的低语：\n「你真的觉得自己可以？」\n\n这一次，你决定不再躺回床上。\n击败【见习·自我怀疑低语】，推开那扇门。",
@@ -88,7 +107,7 @@ namespace AdversityRoad.Core
             new ChapterInfo
             {
                 actIndex = 0, zoneIndex = 1,
-                enemyType = EnemyType.TomorrowPhantom, enemyTier = EnemyTier.Standard,
+                enemyType = EnemyType.TomorrowPhantom, enemyTier = EnemyTier.Elite,
                 enemyId = "enemy_tomorrow_phantom",
                 title = "序章 其二 · 训练武馆",
                 intro = "武馆的木地板吱呀作响。\n一个熟悉的身影挡在训练柱之间——它总是劝你「明天再来」。\n\n击败【标准·明日幻影】，证明你今天就能开始。",
@@ -128,7 +147,7 @@ namespace AdversityRoad.Core
             new ChapterInfo
             {
                 actIndex = 2, zoneIndex = 2,
-                enemyType = EnemyType.CoughAssassin, enemyTier = EnemyTier.Elite,
+                enemyType = EnemyType.CoughAssassin, enemyTier = EnemyTier.Chief,
                 enemyId = "enemy_cough_assassin",
                 title = "刺激线 其一 · 一声咳嗽的街道",
                 intro = "行人、车辆、议论声、咳嗽声……\n每一个声音都在拉扯你的注意力。\n\n在干扰中保持专注，击败【精英·咳声刺客】。\n提示：专注值被打空时锁定会失灵，用「定心格挡」反制心理攻击；\n广告牌下与公交站旁是噪声区——切「定心姿态」可减免。",

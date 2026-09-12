@@ -544,6 +544,52 @@ namespace AdversityRoad.EditorTools
               .Append("m 踏前余量的部分会被裁掉；空手/未出鞘时刃长按 0 算，剑招同时降级为拳连\n");
         }
 
+        /// <summary>
+        /// 关卡首领梯度表：每一关的**通关目标**到底有多硬。
+        ///
+        /// 玩家反馈"前两关的 boss 完全不堪一击"——查下来字面属实：序章其一的关底目标
+        /// 挂的是**见习**等级，而 TierStat(见习)=0.55 是往下乘的，生命只有 77，
+        /// 连一套剑连（116 伤害）都撑不满。这种事光看某一关的配置看不出来，
+        /// 要把全部关卡排成一列比才看得见坡度是不是断的。
+        /// 判据是硬的：任何一关的目标撑不满 1.5 套剑连就报红。
+        /// </summary>
+        static bool DiagStoryLadder(StringBuilder sb)
+        {
+            bool ok = true;
+            AdversityRoad.Combat.PlayerCombatController.ComboTotals(true, out float swordMult, out float _);
+            float perChain = AdversityRoad.Combat.PlayerCombatController.DefaultBaseDamage * swordMult;
+            sb.Append("[CIDIAG][关卡] 一套剑连 ").Append(perChain.ToString("0"))
+              .Append(" 伤害（未计减免；下表逐个按 100/(100+防御) 折算，与「平衡」段同口径）")
+              .Append("；下表是每一关**通关目标**的硬度\n");
+            var chapters = AdversityRoad.Core.StoryManager.Chapters;
+            for (int i = 0; i < chapters.Length; i++)
+            {
+                var ch = chapters[i];
+                var prof = AdversityRoad.AI.EnemyCatalog.Create(ch.enemyType, ch.enemyTier);
+                // 【伤害口径必须与「平衡」段完全一致】防御是按 100/(100+防御) 减免的，
+                // 不是线性相减。我第一版在这里另写了一个 (基础-防御)，
+                // 算出来首领要 23 套连招——和同一份报告上面那张表自相矛盾。
+                // 一份报告里两套算法，必定有一套在骗人。
+                float red = 100f / (100f + prof.defense);
+                float chain = AdversityRoad.Combat.PlayerCombatController.DefaultBaseDamage
+                              * swordMult * red;
+                float sets = chain > 0.01f ? prof.maxHealth / chain : 99f;
+                sb.Append("[CIDIAG][关卡]   ").Append(ch.title)
+                  .Append("  ").Append(AdversityRoad.AI.EnemyCatalog.TierLabel(ch.enemyTier))
+                  .Append("·").Append(AdversityRoad.AI.EnemyCatalog.TypeLabel(ch.enemyType))
+                  .Append("  生命=").Append(prof.maxHealth.ToString("0"))
+                  .Append(" 防御=").Append(prof.defense.ToString("0.0"))
+                  .Append("  需 ").Append(sets.ToString("0.0")).Append(" 套剑连");
+                if (sets < 1.5f)
+                {
+                    sb.Append("  !! 关底目标撑不满 1.5 套连招——这一关等于没有 boss");
+                    ok = false;
+                }
+                sb.Append('\n');
+            }
+            return ok;
+        }
+
         /// <summary>玩法里角色·贰实际使用的动作库目录（与 PlayerAppearance.Rebuild 同源）。</summary>
         static string PlayerAnimsFolder() { return null; }
 
@@ -680,9 +726,10 @@ namespace AdversityRoad.EditorTools
                 string ln = lines[i];
                 if (ln.Length == 0) continue;
                 if (ln.Contains("!! ") ||
-                    ln.StartsWith("[CIDIAG][角色贰]") ||
+                    (ln.StartsWith("[CIDIAG][角色贰]") && !ln.StartsWith("[CIDIAG][角色贰]     ")) ||
                     ln.StartsWith("[CIDIAG][距离]") ||
                     ln.StartsWith("[CIDIAG][前摇]") ||
+                    ln.StartsWith("[CIDIAG][关卡]") ||
                     ln.StartsWith("[CIDIAG][平衡] 【设计方向】"))
                     sb.Append(ln).Append('\n');
             }
@@ -710,6 +757,7 @@ namespace AdversityRoad.EditorTools
                 DiagCharacterMaterials(sb);
                 DiagBalance(sb);
                 DiagReach(sb);
+                if (!DiagStoryLadder(sb)) exit = 1;
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：
                 // 「变体×3 里有两条是同一段」看起来是绿的，玩起来是"翻滚从不变化"。
