@@ -231,6 +231,43 @@ namespace AdversityRoad.AI
         public int WinArmorSave => _winArmorSave;
         public int WinTeleStart => _winTeleStart;
         public int WinTeleCancel => _winTeleCancel;
+        /// <summary>
+        /// 前摇警示此刻**在不在屏幕上真的看得见**（日志用）。
+        ///
+        /// 到目前为止我量的一直是"前摇跑了多久"——那证明的是它**运行**了，
+        /// 不是它**被看见**了。玩家说"完全没有任何前兆"，而我的数说前摇演完了 21/29 次，
+        /// 这两句话能同时成立，只可能是我量错了对象。这三个只读量补上那一半：
+        ///   RingVisible  红圈的 GameObject 激活且渲染器开着
+        ///   RingGroundDy 红圈距离脚底的高度（正常应 ≈0.05m；负数=埋在地里）
+        ///   MarkViewportY 头顶「！」在屏幕上的纵向位置（0~1 在画面内，越界=看不到）
+        /// </summary>
+        public bool RingVisible
+        {
+            get
+            {
+                if (_dangerRing == null || !_dangerRing.activeInHierarchy) return false;
+                var r = _dangerRing.GetComponent<MeshRenderer>();
+                return r != null && r.enabled && r.isVisible;
+            }
+        }
+
+        /// <summary>红圈相对脚底的高度（脚底 = 根节点下方 1 米，见 GameBootstrap 的胶囊）。</summary>
+        public float RingGroundDy =>
+            _dangerRing == null ? 0f
+            : _dangerRing.transform.position.y - (transform.position.y - 1f);
+
+        /// <summary>头顶警示记号在屏幕上的纵向位置；相机缺失或在身后返回 -9。</summary>
+        public float MarkViewportY
+        {
+            get
+            {
+                var cam = Camera.main;
+                if (cam == null || _alertMark == null) return -9f;
+                Vector3 vp = cam.WorldToViewportPoint(_alertMark.transform.position);
+                return vp.z <= 0f ? -9f : vp.y;
+            }
+        }
+
         /// <summary>此刻是否处于前摇，以及还剩多久（日志用；不在前摇时为 0）。</summary>
         public float TelegraphLeft => _telegraphing ? Mathf.Max(0f, _windupTotal - _telegraphT) : 0f;
         public float HealthNow => _hp;

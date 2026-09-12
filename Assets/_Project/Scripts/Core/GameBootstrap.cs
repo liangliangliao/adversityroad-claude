@@ -572,8 +572,15 @@ namespace AdversityRoad.Core
             // 于是有效命中距离落回 1.6+0.34+pad ≈ 2.0 米——一个 2 米高的人
             // 挥剑能够到的地方，和 AI 用来决定"该不该出手"的 attackRange(1.8~2.2)
             // 也终于对得上了。
+            // 【根节点在身体中心，不在脚下】CharacterController/CapsuleCollider 都是
+            // height=2、center=0 —— 身体占 root-1 … root+1。
+            // 而这里原来写的是 center=(0, 身高/2, 0)，那是"根在脚下"的算法：
+            // 受击框实际罩住的是 root+0 … root+2，也就是**从腰往上、再往头顶上方空出一米**，
+            // 腰以下完全没有兜底框。两种约定写在同一个文件里，谁也没发现。
+            // 部位受击框挂在骨骼上、位置一直是对的，所以表现不是"完全打不中"，
+            // 而是"有时打中有时穿过去"——最难查的那一种。
             hurtCol.height = MecanimCharacter.TargetHeight;
-            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.center = Vector3.zero;
             hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 部位受击框：头/胸/腰腹/双臂/双腿各挂在对应骨骼下，跟着动画走。
@@ -871,8 +878,15 @@ namespace AdversityRoad.Core
             // 同玩家侧：受击框按真实身高，不再是两倍大的罩子。
             // 敌人这边尤其要紧——它决定的是**玩家的攻击能从多远打中**，
             // 原来的 0.65 半径等于白送玩家 0.65 米的够不着也能打中。
+            // 【根节点在身体中心，不在脚下】CharacterController/CapsuleCollider 都是
+            // height=2、center=0 —— 身体占 root-1 … root+1。
+            // 而这里原来写的是 center=(0, 身高/2, 0)，那是"根在脚下"的算法：
+            // 受击框实际罩住的是 root+0 … root+2，也就是**从腰往上、再往头顶上方空出一米**，
+            // 腰以下完全没有兜底框。两种约定写在同一个文件里，谁也没发现。
+            // 部位受击框挂在骨骼上、位置一直是对的，所以表现不是"完全打不中"，
+            // 而是"有时打中有时穿过去"——最难查的那一种。
             hurtCol.height = MecanimCharacter.TargetHeight;
-            hurtCol.center = new Vector3(0, MecanimCharacter.TargetHeight * 0.5f, 0);
+            hurtCol.center = Vector3.zero;
             hurtCol.radius = MecanimCharacter.TargetHeight * 0.17f;
             hurt.AddComponent<Hurtbox>();                // 全身兜底框（specificity=0）
             // 敌人同样拆部位：打头会心、打腿削韧且减速、打手削弱它的攻势（见 BodyPartTable）

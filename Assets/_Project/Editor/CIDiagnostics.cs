@@ -318,6 +318,9 @@ namespace AdversityRoad.EditorTools
               .Append("OpenAttackHitbox 里 _swingFiring 置位写在 ShowTelegraph(false) 之后，")
               .Append("于是每一次成功打出去的招都被记成一次「前摇被打断」。")
               .Append("按同一份日志扣掉这部分（teleCancel 10 − 出手 7），真实打断率约 23%\n");
+            sb.Append("[CIDIAG][前摇] 受击框几何：根节点在身体中心（胶囊 height=2/center=0，身体占 root±1），")
+              .Append("全身兜底受击框 center 已从 (0,身高/2,0) 改为 (0,0,0)——")
+              .Append("原来那个是「根在脚下」的算法，实际把兜底框整体抬高一米（腰以下没有兜底）\n");
             sb.Append("[CIDIAG][前摇] 出手由前摇时钟唯一驱动（TickTelegraph 走满才 OpenAttackHitbox），")
               .Append("不再用 Invoke 排队——排队残留会让刀在下一次前摇刚亮起 0.1~0.4 秒时落下。")
               .Append("起手 ").Append(AdversityRoad.AI.EnemyController.MinWindup.ToString("0.00"))

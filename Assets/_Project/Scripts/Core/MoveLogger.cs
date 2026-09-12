@@ -229,7 +229,8 @@ namespace AdversityRoad.Core
                     // 而 foeSwing 这类窗口计数器每 6 秒还会归零——两件事叠在一起，
                     // "这一个敌人在这段时间里还手了几次"根本算不准。
                     "foeId,foeState,foeStaggerWin,foeStaggerPct,foeFlinch,foePosture,foeInterrupt," +
-                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
+                    "foeSwing,foeArmorSave,foeTeleStart,foeTeleCancel,foeTeleLeft,foeRingVis,foeRingDy,foeMarkVY,"
+                    + "foeBlock,foeHp,foePoise,foeAtkCd,foeDist,event\n";
 
         /// <summary>
         /// 最近那个敌人的战斗实况列（13 列 + 末尾的 event 由调用方补）。
@@ -248,7 +249,7 @@ namespace AdversityRoad.Core
                     float d = (e.transform.position - p.transform.position).sqrMagnitude;
                     if (d < best) { best = d; near = e; }
                 }
-            if (near == null) return ",,,,,,,,,,,,,,,,";
+            if (near == null) return ",,,,,,,,,,,,,,,,,,,";
             var sb = new StringBuilder(112);
             sb.Append(Q(near.profile != null ? near.profile.enemyId : "")).Append(',')
               .Append(near.State).Append(',')
@@ -265,6 +266,11 @@ namespace AdversityRoad.Core
               .Append(near.WinTeleStart).Append(',')
               .Append(near.WinTeleCancel).Append(',')
               .Append(F(near.TelegraphLeft)).Append(',')
+              // 前摇"跑了多久"和"看不看得见"是两件事。上面三列量的是前者，
+              // 下面三列量的是后者——玩家反馈的一直是后者。
+              .Append(B(near.RingVisible)).Append(',')
+              .Append(F(near.RingGroundDy)).Append(',')
+              .Append(F(near.MarkViewportY)).Append(',')
               .Append(Q(near.SwingBlockReason)).Append(',')
               .Append(F(near.HealthNow)).Append(',')
               .Append(F(near.PoiseNow)).Append(',')
