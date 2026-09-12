@@ -468,6 +468,10 @@ namespace AdversityRoad.Shame
         /// </summary>
         public static bool Holding { get; private set; }
 
+        // 把自己的位置登记给目标行：玩家问的是"还差哪两个"，
+        // 而三个名词里最缺的那半句是"在哪儿"（见 ShameLineController.NextStepLine）
+        void Start() => ShameLineController.RegisterAnchor(objectiveId, transform);
+
         void OnDisable() { if (Holding && _held > 0f) Holding = false; }
 
         void Update()
@@ -552,6 +556,10 @@ namespace AdversityRoad.Shame
     {
         float _nextTry;
         float _lastNag = -99f;
+
+        // 「步行离场」也是一个目标，目标行同样要报得出它在哪
+        void Start() =>
+            ShameLineController.RegisterAnchor(ShameLineController.ObjWalkOut, transform);
 
         // OnTriggerEnter 只在"踏进来的那一帧"响一次。玩家如果是**站在门口那块地上**
         // 把最后一个目标动作做完的，进入事件早就用掉了，之后站着不动门不会有任何反应——

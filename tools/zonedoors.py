@@ -19,6 +19,12 @@ zonedoors —— 经典关卡的两扇门是不是**各在一端**，而且 BOSS
   ④ 玩家落点（playerSpawns）到出口 ≥ MIN_SPAWN_TO_EXIT（= LevelTraverse.MinDistance），
      且不能压在回头门的触发体里（3×2.2，取一半再留余量）。
 
+「落点落在持续掉血的危险区里」（陌生挑衅路口原来就压在车流幻影臂中）**不在这里查**：
+危险区的坐标常常来自局部数组或循环变量（BuildCrossroad 的四条臂就是这么摆的），
+静态扫源码只会写出一条永远命中不了的正则——那比没有检查更糟。
+这一条改由运行时兜：ZoneBuilder.EnsureSpawnsClearOfHazards 在建完世界之后
+拿真实碰撞体量一遍，与 EnsureSpawnPads 同一个思路。
+
 只检查"两扇门都由 MakePortal 建出来"的静态区。豁免见 EXEMPT。
 """
 import re, sys, os, math

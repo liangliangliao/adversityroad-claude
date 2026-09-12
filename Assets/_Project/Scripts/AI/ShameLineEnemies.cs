@@ -196,8 +196,11 @@ namespace AdversityRoad.AI
     [RequireComponent(typeof(EnemyController))]
     public class SideGlancer : MonoBehaviour
     {
+        /// <summary>视线锥默认射程（米）。放大关卡时按同一系数乘上去，见 ZoneBuilder.EchoK。</summary>
+        public const float DefaultConeRange = 16f;
+
         public float coneAngle = 62f;
-        public float coneRange = 16f;
+        public float coneRange = DefaultConeRange;
         public float exposureRate = 8f;
         /// <summary>头部左右缓慢摆动的幅度（度）。注视是活的，但永远可读。</summary>
         public float sweep = 28f;

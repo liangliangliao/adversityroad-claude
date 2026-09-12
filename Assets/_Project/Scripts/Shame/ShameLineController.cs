@@ -103,15 +103,84 @@ namespace AdversityRoad.Shame
             }
             else if (_levelId == ShameLine.LevelEchoClassroom)
             {
+                // 前半句报进度，后半句报"下一步去哪、到了按什么"。
+                // 三个目标名各自只占四个字：这一行要在手机上一眼读完，
+                // 玩家已经反馈过它被截断了（见 BuildHUD 里目标行的两行高改动）。
                 UI.HUDController.SetObjective(
-                    "◆ 8-2 回声教室　目标 " + _objectivesDone.Count + "/3　" +
-                    Mark(ObjReturn) + "归还　" + Mark(ObjOwnWork) + "完成本职　" +
-                    Mark(ObjWalkOut) + "步行离场（不要冲刺）　" +
-                    "低语不会停，被看着也要做完");
+                    "◆ 8-2 回声教室 " + _objectivesDone.Count + "/3　" +
+                    Mark(ObjReturn) + "归还 " + Mark(ObjOwnWork) + "完成本职 " +
+                    Mark(ObjWalkOut) + "离场" + NextStepLine());
             }
         }
 
         string Mark(string id) => _objectivesDone.Contains(id) ? "✓" : "·";
+
+        // ---- 目标物的位置：由目标物自己登记，控制器不去全场找 ----
+        static readonly Dictionary<string, Transform> Anchors = new Dictionary<string, Transform>();
+
+        /// <summary>目标交互物在建出来时把自己登记进来（位置只有它自己知道）。</summary>
+        public static void RegisterAnchor(string objectiveId, Transform at)
+        {
+            if (string.IsNullOrEmpty(objectiveId) || at == null) return;
+            Anchors[objectiveId] = at;
+        }
+
+        /// <summary>
+        /// 「下一步该去哪、到了按什么」——目标行的后半句。
+        ///
+        /// 【为什么必须加这一句】上一版这一行只写了三个目标的名字和完成勾。
+        /// 玩家的原话是"目标一直 1/3，还需要完成哪些目标？"——他知道还差两个，
+        /// 不知道那两个**在教室的哪个位置**，也不知道到了要按什么键：
+        /// 交互提示只在 3.4 米内才冒出来，而一间四十多米的教室里，
+        /// 没有方向的三个名词等于没有提示。
+        ///
+        /// 8-1 那一关明令禁止给方向（方案 8.5：不能用任务提示把玩家推进广播室的门），
+        /// 但 8-2 没有这条限制——这一关要玩家做的事是明写在规则里的三件，
+        /// 难的是在被注视的情况下做完，不是找不找得到。
+        /// </summary>
+        string NextStepLine()
+        {
+            string id = !_objectivesDone.Contains(ObjReturn) ? ObjReturn
+                      : !_objectivesDone.Contains(ObjOwnWork) ? ObjOwnWork
+                      : !_objectivesDone.Contains(ObjWalkOut) ? ObjWalkOut : "";
+            if (string.IsNullOrEmpty(id))
+                return "\n▶ 三件都做完了——低语不会停，但你已经做完了";
+
+            string how = id == ObjWalkOut
+                ? "走出去，别冲刺"
+                : "站定按住【用】/R " + (id == ObjOwnWork ? "5.2" : "3.4") + " 秒不松手";
+            return "\n▶ 下一步：" + id + Where(id) + "　" + how;
+        }
+
+        /// <summary>目标物相对镜头的方位与距离（拿不到位置就只给名字，不编）。</summary>
+        static string Where(string objectiveId)
+        {
+            if (!Anchors.TryGetValue(objectiveId, out var t) || t == null) return "";
+            var player = AdversityRoad.Core.ActorRegistry.Player;
+            if (player == null) return "";
+            Vector3 to = t.position - player.transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude < 0.01f) return "（就在脚下）";
+            var cam = player.cameraTransform;
+            Vector3 fwd = cam != null ? cam.forward : player.transform.forward;
+            fwd.y = 0f;
+            float ang = Vector3.SignedAngle(fwd.normalized, to.normalized, Vector3.up);
+            return "（" + Arrow(ang) + Mathf.RoundToInt(to.magnitude) + "m）";
+        }
+
+        /// <summary>方位角 → 一眼能懂的箭头。</summary>
+        static string Arrow(float angle)
+        {
+            float a = Mathf.Repeat(angle + 180f, 360f) - 180f;
+            if (a > -22.5f && a <= 22.5f) return "↑";
+            if (a > 22.5f && a <= 67.5f) return "↗";
+            if (a > 67.5f && a <= 112.5f) return "→";
+            if (a > 112.5f && a <= 157.5f) return "↘";
+            if (a > -67.5f && a <= -22.5f) return "↖";
+            if (a > -112.5f && a <= -67.5f) return "←";
+            if (a > -157.5f && a <= -112.5f) return "↙";
+            return "↓";
+        }
 
         void EnterLevel(string levelId)
         {
