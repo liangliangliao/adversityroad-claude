@@ -593,6 +593,9 @@ namespace AdversityRoad.EditorTools
             return ok;
         }
 
+        /// <summary>玩法说明里 【】 内允许出现的按键名——它们是键，不是场上的物件。</summary>
+        static readonly string[] ButtonNames = { "用", "跳", "蹲", "闪", "挡", "锁", "术", "拔刀" };
+
         /// <summary>
         /// 第 9-26 章 · 90 关内部障碍线的入库体检（V2.2 增补 PRD 第 11.3 / 12 节）。
         ///
@@ -756,6 +759,7 @@ namespace AdversityRoad.EditorTools
               .Append(" 件）；缺 Gate ").Append(noGate)
               .Append(" 关、空房间 ").Append(emptyRoom).Append(" 关\n");
 
+            // 【】里允许出现的按键名（MobileControls 里那几颗键），它们不是场上的物件
             // 【目标行里点名的东西，场上必须真的有那块牌子】
             //
             // 目标行现在会写"去【装车月台】装车"。可 Gate 的牌子过去一律写"提交台"——
@@ -775,6 +779,8 @@ namespace AdversityRoad.EditorTools
                     AdversityRoad.InternalOS.InternalProps.Style(plan2[k].kind, out lbl, out col, out sz);
                     if (plan2[k].kind == AdversityRoad.InternalOS.InternalPropKind.GateConsole)
                         lbl = AdversityRoad.InternalOS.InternalProps.GateLabel(plan2[k].pfName);
+                    // 牌面覆盖（9-3 的"旧箱"）才是玩家真看到的字
+                    if (!string.IsNullOrEmpty(plan2[k].label)) lbl = plan2[k].label;
                     labels.Add(lbl);
                 }
                 // 关卡循环自己摆的牌子（9-1 的六张修改卡）也算数
@@ -800,6 +806,10 @@ namespace AdversityRoad.EditorTools
                         string want = po.Substring(open + 1, close - open - 1);
                         at = close + 1;
                         if (labels.Contains(want)) continue;
+                        // 【】里也可能是**按键名**而不是场上的东西。
+                        // "按【用】/ R" 是这个工程既有的写法（见 ShameInteractable），
+                        // 玩法说明里到处都要用它，不能被当成"场上没有这块牌子"。
+                        if (System.Array.IndexOf(ButtonNames, want) >= 0) continue;
                         sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
                           .Append(" 的说明让玩家去找【").Append(want)
                           .Append("】，但这一关摆出来的牌子只有：")

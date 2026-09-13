@@ -21,9 +21,28 @@ namespace AdversityRoad.InternalOS
     /// <see cref="ExecutionGate"/> 没过，这一关就不算通关——哪怕场上敌人全部清空。
     /// 第 3.4 节写得很直接："不以清怪定义胜利"。
     /// </summary>
+    /// <summary>
+    /// 一关自己的通关判据。
+    ///
+    /// 【为什么要抽这一层】
+    /// 原来 InternalProp 的"提交台"分支里写着 `if (levelId == 9-1) 问 9-1 的循环`。
+    /// 每做一关的玩法就要往那个 switch 里塞一个 if——到第 26 章会有十几段。
+    /// 关卡自己的规则应该由关卡自己回答，机关只负责问。
+    /// </summary>
+    public interface ILevelGate
+    {
+        /// <summary>现在能不能交付；不能的话 why 要说清**还差什么**。</summary>
+        bool CanSubmit(out string why);
+        /// <summary>交付成功那一刻，这一关想让玩家记住的一句话。</summary>
+        string SubmitMeaning();
+    }
+
     public class InternalLevelRunner : MonoBehaviour
     {
         public static InternalLevelRunner Active { get; private set; }
+
+        /// <summary>这一关的循环（有的话）。由循环自己在装好时登记。</summary>
+        public ILevelGate Gate { get; set; }
 
         public InternalLevelData Level { get; private set; }
         public InternalChapterInfo Chapter { get; private set; }

@@ -327,7 +327,8 @@ namespace AdversityRoad.OpenWorld
                 float z = north ? hallW / 2f - 0.4f : -hallW / 2f + 0.4f;
                 Deco(inst, "DoorFrame", new Vector3(x, 1.4f, z), new Vector3(1.8f, 2.8f, 0.18f), inst.cTrim);
                 var room = bp.rooms.Count > 0 ? bp.rooms[i % bp.rooms.Count] : null;
-                Sign(inst, new Vector3(x, 3.1f, z), room != null ? room.name : "门");
+                Sign(inst, new Vector3(x, 1.9f, z), room != null ? room.name : "门",
+                    room != null ? room.purpose : "");
                 if (room != null && room.props.Count > 0)
                     BuildProp(inst, room.props[i % room.props.Count],
                         new Vector3(x, 0, north ? hallW / 2f - 2.2f : -hallW / 2f + 2.2f), rng);
@@ -386,7 +387,7 @@ namespace AdversityRoad.OpenWorld
                 var focus = bp.rooms[0];
                 Deco(inst, "Dais", new Vector3(0, 0.15f, d * 0.22f), new Vector3(12f, 0.3f, 8f),
                     new Color(0.38f, 0.36f, 0.4f));
-                Sign(inst, new Vector3(0, 3.4f, d * 0.22f), focus.name);
+                Sign(inst, new Vector3(0, 1.9f, d * 0.22f), focus.name, focus.purpose);
                 foreach (var p in focus.props)
                     BuildProp(inst, p, new Vector3((float)rng.NextDouble() * 8f - 4f, 0, d * 0.22f), rng);
             }
@@ -395,7 +396,7 @@ namespace AdversityRoad.OpenWorld
                 float ang = i * Mathf.PI * 2f / 4f;
                 Vector3 at = new Vector3(Mathf.Cos(ang) * w * 0.3f, 0, Mathf.Sin(ang) * d * 0.3f);
                 foreach (var p in bp.rooms[i].props) BuildProp(inst, p, at, rng);
-                Sign(inst, at + Vector3.up * 3f, bp.rooms[i].name);
+                Sign(inst, at + Vector3.up * 1.9f, bp.rooms[i].name, bp.rooms[i].purpose);
                 yield return null;
             }
             inst.enemySpawns.Add(inst.origin + new Vector3(0, 1.1f, d * 0.18f));
@@ -429,7 +430,7 @@ namespace AdversityRoad.OpenWorld
                 var room = bp.rooms.Count > 0 ? bp.rooms[i % bp.rooms.Count] : null;
                 if (room != null)
                 {
-                    Sign(inst, new Vector3(x, 4.2f, z + (north ? -5.3f : 5.3f)), room.name);
+                    Sign(inst, new Vector3(x, 1.9f, z + (north ? -5.3f : 5.3f)), room.name, room.purpose);
                     foreach (var p in room.props)
                         BuildProp(inst, p, new Vector3(x + (float)rng.NextDouble() * 4f - 2f, 0,
                             north ? z - 7f : z + 7f), rng);
@@ -466,7 +467,7 @@ namespace AdversityRoad.OpenWorld
             {
                 float ang = i * Mathf.PI * 2f / Mathf.Max(1, bp.rooms.Count);
                 Vector3 at = new Vector3(Mathf.Cos(ang) * w * 0.2f, 0, Mathf.Sin(ang) * d * 0.2f);
-                Sign(inst, at + Vector3.up * 2.6f, room.name);
+                Sign(inst, at + Vector3.up * 1.9f, room.name, room.purpose);
                 foreach (var p in room.props) BuildProp(inst, p, at, rng);
                 i++;
                 yield return null;
@@ -496,7 +497,7 @@ namespace AdversityRoad.OpenWorld
             Deco(inst, "DoorHead", center + new Vector3(0, h - 0.35f, near),
                 new Vector3(2.4f, 0.7f, 0.35f), inst.cWall);
 
-            Sign(inst, center + new Vector3(0, h + 0.5f, near), room.name);
+            Sign(inst, center + new Vector3(0, 1.9f, near), room.name, room.purpose);
 
             // 道具沿墙摆，中间留出走位空间
             int n = 0;
@@ -1106,7 +1107,8 @@ namespace AdversityRoad.OpenWorld
         static void BuildEntranceMarker(SiteInstance inst, SiteBlueprint bp)
         {
             float localZ = inst.exitPoint.z - inst.origin.z;
-            Sign(inst, new Vector3(0, 4.2f, localZ), "◀ " + bp.siteName + " · 出口");
+            Sign(inst, new Vector3(0, 2.1f, localZ), "◀ " + bp.siteName + " · 出口",
+                "从这里离开这处场景，回到城里。");
             Deco(inst, "ExitPad", new Vector3(0, 0.07f, localZ),
                 new Vector3(5f, 0.06f, 3f), new Color(0.4f, 0.8f, 0.6f));
 
@@ -1123,7 +1125,8 @@ namespace AdversityRoad.OpenWorld
                 Deco(inst, "PathMark", new Vector3(0, 0.08f, z),
                     new Vector3(2.6f, 0.05f, 1.1f), new Color(0.95f, 0.82f, 0.45f, 1f));
             }
-            Sign(inst, new Vector3(0, 3.4f, spawnZ + dir * 9f), "▼ 往里走");
+            Sign(inst, new Vector3(0, 1.9f, spawnZ + dir * 9f), "▼ 往里走",
+                "这一关要做的事在前面。");
         }
 
         /// <summary>只烘焙本场景（Children 收集）：不动主世界导航，卸载时一起消失。</summary>
@@ -1743,16 +1746,54 @@ namespace AdversityRoad.OpenWorld
                 Core.CloudDialogueService.AddLog("照明审计：补灯 " + added + " 盏（生成场景）");
         }
 
-        static void Sign(SiteInstance inst, Vector3 local, string text)
+        /// <summary>
+        /// 区域名牌：**一块真的立在地上的牌子**，字刷在牌面上。
+        ///
+        /// 【原来是一块悬在 3.4 米高、跟着镜头转的字】
+        /// 玩家原话两条都指着它："文字漂浮着、看起来模糊、粗糙"、
+        /// "物理场景中很多文字标识不知道有什么作用"。
+        /// 悬空 + billboard + 只有一个名字，三样占全了。
+        ///
+        /// 现在建成立柱 + 牌面的实体，字用 SurfaceSign 刷在牌面上（不跟镜头转），
+        /// 并挂一个走近解释的组件——名字回答"这叫什么"，解释回答"它是干什么的"。
+        /// </summary>
+        static void Sign(SiteInstance inst, Vector3 local, string text, string explain = null)
         {
             if (string.IsNullOrEmpty(text)) return;
-            var go = new GameObject("SiteSign");
-            go.transform.SetParent(inst.root.transform, false);
-            go.transform.localPosition = local;
-            // 悬空的站点名必须有底板：没有底板就是几个飘在半空、被建筑切掉一半的字
-            World.WorldText.Plate(
-                World.WorldText.Attach(go, text, 48, 0.08f, new Color(0.95f, 0.92f, 0.8f)));
-            go.AddComponent<FaceCamera>();
+
+            // 牌面宽度按字数给，别让四个字挤在一块两个字宽的板上
+            float w = Mathf.Clamp(text.Length * 0.42f + 0.5f, 1.8f, 5.2f);
+            var size = new Vector3(w, 1.0f, 0.16f);
+
+            var root = new GameObject("SiteSign_" + text);
+            root.transform.SetParent(inst.root.transform, false);
+            root.transform.localPosition = local;
+
+            // 立柱：一直落到地面，牌子才不是浮在半空的
+            var post = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            post.name = "SignPost";
+            post.transform.SetParent(root.transform, false);
+            post.transform.localPosition = new Vector3(0, -0.95f, 0);
+            post.transform.localScale = new Vector3(0.18f, 1.9f, 0.18f);
+            PaintLocal(post, inst.cTrim);
+            Object.DestroyImmediate(post.GetComponent<Collider>());
+
+            var panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            panel.name = "SignPanel";
+            panel.transform.SetParent(root.transform, false);
+            panel.transform.localPosition = Vector3.zero;
+            panel.transform.localScale = size;
+            PaintLocal(panel, new Color(0.16f, 0.17f, 0.21f));
+            Object.DestroyImmediate(panel.GetComponent<Collider>());   // 牌子不该挡路
+
+            OpenWorldBuilder.SurfaceSign(root.transform, size, text);
+
+            if (!string.IsNullOrEmpty(explain))
+            {
+                var ex = root.AddComponent<SiteSignExplain>();
+                ex.title = text;
+                ex.explain = explain;
+            }
         }
 
         /// <summary>
@@ -1894,6 +1935,38 @@ namespace AdversityRoad.OpenWorld
             if (Vector3.Distance(transform.position, player.transform.position) > 6f) return;
             _next = Time.time + 25f;
             Core.GameEvents.RaiseSubtitle("『" + speaker + "』：" + line);
+        }
+    }
+
+    /// <summary>
+    /// 区域名牌的走近解释。
+    ///
+    /// 玩家原话："物理场景中很多文字标识不知道有什么作用，玩家很难明白"。
+    /// 牌面只有名字（"装车区""草稿工位"），那回答的是"这叫什么"，
+    /// 不是"它是干什么的"。走近补一句用途，停留时长由
+    /// <see cref="UI.HUDController.SubtitleSeconds"/> 按字数算——长句子自动留久一点。
+    /// </summary>
+    public class SiteSignExplain : MonoBehaviour
+    {
+        public string title = "";
+        public string explain = "";
+        public float range = 6f;
+
+        bool _inRange;
+        float _lastAt = -99f;
+
+        void Update()
+        {
+            var player = AdversityRoad.Core.ActorRegistry.Player;
+            if (player == null) return;
+            float d = Vector3.Distance(transform.position, player.transform.position);
+            if (d > range) { _inRange = false; return; }
+
+            // 刚走近就说一次；一直站着不重复刷屏
+            if (_inRange && Time.time - _lastAt < 14f) return;
+            _inRange = true;
+            _lastAt = Time.time;
+            AdversityRoad.Core.GameEvents.RaiseSubtitle("〔" + title + "〕" + explain);
         }
     }
 }

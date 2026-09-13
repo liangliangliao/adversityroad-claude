@@ -25,7 +25,22 @@ namespace AdversityRoad.World
     /// </summary>
     public static class WorldText
     {
-        static readonly Dictionary<int, Material> _byColor = new Dictionary<int, Material>();
+        /// <summary>字的材质：要贴字体图集，图集重建时要跟着换。</summary>
+        static readonly Dictionary<int, Material> _glyphMats = new Dictionary<int, Material>();
+
+        /// <summary>
+        /// 底板的材质：**纯色，永远不贴任何贴图**。
+        ///
+        /// 【这两个缓存过去是同一个，那是一个会直接看见的 bug】
+        /// 底板和字共用一张 `_byColor` 表，而 <see cref="Bind"/> 会把字体图集
+        /// 贴到表里**每一个**材质上——底板也在表里。于是每块底板显示的是
+        /// 一整张字体图集（糊满字形的透明贴图）。
+        /// 玩家截图里"装车月台"背后那块发白、发糊、像脏了一样的板子就是它，
+        /// 原话是"看起来模糊、粗糙"——粗糙的不是字，是字底下那块板。
+        /// 分成两张表之后，底板这一路再也不会被 Bind 碰到。
+        /// </summary>
+        static readonly Dictionary<int, Material> _solidMats = new Dictionary<int, Material>();
+
         static bool _hooked;
 
         /// <summary>内置字体（世界里所有字共用一套图集，省内存也省 DrawCall）。</summary>
@@ -92,7 +107,9 @@ namespace AdversityRoad.World
                     | (Mathf.RoundToInt(Mathf.Clamp01(tint.g) * 31) << 10)
                     | (Mathf.RoundToInt(Mathf.Clamp01(tint.b) * 31) << 5)
                     | Mathf.RoundToInt(Mathf.Clamp01(tint.a) * 31);
-            if (_byColor.TryGetValue(key, out var cached) && cached != null) return cached;
+            // font == null 就是底板：走纯色那张表，永不贴图
+            var table = font != null ? _glyphMats : _solidMats;
+            if (table.TryGetValue(key, out var cached) && cached != null) return cached;
 
             var sh = Shader.Find("Sprites/Default");                       // 顶点色+深度测试都正常
             if (sh == null) sh = Shader.Find("Universal Render Pipeline/Unlit");
@@ -102,7 +119,7 @@ namespace AdversityRoad.World
                 // 实在找不到就退回内置字体材质：字会穿墙，但至少看得见字
                 // （底板走同一条路，font 为 null，此时没有兜底可用，返回 null 即不画板）
                 var fallback = font != null ? font.material : null;
-                _byColor[key] = fallback;
+                table[key] = fallback;
                 return fallback;
             }
 
@@ -113,7 +130,9 @@ namespace AdversityRoad.World
             if (m.HasProperty("_ZWrite")) m.SetInt("_ZWrite", 0);
             m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-            _byColor[key] = m;
+            // 底板要挡住背景才能让字读得出来，所以它写深度；字不写（避免互相切）
+            if (font == null && m.HasProperty("_ZWrite")) m.SetInt("_ZWrite", 1);
+            table[key] = m;
             if (font != null) Bind(font);
             if (!_hooked)
             {
@@ -134,7 +153,8 @@ namespace AdversityRoad.World
             {
                 if (font == null || font.material == null) return;
                 var tex = font.material.mainTexture;
-                foreach (var kv in _byColor)
+                // 只遍历字的那张表。底板在 _solidMats 里，一张贴图都不该拿到。
+                foreach (var kv in _glyphMats)
                 {
                     var m = kv.Value;
                     if (m == null) continue;

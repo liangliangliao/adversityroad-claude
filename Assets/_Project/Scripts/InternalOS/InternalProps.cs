@@ -39,12 +39,31 @@ namespace AdversityRoad.InternalOS
         Cargo,
     }
 
-    /// <summary>计划里的一件关键物：叫什么，以及它到底做什么。</summary>
+    /// <summary>计划里的一件关键物：叫什么，它到底做什么，以及牌面写什么。</summary>
     public struct InternalPropPlan
     {
         public string pfName;
         public InternalPropKind kind;
-        public InternalPropPlan(string n, InternalPropKind k) { pfName = n; kind = k; }
+        /// <summary>
+        /// 牌面覆盖。空 = 按类别取默认名。
+        ///
+        /// 【为什么需要它】9-3 要摆几个"旧箱"当干扰项，它们的行为就是诱饵（Decoy），
+        /// 但牌面绝不能写"诱饵"——写了这一关就没有判断可做了，
+        /// 玩家一眼就知道该躲开哪几个。行为和名字必须能分开设。
+        /// </summary>
+        public string label;
+
+        /// <summary>
+        /// 走近时那句解释的覆盖。空 = 按类别取默认句。
+        ///
+        /// 旧箱需要这个：按类别取的那句是"它看起来也该做、做了不推进这一关"——
+        /// 那等于把答案印在脸上，这一关的判断当场作废。
+        /// 换成一句**只陈述事实**的话，玩家得自己把它和"只送当前这一箱"对上。
+        /// </summary>
+        public string explain;
+
+        public InternalPropPlan(string n, InternalPropKind k, string lbl = null, string exp = null)
+        { pfName = n; kind = k; label = lbl; explain = exp; }
     }
 
     /// <summary>
@@ -212,6 +231,18 @@ namespace AdversityRoad.InternalOS
             // "重新进入"，兜底给出 PF_RestartStation，而分类器把带 Restart 的一律读成检查点——
             // 补出来的 Gate 不是 Gate，8 个关卡就这么没了通关物件。
             // 名字不该决定行为：兜底在这里**直接把类别钉成 GateConsole**，不再经过猜名字那一步。
+            // 9-3 的核心机制原话是"运输**正确目标箱**而非处理全部旧箱"。
+            // 只摆一个目标箱的话，这句话就没有落点——场上只有一个箱子，
+            // 谈不上"选对哪一箱"。所以补三个旧箱：它们能搬、搬了不推进，
+            // 牌面写"旧箱"而不是"诱饵"，分得出来要靠读走近那句解释。
+            if (lv.levelId == "9-3")
+            {
+                const string oldBox = "上一批堆在这儿、一直没送出去的箱子。它也搬得动。";
+                plan.Add(new InternalPropPlan("PF_OldBox_A", InternalPropKind.Decoy, "旧箱", oldBox));
+                plan.Add(new InternalPropPlan("PF_OldBox_B", InternalPropKind.Decoy, "旧箱", oldBox));
+                plan.Add(new InternalPropPlan("PF_OldBox_C", InternalPropKind.Decoy, "旧箱", oldBox));
+            }
+
             bool hasGate = false;
             for (int k = 0; k < plan.Count; k++)
                 if (plan[k].kind == InternalPropKind.GateConsole) { hasGate = true; break; }
@@ -267,8 +298,9 @@ namespace AdversityRoad.InternalOS
         public static List<string> LoopLabelsFor(InternalLevelData lv)
         {
             var extra = new List<string>();
-            if (lv != null && lv.levelId == Level0901BlankPage.LevelId)
-                extra.Add(Level0901BlankPage.CardLabel);
+            if (lv == null) return extra;
+            if (lv.levelId == Level0901BlankPage.LevelId) extra.Add(Level0901BlankPage.CardLabel);
+            if (lv.levelId == Level0902ProofRoom.LevelId) extra.Add(Level0902ProofRoom.CardLabel);
             return extra;
         }
 
@@ -342,7 +374,8 @@ namespace AdversityRoad.InternalOS
                     ? triggers[Mathf.Min(i, triggers.Count - 1)] : "";
                 if (isGate && triggers.Count > 0) trig = triggers[triggers.Count - 1];
 
-                var p = InternalProp.Create(pos, plan[i].pfName, kind, lv, trig);
+                var p = InternalProp.Create(pos, plan[i].pfName, kind, lv, trig,
+                    plan[i].label, plan[i].explain);
                 if (p == null) continue;
                 if (parent != null) p.transform.SetParent(parent, true);
                 if (isGate) gateTransform = p.transform;
@@ -359,16 +392,34 @@ namespace AdversityRoad.InternalOS
                 if (Level0901BlankPage.Active != null)
                     Level0901BlankPage.Active.BindSubmitConsole(gateTransform);
             }
+            else if (lv.levelId == Level0902ProofRoom.LevelId)
+            {
+                Level0902ProofRoom.Install(parent, spawn, exit);
+            }
 
             return made;
         }
     }
 
     /// <summary>
-    /// 一个能按的关键物。走近给一行字，按下去真的推进这一关。
+    /// 一个能按的关键物。走近给解释，**按【用】**才发生。
     ///
-    /// 交互不做成"按键提示"，而是走近到 2.2 米自动触发一次——
-    /// 这个工程的移动端没有通用交互键，别为一个机关再造一套输入。
+    /// 【为什么从"走近自动触发"改成"按键触发"】
+    /// 原来是走到 2.2 米自动执行。那等于玩家没有做任何决定——
+    /// 人是走过去的，事情是自己发生的。而这 90 关整套设计的落点是
+    /// "让玩家把判断落实成一个动作"（PRD 11.3：心理机制要通过机关表达）。
+    /// 一个不需要按下去的机关，表达不了"我决定了"。
+    ///
+    /// 而且自动触发会误伤：9-3 只是路过目标箱就被带上了，
+    /// 9-1 想走近读一张修改卡，一读就等于处理掉了——玩家根本没机会选。
+    ///
+    /// 现在统一走这个工程既有的交互键：手机是「用」，桌面是 R
+    /// （E 在战斗控制器里是踢击，见 ShameInteractable 的注释）。
+    ///
+    /// 【走近必须先解释它是什么】
+    /// 玩家原话："物理场景中很多文字标识不知道有什么作用"。
+    /// 所以牌面只给名字，靠近时用字幕补一句"它是干什么的、按下去会怎样"，
+    /// 停留时长由 HUDController.SubtitleSeconds 按字数算。
     /// </summary>
     public class InternalProp : MonoBehaviour
     {
@@ -377,18 +428,24 @@ namespace AdversityRoad.InternalOS
         public string levelId = "";
         public string boundTrigger = "";
         public string label = "";
+        /// <summary>走近时那句解释的覆盖（空 = 按类别取）。</summary>
+        public string explain = "";
 
         bool _used;
         float _lastHint = -99f;
+        /// <summary>上一帧还在不在范围里：用来在"刚走近"的那一刻立刻解释，而不是等冷却。</summary>
+        bool _inRange;
         /// <summary>目标箱已经被带上：从此跟在玩家身侧走，直到装上车。</summary>
         bool _carried;
 
         public static InternalProp Create(Vector3 pos, string pfName, InternalPropKind kind,
-            InternalLevelData lv, string boundTrigger)
+            InternalLevelData lv, string boundTrigger, string labelOverride = null,
+            string explainOverride = null)
         {
             string label; Color color; Vector3 size;
             InternalProps.Style(kind, out label, out color, out size);
             if (kind == InternalPropKind.GateConsole) label = InternalProps.GateLabel(pfName);
+            if (!string.IsNullOrEmpty(labelOverride)) label = labelOverride;
 
             var go = InternalProps.LabeledBlock("InternalProp_" + pfName, pos, size, color,
                 kind == InternalPropKind.GateConsole ? 0.85f : 0.45f, label);
@@ -399,6 +456,7 @@ namespace AdversityRoad.InternalOS
             p.levelId = lv != null ? lv.levelId : "";
             p.boundTrigger = boundTrigger;
             p.label = label;
+            p.explain = explainOverride;
             return p;
         }
 
@@ -423,49 +481,112 @@ namespace AdversityRoad.InternalOS
 
             float d = Vector3.Distance(transform.position, player.transform.position);
 
-            if (d > 3.6f) return;
+            if (d > InteractRange) { _inRange = false; return; }
 
-            // 走近先说这是什么：机关必须可读，不能靠玩家瞎撞（第 11.3 节第二条）
-            // 但带上的箱子永远贴在身边，这一条对它就成了每 8 秒一句的死循环——跳过。
-            if (!_carried && Time.time - _lastHint > 8f)
+            // ---- 进入范围：先解释这是什么，再告诉他按什么 ----
+            // 带上的箱子永远贴在身边，对它重复播报会变成死循环——跳过。
+            bool canUse = !_used && !_carried;
+            if (!_carried && (!_inRange || Time.time - _lastHint > 9f))
             {
+                _inRange = true;
                 _lastHint = Time.time;
-                GameEvents.RaiseSubtitle("【" + label + "】" + Hint(runner));
+                string line = "【" + label + "】" + Hint(runner);
+                if (canUse) line += "　——按【用】/ R";
+                GameEvents.RaiseSubtitle(line);
             }
 
-            if (d > 2.2f || _used) return;
-            Use(runner);
+            if (!canUse) return;
+            if (Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))
+                Use(runner);
         }
 
+        /// <summary>可交互距离。比原来的 2.2 米放宽一点：现在要玩家自己按，够得着才不别扭。</summary>
+        public const float InteractRange = 3.4f;
+
+        /// <summary>
+        /// 走近时的解释：**这是什么、为什么在这儿、按下去会怎样**。
+        ///
+        /// 玩家原话："物理场景中很多文字标识不知道有什么作用，玩家很难明白"。
+        /// 牌面只有两三个字（"提交台""目标箱"），那是名字，不是意思。
+        /// 所以这里补的不是又一个名字，而是**它在这一关里承担什么**——
+        /// 每一句都要能回答"我为什么要理它"。
+        /// 停留时长由 HUDController.SubtitleSeconds 按字数算，长句子会自动留久一点。
+        /// </summary>
         string Hint(InternalLevelRunner runner)
         {
+            if (!string.IsNullOrEmpty(explain)) return explain;
             switch (kind)
             {
                 case InternalPropKind.GateConsole:
-                    return "走到这里就算数：" + runner.Level.Objective;
+                    return "这一关的终点。按下去就算交付——" + runner.Level.Objective;
                 case InternalPropKind.DoneLock:
-                    return "先把「做到什么算完」钉死，提交台才肯开。";
+                    return "把「做到什么算完」钉死在这里。不钉，提交台永远觉得还差一点。";
                 case InternalPropKind.Checkpoint:
-                    return "失败从这里继续——不是从头再来。";
+                    return "记下你走到这儿了。之后失手，从这里继续，不是从头再来。";
                 case InternalPropKind.DisengageGate:
-                    return "撤退从这里走，但要带着重返条件。";
+                    return "撤退用的门。走它不算失败，但要带着「什么时候回来」才算数。";
                 case InternalPropKind.Evidence:
-                    return "预测和现实之间，差的就是这一点材料。";
+                    return "把「我以为会怎样」和「实际怎样」摆在一起的地方。";
                 case InternalPropKind.DecisionBoard:
-                    return "先定判据，再决定走哪条。";
+                    return "先在这儿定好判据，再去选。判据没定就选，选完还会反悔。";
                 case InternalPropKind.TriggerObject:
-                    return "自动那条链从这里起头。";
+                    return "那条自动行为链的起点。看清它，你才有得选。";
                 case InternalPropKind.ArchiveVault:
-                    return "必要的处理完了，剩下的收起来。";
+                    return "必要的事做完了，剩下的收进来——不是没处理，是到此为止。";
                 case InternalPropKind.Decoy:
-                    return "它看起来也该做——做了就偏离当前目标。";
+                    return "它看起来也该做。做了不推进这一关，只把时间花掉。";
                 case InternalPropKind.Cargo:
                     return _carrying.Contains(runner.Level.levelId)
-                        ? "已经带上了——把它送到装车月台。"
-                        : "带上它，送到装车月台。别的旧箱子不用管。";
+                        ? "已经在你手上了，送到装车月台去。"
+                        : "今天真正要交出去的那一箱。带上它——别的旧箱不用管。";
                 default:
-                    return runner.Level.coreMechanic;
+                    return "在这儿动手做出第一版。先有东西，才谈得上改。";
             }
+        }
+
+        /// <summary>
+        /// 按下去之后那一句**意义**：这一步刚才发生的事，对应这一关想教的是什么。
+        ///
+        /// 【为什么要专门有这一句】
+        /// 玩家的要求原话是"通过交互让玩家深刻理解这一关卡的意义，并让玩家落实行动实践中"。
+        /// 光有"完成了"是反馈，不是意义。反馈说的是"系统收到了"，
+        /// 意义说的是"你刚才做的这件事，在现实里叫什么"。
+        /// 两句都要，而且意义那句要短——它是一记敲钉子，不是一段课文。
+        /// </summary>
+        static string Meaning(InternalPropKind k)
+        {
+            switch (k)
+            {
+                case InternalPropKind.GateConsole:
+                    return "交付的定义是「交出去了」，不是「我满意了」。";
+                case InternalPropKind.DoneLock:
+                    return "先定完成标准，才不会被无穷的「还能更好」拖住。";
+                case InternalPropKind.Checkpoint:
+                    return "把失误关在一段里，它就毁不掉整条路。";
+                case InternalPropKind.DisengageGate:
+                    return "带着重返条件离开叫撤退，不带就是拖延。";
+                case InternalPropKind.Evidence:
+                    return "预测和现实对一次，判断才会长进。";
+                case InternalPropKind.DecisionBoard:
+                    return "先有判据再选，选完就不必反复回头。";
+                case InternalPropKind.TriggerObject:
+                    return "看清起点，那条链就不再是自动的。";
+                case InternalPropKind.ArchiveVault:
+                    return "收起来不是逃避，是承认必要的部分已经做完。";
+                case InternalPropKind.Decoy:
+                    return "「顺手也做了」是目标被换掉最常见的方式。";
+                case InternalPropKind.Cargo:
+                    return "同时搬所有箱子，等于一箱也送不出去。";
+                default:
+                    return "先做出粗糙的第一版，剩下的才有东西可改。";
+            }
+        }
+
+        /// <summary>做成了一步：先说发生了什么，再敲一句这件事的意义。</summary>
+        void Done(string what)
+        {
+            GameEvents.RaiseSubtitle("✔ " + what + "　◇ " + Meaning(kind));
+            GameAudio.Play(GameAudio.Sfx.Cast, 0.45f);
         }
 
         void Use(InternalLevelRunner runner)
@@ -475,19 +596,21 @@ namespace AdversityRoad.InternalOS
             switch (kind)
             {
                 case InternalPropKind.GateConsole:
-                    // 9-1 有自己的判据（有没有粗稿、两个阻断项处理完没有）
-                    var loop = Level0901BlankPage.Active;
-                    if (loop != null && runner.Level.levelId == Level0901BlankPage.LevelId)
+                    // 这一关自己有判据就问它（9-1 的粗稿与阻断项、9-2 的停手时机……）。
+                    // 机关只负责问，不替某一关写规则——见 ILevelGate 的注释。
+                    if (runner.Gate != null)
                     {
                         string why;
-                        if (!loop.CanSubmit(out why))
+                        if (!runner.Gate.CanSubmit(out why))
                         {
                             _used = false;
                             _lastHint = Time.time;
                             GameEvents.RaiseSubtitle("【" + label + "】" + why);
                             return;
                         }
-                        runner.ExecutionGate();
+                        string meaning = runner.Gate.SubmitMeaning();
+                        if (runner.ExecutionGate() && !string.IsNullOrEmpty(meaning))
+                            GameEvents.RaiseSubtitle("✔ 交付完成　◇ " + meaning);
                         return;
                     }
                     // Done 锁还没合上就不给过：这一关的顺序本身就是它要教的东西
@@ -509,21 +632,22 @@ namespace AdversityRoad.InternalOS
                     return;
 
                 case InternalPropKind.DoneLock:
-                    // 9-1 的 Done 不是走过去就算：它由"两个阻断项处理完"决定
-                    var l2 = Level0901BlankPage.Active;
-                    if (l2 != null && runner.Level.levelId == Level0901BlankPage.LevelId)
+                    // 这一关有自己的循环时，Done 不是"走过去就算"——
+                    // 它由循环判定（9-1 是"两个阻断项处理完"）。这里只如实转述还差什么。
+                    if (runner.Gate != null)
                     {
                         _used = false;
                         _lastHint = Time.time;
-                        GameEvents.RaiseSubtitle(l2.DoneReached
-                            ? "【" + label + "】已达到 Done 最低标准——可以去提交了。"
-                            : "【" + label + "】Done 的最低标准是处理掉两个真正阻断交付的问题（已处理 "
-                              + l2.CriticalFixed + "）。");
+                        string why2;
+                        GameEvents.RaiseSubtitle("【" + label + "】" +
+                            (runner.Gate.CanSubmit(out why2)
+                                ? "已达到完成标准——可以去提交了。"
+                                : why2));
                         return;
                     }
                     _doneLocked.Add(runner.Level.levelId);
                     runner.MarkGoalAction("锁定完成标准");
-                    GameEvents.RaiseSubtitle("完成标准已钉下——现在可以去提交了。");
+                    Done("完成标准已钉下，现在可以去提交了");
                     return;
 
                 case InternalPropKind.DisengageGate:
@@ -534,7 +658,8 @@ namespace AdversityRoad.InternalOS
                 case InternalPropKind.Decoy:
                     // 诱饵不推进目标，只把方向权交出去一点——它要有代价，但不惩罚
                     runner.MarkGoalOffline(0, "这个也顺手做了吧", "去处理了诱饵", 0.3f);
-                    GameEvents.RaiseSubtitle("【" + label + "】做完了，但当前目标没有前进。");
+                    GameEvents.RaiseSubtitle("【" + label + "】做完了，但当前目标一步没动。　◇ "
+                        + Meaning(kind));
                     return;
 
                 case InternalPropKind.Cargo:
@@ -548,7 +673,7 @@ namespace AdversityRoad.InternalOS
                     // 于是 Use 每帧重跑，字幕和 MarkGoalAction 一秒刷几十次。
                     if (!string.IsNullOrEmpty(boundTrigger)) runner.FireTrigger(boundTrigger);
                     runner.MarkGoalAction("带上目标箱");
-                    GameEvents.RaiseSubtitle("带上了【" + label + "】——送到装车月台去。");
+                    Done("带上了【" + label + "】，送到装车月台去");
                     return;
 
                 default:
@@ -562,6 +687,7 @@ namespace AdversityRoad.InternalOS
                     }
                     if (!string.IsNullOrEmpty(boundTrigger)) runner.FireTrigger(boundTrigger);
                     runner.MarkGoalAction(label);
+                    Done("用了【" + label + "】");
                     return;
             }
         }

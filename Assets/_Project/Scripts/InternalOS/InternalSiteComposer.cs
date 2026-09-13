@@ -418,9 +418,19 @@ namespace AdversityRoad.InternalOS
                 var room = new SiteRoom
                 {
                     name = name,
-                    purpose = i == 0 ? "进场：看清自己站在哪"
-                            : (i == segs.Length - 1 ? "收束：这一关真正要发生的那个动作"
-                                                    : "阻力所在：错误策略在这里显出代价"),
+                    // 【这句话会被玩家直接读到】
+                    // 区域名牌走近时就播它（见 SiteBuilder.Sign / SiteSignExplain）。
+                    // 原来三句是通用套话（"阻力所在：错误策略在这里显出代价"），
+                    // 玩家读完还是不知道这块地方要他干什么——那正是
+                    // "很多文字标识不知道有什么作用"这条反馈的一部分。
+                    // 改成用这一关自己的话：终点说要做的事，中段说这一关的机制。
+                    purpose = i == 0
+                        ? "进场的地方。这一关要做的事在前面。"
+                        : (i == segs.Length - 1
+                            ? "这一关收束在这里：" + lv.Objective
+                            : (string.IsNullOrEmpty(lv.coreMechanic)
+                                ? "路上会遇到阻力的一段。"
+                                : "这一段会遇到的：" + lv.coreMechanic)),
                     sizeHint = i == segs.Length - 1 ? "large" : "medium",
                 };
                 // 每间房各取一段，互不重样：同一处 Base 的几间房不该长得一模一样

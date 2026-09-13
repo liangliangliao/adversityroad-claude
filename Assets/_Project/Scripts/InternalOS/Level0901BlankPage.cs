@@ -26,7 +26,7 @@ namespace AdversityRoad.InternalOS
     /// 而是**分得出哪两个真的挡住交付**。所以卡面写的是问题本身，不是"Critical/Cosmetic"标签：
     /// 标签直接印在脸上，这一关就没有判断可做了。
     /// </summary>
-    public class Level0901BlankPage : MonoBehaviour
+    public class Level0901BlankPage : MonoBehaviour, ILevelGate
     {
         public const string LevelId = "9-1";
 
@@ -69,6 +69,8 @@ namespace AdversityRoad.InternalOS
             if (siteRoot != null) go.transform.SetParent(siteRoot, true);
             var c = go.AddComponent<Level0901BlankPage>();
             Active = c;
+            var runner = InternalLevelRunner.Active;
+            if (runner != null) runner.Gate = c;   // 提交台从此问这一关自己
             c.Setup(spawn, exit);
         }
 
@@ -190,8 +192,12 @@ namespace AdversityRoad.InternalOS
         }
 
         /// <summary>打磨了一个可优化项：不推进 Done，只是把时间花掉了。</summary>
+        /// <summary>打磨过的可优化项数：交付时用它说清完美主义的账单。</summary>
+        int _cosmeticDone;
+
         public void PolishCosmetic(InternalLevelRunner runner, string what)
         {
+            _cosmeticDone++;
             // 不惩罚，只如实说代价：这一关的错误策略必须"有代价但可理解"（11.3 第四条）
             runner.MarkGoalOffline(28, "这个也顺手改了吧", "打磨了可优化项：" + what, 0.25f);
             if (!DraftMade) _nextExpandAt = Mathf.Min(_nextExpandAt, Time.time + 2f);
@@ -202,14 +208,24 @@ namespace AdversityRoad.InternalOS
         /// <summary>提交台问它能不能按。</summary>
         public bool CanSubmit(out string why)
         {
-            if (!DraftMade) { why = "还没有第一版——先去草稿桌做出来。"; return false; }
+            if (!DraftMade) { why = "还没有第一版——先去【工作台】做出来。"; return false; }
             if (!DoneReached)
             {
-                why = "还差 " + (CriticalToDone - CriticalFixed) + " 个真正阻断交付的问题。";
+                why = "还差 " + (CriticalToDone - CriticalFixed) +
+                      " 个真正阻断交付的问题。剩下那些只是「还能更好」，不拦着交付。";
                 return false;
             }
             why = "";
             return true;
+        }
+
+        public string SubmitMeaning()
+        {
+            int polished = 6 - CriticalToDone;   // 四张可优化项
+            return _cosmeticDone == 0
+                ? "四个「还能更好」你一个都没碰——达到 Done 就交，这就是最低标准的用法。"
+                : "你还顺手打磨了 " + _cosmeticDone + "/" + polished +
+                  " 个不挡交付的地方；它们没让这一版更能交出去，只是花掉了时间。";
         }
 
         void OnDestroy()
@@ -229,6 +245,7 @@ namespace AdversityRoad.InternalOS
         Level0901BlankPage _owner;
         bool _done;
         float _lastHint = -99f;
+        bool _inRange;
 
         public static EditCard Create(Vector3 pos, string text, bool critical,
             Level0901BlankPage owner, Transform parent)
@@ -256,14 +273,21 @@ namespace AdversityRoad.InternalOS
             var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
             float d = Vector3.Distance(transform.position, player.transform.position);
-            if (d > 3.4f) return;
+            if (d > InternalProp.InteractRange) { _inRange = false; return; }
 
-            if (Time.time - _lastHint > 6f)
+            // 【读 ≠ 改】
+            // 原来走到 1.8 米就自动处理掉了：玩家想读一读这张卡写的是什么，
+            // 一读就等于"改了"。而这一关全部的判断就是**读完之后决定改不改**——
+            // 自动触发把这一关唯一的决定替玩家做了。
+            // 现在走近只给内容，按【用】才动手。
+            if (!_inRange || Time.time - _lastHint > 9f)
             {
+                _inRange = true;
                 _lastHint = Time.time;
-                GameEvents.RaiseSubtitle("〔修改项〕" + text);
+                GameEvents.RaiseSubtitle("〔修改项〕" + text + "　——要改就按【用】/ R；不改就走开");
             }
-            if (d > 1.8f) return;
+
+            if (!(Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))) return;
 
             _done = true;
             // 渲染器在子物体 Body 上（根不缩放，免得把牌面上的字拉变形）
