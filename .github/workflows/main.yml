@@ -23,6 +23,15 @@ jobs:
   # csshadow 曾因 46 条误报被踢出门禁：它把 for/foreach 头部声明的变量记在了
   # 外层块上，而 C# 给它们的作用域只是那条语句本身。修正作用域模型后全库 0 误报，
   # 并且能抓出 5281786 那次红 CI 的原样错误，所以收回门禁。
+  # csquote 现在查两类：CS1010（字面量里混进真换行）和 CS1003（中文文案里用了
+  # ASCII 双引号，把字符串提前闭合又重开）。后者是 3ff9a5c 那次红 CI 的原样错误：
+  # 那一行的引号数是偶数、行尾平衡，所以原来只查 CS1010 的版本看不见它。
+  #
+  # csstatic 是为一次真实的编译红补的：InternalProps.ResetSession() —— 它其实声明在
+  # InternalProp 上（静态工具类和 MonoBehaviour 只差一个字母，还在同一个文件里）。
+  # 当时全套 lint 全绿，玩家那边直接编译报错。csmember 只认 `List<T> _x` 这种
+  # 能百分百确定类型的受体，看不到静态受体；csstatic 补的正是另一种同样确定的
+  # 受体——受体本身就是类型名。有基类、重名、与命名空间段重名的类型一概跳过。
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -30,7 +39,7 @@ jobs:
       - name: C# 静态检查
         run: |
           set -e
-          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns uioverlap notelegraphui zonedoors; do
+          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns csstatic uioverlap notelegraphui zonedoors; do
             echo "===== $t ====="
             python3 tools/$t.py
           done

@@ -22,6 +22,7 @@ namespace AdversityRoad.UI
         GameObject _panel;
         Text _headerText;
         Transform _grid;
+        RectTransform _contentRt;
         readonly List<GameObject> _buttons = new List<GameObject>();
 
         public static LevelSelectPanel Create(Transform canvas)
@@ -33,25 +34,58 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            // 版面按"两段 + 三十来个格子"算足：五列比四列每行多放一个，
-            // 整块高度因此矮一截，PanelFit 缩放后字还看得清（四列时会被压到读不了）
-            _panel = UiUtil.MakePanel(canvas, "LevelSelectPanel", new Vector2(1260, 1180),
-                new Color(0.07f, 0.08f, 0.11f, 0.98f));
+            // 【为什么必须能滚】这张表的行数是**动态**的：目标生成关卡 5 个、
+            // 内部障碍线一段、经典 24 关，加起来早就超过一屏。定尺版面的后果
+            // 玩家已经看到了——标题和格子叠在一起，下半截整个在屏幕外。
+            // 结构照抄 SettingsPanel 那次的结论：frame（固定，装得下屏幕）
+            // → viewport（裁剪）→ _panel（内容，高度按真实格子数算）。
+            // 关闭按钮挂在 frame 上，滚到哪儿都点得到。
+            var frame = UiUtil.MakePanel(canvas, "LevelSelectFrame", new Vector2(1300, 900),
+                new Color(0.06f, 0.07f, 0.10f, 0.98f));
 
-            var title = UiUtil.MakeText(_panel.transform, "Title", "关 卡 选 择 · 传 送", 38,
+            var title = UiUtil.MakeText(frame.transform, "Title", "关 卡 选 择 · 传 送", 34,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
-            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -46), new Vector2(700, 54));
+            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -38), new Vector2(700, 48));
 
-            _headerText = UiUtil.MakeText(_panel.transform, "Header", "", 24,
+            _headerText = UiUtil.MakeText(frame.transform, "Header", "", 22,
                 TextAnchor.MiddleCenter, new Color(0.85f, 0.9f, 0.8f));
-            UiUtil.SetRect(_headerText, new Vector2(0.5f, 1f), new Vector2(0, -98), new Vector2(1000, 36));
+            UiUtil.SetRect(_headerText, new Vector2(0.5f, 1f), new Vector2(0, -80), new Vector2(1180, 32));
 
-            _grid = _panel.transform;
+            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 上下拖动查看全部关卡", 19,
+                TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.5f));
+            UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(180, -38), new Vector2(360, 28));
 
-            UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
-                new Vector2(0, 46), new Vector2(260, 68),
-                new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 26);
+            var viewGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewGo.transform.SetParent(frame.transform, false);
+            var viewRt = viewGo.GetComponent<RectTransform>();
+            viewRt.anchorMin = Vector2.zero;
+            viewRt.anchorMax = Vector2.one;
+            viewRt.offsetMin = new Vector2(8f, 100f);    // 底部让出关闭按钮那一行
+            viewRt.offsetMax = new Vector2(-8f, -104f);  // 顶部让出标题与副标题
 
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewGo.transform, false);
+            _contentRt = content.GetComponent<RectTransform>();
+            _contentRt.anchorMin = new Vector2(0.5f, 1f);
+            _contentRt.anchorMax = new Vector2(0.5f, 1f);
+            _contentRt.pivot = new Vector2(0.5f, 1f);
+            _contentRt.anchoredPosition = Vector2.zero;
+            _contentRt.sizeDelta = new Vector2(1280, 900);
+
+            var scroll = frame.AddComponent<ScrollRect>();
+            scroll.content = _contentRt;
+            scroll.viewport = viewRt;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+
+            UiUtil.MakeButton(frame.transform, "关闭", new Vector2(0.5f, 0f),
+                new Vector2(0, 46), new Vector2(260, 64),
+                new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 25);
+
+            _panel = frame;
+            _grid = content.transform;
             _panel.SetActive(false);
         }
 
@@ -156,7 +190,16 @@ namespace AdversityRoad.UI
                 }
             }
 
-            // ---- 第二段：经典 24 关 + 开放城区（附加可选）----
+            // ---- 第二段：第 9-26 章 · 内部障碍线（90 关，单开一张表）----
+            //
+            // 只占一格：那 90 关自己有两级列表（18 章 → 5 关），
+            // 摊平塞进这张定尺版面会把下面的经典关卡挤出屏幕。
+            Header(ref slot, "◈ 内部障碍线（挡住你的是你自己那套做法）");
+            Cell(ref slot,
+                "第 9 章 · 失败与完美主义\n5 关 · Boss 完美审判官\n点击查看这五关",
+                new Color(0.24f, 0.22f, 0.34f, 0.96f), OpenInternalLevels);
+
+            // ---- 第三段：经典 24 关 + 开放城区（附加可选）----
             Header(ref slot, "◇ 经典关卡与开放城区（附加可选）");
             for (int zone = 0; zone < ZoneBuilder.ZoneCount; zone++)
             {
@@ -173,15 +216,27 @@ namespace AdversityRoad.UI
                                         : new Color(0.16f, 0.16f, 0.2f, 0.9f),
                     () => Teleport(z));
             }
+
+            FitContent(slot);
         }
 
         // 网格：五列，格子 226×96，行距 106，首行顶在 -178
         const int Cols = 5;
-        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -178f;
+        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -20f;
 
         static Vector2 SlotPos(int slot) => new Vector2(
             -(Cols - 1) * StepX * 0.5f + (slot % Cols) * StepX,
             Top - (slot / Cols) * StepY);
+
+        /// <summary>内容高度按真实行数算——行数是动态的，写死多少都会有一天不够。</summary>
+        void FitContent(int slots)
+        {
+            if (_contentRt == null) return;
+            int rows = Mathf.CeilToInt(slots / (float)Cols);
+            float h = Mathf.Max(600f, -Top + rows * StepY + 60f);
+            _contentRt.sizeDelta = new Vector2(1280, h);
+            _contentRt.anchoredPosition = Vector2.zero;   // 每次打开都从顶上开始
+        }
 
         /// <summary>分段标题：占满一整行，让"必选"和"可选"两段一眼分得开。</summary>
         void Header(ref int slot, string text)
@@ -190,7 +245,7 @@ namespace AdversityRoad.UI
             var t = UiUtil.MakeText(_grid, "Header_" + slot, text, 22,
                 TextAnchor.MiddleLeft, new Color(0.85f, 0.88f, 0.95f));
             UiUtil.SetRect(t, new Vector2(0.5f, 1f),
-                new Vector2(-10, SlotPos(slot).y + 26f), new Vector2(1160, 30));
+                new Vector2(-10, SlotPos(slot).y + 30f), new Vector2(1140, 30));
             _buttons.Add(t.gameObject);
             slot += Cols;
         }
@@ -207,6 +262,18 @@ namespace AdversityRoad.UI
             lrt.offsetMax = new Vector2(-8, -4);
             _buttons.Add(btn.gameObject);
             slot++;
+        }
+
+        static InternalLevelPanel _internalPanel;
+
+        /// <summary>打开内部障碍线那张表（第一次用时才建）。</summary>
+        void OpenInternalLevels()
+        {
+            Hide();
+            var canvas = UiUtil.MainCanvas();
+            if (canvas == null) return;
+            if (_internalPanel == null) _internalPanel = InternalLevelPanel.Create(canvas.transform);
+            _internalPanel.Show();
         }
 
         /// <summary>直达生成场景：走 SiteGate 的同一套进场流程（台词接管 + 规则播报）。</summary>

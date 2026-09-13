@@ -265,6 +265,43 @@ namespace AdversityRoad.AI
                 case EnemyType.ShameMirror:
                     return MartialArchetype.MindMixed; // 招式与台词绑死的那一类
 
+                // ---- 第 9-26 章 Boss 28-45（V2.2）----
+                // 归流派的依据是**它靠什么让你停下**，不是它的外形：
+                // 审判与惩罚型给重武器（慢起手、高破防，读得出那一记落下来）；
+                // 诱你先动的给防反；靠距离让你后退的给腿法；缠住不放的给擒拿；
+                // 其余那些"攻击手段就是那句话"的，一律心理混合型。
+                case EnemyType.PerfectionJudge:
+                case EnemyType.DisasterProphetDragon:
+                case EnemyType.InnerTyrant:
+                    return MartialArchetype.Heavy;
+
+                case EnemyType.RejectionGatekeeper:
+                case EnemyType.AbsoluteCertainty:
+                case EnemyType.KnowNotDoer:
+                    return MartialArchetype.Counter;
+
+                case EnemyType.RetreatKing:
+                    return MartialArchetype.Leg;
+
+                case EnemyType.OnceBrokenEnder:
+                case EnemyType.NeverFinisher:
+                    return MartialArchetype.Grapple;
+
+                case EnemyType.HabitHijacker:
+                    return MartialArchetype.Assassin;
+
+                case EnemyType.OverloadedRadar:
+                case EnemyType.AssimilationFog:
+                    return MartialArchetype.Coop;
+
+                case EnemyType.FrozenKing:
+                case EnemyType.PowerlessProphet:
+                case EnemyType.RankThrone:
+                case EnemyType.EternalReplayer:
+                case EnemyType.MeaningDisconnector:
+                case EnemyType.OldDestiny:
+                    return MartialArchetype.MindMixed;
+
                 default:
                     // 【这里不该再兜底了】新增敌人时忘了归流派，表现就是"它打起来像个拳击手"，
                     // 而代码里看不出任何问题。CIDiagnostics 会逐个 EnemyType 核对，

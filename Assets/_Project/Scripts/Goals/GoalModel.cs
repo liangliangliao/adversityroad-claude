@@ -17,7 +17,18 @@ namespace AdversityRoad.Goals
     public enum GoalEdgeKind { Direct, Alternative, RecoveryPath, HiddenOpportunity }
 
     /// <summary>章节来源三分类（方案 5.1）。AIRequired 为强制存在项。</summary>
-    public enum ChapterSource { Legacy, UserPreset, AIRequired }
+    /// <summary>
+    /// 章节来源。
+    ///
+    /// 【它不只是个标签，它决定这一章怎么落地】
+    /// Legacy 的含义是"在对应区域打开心理裂隙，走进去是原汁原味的 V1 关卡"——
+    /// ProceduralQuestAssembler 见到 Legacy 就 **不建场景**，直接开裂隙走人。
+    /// 第 9-26 章曾经错误地标成 Legacy（当时只想表达"策划冻结件，视为已校验"），
+    /// 结果是：场景永远不会被建，玩家点进去只看到"这处场景没能建起来"。
+    /// Internal 就是为这件事加的：它是冻结件，但它要**现场建一处场景**。
+    /// 追加在最后，老存档里的序号不受影响。
+    /// </summary>
+    public enum ChapterSource { Legacy, UserPreset, AIRequired, Internal }
 
     /// <summary>障碍来源：玩家已知 / AI 预测 / 玩家预设关卡（方案 3.3、17.2 障碍图）。</summary>
     public enum ObstacleSource { PlayerKnown, AIPredicted, UserPreset }

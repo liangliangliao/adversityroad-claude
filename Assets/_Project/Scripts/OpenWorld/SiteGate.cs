@@ -228,6 +228,22 @@ namespace AdversityRoad.OpenWorld
                     " · 行动力 " + Mathf.RoundToInt(player.Stats.actionPower) +
                     " · 蹲伏 " + (player.IsCrouched ? "是" : "否"));
             }
+
+            // 第 9-26 章的某一关：把规则驱动拉起来。
+            //
+            // 【为什么必须在这里挂】没有它，这 90 关就只是"能走进去的房间"——
+            // 触发点不响、三选一不弹、Execution Gate 无人判，玩家会以为这一关什么都没有。
+            // 场景是通用管线建的，规则是这一关自己的，两件事在这一行接上。
+            var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapterId);
+            if (internalLevel != null)
+            {
+                InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
+                // 进关先把"这一关怎么玩"摆出来。HUD 那一行目标行只说下一步去哪，
+                // 回答不了"场上这几样东西各是干什么的"——玩家连着三轮说
+                // "游戏规则不清楚，不知道如何玩"，光靠一行小字是补不上的。
+                UI.LevelBriefPanel.Show(internalLevel);
+            }
+
             return true;
         }
 
@@ -290,6 +306,10 @@ namespace AdversityRoad.OpenWorld
                 ZoneBuilder.CurrentZoneId = _returnZoneId;
             else if (OpenWorldBuilder.CityZoneIndex >= 0)
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
+
+            // 内部障碍线的关卡：走出来就收线（撤退也是合法结局，不算失败告终）
+            var runner = InternalOS.InternalLevelRunner.Active;
+            if (runner != null) runner.Leave(runner.GatePassed);
 
             ClearInsideState();
             GameEvents.RaiseSubtitle("你从那个地方走了出来——它是为这条旅程建的，也会随这条旅程收起。");
@@ -395,6 +415,17 @@ namespace AdversityRoad.OpenWorld
             // 只在玩家真的站在这处场景里时显示——回到城里就该收起来
             if (!SiteGate.InsideSite || SiteGate.InsideChapterId != _chapterId)
             { UI.HUDController.SetObjective(""); return; }
+
+            // 第 9-26 章：目标行由关卡自己给。
+            // 这批关卡不以清怪定义胜利（PRD 3.4），按敌人存活数写出来的
+            // "这里清空了，从来路走出去"会直接把玩家引向错误的通关方式。
+            var runner = InternalOS.InternalLevelRunner.Active;
+            if (runner != null && runner.Level != null &&
+                InternalOS.InternalChapterBridge.ChapterIdOfLevel(runner.Level.levelId) == _chapterId)
+            {
+                UI.HUDController.SetObjective(runner.ObjectiveLine());
+                return;
+            }
 
             var player = AdversityRoad.Core.ActorRegistry.Player;
             int alive = 0;

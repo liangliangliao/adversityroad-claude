@@ -215,6 +215,46 @@ namespace AdversityRoad.OpenWorld
 
             // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着
             BuildMechanicProps(bp, site.origin, site);
+
+            // 第 9-26 章：这一关的关键物（提交台 / Done 锁 / 检查点 / 脱离门……）。
+            //
+            // 【为什么单独一条】BuildMechanicProps 摆的是"机制提示牌"——走近给一行字。
+            // 而这 90 关的通关动作是**按下某个东西**：没有提交台，9-1 就永远走不完。
+            // PRD 第 10.2 节给的那张 Prefab 表说的就是这一批。
+            var internalLv = InternalOS.InternalChapterBridge.LevelOfChapterId(bp.chapterId);
+            if (internalLv != null)
+            {
+                int n = InternalOS.InternalProps.Build(internalLv,
+                    site.root != null ? site.root.transform : null,
+                    site.origin, site.playerSpawn, site.farExit);
+                Debug.Log("[InternalOS] " + internalLv.levelId + " 摆下关键物 " + n + " 件");
+
+                // 这一关的敌人该怎么和机关咬合：关卡表的"敌人/干扰"栏写得很具体
+                // （9-3 的最后检查者"会把目标箱推回检查区"），过去一条都没实现，
+                // 场上就只是几只通用小怪站着——玩家原话"和战斗完全脱节"。
+                InternalOS.InternalEnemyTactics.Attach(internalLv, bp.chapterId, enc.enemies);
+            }
+        }
+
+        /// <summary>
+        /// 往一处已经建好的场景里**再补一个敌人**。
+        ///
+        /// 9-2 用它：每打磨一处不挡交付的地方，就多出来一只校稿幽灵。
+        /// "边际收益递减"在这一关不是一个数字，是**屋里的人越来越多**。
+        /// </summary>
+        public static GameObject SpawnExtra(string chapterId, EnemyType type,
+            EnemyTier tier, Vector3 at)
+        {
+            if (Spawner == null || string.IsNullOrEmpty(chapterId)) return null;
+            if (!_live.TryGetValue(chapterId, out var enc) || enc == null || enc.site == null) return null;
+
+            var go = Spawner(type, tier, GroundAt(at), true);
+            if (go == null) return null;
+            enc.enemies.Add(go);
+            Reparent(go, enc.site);
+            var director = SiteEncounterDirector.Attach(enc.site.root);
+            if (director != null) director.Register(go);
+            return go;
         }
 
         static void SpawnIntoDistrict(GoalChapterData bp, GoalData goal,

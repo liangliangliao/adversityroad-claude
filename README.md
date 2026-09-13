@@ -407,6 +407,91 @@ HUD 目标行四处全部读同一个答案；CI 每次构建把整张表打出�
 | `AI/BackRowWhispererBoss.cs` | 后排低语者：凝视 / 指认 / 扩散 + 宿敌升格 |
 | `AI/ShameLineEnemies.cs` | 本线 11 种普通 / 精英敌人的行为组件 |
 
+### V2.2 增补 · 第 9–26 章「内部障碍线」90 关（本次迭代）
+
+一句话交付范围：**18 章、90 关、18 个 Boss（28–45），敌人全部是自我内部敌人，没有一个外部敌人。**
+
+外部敌人线在 V1/V2.0 的七大主题与 V2.1 的第八章里已经讲完了——不公、噪声、他人索取、被注视，
+都是"外面有什么挡着你"。这 18 条线讲的是另一件事：**挡在目标前面的是自己那套机制**。
+白纸哨兵、校稿幽灵、链断者、反例书记员、必须怪、模糊词雾——它们不是路人、同事或第三方，
+是玩家自己的做法在逆境层里的样子。
+
+| 章 | 线 | Boss | 真命门 | 怎样才算失效（DeathType） |
+| --- | --- | --- | --- | --- |
+| 9 | 失败与完美主义 | 完美审判官 | Failure Permission Core | 锁定 DoD 并提交（Publish） |
+| 10 | 启动冻结 | 冻结之王 | Start Threshold Core | 真正的 StartEvent 发生（Activation） |
+| 11 | 评价、拒绝与暴露 | 拒绝守门人 | Rejection Authority Core | 撤销它的终审权（AuthorityRevocation） |
+| 12 | 低自我效能与无力预言 | 无力预言家 | Prediction Authority | 用行为证据重新校准（Calibration） |
+| 13 | 坚持、复发与重新开始 | 一次中断即结束者 | Reset Belief Core | 重新进入目标（Restart） |
+| 14 | 不确定性与决策 | 绝对确定者 | Certainty Requirement | 在足够信息下做出并执行决定（Decision） |
+| 15 | 比较、等级与依赖性自尊 | 等级王座 | Comparison Dependency Core | 解除依赖（DependencyBreak） |
+| 16 | 愤怒与反刍 | 永恒重播机 | Attention Ownership Core | 处理必要行动后归档（Archive） |
+| 17 | 安全警觉与威胁辨别 | 过载雷达 | Threat Calibration Core | 重新校准（Calibration） |
+| 18 | 逃避与舒适区 | 撤退之王 | Discomfort Intolerance Core | 能力长过它（Outgrow） |
+| 19 | 动机与价值断线 | 意义断线者 | Value-Action Link | 重连 / 目标进化（Reconnection / GoalEvolution） |
+| 20 | 自动驾驶与习惯劫持 | 习惯劫持者 | Trigger Architecture Core | 打断 / 替换 / 自动化转移 |
+| 21 | 风险、勇气与恢复力 | 灾难预言龙 | Irrecoverability Illusion | 确认损失可恢复（RecoveryConfidence） |
+| 22 | 内部批评者 | 内在暴君 | Punishment Dependency Core | 撤销羞辱的指挥权（AuthorityRevocation） |
+| 23 | 环境同化与社会感染 | 同化迷雾 | Norm Authority | 改变暴露结构（EnvironmentShift） |
+| 24 | 范围失控与目标膨胀 | 永不完成者 | Scope Boundary Core | 冻结范围并发布（Publish） |
+| 25 | 知道—做到断裂 | 知而不行者 | Behavior Transfer Core | 知识进入现实行为（Embodiment） |
+| 26 | 人生主线争夺战 | 旧命运 | Future Verdict Authority | 撤销未来判决权并整合 |
+
+#### 一条贯穿 18 章的硬规则：清空血条不等于通关
+
+18 个 Boss 里，**允许靠打倒结束的是 0 个**。`InternalChapterBridge.BossDefeated` 只在
+DeathType 全部为 `Defeat` 时才去看血条，其余一律要求对应的行为条件先发生：
+提交、跨出门槛、装车、归档、重新进入、做出决定、撤销裁判权。
+
+这不是难度设计，是这一批章节的命题——PRD 第 3.4 节写的就是"不以清怪定义胜利"。
+所以 `InternalLevelRunner.ExecutionGate()` 是唯一的通关入口，场上敌人清不清空都不改变结果。
+
+#### 内部语言攻击 · 三选一反制窗口
+
+90 关各有一条策划冻结的内部攻击句与三个反应，共 270 个选项。三条规则决定它不是心理测验：
+
+1. **答对不等于胜利。** 选中 best 只打开一个 Counter Window 和一件"接下来要做的事"；
+   成长证据在玩家真的去做了之后才记（`CompleteFollowUp`）。答题本身不加 Courage、不判胜。
+2. **答案不在固定位置。** 每次呈现都洗牌，实际顺序写进历史可以核对。
+3. **不选不是答错。** 弹框淡出时攻击的原效果继续生效，不扣分、不出失败音、不记错误。
+
+两个干扰项必须来自不同的错误家族，否则就是同一句换词，三选一会退化成二选一。
+180 个干扰项按 13 个家族归了类：回避、等待依赖、过度控制、过度坚持、反刍、
+反向极端、鲁莽、证明式对抗、自我惩罚、否认、从众、身份冻结、灾难化。
+
+呈现分三档，高速战斗不硬暂停：探索 `timeScale 0`（不倒计时）、
+Boss 阶段 `0.2` 且 3 秒淡出、高速战 `0.6` 且面板压到屏幕下方不挡出招。
+
+#### 90 关怎么建出来的：不写第二套建造器
+
+`InternalSiteComposer` 把关卡表翻译成 `SiteBlueprint`，交给现成的 `SiteBuilder`——
+内部章节与 AI 章节走的是**同一条建造管线**。翻译时只做两件事：
+把 PRD 的词汇（WK09 Studio、"主厅 32×24m"、"电脑桌附近"）映射到已批准词表，
+以及把"主路径 / 拓扑"那一栏按 → 拆成房间。坐标一个都不给——
+和 AI 章节受同一套约束：它描述，引擎建。
+
+每关的 `assemblySeed` 取自 levelId，所以同一关每次组装完全一致，Bug 才可复现。
+
+#### 新增脚本
+
+| 脚本 | 职责 |
+| --- | --- |
+| `InternalOS/InternalChapterData.cs` | 数据契约：LevelGreyboxData / BossDNA / 内部单位 / World Kit / 根障碍 / DeathType |
+| `InternalOS/InternalChapterCatalog.cs` | 90 关目录读取与全量校验（缺胜利条件、命名不合契约、Boss 无命门都报错） |
+| `InternalOS/MentalAttackData.cs` | 三选一的数据模型：事件、选项、错误家族、关卡档案、历史 |
+| `InternalOS/MentalAttackCatalog.cs` | 90 条 Canonical 事件的读取与按关聚合 |
+| `InternalOS/MentalAttackValidator.cs` | 结构 / 安全 / 机制三道校验 + 可读性提醒（AI 生成物不过就回退策划版） |
+| `InternalOS/MentalAttackSystem.cs` | 运行时：触发、洗牌、处置、Follow-up 窗口、历史与因果链 |
+| `InternalOS/ControlChainRecorder.cs` | 控制链：第一个拐点 / 最大劫持点 / 最早可干预点 / Keystone Boss |
+| `InternalOS/RealityVictorySystem.cs` | 三层胜利、Mastery M0–M5、RecoveryLatency / GoalOfflineTime / Agency |
+| `InternalOS/InternalSiteComposer.cs` | 关卡表 → SiteBlueprint 的词表翻译与敌人编成 |
+| `InternalOS/InternalChapterBridge.cs` | 接到 Goal OS：按障碍轴选章节、包成统一蓝图、Boss 失效判定 |
+| `InternalOS/InternalLevelRunner.cs` | 一关的规则驱动：触发点 → 攻击 → Follow-up → Execution Gate → 胜利 / 撤退 |
+| `UI/MentalChoicePanel.cs` | 三选一弹框（三档呈现；不显示对错，不显示内部标签） |
+
+数据在 `Assets/_Project/Resources/Chapters/`：`internal_chapters_v22.json`（90 关 + 18 Boss）、
+`mental_attacks_v22.json`（90 条三选一）。验收对照见 `CHAPTER09_26_ACCEPTANCE.md`。
+
 ### 方案对齐 · 四大新关卡（本次迭代）
 
 按最终商业化方案把 Demo 四关一 Boss 补齐成型：
