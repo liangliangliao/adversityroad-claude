@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using AdversityRoad.AI;
 using AdversityRoad.Core;
+using AdversityRoad.Goals;          // ChapterModuleLibrary
 using AdversityRoad.Personalization;
 
 namespace AdversityRoad.InternalOS

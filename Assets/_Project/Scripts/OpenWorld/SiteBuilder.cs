@@ -2028,9 +2028,9 @@ namespace AdversityRoad.OpenWorld
             float postX = w * 0.5f - 0.22f;
             for (int sx = -1; post && sx <= 1; sx += 2)
             {
-                var post = Cyl(inst, "SignPost", local + new Vector3(sx * postX, -0.95f, 0),
+                var leg = Cyl(inst, "SignPost", local + new Vector3(sx * postX, -0.95f, 0),
                     0.09f, 1.9f, wood, false);
-                post.transform.SetParent(root.transform, true);
+                leg.transform.SetParent(root.transform, true);
             }
 
             // ---- 牌面：几块横木板拼起来，板缝看得见 ----
