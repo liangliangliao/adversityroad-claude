@@ -148,8 +148,17 @@ namespace AdversityRoad.OpenWorld
             PaveSurface(inst, bp.groundSurface, rng, w, d);
             if (kind.indoor)
             {
-                Shell(inst, w, d, 4.2f);
-                Ceiling(inst, w, d, 4.2f);
+                // 【净高不能再是常数 4.2】
+                // 长宽按关卡表建对之后，玩家第三次仍然说"拥挤狭窄封闭，像地下室"。
+                // 量下来问题在这一行：不管这块地是 32×24 还是 65×38，一律扣一个
+                // 4.2 米的盖子。65×38 的仓库配 4.2 米净高，宽高比 15:1——
+                // 那确实就是地下室，"地下室"这个词玩家用得非常准。
+                // 蓝图给了就用（关卡表写了 9-3 高 12m），没给就按面积推。
+                float h = bp.siteHeight > 0.1f
+                    ? Mathf.Clamp(bp.siteHeight, 4f, 16f)
+                    : Mathf.Clamp(Mathf.Sqrt(w * d) * 0.22f, 4.5f, 12f);
+                Shell(inst, w, d, h);
+                Ceiling(inst, w, d, h);
             }
             else
             {
@@ -1218,15 +1227,28 @@ namespace AdversityRoad.OpenWorld
 
                 case "office_floor":
                 case "meeting_room":
-                    for (int x = 0; x < 4; x++)
-                        for (int z = 0; z < 3; z++)
-                        {
-                            var at = new Vector3(-hw * 0.6f + x * w * 0.28f, 0, -hd * 0.5f + z * d * 0.34f);
-                            BuildProp(inst, "desk", at, rng);
-                            BuildProp(inst, "chair", at + new Vector3(0, 0, -1.4f), rng);
-                            Deco(inst, "Divider", at + new Vector3(0, 0.9f, 1.1f),
-                                new Vector3(2.4f, 1.4f, 0.12f), new Color(0.55f, 0.56f, 0.6f));
-                        }
+                    // 工位数按**面积**给，不再固定 4×3。
+                    // 原来不管多大都摆 12 组（桌+椅+隔板 = 36 件），
+                    // 32×24m 的 9-2 里就是一片插不进脚的工位田——
+                    // 玩家说的"拥挤"有一半是这里来的。一组占约 11×11m 的呼吸区。
+                    {
+                        int cx = Mathf.Clamp(Mathf.RoundToInt(w / 11f), 2, 5);
+                        int cz = Mathf.Clamp(Mathf.RoundToInt(d / 11f), 2, 4);
+                        for (int x = 0; x < cx; x++)
+                            for (int z = 0; z < cz; z++)
+                            {
+                                // 在中间 ~70% 的带子里均匀铺开，四周留出走动的余量
+                                float tx = cx == 1 ? 0.5f : x / (float)(cx - 1);
+                                float tz = cz == 1 ? 0.5f : z / (float)(cz - 1);
+                                var at = new Vector3(
+                                    Mathf.Lerp(-hw * 0.66f, hw * 0.66f, tx), 0,
+                                    Mathf.Lerp(-hd * 0.6f, hd * 0.6f, tz));
+                                BuildProp(inst, "desk", at, rng);
+                                BuildProp(inst, "chair", at + new Vector3(0, 0, -1.4f), rng);
+                                Deco(inst, "Divider", at + new Vector3(0, 0.9f, 1.1f),
+                                    new Vector3(2.4f, 1.4f, 0.12f), new Color(0.55f, 0.56f, 0.6f));
+                            }
+                    }
                     BuildProp(inst, "printer", new Vector3(hw * 0.7f, 0, 0), rng);
                     BuildProp(inst, "whiteboard", new Vector3(0, 0, hd - 1.4f), rng);
                     break;
@@ -1562,15 +1584,60 @@ namespace AdversityRoad.OpenWorld
             if (r != null) r.enabled = false;
         }
 
+        /// <summary>
+        /// 室内外壳：**围而不闭**。
+        ///
+        /// 【这里原来是四面到顶的实墙，只在南墙留一个 6 米的口】
+        /// 那是一个真正意义上的封闭盒子：站在里面任何一个方向都是一面死墙，
+        /// 天光进不来，视线出不去。玩家连着三轮说"封闭""像地下室"，
+        /// 而我前两轮都在改平面尺寸——尺寸再大，盒子还是盒子。
+        ///
+        /// 现在每面墙分两段：齐胸高的实墙（该挡的还挡，边界仍然清楚）＋
+        /// 上方一圈**高窗带**，只留立柱。视线和天光从高窗出去，
+        /// 人仍然被墙拦住。这是"开阔感"和"可玩边界"同时成立的办法，
+        /// 也正是户外 <see cref="OpenEdge"/> 早就在用的那条思路。
+        /// </summary>
         static void Shell(SiteInstance inst, float w, float d, float h)
         {
-            Box(inst, "Wall", new Vector3(0, h / 2f, d / 2f), new Vector3(w, h, 0.6f), inst.cWall);
-            Box(inst, "Wall", new Vector3(w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), inst.cWall);
-            Box(inst, "Wall", new Vector3(-w / 2f, h / 2f, 0), new Vector3(0.6f, h, d), inst.cWall);
-            // 南墙留出入口
-            float side = (w - 6f) / 2f;
-            Box(inst, "Wall", new Vector3(-(w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), inst.cWall);
-            Box(inst, "Wall", new Vector3((w - side) / 2f, h / 2f, -d / 2f), new Vector3(side, h, 0.6f), inst.cWall);
+            // 实墙只到 2.6 米（或净高的一半，取小）——再高就又把视线封死了
+            float solid = Mathf.Min(2.6f, h * 0.5f);
+            float door = Mathf.Clamp(w * 0.22f, 6f, 14f);   // 南墙的入口，按场地宽度放大
+
+            // ---- 下半段实墙 ----
+            Box(inst, "Wall", new Vector3(0, solid / 2f, d / 2f), new Vector3(w, solid, 0.6f), inst.cWall);
+            Box(inst, "Wall", new Vector3(w / 2f, solid / 2f, 0), new Vector3(0.6f, solid, d), inst.cWall);
+            Box(inst, "Wall", new Vector3(-w / 2f, solid / 2f, 0), new Vector3(0.6f, solid, d), inst.cWall);
+            float side = (w - door) / 2f;
+            Box(inst, "Wall", new Vector3(-(w - side) / 2f, solid / 2f, -d / 2f),
+                new Vector3(side, solid, 0.6f), inst.cWall);
+            Box(inst, "Wall", new Vector3((w - side) / 2f, solid / 2f, -d / 2f),
+                new Vector3(side, solid, 0.6f), inst.cWall);
+
+            // ---- 上半段：立柱 + 顶上一道过梁，中间全是空的（高窗带）----
+            float top = h - solid;
+            if (top < 0.6f) return;
+            float cy = solid + top / 2f;
+
+            int nx = Mathf.Max(2, Mathf.RoundToInt(w / 9f));
+            for (int i = 0; i <= nx; i++)
+            {
+                float x = -w / 2f + w * i / nx;
+                Box(inst, "Mullion", new Vector3(x, cy, d / 2f), new Vector3(0.5f, top, 0.5f), inst.cWall);
+                Box(inst, "Mullion", new Vector3(x, cy, -d / 2f), new Vector3(0.5f, top, 0.5f), inst.cWall);
+            }
+            int nz = Mathf.Max(2, Mathf.RoundToInt(d / 9f));
+            for (int i = 0; i <= nz; i++)
+            {
+                float z = -d / 2f + d * i / nz;
+                Box(inst, "Mullion", new Vector3(w / 2f, cy, z), new Vector3(0.5f, top, 0.5f), inst.cWall);
+                Box(inst, "Mullion", new Vector3(-w / 2f, cy, z), new Vector3(0.5f, top, 0.5f), inst.cWall);
+            }
+
+            // 过梁：把高窗带收住，让它读起来是"一圈窗"而不是"墙没砌完"
+            Deco(inst, "Lintel", new Vector3(0, h, d / 2f), new Vector3(w, 0.45f, 0.7f), inst.cTrim);
+            Deco(inst, "Lintel", new Vector3(0, h, -d / 2f), new Vector3(w, 0.45f, 0.7f), inst.cTrim);
+            Deco(inst, "Lintel", new Vector3(w / 2f, h, 0), new Vector3(0.7f, 0.45f, d), inst.cTrim);
+            Deco(inst, "Lintel", new Vector3(-w / 2f, h, 0), new Vector3(0.7f, 0.45f, d), inst.cTrim);
         }
 
         /// <summary>
@@ -1597,10 +1664,36 @@ namespace AdversityRoad.OpenWorld
                 }
         }
 
+        /// <summary>
+        /// 顶：矮的地方封实，高的地方走梁架。
+        ///
+        /// 一整块不透光的板扣在头上，是"像地下室"最直接的那一下。
+        /// 净高够了就改成梁架——顶的结构还在（看得出这是室内），
+        /// 但梁与梁之间是通的，天光落得进来，抬头能看见上方的空间。
+        /// </summary>
         static void Ceiling(SiteInstance inst, float w, float d, float h)
         {
-            Deco(inst, "Ceiling", new Vector3(0, h, 0), new Vector3(w, 0.3f, d),
-                new Color(0.3f, 0.3f, 0.32f));
+            // 封实的条件是**又矮又小**——那才是一间屋子。
+            // 只看高度不行：9-1 按关卡表是 4 米净高，但地面有 42×18＝756 ㎡，
+            // 在这么大一块地上扣一整块不透光的板，正是玩家说的"地下室"。
+            // 屋子可以有天花板，一个 700 ㎡ 的场地不该有。
+            if (h < 5f && w * d < 400f)
+            {
+                Deco(inst, "Ceiling", new Vector3(0, h, 0), new Vector3(w, 0.3f, d),
+                    new Color(0.3f, 0.3f, 0.32f));
+                return;
+            }
+
+            var c = new Color(0.34f, 0.34f, 0.36f);
+            int n = Mathf.Max(3, Mathf.RoundToInt(w / 7f));
+            for (int i = 0; i <= n; i++)
+            {
+                float x = -w / 2f + w * i / n;
+                Deco(inst, "Beam", new Vector3(x, h, 0), new Vector3(0.55f, 0.5f, d), c);
+            }
+            // 两道纵梁把梁架连成结构，而不是几根悬着的条
+            Deco(inst, "Truss", new Vector3(0, h - 0.55f, d * 0.25f), new Vector3(w, 0.35f, 0.45f), c);
+            Deco(inst, "Truss", new Vector3(0, h - 0.55f, -d * 0.25f), new Vector3(w, 0.35f, 0.45f), c);
         }
 
         static void Lamp(SiteInstance inst, Vector3 local)

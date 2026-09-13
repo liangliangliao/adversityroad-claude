@@ -309,7 +309,14 @@
      "navMeshCamera": "主路径全NavMesh；扩张用预烘焙隐藏地板；修改走廊FOV 60→56，提交区恢复。",
      "realityVictory": "存在粗稿+达到Done最低标准+执行Submit。",
      "reusedAssets": "Studio_Base + Overlay_Perfection + PF_DraftDesk/PF_DoneLock/PF_SubmitConsole",
-     "playerObjective": "先去【工作台】做出第一版，再挑出真正挡住交付的问题，最后去【提交台】"
+     "playerObjective": "先去【工作台】做出第一版，再挑出真正挡住交付的问题，最后去【提交台】",
+     "howToPlay": [
+      "场上只有三样东西：【工作台】【完成标准锁】【提交台】。先去工作台做出第一版。",
+      "在做出第一版之前，你每停留一会儿，这地方就往外长一截，提交台也跟着退远。",
+      "场上六块【修改项】牌子长得一样，走近才读得到写的是什么；只有两块真的挡着交付。",
+      "把那两块处理掉，再去【提交台】。剩下四块改不改都行——改了只是把时间花掉。",
+      "（这一批关卡都不靠清怪通关。打不打得过，和过不过关是两回事。）"
+     ]
     },
     {
      "levelId": "9-2",
@@ -351,7 +358,13 @@
      "navMeshCamera": "迷宫仅3层环形，避免真实迷路；Exit方向始终可恢复。",
      "realityVictory": "处理最后一个真正阻断项后主动停止修改并提交。",
      "reusedAssets": "OfficeArchive_Base + TextMaze_Module + PF_EditCard",
-     "playerObjective": "把改动分成\"挡交付的\"和\"只是想改的\"，处理完前者就去【提交台】停手"
+     "playerObjective": "把改动分成\"挡交付的\"和\"只是想改的\"，处理完前者就去【提交台】停手",
+     "howToPlay": [
+      "场上有【工作台】和【提交台】两样东西。",
+      "在工作台上处理这一版的改动。",
+      "处理完就去【提交台】提交——这一关练的是停手，不是改到完美。",
+      "（这一批关卡都不靠清怪通关。打不打得过，和过不过关是两回事。）"
+     ]
     },
     {
      "levelId": "9-3",
@@ -392,7 +405,13 @@
      "navMeshCamera": "3m货架通道；箱体使用NavMeshObstacle；相机保持货车方向Beacon。",
      "realityVictory": "把当前目标箱装上货车，车门关闭并生成Reality Evidence。",
      "reusedAssets": "Warehouse_Base + PF_UnsubmittedBox/PF_LoadDock",
-     "playerObjective": "只把当前这一箱推到【装车月台】装车——旧箱子不用管"
+     "playerObjective": "只把当前这一箱推到【装车月台】装车——旧箱子不用管",
+     "howToPlay": [
+      "场上有【目标箱】和【装车月台】。",
+      "先走到【目标箱】旁边把它带上，它会跟着你走。",
+      "带着箱子走到【装车月台】就算装车完成。空着手过去按不动。",
+      "（这一批关卡都不靠清怪通关。打不打得过，和过不过关是两回事。）"
+     ]
     },
     {
      "levelId": "9-4",
@@ -434,7 +453,13 @@
      "navMeshCamera": "跌落传送最近Checkpoint而非死亡重开；固定相机提示下一平台。",
      "realityVictory": "带着至少一次局部损伤也可到达终点；若首战无失误同样允许胜利。",
      "reusedAssets": "CliffWalk_Base + PF_PersistentCheckpoint",
-     "playerObjective": "沿平台走到【终点门】；掉下去不算输，从最近的检查点接着走"
+     "playerObjective": "沿平台走到【终点门】；掉下去不算输，从最近的检查点接着走",
+     "howToPlay": [
+      "场上有【检查点】和【终点门】。",
+      "沿着平台一路走到【终点门】就通关。",
+      "掉下去不算输——这一关要练的正是「失误只影响这一段」。",
+      "（这一批关卡都不靠清怪通关。打不打得过，和过不过关是两回事。）"
+     ]
     },
     {
      "levelId": "9-5",
@@ -468,7 +493,13 @@
      "navMeshCamera": "Boss战不永久硬锁；SubmitConsole始终有HUD方向标。",
      "realityVictory": "按下Submit即Boss失效，即使HP未清零；DeathType=Publish。",
      "reusedAssets": "Office_Base + Court_Overlay + Boss_PerfectionJudge_Module",
-     "playerObjective": "走完四道修改门、锁定完成标准，然后在窗口期按下【提交台】——不必打空它的血条"
+     "playerObjective": "走完四道修改门、锁定完成标准，然后在窗口期按下【提交台】——不必打空它的血条",
+     "howToPlay": [
+      "这是本章的 Boss 关：完美审判官。",
+      "场上有【提交台】。走到它跟前按下去，Boss 就失效了。",
+      "不需要把它的血条打空——这一章的通关条件是「你交付了」，不是「你赢了架」。",
+      "（这一批关卡都不靠清怪通关。打不打得过，和过不过关是两回事。）"
+     ]
     }
    ],
    "boss": {

@@ -235,7 +235,14 @@ namespace AdversityRoad.OpenWorld
             // 触发点不响、三选一不弹、Execution Gate 无人判，玩家会以为这一关什么都没有。
             // 场景是通用管线建的，规则是这一关自己的，两件事在这一行接上。
             var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapterId);
-            if (internalLevel != null) InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
+            if (internalLevel != null)
+            {
+                InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
+                // 进关先把"这一关怎么玩"摆出来。HUD 那一行目标行只说下一步去哪，
+                // 回答不了"场上这几样东西各是干什么的"——玩家连着三轮说
+                // "游戏规则不清楚，不知道如何玩"，光靠一行小字是补不上的。
+                UI.LevelBriefPanel.Show(internalLevel);
+            }
 
             return true;
         }

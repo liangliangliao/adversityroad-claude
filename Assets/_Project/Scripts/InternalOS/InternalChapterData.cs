@@ -129,6 +129,21 @@ namespace AdversityRoad.InternalOS
         /// </summary>
         public string playerObjective;
 
+        /// <summary>
+        /// 进关时那张卡上的"怎么玩"，一步一条。
+        ///
+        /// 【为什么光有 playerObjective 还不够】
+        /// 目标行只说**下一步去哪**，它回答不了"这一关到底怎么玩"。
+        /// 玩家连着三轮说"游戏规则不清楚，不知道如何玩"——HUD 上一行小字，
+        /// 既容易被忽略，也讲不完"场上这几样东西各是干什么的"。
+        ///
+        /// 【写这几条时的硬规矩】
+        /// 只描述**这一关真的建出来了的东西**。关卡表里写着而代码还没做的机制
+        /// （9-2 的边际收益、9-5 的四道修改门）一个字都不能写进去——
+        /// 卡上说有六张修改卡而场上没有，比不给说明更糟。
+        /// </summary>
+        public List<string> howToPlay = new List<string>();
+
         /// <summary>玩家看的那句话：有 playerObjective 就用它，没有才回落到验收条件。</summary>
         public string Objective =>
             string.IsNullOrEmpty(playerObjective) ? realityVictory : playerObjective;

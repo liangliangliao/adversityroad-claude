@@ -258,6 +258,52 @@ namespace AdversityRoad.InternalOS
         }
 
         /// <summary>
+        /// 关卡循环自己摆出来的牌子（不在 PlanFor 里）。
+        ///
+        /// 9-1 的六张修改卡是 <see cref="Level0901BlankPage"/> 建的，不走关键物那条路。
+        /// 但"怎么玩"的卡片上写着"走近读【修改项】"，门禁要能核对到它，
+        /// 否则那条检查会把一个真实存在的牌子报成不存在。
+        /// </summary>
+        public static List<string> LoopLabelsFor(InternalLevelData lv)
+        {
+            var extra = new List<string>();
+            if (lv != null && lv.levelId == Level0901BlankPage.LevelId)
+                extra.Add(Level0901BlankPage.CardLabel);
+            return extra;
+        }
+
+        /// <summary>
+        /// 搭一个"带牌子的方块"。
+        ///
+        /// 【为什么不能直接 CreatePrimitive 然后往上挂牌子】
+        /// 那样牌子成了**带非等比缩放的立方体**的子物体，缩放会继承下去，
+        /// 字被横向拉三成——玩家说的"文字模糊看不清楚"有一半是这么来的。
+        /// 所以结构分两层：根不缩放（牌子挂这儿），方块是它的子物体（缩放挂这儿）。
+        /// 返回根；渲染器与碰撞体都在子物体上。
+        /// </summary>
+        public static GameObject LabeledBlock(string name, Vector3 pos, Vector3 size,
+            Color color, float emissive, string label)
+        {
+            var root = new GameObject(name);
+            root.transform.position = pos + Vector3.up * (size.y * 0.5f);
+
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "Body";
+            body.transform.SetParent(root.transform, false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localScale = size;
+            body.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.EnergyMaterial(color, emissive);
+            var col = body.GetComponent<Collider>();
+            if (col != null) col.isTrigger = false;
+
+            // 牌子贴在方块四个侧面上，不飘在头顶、不跟镜头转
+            if (!string.IsNullOrEmpty(label))
+                OpenWorldBuilder.SurfaceSign(root.transform, size, label);
+            return root;
+        }
+
+        /// <summary>
         /// 把这一关的关键物建到场上。
         ///
         /// 落位规则：Gate 放在出口那一侧（它是这一关的终点），其余沿主路径依次排开。
@@ -344,18 +390,8 @@ namespace AdversityRoad.InternalOS
             InternalProps.Style(kind, out label, out color, out size);
             if (kind == InternalPropKind.GateConsole) label = InternalProps.GateLabel(pfName);
 
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = "InternalProp_" + pfName;
-            go.transform.position = pos + Vector3.up * (size.y * 0.5f);
-            go.transform.localScale = size;
-            go.GetComponent<MeshRenderer>().sharedMaterial =
-                Combat.CombatFeedback.EnergyMaterial(color, kind == InternalPropKind.GateConsole ? 0.85f : 0.45f);
-            // 碰撞体留着当"站得上去"的实体，但别挡住导航
-            var col = go.GetComponent<Collider>();
-            if (col != null) col.isTrigger = false;
-
-            // 小号：这是走到跟前才需要读的东西，不是区域招牌
-            OpenWorldBuilder.SmallSign(go.transform, new Vector3(0, size.y * 0.5f + 0.55f, 0), label);
+            var go = InternalProps.LabeledBlock("InternalProp_" + pfName, pos, size, color,
+                kind == InternalPropKind.GateConsole ? 0.85f : 0.45f, label);
 
             var p = go.AddComponent<InternalProp>();
             p.pfName = pfName;

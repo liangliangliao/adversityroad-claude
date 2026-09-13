@@ -250,6 +250,86 @@ namespace AdversityRoad.InternalOS
             d = Mathf.Max(12f, route * 0.18f);   // 狭长：宽度按路线的一小截，读起来是一条路
         }
 
+        /// <summary>
+        /// 关卡表里明写的净高。两种写法都认：
+        ///   "42m×18m×4m"（同一组里的第三个数）、"65×38m，高12m"（"高"后面那个数）。
+        /// 读不到返回 0，由 SiteBuilder 按面积推一个——**绝不再一律 4.2 米**。
+        ///
+        /// 【不能简单地"按 × 切开取第三段"】
+        /// 关卡表里有不少是**多组**尺度，组之间用分号隔开：
+        ///   9-2 "主厅32×24m；档案区24×18m"、9-5 "Reality 35×25m；法庭55×45m；核心40×40m"
+        /// 按 × 切开，第三段分别是 "18m" 和 "45m；核心40"——那是**下一组的宽或深**，
+        /// 根本不是高。我第一版就是这么写的，9-2 和 9-5 因此都拿到了 16 米的净高
+        /// （夹上限之后的值），凭空长高一倍。
+        /// 所以这里只认**同一组里连着三个数**的写法：W×D×H。
+        /// </summary>
+        public static float HeightOf(InternalLevelData lv)
+        {
+            string s = lv != null ? (lv.greyboxScale ?? "") : "";
+            if (s.Length == 0) return 0f;
+
+            // ① "高12m" 最明确，优先
+            int at = s.IndexOf("高", System.StringComparison.Ordinal);
+            if (at >= 0)
+            {
+                float h;
+                if (ReadNumber(s, at + 1, out h, out _)) return h;
+            }
+
+            // ② W×D×H：必须是同一组里连着的三个数
+            for (int i = 0; i < s.Length; i++)
+            {
+                float a;
+                int after;
+                if (!ReadNumberAt(s, i, out a, out after)) continue;
+
+                int p1 = SkipTimes(s, after);
+                if (p1 < 0) { i = after; continue; }
+                float b;
+                int after2;
+                if (!ReadNumberAt(s, p1, out b, out after2)) { i = after; continue; }
+
+                int p2 = SkipTimes(s, after2);
+                if (p2 < 0) { i = after2; continue; }   // 只有两个数：这一组没写高
+                float c;
+                int after3;
+                if (!ReadNumberAt(s, p2, out c, out after3)) { i = after2; continue; }
+                return c;
+            }
+            return 0f;
+        }
+
+        /// <summary>从 from 起找到下一个数字并读出来。</summary>
+        static bool ReadNumber(string s, int from, out float v, out int after)
+        {
+            int i = from;
+            while (i < s.Length && !char.IsDigit(s[i])) i++;
+            return ReadNumberAt(s, i, out v, out after);
+        }
+
+        /// <summary>要求 at 处就是数字，读完返回结束位置。</summary>
+        static bool ReadNumberAt(string s, int at, out float v, out int after)
+        {
+            v = 0f; after = at;
+            if (at < 0 || at >= s.Length || !char.IsDigit(s[at])) return false;
+            int i = at;
+            while (i < s.Length && (char.IsDigit(s[i]) || s[i] == '.')) i++;
+            after = i;
+            return float.TryParse(s.Substring(at, i - at), out v);
+        }
+
+        /// <summary>跨过 "m×" / "×" / " x " 这一段；不是乘号就返回 -1。</summary>
+        static int SkipTimes(string s, int from)
+        {
+            int i = from;
+            while (i < s.Length && (s[i] == 'm' || s[i] == 'M' || s[i] == ' ')) i++;
+            if (i >= s.Length) return -1;
+            if (s[i] != '×' && s[i] != 'x' && s[i] != 'X' && s[i] != '*') return -1;
+            i++;
+            while (i < s.Length && s[i] == ' ') i++;
+            return i;
+        }
+
         /// <summary>"主路线120m" / "长度110m" / "完整路线约150m" 里的那个长度。</summary>
         static float RouteLengthOf(string s)
         {
@@ -410,6 +490,7 @@ namespace AdversityRoad.InternalOS
             MetersOf(lv, out mw, out md);
             site.siteWidth = mw;
             site.siteDepth = md;
+            site.siteHeight = HeightOf(lv);
 
             site.rooms = RoomsOf(lv);
             site.interactables = InteractablesOf(lv);

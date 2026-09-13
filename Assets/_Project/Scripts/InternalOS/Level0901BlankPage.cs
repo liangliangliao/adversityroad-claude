@@ -38,6 +38,8 @@ namespace AdversityRoad.InternalOS
         public const int MaxStages = 5;
         /// <summary>Done 最低标准：两个真正阻断交付的问题。</summary>
         public const int CriticalToDone = 2;
+        /// <summary>六张修改卡的牌面。"怎么玩"卡片和 CI 门禁都引它，别各写各的。</summary>
+        public const string CardLabel = "修改项";
 
         public static Level0901BlankPage Active { get; private set; }
 
@@ -231,18 +233,11 @@ namespace AdversityRoad.InternalOS
         public static EditCard Create(Vector3 pos, string text, bool critical,
             Level0901BlankPage owner, Transform parent)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = "EditCard";
-            go.transform.position = pos + Vector3.up * 0.9f;
-            go.transform.localScale = new Vector3(0.9f, 1.2f, 0.12f);
-            if (parent != null) go.transform.SetParent(parent, true);
-            // 六张一模一样：分得出来靠读，不靠颜色
-            go.GetComponent<MeshRenderer>().sharedMaterial =
-                Combat.CombatFeedback.EnergyMaterial(new Color(0.88f, 0.88f, 0.84f), 0.25f);
-            // 六张卡**不挂常驻牌**：六个一模一样的大字牌是纯噪点，
-            // 而且这一关要的是"走近读内容才分得出哪两张真的挡交付"——
-            // 牌子写"修改项"既没信息，又把该读的内容挡在后面。走近自然出字幕。
-            OpenWorld.OpenWorldBuilder.SmallSign(go.transform, new Vector3(0, 0.85f, 0), "·");
+            // 卡是立着的一块板：牌面就写在板上，不挂在头顶飘着。
+            // 六张一模一样——分得出来靠走近读那行字，不靠颜色、不靠标签。
+            var size = new Vector3(1.1f, 1.4f, 0.14f);
+            var go = InternalProps.LabeledBlock("EditCard", pos, size,
+                new Color(0.88f, 0.88f, 0.84f), 0.25f, Level0901BlankPage.CardLabel);
 
             var c = go.AddComponent<EditCard>();
             c.text = text;
@@ -271,8 +266,11 @@ namespace AdversityRoad.InternalOS
             if (d > 1.8f) return;
 
             _done = true;
-            GetComponent<MeshRenderer>().sharedMaterial =
-                Combat.CombatFeedback.EnergyMaterial(new Color(0.35f, 0.38f, 0.4f), 0.1f);
+            // 渲染器在子物体 Body 上（根不缩放，免得把牌面上的字拉变形）
+            var mr = GetComponentInChildren<MeshRenderer>();
+            if (mr != null)
+                mr.sharedMaterial =
+                    Combat.CombatFeedback.EnergyMaterial(new Color(0.35f, 0.38f, 0.4f), 0.1f);
             if (critical) _owner.FixCritical(runner, text);
             else _owner.PolishCosmetic(runner, text);
         }

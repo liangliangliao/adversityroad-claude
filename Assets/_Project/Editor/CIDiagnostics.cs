@@ -766,7 +766,6 @@ namespace AdversityRoad.EditorTools
             for (int i = 0; i < levels.Count; i++)
             {
                 var lv = levels[i];
-                if (string.IsNullOrEmpty(lv.playerObjective)) continue;
 
                 var labels = new System.Collections.Generic.List<string>();
                 var plan2 = AdversityRoad.InternalOS.InternalProps.PlanFor(lv);
@@ -778,26 +777,38 @@ namespace AdversityRoad.EditorTools
                         lbl = AdversityRoad.InternalOS.InternalProps.GateLabel(plan2[k].pfName);
                     labels.Add(lbl);
                 }
+                // 关卡循环自己摆的牌子（9-1 的六张修改卡）也算数
+                labels.AddRange(AdversityRoad.InternalOS.InternalProps.LoopLabelsFor(lv));
 
-                string po = lv.playerObjective;
-                int at = 0;
-                while (true)
+                // 目标行和"怎么玩"卡片都要核：两处都会点名场上的东西，
+                // 点到一个不存在的名字，玩家就会满场找一块没有的牌子。
+                var texts = new System.Collections.Generic.List<string>();
+                if (!string.IsNullOrEmpty(lv.playerObjective)) texts.Add(lv.playerObjective);
+                if (lv.howToPlay != null) texts.AddRange(lv.howToPlay);
+
+                for (int t = 0; t < texts.Count; t++)
                 {
-                    int open = po.IndexOf('\u3010', at);
-                    if (open < 0) break;
-                    int close = po.IndexOf('\u3011', open + 1);
-                    if (close < 0) break;
-                    string want = po.Substring(open + 1, close - open - 1);
-                    at = close + 1;
-                    if (labels.Contains(want)) continue;
-                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
-                      .Append(" 的目标行让玩家去找【").Append(want)
-                      .Append("】，但这一关摆出来的牌子只有：")
-                      .Append(string.Join("/", labels.ToArray())).Append("\n");
-                    badRef++; ok = false;
+                    string po = texts[t];
+                    if (string.IsNullOrEmpty(po)) continue;
+                    int at = 0;
+                    while (true)
+                    {
+                        int open = po.IndexOf('\u3010', at);
+                        if (open < 0) break;
+                        int close = po.IndexOf('\u3011', open + 1);
+                        if (close < 0) break;
+                        string want = po.Substring(open + 1, close - open - 1);
+                        at = close + 1;
+                        if (labels.Contains(want)) continue;
+                        sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                          .Append(" 的说明让玩家去找【").Append(want)
+                          .Append("】，但这一关摆出来的牌子只有：")
+                          .Append(string.Join("/", labels.ToArray())).Append("\n");
+                        badRef++; ok = false;
+                    }
                 }
             }
-            sb.Append("[CIDIAG][内部线] 目标行指向核对：对不上的 ").Append(badRef).Append(" 处\n");
+            sb.Append("[CIDIAG][内部线] 目标行/玩法说明指向核对：对不上的 ").Append(badRef).Append(" 处\n");
 
             // 【蓝图必须真的会被"建"，而不是被当成 Legacy 打发掉】
             //
