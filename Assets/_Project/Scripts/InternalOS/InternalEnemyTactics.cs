@@ -79,15 +79,53 @@ namespace AdversityRoad.InternalOS
         }
 
         /// <summary>
-        /// 9-1 用：倒下的哨兵过一会儿回来一只（只在还没做出第一版时）。
+        /// 9-1 用：倒下的哨兵过一会儿回来一只（只在还没做出第一版时，**而且有次数上限**）。
         ///
         /// 用一个挂在场景上的小协程载体来等——敌人自己马上就要被销毁，
         /// 在它身上开协程等不到时间到。
         /// </summary>
         public static void ReturnSentinelLater(string chapterId, Vector3 near)
         {
+            if (SentinelReturns >= BlankPageSentinel.MaxReturns) return;
+            SentinelReturns++;
             var host = new GameObject("SentinelReturn");
             host.AddComponent<SentinelReturn>().Begin(chapterId, near);
+        }
+
+        /// <summary>这一趟 9-1 已经补过几只哨兵。上限见 <see cref="BlankPageSentinel.MaxReturns"/>。</summary>
+        public static int SentinelReturns { get; private set; }
+
+        /// <summary>
+        /// 第 9-26 章的敌人开口时说什么。
+        ///
+        /// 【为什么不能用经典关卡那套台词】
+        /// DialogueLibrary.GetTaunt 按"弱点轴 + 当前区域 id"取句子，写的是
+        /// 经典关卡里**外面那个人**会说的话。放到这 90 关里，屏幕上就会冒出
+        /// 一句和这一关毫无关系的经典台词——玩家原话
+        /// "新增关卡为什么会冒出经典关卡的言语攻击"。
+        ///
+        /// 这批关卡的敌人是**你自己内部的那个障碍**，它说的应该是
+        /// 你在这件事上真正会对自己说的那句话。认不出的关卡返回空串，
+        /// 调用方照旧退回通用台词——宁可少一句，也不硬编一句假的。
+        /// </summary>
+        public static string PressureLine(InternalLevelData lv)
+        {
+            if (lv == null) return "";
+            switch (lv.levelId)
+            {
+                case "9-1": return "还没想清楚就动笔？写出来也是废稿。";
+                case "9-2": return "就这么交出去？再看一遍，肯定还有问题。";
+                case "9-3": return "再检查一次吧，万一漏了什么。";
+                case "9-4": return "做不到满分，那就别做了。";
+                case "9-5": return "等状态好一点再开始，今天不合适。";
+            }
+            return "";
+        }
+
+        /// <summary>每次进关清零（和 InternalProp.ResetSession 一起，由 InternalLevelRunner 调）。</summary>
+        public static void ResetSession()
+        {
+            SentinelReturns = 0;
         }
     }
 
@@ -128,9 +166,13 @@ namespace AdversityRoad.InternalOS
                 if (go != null)
                 {
                     go.AddComponent<BlankPageSentinel>().chapterId = _chapterId;
-                    GameEvents.RaiseSubtitle(
-                        "又一个白纸哨兵站了过来——在做出第一版之前，它们会一直回来。" +
-                        "去【工作台】按【用】。");
+                    int left = Mathf.Max(0,
+                        BlankPageSentinel.MaxReturns - InternalEnemyTactics.SentinelReturns);
+                    GameEvents.RaiseSubtitle(left > 0
+                        ? "又一个白纸哨兵站了过来（还会再来 " + left + " 次）。" +
+                          "去【工作台】按【用】做出第一版，它们就不来了。"
+                        : "最后一个白纸哨兵站了过来——打倒它，场上就清干净了。" +
+                          "第一版仍然要你自己去【工作台】做。");
                 }
             }
             Destroy(gameObject);
@@ -151,15 +193,27 @@ namespace AdversityRoad.InternalOS
     /// **玩家先要能判断游戏有没有坏，才谈得上读懂它想说什么。**
     ///
     /// 现在改成：哨兵是**正常敌人**，打得动、打得死、有正常反馈。
-    /// 只是在做出第一版之前，倒下的哨兵会在 10 秒后重新回来一只。
-    /// "完美主义会一直回来，直到你动手"——意思一样，但战斗是真的、可赢的，
-    /// 而且回来那一刻会明确说清原因，不会被当成血条坏了。
-    /// 做出第一版之后不再补人，场上剩的打完就干净了。
+    ///
+    /// 【这一版又改了一次：补员不能是无限的】
+    /// 上一版写的是"在做出第一版之前，倒下的哨兵会一直回来"。
+    /// 实机上玩家看到的是**每隔几秒就冒出一个敌人、而且一直持续**，
+    /// 原话："为什么敌人死亡后又总是每隔几秒会冒出敌人并且一直持续。"
+    ///
+    /// 这是设计上的错：一个没有尽头的补员，玩家读不出"这是规则"，
+    /// 只读得出"这游戏在无限刷怪"。战斗于是从"挣出做事的空间"变成
+    /// 一件永远做不完的杂事，而这一关真正要你做的事（去动笔）被它盖住了。
+    ///
+    /// 现在补员有**明确的上限**（<see cref="MaxReturns"/> 次），间隔拉到 16 秒，
+    /// 而且每次回来都报还剩几次。玩家于是知道：它会回来，但数得清；
+    /// 想更快结束，就去动笔——动笔之后一次都不再来。
     /// </summary>
     public class BlankPageSentinel : MonoBehaviour
     {
         /// <summary>倒下之后隔多久回来一只（仅在还没做出第一版时）。</summary>
-        public const float ReturnAfter = 10f;
+        public const float ReturnAfter = 16f;
+
+        /// <summary>整关最多补几只。到了上限就不再补——补员必须是数得清的。</summary>
+        public const int MaxReturns = 2;
 
         public string chapterId = "";
 
@@ -179,6 +233,13 @@ namespace AdversityRoad.InternalOS
             if (loop == null || loop.DraftMade)
             {
                 GameEvents.RaiseSubtitle("白纸哨兵倒下了。第一版已经有了，它不会再回来。");
+                return;
+            }
+            // 补员次数已经用完：说清楚它不会再来，别让玩家一直提防着
+            if (InternalEnemyTactics.SentinelReturns >= MaxReturns)
+            {
+                GameEvents.RaiseSubtitle("白纸哨兵倒下了，而且不会再有了——" +
+                    "现在场上没人拦你，去【工作台】按【用】做出第一版。");
                 return;
             }
             InternalEnemyTactics.ReturnSentinelLater(chapterId, transform.position);

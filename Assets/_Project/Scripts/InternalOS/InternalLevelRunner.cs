@@ -91,6 +91,8 @@ namespace AdversityRoad.InternalOS
             // 于是**重进同一关时，上一趟的进度还在**——第二次走到月台就直接过，
             // 不用再把箱子搬过来。这类关卡最怕的就是"第二遍不用玩了"。
             InternalProp.ResetSession();
+            // 同理：9-1 的哨兵补员次数也按"每趟"计，重进一关要从头数
+            InternalEnemyTactics.ResetSession();
 
             ControlChainRecorder.Begin(Chapter != null ? Chapter.chapterId : lv.chapterId,
                 lv.realityVictory);

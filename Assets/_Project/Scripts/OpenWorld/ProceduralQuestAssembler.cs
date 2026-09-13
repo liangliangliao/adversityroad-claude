@@ -213,8 +213,10 @@ namespace AdversityRoad.OpenWorld
                 }
             }
 
-            // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着
-            BuildMechanicProps(bp, site.origin, site);
+            // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着。
+            // 第 9-26 章不摆：见 BuildMechanicProps 的说明。
+            if (InternalOS.InternalChapterBridge.LevelOfChapterId(bp.chapterId) == null)
+                BuildMechanicProps(bp, site.origin, site);
 
             // 第 9-26 章：这一关的关键物（提交台 / Done 锁 / 检查点 / 脱离门……）。
             //
@@ -330,6 +332,16 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
+        /// <summary>敌人拦截点：带与带之间的几个路口（比例全部取自 InternalLayout）。</summary>
+        static readonly float[] Gateposts =
+        {
+            InternalOS.InternalLayout.OpeningT - 0.02f,
+            InternalOS.InternalLayout.ReadFrom - 0.02f,
+            (InternalOS.InternalLayout.ReadFrom + InternalOS.InternalLayout.ReadTo) * 0.5f,
+            InternalOS.InternalLayout.WorkFrom - 0.02f,
+            InternalOS.InternalLayout.GateT - 0.04f,
+        };
+
         /// <summary>
         /// 把"门口 / 中段 / 深处"翻译成场景里的实际落点。
         ///
@@ -344,11 +356,10 @@ namespace AdversityRoad.OpenWorld
         /// 玩家的要求原话："玩家和敌人默认在战斗区域出现，敌人分别出现在玩家
         /// 做任务完成通关的必经的位置（起到拦截的作用）。"
         ///
-        /// 关卡的主轴是"落点 → 远端出口"，任务点串在 0.45/0.60/0.75，
-        /// 交付点在 0.86（见 InternalProps.Build）。所以：
-        ///   · entrance → 战斗区（0.22 那一段）：开场的架在这里打，场地是空的
-        ///   · middle / deep → **卡在任务点之前**（0.36 / 0.52 / 0.68 ……）：
-        ///     玩家要去够哪个道具，就得先过这一关人。
+        /// 主轴是"落点 → 远端出口"，沿途按 InternalLayout 切成若干带。所以：
+        ///   · entrance → 战斗区（CombatT 那一段）：开场的架在这里打，场地是空的
+        ///   · middle / deep → **守在带与带之间的路口上**（见 Gateposts）：
+        ///     玩家要往下一段走，就得先过这一关人。
         /// 这样"敌人有用"和"胜利不靠清怪"同时成立：它们挡路，但通关看的是交付。
         /// </summary>
         static Vector3 PlacedSpot(SiteInstance site, string placement, int index, System.Random rng)
@@ -362,10 +373,15 @@ namespace AdversityRoad.OpenWorld
             if (axis.sqrMagnitude < 1f) axis = Vector3.forward;
             Vector3 side = Vector3.Cross(Vector3.up, axis.normalized);
 
-            // 开场那一批留在战斗区；其余逐个卡在任务点之前
+            // 开场那一批留在战斗区；其余**守在带与带之间的路口上**。
+            //
+            // 落位比例全部取自 InternalOS.InternalLayout——场上任务点、地上的分段线、
+            // 牌子上的字、敌人的站位必须读同一份规则，否则牌子说的和东西在的
+            // 又会对不上（玩家上一轮原话："有的不知道有何意义……难道只是摆设"）。
+            // 路口依次是：进资料带 / 资料带当中 / 进工作带 / 交付点之前。
             float t = placement == "entrance"
-                ? 0.22f
-                : Mathf.Min(0.36f + index * 0.16f, 0.78f);
+                ? InternalOS.InternalLayout.CombatT
+                : Gateposts[Mathf.Min(index, Gateposts.Length - 1)];
 
             Vector3 baseAt = spawn + axis * t;
 
@@ -498,16 +514,46 @@ namespace AdversityRoad.OpenWorld
             return basePos;
         }
 
-        /// <summary>机制包：把蓝图里的机制标签变成场上看得见、摸得到的物件。</summary>
+        /// <summary>
+        /// 机制包：把蓝图里的机制标签变成场上看得见、摸得到的物件。
+        ///
+        /// 【第 9-26 章不走这条路】
+        /// 这些物件的名字是**机制包的名字**（"追踪故障源""分叉探索"），
+        /// 由 SuggestMechanics 按弱点轴猜出来，和这一关实际要做的事没有关系；
+        /// 它们也没有任何规则，走近只播一句描述。玩家原话：
+        /// "有的不知道有何意义（比如追踪故障源、分叉探索等等），难道只是摆设"——
+        /// 说得对，对这 90 关来说它们确实只是摆设。
+        /// 这批关卡场上该有什么由 InternalProps 按关卡表决定，每一件都带规则，
+        /// 所以这里对内部章节整个跳过，而不是把它们摆得散一点。
+        ///
+        /// 【其余章节：沿主轴排，不再围成一圈】
+        /// 原来是 anchor 周围每 70° 一个、半径 9 米——不管有几件，全挤在落点旁边
+        /// 那一小圈里。改成沿"落点→出口"主轴依次排开，走过去会一件一件遇到。
+        /// </summary>
         static void BuildMechanicProps(GoalChapterData bp, Vector3 anchor, SiteInstance site = null)
         {
             if (anchor == Vector3.zero) return;
+
+            int total = 0;
+            foreach (var mid in bp.physicalMechanics)
+                if (ChapterModuleLibrary.Mechanic(mid) != null) total++;
+
             int i = 0;
             foreach (var id in bp.physicalMechanics)
             {
                 var info = ChapterModuleLibrary.Mechanic(id);
                 if (info == null) continue;
-                Vector3 p = anchor + Quaternion.Euler(0, 70f * i++, 0) * Vector3.forward * 9f;
+                Vector3 p;
+                if (site != null)
+                {
+                    // 主轴上 0.40→0.75 之间依次排开，左右错开 5 米
+                    float f = total <= 1 ? 0.5f : (float)i / (total - 1);
+                    Vector3 axisR = InternalOS.InternalLayout.Right(site.playerSpawn, site.farExit);
+                    p = Vector3.Lerp(site.playerSpawn, site.farExit, Mathf.Lerp(0.40f, 0.75f, f))
+                        + axisR * ((i % 2 == 0) ? -5f : 5f);
+                }
+                else p = anchor + Quaternion.Euler(0, 70f * i, 0) * Vector3.forward * 9f;
+                i++;
                 if (UnityEngine.AI.NavMesh.SamplePosition(p, out var mh, 10f,
                         UnityEngine.AI.NavMesh.AllAreas)) p = mh.position;
 

@@ -65,12 +65,6 @@ namespace AdversityRoad.InternalOS
 
         void Setup(Vector3 spawn, Vector3 exit)
         {
-            Vector3 fwd = exit - spawn;
-            fwd.y = 0f;
-            if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
-            fwd.Normalize();
-            Vector3 right = Vector3.Cross(Vector3.up, fwd);
-
             // 八张卡：2 个阻断、3 个有用、3 个润色。
             // 卡面一律只写"修改项"，内容要走近才读得到——
             // 和 9-1 同一条规矩：分得出来靠读，不靠标签。
@@ -87,18 +81,12 @@ namespace AdversityRoad.InternalOS
             };
             Remaining = items.Count;
 
-            // 八张卡沿主轴按顺序铺开（0.40→0.75，左右交替错开 6 米），
-            // 不再堆在中点那一小片——理由同 9-1：玩家要能一路走过去一张一张读，
-            // 而不是站在一堆卡中间分不清先后。
+            // 八张卡分两排立在**资料带**的过道两侧（落位规则见 InternalLayout）：
+            // 玩家从中间走过去，左右各一列，一张一张读得到；
+            // 提交台和别的关键物在后面那一带，不和它们挤在同一段路上。
             for (int i = 0; i < items.Count; i++)
-            {
-                float t = 0.40f + i * 0.05f;
-                Vector3 at = Vector3.Lerp(spawn, exit, t)
-                           + right * ((i % 2 == 0) ? 6f : -6f);
-                if (UnityEngine.AI.NavMesh.SamplePosition(at, out var hit, 10f,
-                        UnityEngine.AI.NavMesh.AllAreas)) at = hit.position;
-                ProofCard.Create(at, items[i], this, transform);
-            }
+                ProofCard.Create(InternalLayout.Aisle(spawn, exit, i, items.Count),
+                    items[i], this, transform);
 
             GameEvents.RaiseSubtitle(
                 "永久校稿室：场上八处可以改的地方。真正挡住交付的只有两处，" +

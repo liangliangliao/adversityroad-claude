@@ -407,11 +407,17 @@ namespace AdversityRoad.InternalOS
 
             var plan = PlanFor(lv);
             var triggers = lv.triggerIds;
-            Vector3 forward = exit - spawn;
-            if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
-            forward.y = 0f;
-            forward.Normalize();
-            Vector3 right = Vector3.Cross(Vector3.up, forward);
+
+            // 落位规则只有一份，写在 InternalLayout 里——这一关的修改卡、关键物、
+            // 交付台过去各有一套区间而且彼此重叠，合到场上就是玩家说的
+            // "密集、杂乱无章、堆在一块"。现在各占一带，互不侵入：
+            //   第一件关键物 → 起手位（战斗区之后、资料带之前，你先动手的那一件）
+            //   其余关键物   → 工作带
+            //   交付台       → 交付点
+            int workCount = 0;
+            for (int i = 0; i < plan.Count; i++)
+                if (plan[i].kind != InternalPropKind.GateConsole) workCount++;
+            workCount = Mathf.Max(0, workCount - 1);   // 第一件去起手位，不占工作带的位置
 
             int made = 0, step = 0;
             Transform gateTransform = null;
@@ -420,26 +426,11 @@ namespace AdversityRoad.InternalOS
                 var kind = plan[i].kind;
                 bool isGate = kind == InternalPropKind.GateConsole;
 
-                // Gate 站在终点；其余沿路铺开，左右交替，别排成一条直线挡路
-                // 【任务点串在"落点→出口"这条必经路上，而且都在战斗区之外】
-                //
-                // 玩家要的是："把战斗区域和玩家做任务交互区域分开……
-                // 物理场景改造成玩家从入口进入、经过必经区域、到达出口位置。"
-                //
-                // 所以主轴按比例切：
-                //   0.00 落点（入口）
-                //   0.22 战斗区中心 —— 这一段什么都不摆，留给打架
-                //   0.45 / 0.60 / 0.75 …… 任务点依次排在后面，必须走过去
-                //   0.86 Execution Gate（交付点），在出口门之前
-                //   1.00 出口门
-                // 左右再错开一点，免得排成一条直线挡路。
-                float t = isGate ? 0.86f : Mathf.Min(0.45f + step * 0.15f, 0.80f);
-                Vector3 pos = Vector3.Lerp(spawn, exit, t)
-                            + right * (isGate ? 0f : ((step % 2 == 0) ? 3.2f : -3.2f));
+                Vector3 pos = isGate
+                    ? InternalLayout.Gate(spawn, exit)
+                    : (step == 0 ? InternalLayout.Opening(spawn, exit)
+                                 : InternalLayout.Station(spawn, exit, step - 1, workCount));
                 if (!isGate) step++;
-
-                if (UnityEngine.AI.NavMesh.SamplePosition(pos, out var hit, 12f,
-                        UnityEngine.AI.NavMesh.AllAreas)) pos = hit.position;
 
                 string trig = triggers.Count > 0
                     ? triggers[Mathf.Min(i, triggers.Count - 1)] : "";

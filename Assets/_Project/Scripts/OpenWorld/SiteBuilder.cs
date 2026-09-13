@@ -119,6 +119,13 @@ namespace AdversityRoad.OpenWorld
             var kind = SiteKitCatalog.Kind(bp.siteKind);
             var rng = new System.Random(chapter.assemblySeed);
 
+            // 【这一行必须在建任何东西之前】
+            // 它原来写在整座场景建完之后，而 Sign() 是在布局阶段被调用的——
+            // 于是"第 9-26 章不摆路径名牌"这条判断，每一次都晚到一步，一块也没拦住。
+            // 玩家第二轮仍然看到"空白工作区""草稿工位"，正是这一行的位置写错了。
+            var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapter.chapterId);
+            _internalSite = internalLevel != null;
+
             int slot = _freeSlots.Count > 0 ? _freeSlots.Pop() : _nextSlot++;
             var inst = new SiteInstance
             {
@@ -178,6 +185,23 @@ namespace AdversityRoad.OpenWorld
                 d = Mathf.Clamp(bp.siteDepth * 2.0f, 45f, 120f);
             }
 
+            // ---- 主轴先定下来（在建任何东西之前） ----
+            //
+            // 【这里原来是个死判断】
+            // combatZone / combatRadius 过去是在整座场景**建完之后**才算的，
+            // 而 BuildProp 里那句"战斗区不摆陈设"在建造期就要用它——
+            // 那时 combatRadius 还是 0，InCombatZone 恒为 false，
+            // 于是那条规则一次都没生效过，家具照样铺满战斗区。
+            // 玩家反复说的"很拥挤、移动困难"，有一半是这一行的顺序错了。
+            //
+            // 落点与出口的**位置**其实是确定的：FindClearSpawn 从 -d/2+4 往里找，
+            // FindClearExit 从 +d/2-4 往里找，都在本地 Z 轴上。所以这里先按这条轴
+            // 预估一遍，建造期就有一个真实可用的战斗区；建完再用实际落点对齐一次。
+            _axisA = inst.origin + new Vector3(0, 1.1f, -d / 2f + 4f);
+            _axisB = inst.origin + new Vector3(0, 1.1f, d / 2f - 4f);
+            inst.combatZone = Vector3.Lerp(_axisA, _axisB, InternalOS.InternalLayout.CombatT);
+            inst.combatRadius = Mathf.Clamp(Mathf.Min(w, d) * 0.30f, 12f, 26f);
+
             // ---- 周边街区：先把"这地方在城市里"建出来 ----
             // 只建一个盒子的话，玩家推门进去看到的是悬在黑里的一间房——
             // 那不是"模拟真实世界的场景"，那是一个测试关。先铺地、再起楼、再点灯。
@@ -218,14 +242,25 @@ namespace AdversityRoad.OpenWorld
             BuildVerticality(inst, bp.verticality, rng, w, d);
 
             // ---- 布局 ----
-            switch (bp.layout)
+            // 第 9-26 章走自己那一套：一块开放的场地，按主轴切成几条带。
+            // 通用布局器（走廊/迷宫/房间群）会沿途砌墙分隔——那和这批关卡
+            // 要的"开放场景 + 一条必经主轴"是相反的两件事。
+            if (_internalSite)
             {
-                case "corridor": yield return BuildCorridor(inst, bp, rng, w, d); break;
-                case "maze": yield return BuildMaze(inst, bp, rng, w, d); break;
-                case "hall": yield return BuildHall(inst, bp, rng, w, d); break;
-                case "openblock": yield return BuildOpenBlock(inst, bp, rng, w, d); break;
-                case "courtyard": yield return BuildCourtyard(inst, bp, rng, w, d); break;
-                default: yield return BuildRooms(inst, bp, rng, w, d); break;
+                BuildInternalField(inst, w, d);
+                yield return null;
+            }
+            else
+            {
+                switch (bp.layout)
+                {
+                    case "corridor": yield return BuildCorridor(inst, bp, rng, w, d); break;
+                    case "maze": yield return BuildMaze(inst, bp, rng, w, d); break;
+                    case "hall": yield return BuildHall(inst, bp, rng, w, d); break;
+                    case "openblock": yield return BuildOpenBlock(inst, bp, rng, w, d); break;
+                    case "courtyard": yield return BuildCourtyard(inst, bp, rng, w, d); break;
+                    default: yield return BuildRooms(inst, bp, rng, w, d); break;
+                }
             }
 
             // ---- 场景陈设：让它一眼看得出是"哪种地方" ----
@@ -254,10 +289,9 @@ namespace AdversityRoad.OpenWorld
 
             // 战斗区：主轴上靠落点那一段，半径按场地给（但不小于 12 米——
             // 再小就不叫"开阔"了）。家具、杂物、关键物都要避开它。
-            inst.combatZone = Vector3.Lerp(inst.playerSpawn, inst.farExit, 0.22f);
+            // 落点/出口确定之后再把战斗区精确对齐一次（建造期用的是同一条轴的预估值）
+            inst.combatZone = Vector3.Lerp(inst.playerSpawn, inst.farExit, InternalOS.InternalLayout.CombatT);
             inst.combatRadius = Mathf.Clamp(Mathf.Min(w, d) * 0.30f, 12f, 26f);
-            var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapter.chapterId);
-            _internalSite = internalLevel != null;
 
             BuildEntranceMarker(inst, bp);
             BuildFarExitDoor(inst, chapter);
@@ -365,6 +399,79 @@ namespace AdversityRoad.OpenWorld
                 new Color(0.8f, 0.78f, 0.7f));
             inst.enemySpawns.Add(inst.origin + new Vector3(w * 0.25f, 1.1f, 0));
             inst.enemySpawns.Add(inst.origin + new Vector3(-w * 0.2f, 1.1f, 0));
+        }
+
+        /// <summary>
+        /// 第 9-26 章的场地：**一块开放的地，按主轴分成几条带**。
+        ///
+        /// 【为什么这批关卡不能用通用布局器】
+        /// 走廊布局会在场地中间砌两道贯通的长墙，房间群会切出一排带门的方盒子，
+        /// 迷宫更是直接种一片墙。那些形状本身没问题，但这 90 关的玩法是
+        /// "沿一条必经的路依次把事情做完"，被墙切碎之后，玩家既看不到前方
+        /// 还有几件事，也走不出那条顺序——加上玩家这一轮明确要求
+        /// "所有关卡不要用围墙封闭起来，全部是开放的场景"。
+        ///
+        /// 所以这里只画**带**，不砌墙。地上的颜色说清每一段是干什么的，
+        /// 边上的矮墩把过道框出来（齐膝高，看得见、不挡路），
+        /// 远处几根柱子给尺度感。分段与 InternalLayout 完全一致：
+        ///
+        ///   战斗区 → 资料带（两排要读的东西）→ 工作带（要动手的关键物）→ 交付点 → 出口
+        ///
+        /// 敌人守在带与带之间的路口上（见 ProceduralQuestAssembler.PlacedSpot），
+        /// 于是每往前一段都要先挣出空间——战斗有用，但通关判的仍然不是清怪。
+        /// </summary>
+        static void BuildInternalField(SiteInstance inst, float w, float d)
+        {
+            float z0 = -d / 2f + 4f, z1 = d / 2f - 4f;          // 主轴两端（本地 Z）
+            float Z(float t) => Mathf.Lerp(z0, z1, t);
+            float half = InternalOS.InternalLayout.AisleHalf;
+
+            // ---- 主轴：一条从战斗区一直铺到交付点的通路 ----
+            // 玩家要一眼看出"这条路是给我走的，事情沿着它排开"。
+            float lane0 = Z(InternalOS.InternalLayout.CombatT);
+            float lane1 = Z(InternalOS.InternalLayout.GateT);
+            Deco(inst, "Aisle", new Vector3(0, 0.05f, (lane0 + lane1) / 2f),
+                new Vector3(half * 2f, 0.04f, lane1 - lane0),
+                Lighten(inst.cFloor, 0.10f));
+
+            // ---- 三条分段线：踩过一条，就换了一件要做的事 ----
+            BandLine(inst, Z(InternalOS.InternalLayout.CombatT), half, new Color(0.86f, 0.45f, 0.38f));
+            BandLine(inst, Z(InternalOS.InternalLayout.OpeningT), half, new Color(0.95f, 0.66f, 0.35f));
+            BandLine(inst, Z(InternalOS.InternalLayout.ReadFrom), half, new Color(0.55f, 0.78f, 0.95f));
+            BandLine(inst, Z(InternalOS.InternalLayout.WorkFrom), half, new Color(0.95f, 0.82f, 0.45f));
+            BandLine(inst, Z(InternalOS.InternalLayout.GateT), half, new Color(0.55f, 0.92f, 0.66f));
+
+            // ---- 过道两侧的矮墩：把路框出来，齐膝高，不挡视线也不挡人 ----
+            int kerbs = Mathf.Max(4, Mathf.RoundToInt((lane1 - lane0) / 5f));
+            for (int i = 0; i <= kerbs; i++)
+            {
+                float z = Mathf.Lerp(lane0, lane1, (float)i / kerbs);
+                for (int sx = -1; sx <= 1; sx += 2)
+                    Cyl(inst, "AisleKerb", new Vector3(sx * half, 0.22f, z),
+                        0.28f, 0.45f, inst.cTrim, false);
+            }
+
+            // ---- 场地边上几根柱子：给尺度，全部落在过道之外 ----
+            int cols = Mathf.Clamp(Mathf.RoundToInt(d / 16f), 2, 6);
+            float cx = Mathf.Max(half + 8f, w * 0.34f);
+            for (int i = 0; i < cols; i++)
+            {
+                float z = Mathf.Lerp(z0 + 6f, z1 - 6f, cols <= 1 ? 0.5f : (float)i / (cols - 1));
+                Cyl(inst, "FieldColumn", new Vector3(cx, 4f, z), 0.45f, 8f, inst.cWall);
+                Cyl(inst, "FieldColumn", new Vector3(-cx, 4f, z), 0.45f, 8f, inst.cWall);
+            }
+
+            // ---- 敌人开场位：全在战斗区那一段 ----
+            float cz = Z(InternalOS.InternalLayout.CombatT);
+            inst.enemySpawns.Add(inst.origin + new Vector3(-5f, 1.1f, cz));
+            inst.enemySpawns.Add(inst.origin + new Vector3(5f, 1.1f, cz + 4f));
+        }
+
+        /// <summary>一条横过主轴的分段线（只是地上的颜色，不挡人）。</summary>
+        static void BandLine(SiteInstance inst, float z, float half, Color c)
+        {
+            Deco(inst, "BandLine", new Vector3(0, 0.09f, z),
+                new Vector3(half * 2f + 2f, 0.05f, 0.5f), c);
         }
 
         /// <summary>长廊：一条走不完的通道，两侧是门——无限代付走廊那一类的通用形状。</summary>
@@ -1017,6 +1124,8 @@ namespace AdversityRoad.OpenWorld
                 if (at.sqrMagnitude < 90f) continue;
                 // 战斗区要空：打起来最怕脚下到处是杂物
                 if (InCombatZone(inst, at)) continue;
+                // 第 9-26 章的任务过道也要空：任务点不能淹在杂物里
+                if (OnTaskAisle(inst, at)) continue;
                 BuildProp(inst, pool[rng.Next(pool.Count)], at, rng);
             }
         }
@@ -1036,7 +1145,7 @@ namespace AdversityRoad.OpenWorld
             // 两者都不知道战斗区在哪，于是打起来满地都是家具——
             // 玩家原话"很拥挤"。落在战斗区里的陈设直接不建。
             // 柱子是例外：它是结构，不建会让大厅看起来没盖好。
-            if (prop != "pillar" && InCombatZone(inst, at)) return;
+            if (prop != "pillar" && (InCombatZone(inst, at) || OnTaskAisle(inst, at))) return;
 
             switch (prop)
             {
@@ -1476,6 +1585,10 @@ namespace AdversityRoad.OpenWorld
                                 var at = new Vector3(
                                     Mathf.Lerp(-hw * 0.66f, hw * 0.66f, tx), 0,
                                     Mathf.Lerp(-hd * 0.6f, hd * 0.6f, tz));
+                                // 整组一起判：BuildProp 自己会躲战斗区和任务过道，
+                                // 但隔板是直接 Deco 出来的，不判就会剩下一排孤零零的板子
+                                // 立在过道正中间。
+                                if (InCombatZone(inst, at) || OnTaskAisle(inst, at)) continue;
                                 BuildProp(inst, "desk", at, rng);
                                 BuildProp(inst, "chair", at + new Vector3(0, 0, -1.4f), rng);
                                 Deco(inst, "Divider", at + new Vector3(0, 0.9f, 1.1f),
@@ -1859,14 +1972,26 @@ namespace AdversityRoad.OpenWorld
             Vector3 L(float t) => inst.root.transform.InverseTransformPoint(
                 Vector3.Lerp(spawn, far, t)) + new Vector3(0f, 1.9f, 0f);
 
-            Sign(inst, L(0.22f), "【战斗区】",
+            // 三块牌子钉在三条分段线上，一块一段，和地上的颜色线对齐。
+            // 比例全部取自 InternalLayout——牌子写的和东西落的必须是同一条规则，
+            // 否则又变成"牌子说这儿是任务区，而那块地上什么都没有"。
+            Sign(inst, L(InternalOS.InternalLayout.CombatT), "【战斗区】",
                 "这一块特意空出来，没有家具——打起来才转得开身。" +
-                "敌人开场在这儿；再往前它们会守在每个任务点上拦你。");
+                "敌人开场在这儿；再往前它们会守在每条带的路口上拦你。");
 
-            Sign(inst, L(0.45f), "【任务区 · 起点】",
-                "这一关要做的事从这儿开始，沿路往出口方向依次排开：" + lv.Objective);
+            Sign(inst, L(InternalOS.InternalLayout.OpeningT), "【起手位 · 先动手】",
+                "这一关第一件要按的东西就在这儿。先有东西，再谈它够不够好——" +
+                "没做出第一版之前，后面那些「还能更好」都不成立。");
 
-            Sign(inst, L(0.86f), "【交付点】",
+            Sign(inst, L(InternalOS.InternalLayout.ReadFrom), "【资料带 · 先读】",
+                "要读的东西分两排立在过道两侧，从近到远就是先后顺序。" +
+                "读不等于做：读完自己决定动不动手。这一关要做的事是：" + lv.Objective);
+
+            Sign(inst, L(InternalOS.InternalLayout.WorkFrom), "【工作带 · 动手】",
+                "要按下去的关键物在这一段，沿路依次排开。" +
+                "读过的东西在这里变成动作——按【用】/ R 才算数。");
+
+            Sign(inst, L(InternalOS.InternalLayout.GateT), "【交付点】",
                 "这一关的事在这里算完成。交付之后再走到出口，这一关才结束。");
         }
 
@@ -1924,55 +2049,43 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>
-        /// 室内外壳：**围而不闭**。
+        /// 室内"外壳"：**只剩结构，没有墙**。
         ///
-        /// 【这里原来是四面到顶的实墙，只在南墙留一个 6 米的口】
-        /// 那是一个真正意义上的封闭盒子：站在里面任何一个方向都是一面死墙，
-        /// 天光进不来，视线出不去。玩家连着三轮说"封闭""像地下室"，
-        /// 而我前两轮都在改平面尺寸——尺寸再大，盒子还是盒子。
+        /// 【这里改过两次，这一次是把墙整个拿掉】
+        /// 第一版是四面到顶的实墙，玩家说"封闭、像地下室"；
+        /// 第二版改成"齐胸实墙 + 上方高窗带"，墙矮了一半，但站在里面四周
+        /// 仍然是一圈连续的墙——玩家这一轮说得很直接：
+        /// "所有关卡不要用围墙封闭起来，全部是开放的场景"。
         ///
-        /// 现在每面墙分两段：齐胸高的实墙（该挡的还挡，边界仍然清楚）＋
-        /// 上方一圈**高窗带**，只留立柱。视线和天光从高窗出去，
-        /// 人仍然被墙拦住。这是"开阔感"和"可玩边界"同时成立的办法，
-        /// 也正是户外 <see cref="OpenEdge"/> 早就在用的那条思路。
+        /// 所以现在一面墙都不砌。剩下的只有**结构**：一圈承重柱 + 顶上的过梁。
+        /// 它仍然读得出"这是一处有屋顶的地方"（柱距、梁高都还在），
+        /// 但任何一个方向的视线都是通的，人也随时走得出去。
+        ///
+        /// 【那玩家会不会掉出世界】
+        /// 不会。BuildSurroundings 早就在整块大地面的边沿（场地外 130 米左右）
+        /// 立了四片看不见的边界碰撞体，外面还有临街楼和路。
+        /// 边界由那一圈承担，场地本身不需要墙——这正是"开放场景"的通常做法。
         /// </summary>
         static void Shell(SiteInstance inst, float w, float d, float h)
         {
-            // 实墙只到 2.6 米（或净高的一半，取小）——再高就又把视线封死了
-            float solid = Mathf.Min(2.6f, h * 0.5f);
-            float door = Mathf.Clamp(w * 0.22f, 6f, 14f);   // 南墙的入口，按场地宽度放大
-
-            // ---- 下半段实墙 ----
-            Box(inst, "Wall", new Vector3(0, solid / 2f, d / 2f), new Vector3(w, solid, 0.6f), inst.cWall);
-            Box(inst, "Wall", new Vector3(w / 2f, solid / 2f, 0), new Vector3(0.6f, solid, d), inst.cWall);
-            Box(inst, "Wall", new Vector3(-w / 2f, solid / 2f, 0), new Vector3(0.6f, solid, d), inst.cWall);
-            float side = (w - door) / 2f;
-            Box(inst, "Wall", new Vector3(-(w - side) / 2f, solid / 2f, -d / 2f),
-                new Vector3(side, solid, 0.6f), inst.cWall);
-            Box(inst, "Wall", new Vector3((w - side) / 2f, solid / 2f, -d / 2f),
-                new Vector3(side, solid, 0.6f), inst.cWall);
-
-            // ---- 上半段：立柱 + 顶上一道过梁，中间全是空的（高窗带）----
-            float top = h - solid;
-            if (top < 0.6f) return;
-            float cy = solid + top / 2f;
-
+            // 柱距 9 米上下：看得出是一圈柱列，又不会把视线切碎
             int nx = Mathf.Max(2, Mathf.RoundToInt(w / 9f));
+            int nz = Mathf.Max(2, Mathf.RoundToInt(d / 9f));
+
             for (int i = 0; i <= nx; i++)
             {
                 float x = -w / 2f + w * i / nx;
-                Box(inst, "Mullion", new Vector3(x, cy, d / 2f), new Vector3(0.5f, top, 0.5f), inst.cWall);
-                Box(inst, "Mullion", new Vector3(x, cy, -d / 2f), new Vector3(0.5f, top, 0.5f), inst.cWall);
+                Cyl(inst, "Column", new Vector3(x, h / 2f, d / 2f), 0.35f, h, inst.cWall);
+                Cyl(inst, "Column", new Vector3(x, h / 2f, -d / 2f), 0.35f, h, inst.cWall);
             }
-            int nz = Mathf.Max(2, Mathf.RoundToInt(d / 9f));
-            for (int i = 0; i <= nz; i++)
+            for (int i = 1; i < nz; i++)   // 四角已由上面那两排建过，别建两遍
             {
                 float z = -d / 2f + d * i / nz;
-                Box(inst, "Mullion", new Vector3(w / 2f, cy, z), new Vector3(0.5f, top, 0.5f), inst.cWall);
-                Box(inst, "Mullion", new Vector3(-w / 2f, cy, z), new Vector3(0.5f, top, 0.5f), inst.cWall);
+                Cyl(inst, "Column", new Vector3(w / 2f, h / 2f, z), 0.35f, h, inst.cWall);
+                Cyl(inst, "Column", new Vector3(-w / 2f, h / 2f, z), 0.35f, h, inst.cWall);
             }
 
-            // 过梁：把高窗带收住，让它读起来是"一圈窗"而不是"墙没砌完"
+            // 过梁把柱列收成一圈结构（只是装饰，不挡人）
             Deco(inst, "Lintel", new Vector3(0, h, d / 2f), new Vector3(w, 0.45f, 0.7f), inst.cTrim);
             Deco(inst, "Lintel", new Vector3(0, h, -d / 2f), new Vector3(w, 0.45f, 0.7f), inst.cTrim);
             Deco(inst, "Lintel", new Vector3(w / 2f, h, 0), new Vector3(0.7f, 0.45f, d), inst.cTrim);
@@ -2012,17 +2125,11 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         static void Ceiling(SiteInstance inst, float w, float d, float h)
         {
-            // 封实的条件是**又矮又小**——那才是一间屋子。
-            // 只看高度不行：9-1 按关卡表是 4 米净高，但地面有 42×18＝756 ㎡，
-            // 在这么大一块地上扣一整块不透光的板，正是玩家说的"地下室"。
-            // 屋子可以有天花板，一个 700 ㎡ 的场地不该有。
-            if (h < 5f && w * d < 400f)
-            {
-                Deco(inst, "Ceiling", new Vector3(0, h, 0), new Vector3(w, 0.3f, d),
-                    new Color(0.3f, 0.3f, 0.32f));
-                return;
-            }
-
+            // 【不再有整块封实的顶】
+            // 原来又矮又小的场地会扣一块不透光的板。四面墙拿掉之后再留这块板，
+            // 观感就是"一个盖子架在几根柱子上"，而且天光照样进不来。
+            // 玩家这一轮要的是"全部是开放的场景"，顶也算在内：一律走梁架，
+            // 结构看得出来，梁与梁之间是通的。
             var c = new Color(0.34f, 0.34f, 0.36f);
             int n = Mathf.Max(3, Mathf.RoundToInt(w / 7f));
             for (int i = 0; i <= n; i++)
@@ -2094,9 +2201,37 @@ namespace AdversityRoad.OpenWorld
         /// 并挂一个走近解释的组件——名字回答"这叫什么"，解释回答"它是干什么的"。
         /// </summary>
         /// <summary>
-        /// 这一处场景是第 9-26 章的关卡吗（决定要不要摆那些"路径名"房间牌）。
+        /// 这一处场景是第 9-26 章的关卡吗（决定要不要摆那些"路径名"房间牌，
+        /// 以及要不要给任务过道留出空地）。
         /// </summary>
         static bool _internalSite;
+
+        /// <summary>建造期用的主轴两端（落点侧 / 出口侧）。见 BuildRoutine 里的说明。</summary>
+        static Vector3 _axisA, _axisB;
+
+        /// <summary>
+        /// 这个点压在**任务过道**上吗（只对第 9-26 章生效，本地坐标）。
+        ///
+        /// 这 90 关的任务点全部落在"落点→出口"这条主轴的中后段（见 InternalLayout）。
+        /// 如果陈设和杂物照常铺满整块地，修改卡与工作台就会淹在桌椅货架里——
+        /// 玩家看到的还是"密集、拥挤、杂乱无章"。所以这条带上不摆任何陈设：
+        /// 走在过道里，两侧立着的就只有这一关自己的东西。
+        /// </summary>
+        static bool OnTaskAisle(SiteInstance inst, Vector3 local)
+        {
+            if (!_internalSite || inst == null) return false;
+            Vector3 a = _axisA - inst.origin, b = _axisB - inst.origin;
+            a.y = 0f; b.y = 0f;
+            Vector3 ab = b - a;
+            float len2 = ab.sqrMagnitude;
+            if (len2 < 0.01f) return false;
+            Vector3 p = local; p.y = 0f;
+            float t = Vector3.Dot(p - a, ab) / len2;
+            // 起手位之前一点开始，一直到出口：任务点都在这一段里
+            if (t < InternalOS.InternalLayout.OpeningT - 0.04f || t > 1f) return false;
+            float dist = Vector3.Cross(ab.normalized, p - a).magnitude;
+            return dist < InternalOS.InternalLayout.AisleHalf + 4f;
+        }
 
         static void Sign(SiteInstance inst, Vector3 local, string text, string explain = null,
             bool post = true)

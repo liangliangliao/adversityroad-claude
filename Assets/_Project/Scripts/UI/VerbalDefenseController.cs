@@ -119,6 +119,22 @@ namespace AdversityRoad.UI
             if (gm != null && gm.safety != null && gm.safety.MentalDamageMultiplier() <= 0f)
                 return false; // 恢复模式：不发起攻防（也没有心理伤害）
 
+            // 【第 9-26 章不弹这块面板】
+            // 玩家原话："新增关卡为什么会冒出经典关卡的言语攻击。"
+            //
+            // 言语攻防是给**外面那张嘴**设计的机制：对方说一句，你在五秒内
+            // 三选一把话接回去。它的台词来自 DialogueLibrary，按弱点轴 + 经典
+            // 关卡的区域 id 取——放到这 90 关里，屏幕上会冒出一句和这一关毫无
+            // 关系的经典关卡台词，而且抢走五秒钟和大半个右上角。
+            //
+            // 这批关卡的敌人全是**自己内部的障碍**，它们施加压力的方式是
+            // 拦在任务点上、把箱子推回去、在你动笔之前一次次回来——
+            // 那是场上的事，不是一道选择题。所以这里直接不接管：
+            // 心理伤害照常落下（调用方会 TakeHit），面板不弹。
+            if (AdversityRoad.InternalOS.InternalLevelRunner.Active != null &&
+                AdversityRoad.InternalOS.InternalLevelRunner.Active.Level != null)
+                return false;
+
             _active = true;
             _enemy = enemy;
             _axis = axis;

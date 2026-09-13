@@ -83,16 +83,12 @@ namespace AdversityRoad.InternalOS
 
             _nextExpandAt = Time.time + ExpandEverySeconds;
 
-            // 六张修改卡摆在「修改走廊」那一段：主路径中段，左右交替。
-            // 两张是真的阻断项，四张只是可优化——卡面只写问题，不写标签。
-            // 【六张卡沿主轴按顺序铺开，不再堆在一处】
-            // 原来全挤在 t=0.55 附近 ±4.5 米，六张卡叠成一小片——
-            // 玩家原话"需要玩家操作的任务被堆叠在一块区域，显得密集和拥挤，
-            // 并且毫无规则和次序"。
-            // 现在每张卡占一个station：沿路依次 0.52→0.82，左右交替错开 6 米。
-            // 关键物（工作台/完成标准锁/提交台）走中线，卡在两侧，互不打架，
-            // 玩家一路走过去自然一张一张遇到。
-            Vector3 right = Vector3.Cross(Vector3.up, _pushDir);
+            // 六张修改卡：两张是真的阻断项，四张只是可优化——卡面只写问题，不写标签。
+            // 【六张修改卡全部立在"资料带"里，落位规则只有一份：InternalLayout】
+            // 上一版把它们铺在 t=0.52→0.82，而关键物在 0.45→0.86——两段区间
+            // 是叠着的，于是无论各自排得多齐，合到场上还是玩家说的
+            // "密集和拥挤、毫无规则和次序"。
+            // 现在主轴切成互不重叠的带：打架在前、读在中、动手在后、交付在末。
             string[] critical =
             {
                 "提交入口打不开——对方根本收不到",
@@ -110,11 +106,10 @@ namespace AdversityRoad.InternalOS
             {
                 bool crit = i < critical.Length;
                 string text = crit ? critical[i] : cosmetic[i - critical.Length];
-                float t = 0.52f + i * 0.06f;                 // 0.52 / 0.58 / … / 0.82
-                Vector3 at = Vector3.Lerp(spawn, exit, t)
-                           + right * ((i % 2 == 0) ? 6f : -6f);
-                if (UnityEngine.AI.NavMesh.SamplePosition(at, out var hit, 10f,
-                        UnityEngine.AI.NavMesh.AllAreas)) at = hit.position;
+                // 六张卡分两排立在**资料带**的过道两侧（落位规则见 InternalLayout）。
+                // 这一带和工作台/提交台那一带完全不重叠——上一版两者的区间叠在一起，
+                // 场上就成了玩家说的"堆在一块、杂乱无章"。
+                Vector3 at = InternalLayout.Aisle(spawn, exit, i, 6);
                 _cards.Add(EditCard.Create(at, text, crit, this, transform));
             }
 

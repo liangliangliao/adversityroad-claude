@@ -1471,8 +1471,16 @@ namespace AdversityRoad.AI
             if (poser != null) poser.SetPose(PoseState.Cast);
             UpdateEmotion("讥讽");
 
-            // 取出这句恶意台词（气泡+字幕都用同一句，便于言语攻防面板复述）
-            string line = DialogueLibrary.GetTaunt(profile.targetWeakness, ZoneBuilder.CurrentZoneId);
+            // 取出这句恶意台词（气泡+字幕都用同一句，便于言语攻防面板复述）。
+            //
+            // 第 9-26 章先问这一关自己：那批关卡的敌人是玩家**内部的障碍**，
+            // 说的该是他自己会对自己说的那句话，而不是经典关卡里外面那个人的台词。
+            // 认不出的关卡返回空串，照旧退回通用台词。
+            var internalRunner = InternalOS.InternalLevelRunner.Active;
+            string line = internalRunner != null
+                ? InternalOS.InternalEnemyTactics.PressureLine(internalRunner.Level) : "";
+            if (string.IsNullOrEmpty(line))
+                line = DialogueLibrary.GetTaunt(profile.targetWeakness, ZoneBuilder.CurrentZoneId);
             if (dialogue != null)
             {
                 dialogue.Show(line, 3.5f);
