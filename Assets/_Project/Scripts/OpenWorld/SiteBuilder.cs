@@ -19,7 +19,22 @@ namespace AdversityRoad.OpenWorld
         public GameObject root;
         public Vector3 origin;
         public Vector3 playerSpawn;
+        /// <summary>回城的出口——就在落点身后两米半，**不是这一关的终点**。</summary>
         public Vector3 exitPoint;
+
+        /// <summary>
+        /// 这一关的"里头"：落点对面那一端，关卡目标该摆的地方。
+        ///
+        /// 【为什么必须单独有它】
+        /// 关键物的落位原来用的是 exitPoint，而 exitPoint 是**回城的门**，
+        /// 就在玩家落点身后 2.5 米。于是"从落点走向终点"这条方向算出来是
+        /// **朝着入口往回走**：提交台被摆在落点身后四米，其余关键物沿着
+        /// 那个方向一路铺到场地外面去。
+        /// 实机看到的就是"一进关，所有东西都堆在脚边，整块场地空着没用"——
+        /// 玩家说的"空间狭窄、移动困难"，有一大半是这么来的：
+        /// 场地一直够大，只是全部内容都挤在门口那一小块。
+        /// </summary>
+        public Vector3 farPoint;
         public readonly List<Vector3> enemySpawns = new List<Vector3>();
         public readonly List<Vector3> propAnchors = new List<Vector3>();
         public SiteBlueprint blueprint;
@@ -131,8 +146,17 @@ namespace AdversityRoad.OpenWorld
             // 一个盒子表达不了它，硬按 400 建只会又回到 130 米那次的坑里。
             if (bp.siteWidth > 0.1f && bp.siteDepth > 0.1f)
             {
-                w = Mathf.Clamp(bp.siteWidth, 20f, 80f);
-                d = Mathf.Clamp(bp.siteDepth, 15f, 64f);
+                // 【这里放大过一次，因为玩家第五轮仍然说"空间狭窄、移动困难"】
+                //
+                // 关卡表里的米数是**灰盒最小可用尺度**，不是一块让人走得开的场地：
+                // 9-1 写 42×18，18 米的进深里还要塞下工位、柱子、六张修改卡和三个关键物，
+                // 人就是在家具缝里挪。所以按 1.5 倍放，再夹在新的区间里。
+                //
+                // 上限仍然守着一条老教训（130 米的场地把 Boss 推到 91 米外，
+                // 走过去什么都遇不到）：放大的是**可走的地面**，不是敌人之间的距离。
+                // 敌人与关键物仍然摆在中段，见 BuildHall / InternalProps.Build。
+                w = Mathf.Clamp(bp.siteWidth * 1.5f, 46f, 120f);
+                d = Mathf.Clamp(bp.siteDepth * 1.5f, 34f, 96f);
             }
 
             // ---- 周边街区：先把"这地方在城市里"建出来 ----
@@ -207,6 +231,8 @@ namespace AdversityRoad.OpenWorld
             // 画面是一整面红墙，人动不了也看不见任何东西。
             inst.playerSpawn = FindClearSpawn(inst, d);
             inst.exitPoint = inst.playerSpawn - Vector3.up * 1.1f - Vector3.forward * 2.5f;
+            // 关卡内容要摆到场地的另一头去，而不是堆在门口
+            inst.farPoint = inst.origin + new Vector3(0f, 1.1f, d * 0.34f);
             BuildEntranceMarker(inst, bp);
 
             // ---- 注册为动态区域（可传送、有名字、有雾色） ----
@@ -372,24 +398,74 @@ namespace AdversityRoad.OpenWorld
         }
 
         /// <summary>大厅：一个开阔空间 + 立柱 + 中央焦点——Boss 战与集会场景。</summary>
+        /// <summary>
+        /// 大厅。**同一种布局要能长出不同的样子**。
+        ///
+        /// 【为什么加结构变体】
+        /// 90 关里有 55 关落在 hall，而这个方法原来每次都建同一个东西：
+        /// 3×3 减中心＝八根柱子，加一块永远在 +0.22d 的台子。
+        /// 于是这 55 关走进去全是一个样——玩家原话
+        /// "关卡物理场景布局类似化，高度重合"，说的就是这里。
+        ///
+        /// 现在按 assemblySeed 在四种柱网里挑一种（仍然可复现：同一关每次进来一样，
+        /// 不同关之间才不一样），台子的位置和形状也跟着变。
+        /// 柱子本身也从方块换成了圆柱（见 BuildProp 的 "pillar"）。
+        /// </summary>
         static IEnumerator BuildHall(SiteInstance inst, SiteBlueprint bp, System.Random rng, float w, float d)
         {
-            for (int x = -1; x <= 1; x++)
-                for (int z = -1; z <= 1; z++)
-                {
-                    if (x == 0 && z == 0) continue;
-                    BuildProp(inst, "pillar", new Vector3(x * w * 0.28f, 0, z * d * 0.28f), rng);
-                    yield return null;
-                }
+            int variant = rng.Next(4);
+            switch (variant)
+            {
+                case 0:      // 双排列柱：中间一条通道，最好走
+                    for (int i = 0; i < 4; i++)
+                        for (int sx = -1; sx <= 1; sx += 2)
+                        {
+                            BuildProp(inst, "pillar",
+                                new Vector3(sx * w * 0.26f, 0, -d * 0.3f + i * d * 0.2f), rng);
+                            yield return null;
+                        }
+                    break;
+                case 1:      // 环形柱列：中心空出来一大块
+                    for (int i = 0; i < 6; i++)
+                    {
+                        float a = i * Mathf.PI * 2f / 6f;
+                        BuildProp(inst, "pillar",
+                            new Vector3(Mathf.Cos(a) * w * 0.3f, 0, Mathf.Sin(a) * d * 0.3f), rng);
+                        yield return null;
+                    }
+                    break;
+                case 2:      // 四角柱：中间全空，最开阔
+                    for (int sx = -1; sx <= 1; sx += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                        {
+                            BuildProp(inst, "pillar",
+                                new Vector3(sx * w * 0.32f, 0, sz * d * 0.32f), rng);
+                            yield return null;
+                        }
+                    break;
+                default:     // 单侧列柱 + 一道矮隔断：偏心的空间读起来最不像盒子
+                    for (int i = 0; i < 4; i++)
+                    {
+                        BuildProp(inst, "pillar",
+                            new Vector3(-w * 0.24f, 0, -d * 0.28f + i * d * 0.19f), rng);
+                        yield return null;
+                    }
+                    Deco(inst, "LowWall", new Vector3(w * 0.22f, 0.6f, 0),
+                        new Vector3(0.4f, 1.2f, d * 0.42f), inst.cTrim);
+                    break;
+            }
 
             if (bp.rooms.Count > 0)
             {
                 var focus = bp.rooms[0];
-                Deco(inst, "Dais", new Vector3(0, 0.15f, d * 0.22f), new Vector3(12f, 0.3f, 8f),
+                // 台子的位置随变体走，别每一关都钉在同一处
+                float dz = variant == 1 ? 0f : (variant == 2 ? -d * 0.24f : d * 0.24f);
+                Deco(inst, "Dais", new Vector3(0, 0.15f, dz),
+                    new Vector3(variant == 1 ? 14f : 11f, 0.3f, variant == 1 ? 14f : 8f),
                     new Color(0.38f, 0.36f, 0.4f));
-                Sign(inst, new Vector3(0, 1.9f, d * 0.22f), focus.name, focus.purpose);
+                Sign(inst, new Vector3(0, 1.9f, dz), focus.name, focus.purpose);
                 foreach (var p in focus.props)
-                    BuildProp(inst, p, new Vector3((float)rng.NextDouble() * 8f - 4f, 0, d * 0.22f), rng);
+                    BuildProp(inst, p, new Vector3((float)rng.NextDouble() * 8f - 4f, 0, dz), rng);
             }
             for (int i = 1; i < bp.rooms.Count && i < 4; i++)
             {
@@ -902,7 +978,9 @@ namespace AdversityRoad.OpenWorld
                 if (SiteKitCatalog.IsProp(p)) pool.Add(p);
             if (pool.Count == 0) return;
 
-            int n = Mathf.Clamp(bp.clutter, 0, 3) * 4;
+            // 杂物按每 500 ㎡ 一件给，不再按固定条数——
+            // 场地放大之后固定条数会把小场地塞满、大场地又显空。
+            int n = Mathf.Clamp(bp.clutter, 0, 3) * Mathf.Clamp(Mathf.RoundToInt(w * d / 500f), 1, 6);
             for (int i = 0; i < n; i++)
             {
                 var at = new Vector3(Rand(rng, w * 0.42f), 0f, Rand(rng, d * 0.42f));
@@ -925,17 +1003,49 @@ namespace AdversityRoad.OpenWorld
             switch (prop)
             {
                 case "desk":
-                    Box(inst, "Desk", at + new Vector3(0, 0.5f, 0), new Vector3(2.2f, 1f, 1.1f), new Color(0.42f, 0.3f, 0.2f));
-                    Deco(inst, "Monitor", at + new Vector3(0, 1.35f, 0.2f), new Vector3(1f, 0.6f, 0.1f), new Color(0.2f, 0.3f, 0.42f));
+                    // 台面 + 四条圆腿。原来是一个 2.2×1×1.1 的实心方块——
+                    // "桌子"和"箱子"长得一模一样，正是"全是方形图形"的观感来源。
+                    Box(inst, "DeskTop", at + new Vector3(0, 0.76f, 0),
+                        new Vector3(2.2f, 0.08f, 1.1f), new Color(0.46f, 0.33f, 0.21f));
+                    for (int lx = -1; lx <= 1; lx += 2)
+                        for (int lz = -1; lz <= 1; lz += 2)
+                            Cyl(inst, "DeskLeg", at + new Vector3(lx * 0.98f, 0.36f, lz * 0.45f),
+                                0.045f, 0.72f, new Color(0.3f, 0.22f, 0.15f), false);
+                    Deco(inst, "MonitorArm", at + new Vector3(0, 0.92f, 0.2f),
+                        new Vector3(0.08f, 0.3f, 0.08f), new Color(0.2f, 0.2f, 0.22f));
+                    Deco(inst, "Monitor", at + new Vector3(0, 1.28f, 0.2f),
+                        new Vector3(1f, 0.6f, 0.06f), new Color(0.2f, 0.3f, 0.42f));
                     break;
                 case "chair":
-                    Box(inst, "Chair", at + new Vector3(0, 0.35f, 0), new Vector3(0.8f, 0.7f, 0.8f), new Color(0.25f, 0.25f, 0.28f));
+                    Box(inst, "ChairSeat", at + new Vector3(0, 0.45f, 0),
+                        new Vector3(0.55f, 0.07f, 0.55f), new Color(0.28f, 0.28f, 0.31f));
+                    Deco(inst, "ChairBack", at + new Vector3(0, 0.76f, -0.24f),
+                        new Vector3(0.55f, 0.55f, 0.07f), new Color(0.25f, 0.25f, 0.28f));
+                    for (int lx = -1; lx <= 1; lx += 2)
+                        for (int lz = -1; lz <= 1; lz += 2)
+                            Cyl(inst, "ChairLeg", at + new Vector3(lx * 0.23f, 0.22f, lz * 0.23f),
+                                0.028f, 0.44f, new Color(0.2f, 0.2f, 0.22f), false);
                     break;
                 case "table":
-                    Box(inst, "Table", at + new Vector3(0, 0.45f, 0), new Vector3(3.2f, 0.9f, 1.6f), new Color(0.4f, 0.32f, 0.26f));
+                    Box(inst, "TableTop", at + new Vector3(0, 0.78f, 0),
+                        new Vector3(3.2f, 0.1f, 1.6f), new Color(0.44f, 0.35f, 0.28f));
+                    for (int lx = -1; lx <= 1; lx += 2)
+                    {
+                        Deco(inst, "TableLeg", at + new Vector3(lx * 1.35f, 0.38f, 0),
+                            new Vector3(0.12f, 0.76f, 1.3f), new Color(0.3f, 0.24f, 0.19f));
+                        Deco(inst, "TableFoot", at + new Vector3(lx * 1.35f, 0.03f, 0),
+                            new Vector3(0.3f, 0.06f, 1.5f), new Color(0.26f, 0.21f, 0.17f));
+                    }
                     break;
                 case "shelf":
-                    Box(inst, "Shelf", at + new Vector3(0, 1.2f, 0), new Vector3(2.4f, 2.4f, 0.6f), new Color(0.45f, 0.33f, 0.22f));
+                    // 立柱 + 层板：货架是**看得穿**的，实心方块挡视线也挡路
+                    for (int sx = -1; sx <= 1; sx += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                            Box(inst, "ShelfPost", at + new Vector3(sx * 1.15f, 1.2f, sz * 0.26f),
+                                new Vector3(0.1f, 2.4f, 0.1f), new Color(0.36f, 0.27f, 0.18f));
+                    for (int k = 0; k < 4; k++)
+                        Box(inst, "ShelfBoard", at + new Vector3(0, 0.45f + k * 0.6f, 0),
+                            new Vector3(2.4f, 0.06f, 0.6f), new Color(0.48f, 0.35f, 0.23f));
                     break;
                 case "cabinet":
                     Box(inst, "Cabinet", at + new Vector3(0, 1f, 0), new Vector3(1.2f, 2f, 0.7f), new Color(0.4f, 0.4f, 0.44f));
@@ -969,7 +1079,12 @@ namespace AdversityRoad.OpenWorld
                     Deco(inst, "Curtain", at + new Vector3(0, 1.6f, 0), new Vector3(2.6f, 3.2f, 0.1f), new Color(0.7f, 0.78f, 0.8f));
                     break;
                 case "crate":
-                    Box(inst, "Crate", at + new Vector3(0, 0.6f, 0), new Vector3(1.2f, 1.2f, 1.2f), new Color(0.5f, 0.38f, 0.24f));
+                    // 木箱：箱体 + 四条棱边压条，看得出是钉起来的板条箱
+                    Box(inst, "Crate", at + new Vector3(0, 0.6f, 0),
+                        new Vector3(1.2f, 1.2f, 1.2f), new Color(0.5f, 0.38f, 0.24f));
+                    for (int sy = -1; sy <= 1; sy += 2)
+                        Deco(inst, "CrateBand", at + new Vector3(0, 0.6f + sy * 0.42f, 0),
+                            new Vector3(1.26f, 0.1f, 1.26f), new Color(0.36f, 0.26f, 0.16f));
                     break;
                 case "barrier":
                     Box(inst, "Barrier", at + new Vector3(0, 0.6f, 0), new Vector3(2.6f, 1.2f, 0.3f), new Color(0.85f, 0.6f, 0.2f));
@@ -978,17 +1093,33 @@ namespace AdversityRoad.OpenWorld
                     Box(inst, "TrashBin", at + new Vector3(0, 0.55f, 0), new Vector3(0.9f, 1.1f, 0.9f), new Color(0.24f, 0.3f, 0.26f));
                     break;
                 case "plant":
-                    Box(inst, "PlantPot", at + new Vector3(0, 0.3f, 0), new Vector3(0.7f, 0.6f, 0.7f), new Color(0.45f, 0.35f, 0.3f));
-                    Deco(inst, "Leaves", at + new Vector3(0, 1.1f, 0), new Vector3(1.2f, 1.2f, 1.2f), new Color(0.22f, 0.45f, 0.25f));
+                    Cyl(inst, "PlantPot", at + new Vector3(0, 0.3f, 0), 0.34f, 0.6f,
+                        new Color(0.45f, 0.35f, 0.3f));
+                    Shape(inst, PrimitiveType.Capsule, "Stem", at + new Vector3(0, 0.9f, 0),
+                        new Vector3(0.08f, 0.34f, 0.08f), new Color(0.3f, 0.4f, 0.25f), false);
+                    Shape(inst, PrimitiveType.Sphere, "Leaves", at + new Vector3(0, 1.35f, 0),
+                        new Vector3(1.15f, 0.95f, 1.15f), new Color(0.22f, 0.45f, 0.25f), false);
                     break;
                 case "pillar":
-                    Box(inst, "Pillar", at + new Vector3(0, 2.1f, 0), new Vector3(1.3f, 4.2f, 1.3f), new Color(0.5f, 0.5f, 0.52f));
+                    // 圆柱 + 上下柱础：方柱子是"一堆方块"最显眼的一处
+                    Cyl(inst, "Pillar", at + new Vector3(0, 2.1f, 0), 0.42f, 4.2f,
+                        new Color(0.52f, 0.52f, 0.54f));
+                    Deco(inst, "PillarBase", at + new Vector3(0, 0.12f, 0),
+                        new Vector3(1.2f, 0.24f, 1.2f), new Color(0.44f, 0.44f, 0.46f));
+                    Deco(inst, "PillarCap", at + new Vector3(0, 4.1f, 0),
+                        new Vector3(1.2f, 0.2f, 1.2f), new Color(0.44f, 0.44f, 0.46f));
                     break;
                 case "sign":
                     Deco(inst, "SignBoard", at + new Vector3(0, 2.2f, 0), new Vector3(2.2f, 0.8f, 0.12f), new Color(0.3f, 0.45f, 0.6f));
                     break;
                 case "bench":
-                    Box(inst, "Bench", at + new Vector3(0, 0.45f, 0), new Vector3(3f, 0.25f, 1f), new Color(0.5f, 0.36f, 0.24f));
+                    // 三条板 + 两副铁腿：长椅看得出是"板拼的"才不像一块砖
+                    for (int k = 0; k < 3; k++)
+                        Box(inst, "BenchSlat", at + new Vector3(0, 0.45f, -0.32f + k * 0.32f),
+                            new Vector3(3f, 0.07f, 0.26f), new Color(0.52f, 0.38f, 0.25f));
+                    for (int lx = -1; lx <= 1; lx += 2)
+                        Deco(inst, "BenchLeg", at + new Vector3(lx * 1.25f, 0.21f, 0),
+                            new Vector3(0.08f, 0.42f, 0.9f), new Color(0.3f, 0.3f, 0.32f));
                     break;
                 case "vending":
                     Box(inst, "Vending", at + new Vector3(0, 1.05f, 0), new Vector3(1.4f, 2.1f, 0.9f), new Color(0.3f, 0.5f, 0.65f));
@@ -997,7 +1128,18 @@ namespace AdversityRoad.OpenWorld
                     Box(inst, "Cart", at + new Vector3(0, 0.5f, 0), new Vector3(1.4f, 1f, 2f), new Color(0.55f, 0.55f, 0.6f));
                     break;
                 case "pipe":
-                    Deco(inst, "Pipe", at + new Vector3(0, 3.6f, 0), new Vector3(0.4f, 0.4f, 12f), new Color(0.42f, 0.42f, 0.46f));
+                    // 真的是根管子：圆柱躺平，两端各一个法兰
+                    var pipe = Shape(inst, PrimitiveType.Cylinder, "Pipe",
+                        at + new Vector3(0, 3.6f, 0), new Vector3(0.4f, 6f, 0.4f),
+                        new Color(0.42f, 0.42f, 0.46f), false);
+                    pipe.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    for (int sz2 = -1; sz2 <= 1; sz2 += 2)
+                    {
+                        var fl = Shape(inst, PrimitiveType.Cylinder, "PipeFlange",
+                            at + new Vector3(0, 3.6f, sz2 * 5.6f), new Vector3(0.56f, 0.12f, 0.56f),
+                            new Color(0.36f, 0.36f, 0.4f), false);
+                        fl.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                    }
                     break;
                 case "fence":
                     Box(inst, "Fence", at + new Vector3(0, 1f, 0), new Vector3(6f, 2f, 0.2f), new Color(0.4f, 0.42f, 0.45f));
@@ -1187,6 +1329,39 @@ namespace AdversityRoad.OpenWorld
             Object.DestroyImmediate(go.GetComponent<Collider>());
             return go;
         }
+
+        /// <summary>
+        /// 任意图元的构件。
+        ///
+        /// 【为什么要有它：全场只有方块】
+        /// 这个文件里原来只出现过 `PrimitiveType.Cube` 一种图元，
+        /// 桌子是一个实心方块、椅子是一个实心方块、柱子还是方块。
+        /// 玩家原话："3d 场景中的所有物体就是些简单的方形图形，一点都不真实"——
+        /// 说得完全对。圆柱做柱子/桌腿/管道，胶囊做人形与树冠，球做灯与绿植，
+        /// 光是把这三种用起来，"一堆方块"的观感就散掉大半。
+        /// </summary>
+        static GameObject Shape(SiteInstance inst, PrimitiveType type, string name,
+            Vector3 local, Vector3 size, Color color, bool solid = true)
+        {
+            var go = GameObject.CreatePrimitive(type);
+            go.name = name;
+            go.transform.SetParent(inst.root.transform, false);
+            go.transform.localPosition = local;
+            go.transform.localScale = size;
+            PaintLocal(go, color);
+            if (!solid)
+            {
+                var c = go.GetComponent<Collider>();
+                if (c != null) Object.DestroyImmediate(c);
+            }
+            return go;
+        }
+
+        /// <summary>圆柱：柱子、桌腿、管道、栏杆立柱。高度用的是**半高**，和 Unity 的圆柱一致。</summary>
+        static GameObject Cyl(SiteInstance inst, string name, Vector3 local,
+            float radius, float height, Color color, bool solid = true)
+            => Shape(inst, PrimitiveType.Cylinder, name, local,
+                     new Vector3(radius * 2f, height * 0.5f, radius * 2f), color, solid);
 
         /// <summary>
         /// 按场景类型铺一套**认得出来**的陈设。
@@ -1769,24 +1944,47 @@ namespace AdversityRoad.OpenWorld
             root.transform.SetParent(inst.root.transform, false);
             root.transform.localPosition = local;
 
-            // 立柱：一直落到地面，牌子才不是浮在半空的
-            var post = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            post.name = "SignPost";
-            post.transform.SetParent(root.transform, false);
-            post.transform.localPosition = new Vector3(0, -0.95f, 0);
-            post.transform.localScale = new Vector3(0.18f, 1.9f, 0.18f);
-            PaintLocal(post, inst.cTrim);
-            Object.DestroyImmediate(post.GetComponent<Collider>());
+            // ---- 两根圆木立柱，落到地面 ----
+            // 方柱子是"一堆方块"观感的一部分，这里用圆柱。
+            var wood     = new Color(0.42f, 0.29f, 0.17f);   // 木色
+            var woodDark = new Color(0.27f, 0.18f, 0.10f);   // 木纹缝隙 / 刻痕
+            var woodEdge = new Color(0.34f, 0.23f, 0.13f);   // 边框
 
-            var panel = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            panel.name = "SignPanel";
-            panel.transform.SetParent(root.transform, false);
-            panel.transform.localPosition = Vector3.zero;
-            panel.transform.localScale = size;
-            PaintLocal(panel, new Color(0.16f, 0.17f, 0.21f));
-            Object.DestroyImmediate(panel.GetComponent<Collider>());   // 牌子不该挡路
+            float postX = w * 0.5f - 0.22f;
+            for (int sx = -1; sx <= 1; sx += 2)
+            {
+                var post = Cyl(inst, "SignPost", local + new Vector3(sx * postX, -0.95f, 0),
+                    0.09f, 1.9f, wood, false);
+                post.transform.SetParent(root.transform, true);
+            }
 
-            OpenWorldBuilder.SurfaceSign(root.transform, size, text);
+            // ---- 牌面：几块横木板拼起来，板缝看得见 ----
+            // 一整块平板就是又一个方块；拼板 + 缝 + 包边才像一块木牌。
+            const int Planks = 3;
+            float ph = size.y / Planks;
+            for (int i = 0; i < Planks; i++)
+            {
+                float y = size.y * 0.5f - ph * (i + 0.5f);
+                var plank = Box(inst, "SignPlank", local + new Vector3(0, y, 0),
+                    new Vector3(size.x, ph * 0.92f, size.z), i % 2 == 0 ? wood : woodEdge);
+                Object.DestroyImmediate(plank.GetComponent<Collider>());
+                plank.transform.SetParent(root.transform, true);
+            }
+            // 上下包边：一块木牌的两头都会有一道压条
+            for (int sy = -1; sy <= 1; sy += 2)
+            {
+                var edge = Deco(inst, "SignEdge",
+                    local + new Vector3(0, sy * (size.y * 0.5f + 0.06f), 0),
+                    new Vector3(size.x + 0.14f, 0.12f, size.z + 0.04f), woodDark);
+                edge.transform.SetParent(root.transform, true);
+            }
+
+            // ---- 刻字 ----
+            // 玩家要的是"刻在实体木质物体上"。真正的刻痕要改网格，这里做不到，
+            // 但**看上去是刻的**只需要两件事：字是暗色的凹痕色（不是贴上去的亮牌），
+            // 且字嵌在木板表面里而不是浮在前面。所以字色取比木板更深的木纹色，
+            // 并且不再给它配深色底板——底板正是"贴上去的牌子"那种观感的来源。
+            OpenWorldBuilder.CarvedSign(root.transform, size, text, woodDark);
 
             if (!string.IsNullOrEmpty(explain))
             {

@@ -517,6 +517,47 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
+        /// <summary>
+        /// 刻在木牌上的字。
+        ///
+        /// 【和 SurfaceSign 的区别：没有底板】
+        /// SurfaceSign 会在字后面垫一块深色板——那正是"贴上去的一块牌子"的观感来源，
+        /// 玩家要的是"刻在实体木质物体上"。
+        /// 真正的刻痕要改网格，纯代码生成的场景做不到；但"看上去是刻的"只需要两件事：
+        ///   ① 字是**比木板更深的木纹色**，像凿掉一层露出的暗面，不是贴上去的亮色牌；
+        ///   ② 字紧贴板面（只让 1.5 厘米，避免 z-fighting），不是悬在板子前面。
+        /// 所以这里不配底板，字色由调用方给木纹暗色。
+        /// </summary>
+        public static void CarvedSign(Transform parent, Vector3 boardSize, string text, Color inkColor)
+        {
+            if (parent == null || string.IsNullOrEmpty(text)) return;
+
+            const float Height = 0.3f;     // 刻字比贴牌的字大一些，木牌本来就是给人远远看的
+            const int Font = 110;          // 先画大再缩小，字口才利落
+            float charSize = Height * 10f / Font;
+
+            float units = 0f;
+            for (int i = 0; i < text.Length; i++) units += text[i] > 0x2E80 ? 1f : 0.5f;
+            float textW = units * Height;
+
+            // 木牌只有正反两面会被刻字；窄边不刻
+            Vector3[] normals = { Vector3.forward, Vector3.back };
+            for (int i = 0; i < normals.Length; i++)
+            {
+                Vector3 n = normals[i];
+                var go = new GameObject("Carved_" + text);
+                go.transform.SetParent(parent, false);
+                go.transform.localPosition = n * (boardSize.z * 0.5f + 0.015f);
+                // 可读的一面是 -Z（见 SurfaceSign 里那条朝向说明）
+                go.transform.localRotation = Quaternion.LookRotation(-n, Vector3.up);
+
+                float fit = textW > boardSize.x * 0.86f ? boardSize.x * 0.86f / textW : 1f;
+                go.transform.localScale = Vector3.one * fit;
+
+                World.WorldText.Attach(go, text, Font, charSize, inkColor);
+            }
+        }
+
         public static void HomeSign(Vector3 pos, string text)
         {
             var go = new GameObject("Sign_" + text);

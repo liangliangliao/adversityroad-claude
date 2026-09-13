@@ -329,10 +329,68 @@ namespace AdversityRoad.InternalOS
             var col = body.GetComponent<Collider>();
             if (col != null) col.isTrigger = false;
 
-            // 牌子贴在方块四个侧面上，不飘在头顶、不跟镜头转
-            if (!string.IsNullOrEmpty(label))
-                OpenWorldBuilder.SurfaceSign(root.transform, size, label);
+            // 牌子做成**钉在物体上的一块木牌，字是刻上去的**。
+            // 玩家原话："文字需要刻在实体木质物体上"。
+            // 之前是一块深色底板 + 亮字贴在方块表面——那看着是"贴了张标签"，
+            // 不是这个物件本身的一部分。
+            if (!string.IsNullOrEmpty(label)) WoodPlaque(root.transform, size, label);
             return root;
+        }
+
+        /// <summary>
+        /// 往方块的前后两面各钉一块小木牌，字刻在木牌上。
+        ///
+        /// 木牌比物体窄一圈、厚 4 厘米，四角有铆钉——这样它读起来是
+        /// "这个物件上挂了一块牌子"，而不是"这个面被涂了几个字"。
+        /// </summary>
+        static void WoodPlaque(Transform root, Vector3 size, string label)
+        {
+            var wood = new Color(0.44f, 0.30f, 0.17f);
+            var ink = new Color(0.24f, 0.15f, 0.08f);
+            var rivet = new Color(0.55f, 0.52f, 0.45f);
+
+            float bw = Mathf.Min(size.x, size.z) > 0.5f
+                ? Mathf.Max(size.x, size.z) * 0.86f
+                : size.x * 0.86f;
+            bw = Mathf.Clamp(bw, 0.8f, 2.6f);
+            var board = new Vector3(bw, 0.46f, 0.04f);
+
+            Vector3[] normals = { Vector3.forward, Vector3.back };
+            for (int i = 0; i < normals.Length; i++)
+            {
+                Vector3 n = normals[i];
+                float half = size.z * 0.5f;
+                var holder = new GameObject("Plaque");
+                holder.transform.SetParent(root, false);
+                holder.transform.localPosition = n * (half + board.z * 0.5f)
+                                               + Vector3.up * (size.y * 0.18f);
+                holder.transform.localRotation = Quaternion.LookRotation(-n, Vector3.up);
+
+                var slab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                slab.name = "PlaqueBoard";
+                slab.transform.SetParent(holder.transform, false);
+                slab.transform.localScale = board;
+                slab.GetComponent<MeshRenderer>().sharedMaterial =
+                    Combat.CombatFeedback.EnergyMaterial(wood, 0f);
+                Object.DestroyImmediate(slab.GetComponent<Collider>());
+
+                // 四角铆钉：小球，不是又一个小方块
+                for (int sx = -1; sx <= 1; sx += 2)
+                    for (int sy = -1; sy <= 1; sy += 2)
+                    {
+                        var r = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                        r.name = "Rivet";
+                        r.transform.SetParent(holder.transform, false);
+                        r.transform.localPosition = new Vector3(
+                            sx * (board.x * 0.5f - 0.07f), sy * (board.y * 0.5f - 0.07f), -0.025f);
+                        r.transform.localScale = Vector3.one * 0.05f;
+                        r.GetComponent<MeshRenderer>().sharedMaterial =
+                            Combat.CombatFeedback.EnergyMaterial(rivet, 0f);
+                        Object.DestroyImmediate(r.GetComponent<Collider>());
+                    }
+
+                OpenWorldBuilder.CarvedSign(holder.transform, board, label, ink);
+            }
         }
 
         /// <summary>

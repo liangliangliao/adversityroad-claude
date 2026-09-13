@@ -226,7 +226,7 @@ namespace AdversityRoad.OpenWorld
             {
                 int n = InternalOS.InternalProps.Build(internalLv,
                     site.root != null ? site.root.transform : null,
-                    site.origin, site.playerSpawn, site.exitPoint);
+                    site.origin, site.playerSpawn, site.farPoint);
                 Debug.Log("[InternalOS] " + internalLv.levelId + " 摆下关键物 " + n + " 件");
             }
         }
