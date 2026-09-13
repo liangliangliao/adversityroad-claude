@@ -434,6 +434,11 @@ namespace AdversityRoad.Core
             Shame.CorridorGrowthSystem.Ensure();
             Shame.AppeasementSystem.Ensure();
             Shame.ClaimRegistry.SpentCount();   // 触发指控注册表读档
+
+            // V2.2 第 9-26 章：内部语言攻击的三选一弹框。
+            // 只挂一个事件监听，不常驻任何逻辑——弹框由关卡的触发点引，
+            // 引不引得动还要过 Mastery 压缩（等级越高越少弹）。
+            UI.MentalChoicePanel.Hook();
             Shame.ShameSkills.Ensure();
             Shame.ShameComboTracker.Ensure();
             Shame.ShameStressMapping.Ensure();

@@ -322,6 +322,7 @@ namespace AdversityRoad.UI
 
             AppendChapters(sb, g, ChapterSource.Legacy, "经典章节（V1 七大线 · 按相关性插入）");
             AppendChapters(sb, g, ChapterSource.UserPreset, "玩家预设章节");
+            AppendChapters(sb, g, ChapterSource.Internal, "内部障碍线（第 9-26 章 · 按障碍轴插入）");
             AppendChapters(sb, g, ChapterSource.AIRequired, "AI 专属章节（必选）");
             _bodyText.text = sb.ToString();
         }

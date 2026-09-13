@@ -83,7 +83,30 @@ namespace AdversityRoad.AI
         GuiltProjection,        // 心虚投影（内心·预判并抢占玩家最常用的回避路线，不可击杀）
         DisguisedClassmate,     // 伪装同学（外部·接近后转为敌对，必须先给出识别信号）
         PendingJudge,           // 悬案法官（8-1 Boss：改期/追加/要求当众/身份钉·轻，不可击杀）
-        BackRowWhisperer        // 后排低语者（8-2 Boss / T5 宿敌候选：看、说、指）
+        BackRowWhisperer,       // 后排低语者（8-2 Boss / T5 宿敌候选：看、说、指）
+
+        // ---- 第 9-26 章 18 个新增章节 Boss（V2.2 增补，Boss 28-45）----
+        // 这一批全部是【内部敌人】：它们不是路人、同事或第三方，而是玩家自己那套机制
+        // 在逆境层里的实体化。所以它们几乎都不靠打倒解决——真正的失效条件写在
+        // InternalBossDNA.executionGate 里（提交、出门、归档、撤销裁判权、重新进入……）。
+        PerfectionJudge,        // 完美审判官（9 章 Boss 28：瑕疵扫描/标准漂移，Submit 即失效）
+        FrozenKing,             // 冻结之王（10 章 Boss 29：伪准备与等待，跨出门槛即失效）
+        RejectionGatekeeper,    // 拒绝守门人（11 章 Boss 30：身体不是命门，撤销终审权）
+        PowerlessProphet,       // 无力预言家（12 章 Boss 31：预测权，靠行为证据校准）
+        OnceBrokenEnder,        // 一次中断即结束者（13 章 Boss 32：断了就作废，重新进入即破）
+        AbsoluteCertainty,      // 绝对确定者（14 章 Boss 33：把决定锁在信息里）
+        RankThrone,             // 等级王座（15 章 Boss 34：比较依赖，解除依赖即失效）
+        EternalReplayer,        // 永恒重播机（16 章 Boss 35：注意力所有权，归档即失效）
+        OverloadedRadar,        // 过载雷达（17 章 Boss 36：不是恶意，是保护系统失准）
+        RetreatKing,            // 撤退之王（18 章 Boss 37：能力长过它之后自然失去统治力）
+        MeaningDisconnector,    // 意义断线者（19 章 Boss 38：无直接攻击，重连价值即失效）
+        HabitHijacker,          // 习惯劫持者（20 章 Boss 39：触发结构，替换动作即失效）
+        DisasterProphetDragon,  // 灾难预言龙（21 章 Boss 40：不可恢复幻觉）
+        InnerTyrant,            // 内在暴君（22 章 Boss 41：撤销羞辱对行动的指挥权）
+        AssimilationFog,        // 同化迷雾（23 章 Boss 42：规范权，靠改变暴露结构取胜）
+        NeverFinisher,          // 永不完成者（24 章 Boss 43：范围边界，冻结版本并发布）
+        KnowNotDoer,            // 知而不行者（25 章 Boss 44：行为迁移，知识必须落到现实动作）
+        OldDestiny              // 旧命运（26 章 Boss 45：终局，撤销未来判决权并整合）
     }
 
     public enum EnemyTier { Novice, Standard, Elite, Chief } // 见习/标准/精英/首领
@@ -217,6 +240,24 @@ namespace AdversityRoad.AI
                 case EnemyType.DisguisedClassmate: return "伪装同学";
                 case EnemyType.PendingJudge: return "悬案法官";
                 case EnemyType.BackRowWhisperer: return "后排低语者";
+                case EnemyType.PerfectionJudge: return "完美审判官";
+                case EnemyType.FrozenKing: return "冻结之王";
+                case EnemyType.RejectionGatekeeper: return "拒绝守门人";
+                case EnemyType.PowerlessProphet: return "无力预言家";
+                case EnemyType.OnceBrokenEnder: return "一次中断即结束者";
+                case EnemyType.AbsoluteCertainty: return "绝对确定者";
+                case EnemyType.RankThrone: return "等级王座";
+                case EnemyType.EternalReplayer: return "永恒重播机";
+                case EnemyType.OverloadedRadar: return "过载雷达";
+                case EnemyType.RetreatKing: return "撤退之王";
+                case EnemyType.MeaningDisconnector: return "意义断线者";
+                case EnemyType.HabitHijacker: return "习惯劫持者";
+                case EnemyType.DisasterProphetDragon: return "灾难预言龙";
+                case EnemyType.InnerTyrant: return "内在暴君";
+                case EnemyType.AssimilationFog: return "同化迷雾";
+                case EnemyType.NeverFinisher: return "永不完成者";
+                case EnemyType.KnowNotDoer: return "知而不行者";
+                case EnemyType.OldDestiny: return "旧命运";
                 default: return "拖延影魔";
             }
         }
@@ -279,6 +320,24 @@ namespace AdversityRoad.AI
                 case EnemyType.DisguisedClassmate: return new Color(0.6f, 0.64f, 0.62f);
                 case EnemyType.PendingJudge: return new Color(0.4f, 0.36f, 0.32f);
                 case EnemyType.BackRowWhisperer: return new Color(0.46f, 0.42f, 0.58f);
+                case EnemyType.PerfectionJudge: return new Color(0.72f, 0.70f, 0.62f);
+                case EnemyType.FrozenKing: return new Color(0.55f, 0.70f, 0.80f);
+                case EnemyType.RejectionGatekeeper: return new Color(0.45f, 0.45f, 0.52f);
+                case EnemyType.PowerlessProphet: return new Color(0.40f, 0.46f, 0.58f);
+                case EnemyType.OnceBrokenEnder: return new Color(0.50f, 0.38f, 0.42f);
+                case EnemyType.AbsoluteCertainty: return new Color(0.62f, 0.62f, 0.72f);
+                case EnemyType.RankThrone: return new Color(0.78f, 0.66f, 0.35f);
+                case EnemyType.EternalReplayer: return new Color(0.52f, 0.40f, 0.62f);
+                case EnemyType.OverloadedRadar: return new Color(0.85f, 0.50f, 0.30f);
+                case EnemyType.RetreatKing: return new Color(0.42f, 0.52f, 0.48f);
+                case EnemyType.MeaningDisconnector: return new Color(0.46f, 0.46f, 0.50f);
+                case EnemyType.HabitHijacker: return new Color(0.60f, 0.35f, 0.55f);
+                case EnemyType.DisasterProphetDragon: return new Color(0.35f, 0.30f, 0.45f);
+                case EnemyType.InnerTyrant: return new Color(0.58f, 0.22f, 0.26f);
+                case EnemyType.AssimilationFog: return new Color(0.62f, 0.66f, 0.68f);
+                case EnemyType.NeverFinisher: return new Color(0.55f, 0.50f, 0.30f);
+                case EnemyType.KnowNotDoer: return new Color(0.50f, 0.58f, 0.55f);
+                case EnemyType.OldDestiny: return new Color(0.20f, 0.20f, 0.28f);
                 default: return new Color(0.22f, 0.12f, 0.32f);
             }
         }
@@ -343,6 +402,24 @@ namespace AdversityRoad.AI
                 case EnemyType.DisguisedClassmate: return Combat.WeaponKind.None;
                 case EnemyType.PendingJudge: return Combat.WeaponKind.Staff;       // 合上的账本
                 case EnemyType.BackRowWhisperer: return Combat.WeaponKind.None;
+                case EnemyType.PerfectionJudge: return Combat.WeaponKind.Staff;   // 长杖·审判与压制
+                case EnemyType.FrozenKing: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.RejectionGatekeeper: return Combat.WeaponKind.Sword;   // 裁决之剑
+                case EnemyType.PowerlessProphet: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.OnceBrokenEnder: return Combat.WeaponKind.Claw;   // 抓取·缠住不放
+                case EnemyType.AbsoluteCertainty: return Combat.WeaponKind.Staff;   // 长杖·审判与压制
+                case EnemyType.RankThrone: return Combat.WeaponKind.Sword;   // 裁决之剑
+                case EnemyType.EternalReplayer: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.OverloadedRadar: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.RetreatKing: return Combat.WeaponKind.Blade;   // 快斩·退路
+                case EnemyType.MeaningDisconnector: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.HabitHijacker: return Combat.WeaponKind.Claw;   // 抓取·缠住不放
+                case EnemyType.DisasterProphetDragon: return Combat.WeaponKind.Staff;   // 长杖·审判与压制
+                case EnemyType.InnerTyrant: return Combat.WeaponKind.Staff;   // 长杖·审判与压制
+                case EnemyType.AssimilationFog: return Combat.WeaponKind.None;   // 纯内部语言，不持械
+                case EnemyType.NeverFinisher: return Combat.WeaponKind.Claw;   // 抓取·缠住不放
+                case EnemyType.KnowNotDoer: return Combat.WeaponKind.Sword;   // 裁决之剑
+                case EnemyType.OldDestiny: return Combat.WeaponKind.None;   // 纯内部语言，不持械
                 default: return Combat.WeaponKind.Blade;                          // 影魔大刀
             }
         }
@@ -365,7 +442,13 @@ namespace AdversityRoad.AI
             // 羞耻线的"远程"不是弹幕，是隔着半个房间也能落到身上的一句话
             t == EnemyType.NewHandle || t == EnemyType.AppeaseEcho ||
             t == EnemyType.MagnifierOnlooker || t == EnemyType.BackRowWhisperPair ||
-            t == EnemyType.NailAccuser || t == EnemyType.BackRowWhisperer;
+            t == EnemyType.NailAccuser || t == EnemyType.BackRowWhisperer ||
+            // 第 9-26 章：这一批的"远程"是那句话本身——它不需要靠近就能让人停下
+            t == EnemyType.PerfectionJudge || t == EnemyType.FrozenKing ||
+            t == EnemyType.PowerlessProphet || t == EnemyType.RankThrone ||
+            t == EnemyType.EternalReplayer || t == EnemyType.OverloadedRadar ||
+            t == EnemyType.MeaningDisconnector || t == EnemyType.InnerTyrant ||
+            t == EnemyType.AssimilationFog || t == EnemyType.OldDestiny;
 
         public static string BaseId(EnemyType t)
         {
@@ -425,6 +508,24 @@ namespace AdversityRoad.AI
                 case EnemyType.DisguisedClassmate: return "enemy_disguised_classmate";
                 case EnemyType.PendingJudge: return "boss_pending_judge";
                 case EnemyType.BackRowWhisperer: return "boss_back_row_whisperer";
+                case EnemyType.PerfectionJudge: return "boss_perfection_judge";
+                case EnemyType.FrozenKing: return "boss_frozen_king";
+                case EnemyType.RejectionGatekeeper: return "boss_rejection_gatekeeper";
+                case EnemyType.PowerlessProphet: return "boss_powerless_prophet";
+                case EnemyType.OnceBrokenEnder: return "boss_once_broken_ender";
+                case EnemyType.AbsoluteCertainty: return "boss_absolute_certainty";
+                case EnemyType.RankThrone: return "boss_rank_throne";
+                case EnemyType.EternalReplayer: return "boss_eternal_replayer";
+                case EnemyType.OverloadedRadar: return "boss_overloaded_radar";
+                case EnemyType.RetreatKing: return "boss_retreat_king";
+                case EnemyType.MeaningDisconnector: return "boss_meaning_disconnector";
+                case EnemyType.HabitHijacker: return "boss_habit_hijacker";
+                case EnemyType.DisasterProphetDragon: return "boss_disaster_dragon";
+                case EnemyType.InnerTyrant: return "boss_inner_tyrant";
+                case EnemyType.AssimilationFog: return "boss_assimilation_fog";
+                case EnemyType.NeverFinisher: return "boss_never_finisher";
+                case EnemyType.KnowNotDoer: return "boss_know_not_doer";
+                case EnemyType.OldDestiny: return "boss_old_destiny";
                 default: return "boss_procrastination_shadow";
             }
         }
@@ -872,6 +973,155 @@ namespace AdversityRoad.AI
                         targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
                         maxHealth = 300, posture = 88, physicalDamage = 8, mentalDamage = 18,
                         aggression = 0.55f, defense = 12, moveSpeed = 3.3f, attackRange = 2.1f, detectRange = 24
+                    };
+                    break;
+
+                // ---- 第 9-26 章 Boss 28-45（V2.2）----
+                // 血量在 290-380 之间：它们要能被打一场，但打倒本身通常不结束战斗——
+                // 结束条件由 InternalBossDNA.executionGate 决定，见 InternalChapterBridge.BossDefeated。
+                // 心理伤害普遍高于物理：这一批的主要攻击手段是那句内部语言。
+                case EnemyType.PerfectionJudge:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Boss,
+                        maxHealth = 330, posture = 94, physicalDamage = 10, mentalDamage = 17,
+                        aggression = 0.55f, defense = 14, moveSpeed = 3.2f, attackRange = 2.2f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.FrozenKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.Boss,
+                        maxHealth = 310, posture = 90, physicalDamage = 7, mentalDamage = 18,
+                        aggression = 0.45f, defense = 13, moveSpeed = 2.8f, attackRange = 2.0f, detectRange = 24
+                    };
+                    break;
+                case EnemyType.RejectionGatekeeper:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.JobAnxiety, category = EnemyCategory.Boss,
+                        maxHealth = 320, posture = 92, physicalDamage = 11, mentalDamage = 15,
+                        aggression = 0.60f, defense = 14, moveSpeed = 3.3f, attackRange = 2.1f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.PowerlessProphet:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.LowConfidence, category = EnemyCategory.Boss,
+                        maxHealth = 300, posture = 86, physicalDamage = 7, mentalDamage = 19,
+                        aggression = 0.50f, defense = 12, moveSpeed = 3.0f, attackRange = 2.0f, detectRange = 24
+                    };
+                    break;
+                case EnemyType.OnceBrokenEnder:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
+                        maxHealth = 315, posture = 90, physicalDamage = 11, mentalDamage = 15,
+                        aggression = 0.58f, defense = 13, moveSpeed = 3.3f, attackRange = 2.1f, detectRange = 21
+                    };
+                    break;
+                case EnemyType.AbsoluteCertainty:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Boss,
+                        maxHealth = 305, posture = 88, physicalDamage = 9, mentalDamage = 17,
+                        aggression = 0.50f, defense = 13, moveSpeed = 3.0f, attackRange = 2.2f, detectRange = 23
+                    };
+                    break;
+                case EnemyType.RankThrone:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
+                        maxHealth = 335, posture = 95, physicalDamage = 10, mentalDamage = 18,
+                        aggression = 0.55f, defense = 15, moveSpeed = 3.2f, attackRange = 2.2f, detectRange = 23
+                    };
+                    break;
+                case EnemyType.EternalReplayer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FairnessSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 300, posture = 86, physicalDamage = 8, mentalDamage = 19,
+                        aggression = 0.50f, defense = 12, moveSpeed = 3.1f, attackRange = 2.0f, detectRange = 24
+                    };
+                    break;
+                case EnemyType.OverloadedRadar:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.NoiseSensitivity, category = EnemyCategory.Boss,
+                        maxHealth = 290, posture = 84, physicalDamage = 8, mentalDamage = 18,
+                        aggression = 0.62f, defense = 12, moveSpeed = 3.2f, attackRange = 2.0f, detectRange = 26
+                    };
+                    break;
+                case EnemyType.RetreatKing:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.Boss,
+                        maxHealth = 310, posture = 88, physicalDamage = 10, mentalDamage = 16,
+                        aggression = 0.50f, defense = 13, moveSpeed = 3.4f, attackRange = 2.1f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.MeaningDisconnector:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.WillpowerCollapse, category = EnemyCategory.Boss,
+                        maxHealth = 295, posture = 84, physicalDamage = 6, mentalDamage = 19,
+                        aggression = 0.42f, defense = 12, moveSpeed = 3.0f, attackRange = 2.0f, detectRange = 24
+                    };
+                    break;
+                case EnemyType.HabitHijacker:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Procrastination, category = EnemyCategory.Boss,
+                        maxHealth = 300, posture = 86, physicalDamage = 12, mentalDamage = 15,
+                        aggression = 0.70f, defense = 12, moveSpeed = 3.6f, attackRange = 2.0f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.DisasterProphetDragon:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Boss,
+                        maxHealth = 345, posture = 98, physicalDamage = 13, mentalDamage = 17,
+                        aggression = 0.55f, defense = 15, moveSpeed = 3.1f, attackRange = 2.3f, detectRange = 24
+                    };
+                    break;
+                case EnemyType.InnerTyrant:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.Shame, category = EnemyCategory.Boss,
+                        maxHealth = 340, posture = 96, physicalDamage = 12, mentalDamage = 18,
+                        aggression = 0.60f, defense = 15, moveSpeed = 3.2f, attackRange = 2.2f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.AssimilationFog:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
+                        maxHealth = 295, posture = 84, physicalDamage = 7, mentalDamage = 18,
+                        aggression = 0.48f, defense = 12, moveSpeed = 3.0f, attackRange = 2.0f, detectRange = 25
+                    };
+                    break;
+                case EnemyType.NeverFinisher:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.BoundaryConflict, category = EnemyCategory.Boss,
+                        maxHealth = 320, posture = 92, physicalDamage = 11, mentalDamage = 16,
+                        aggression = 0.58f, defense = 14, moveSpeed = 3.3f, attackRange = 2.1f, detectRange = 22
+                    };
+                    break;
+                case EnemyType.KnowNotDoer:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.SelfDoubt, category = EnemyCategory.Boss,
+                        maxHealth = 305, posture = 88, physicalDamage = 9, mentalDamage = 17,
+                        aggression = 0.50f, defense = 13, moveSpeed = 3.1f, attackRange = 2.1f, detectRange = 23
+                    };
+                    break;
+                case EnemyType.OldDestiny:
+                    p = new EnemyProfile
+                    {
+                        targetWeakness = WeaknessAxis.FailureFear, category = EnemyCategory.Boss,
+                        maxHealth = 380, posture = 108, physicalDamage = 12, mentalDamage = 20,
+                        aggression = 0.58f, defense = 16, moveSpeed = 3.3f, attackRange = 2.2f, detectRange = 26
                     };
                     break;
                 default:

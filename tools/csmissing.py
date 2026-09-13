@@ -49,6 +49,7 @@ def declared_names(code):
     也不会把调用误当成声明。
     """
     names = set()
+    ifaces = interface_spans(code)
     for m in re.finditer(r"\b(\w+)\s*\(", code):
         i = m.end() - 1
         depth = 0
@@ -69,7 +70,40 @@ def declared_names(code):
         tail = tail.lstrip()
         if tail.startswith("{") or tail.startswith("=>"):
             names.add(m.group(1))
+            continue
+
+        # 【以 ';' 收尾的也可能是声明，不是调用】
+        # 两种：接口成员 `bool CanSubmit(out string why);`
+        #       抽象/外部方法 `protected abstract void Interact();`
+        # 它们的括号后面是 ';'，原来一律当成调用，于是本文件里
+        # "声明了却没有方法体"的成员被报成 CS0103。
+        # 本仓库第一次出现接口（ILevelGate）时就撞上了这一条。
+        if tail.startswith(";"):
+            head = code[max(0, m.start() - 220):m.start()]
+            # 同一条语句之内（别跨过上一个 ; 或 } 去看修饰符）
+            cut = max(head.rfind(";"), head.rfind("{"), head.rfind("}"))
+            stmt = head[cut + 1:]
+            if re.search(r"\b(?:abstract|extern|partial)\b", stmt) or \
+               any(a <= m.start() <= b for a, b in ifaces):
+                names.add(m.group(1))
     return names
+
+
+def interface_spans(code):
+    """接口体的字符区间。接口里的成员天然没有方法体，都是声明。"""
+    spans = []
+    for m in re.finditer(r"\binterface\s+\w+[^{;]*\{", code):
+        i = m.end() - 1
+        depth = 0
+        for j in range(i, len(code)):
+            if code[j] == "{":
+                depth += 1
+            elif code[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    spans.append((i, j))
+                    break
+    return spans
 
 
 def strip_noise(code):

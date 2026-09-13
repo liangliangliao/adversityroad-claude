@@ -593,6 +593,289 @@ namespace AdversityRoad.EditorTools
             return ok;
         }
 
+        /// <summary>玩法说明里 【】 内允许出现的按键名——它们是键，不是场上的物件。</summary>
+        static readonly string[] ButtonNames = { "用", "跳", "蹲", "闪", "挡", "锁", "术", "拔刀" };
+
+        /// <summary>
+        /// 第 9-26 章 · 90 关内部障碍线的入库体检（V2.2 增补 PRD 第 11.3 / 12 节）。
+        ///
+        /// 【为什么要在 CI 里跑】
+        /// 这 90 关是一份三千多行的策划冻结数据：缺一栏 Reality Victory、
+        /// 某一关的两个干扰项写成了同一招、某个 Boss 没写最终失效条件——
+        /// 这些在编译期全是合法的，在实机上则表现为"这一关打完了但没有通关"
+        /// 或者"三选一一眼就能看出答案"。只能靠逐条比对来发现。
+        ///
+        /// 判据分两级：结构性错误（缺胜利条件、干扰项同家族、Boss 无命门）报红；
+        /// 可读性问题（best 明显更长、选项超长）只打提醒——它们要改的是文案，
+        /// 不该把构建挡下来，但必须在报告里看得见。
+        /// </summary>
+        static bool DiagInternalChapters(StringBuilder sb)
+        {
+            bool ok = true;
+            sb.Append("\n--- 第 9-26 章 · 90 关内部障碍线 ---\n");
+
+            var chapters = AdversityRoad.InternalOS.InternalChapterCatalog.Chapters;
+            var levels = AdversityRoad.InternalOS.InternalChapterCatalog.AllLevels();
+            int units = 0, killable = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var us = levels[i].internalUnits;
+                for (int j = 0; j < us.Count; j++)
+                {
+                    units += us[j].count;
+                    if (us[j].killable) killable += us[j].count;
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 章节=").Append(chapters.Count)
+              .Append(" 关卡=").Append(levels.Count)
+              .Append(" Boss=").Append(chapters.Count)
+              .Append(" 内部单位=").Append(units)
+              .Append("（其中可击杀 ").Append(killable).Append("）\n");
+
+            var errors = AdversityRoad.InternalOS.InternalChapterCatalog.Validate();
+            for (int i = 0; i < errors.Count; i++)
+            {
+                sb.Append("[CIDIAG][内部线] !! ").Append(errors[i]).Append('\n');
+                ok = false;
+            }
+
+            // 【这 90 关一个外部敌人都不该有】这是本增补的定义，不是口味问题。
+            int external = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var us = levels[i].internalUnits;
+                for (int j = 0; j < us.Count; j++) if (us[j].category != "Internal") external++;
+            }
+            if (external > 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 出现了 ").Append(external)
+                  .Append(" 个非 Internal 单位——第 9-26 章只打自己\n");
+                ok = false;
+            }
+
+            // Boss 一览：真正的失效条件是什么，以及它是不是"打倒就行"。
+            int killGates = 0;
+            for (int i = 0; i < chapters.Count; i++)
+            {
+                var b = chapters[i].boss;
+                if (b == null) continue;
+                bool kill = AdversityRoad.InternalOS.InternalChapterCatalog.IsKillDeathType(b.deathType);
+                if (kill) killGates++;
+                sb.Append("[CIDIAG][内部线]   Boss ").Append(b.bossId).Append(' ').Append(b.name)
+                  .Append("  命门=").Append(b.coreMechanism)
+                  .Append("  失效=").Append(b.executionGate)
+                  .Append("  DeathType=").Append(b.deathType).Append('\n');
+            }
+            sb.Append("[CIDIAG][内部线] 其中允许靠打倒结束的 Boss：").Append(killGates)
+              .Append(" / ").Append(chapters.Count).Append('\n');
+
+            // 三选一：结构与安全报红，可读性只提醒。
+            var issues = AdversityRoad.InternalOS.MentalAttackValidator.ValidateAll();
+            int hard = 0, soft = 0;
+            for (int i = 0; i < issues.Count; i++)
+            {
+                if (issues[i].error) { hard++; sb.Append("[CIDIAG][三选一] !! ").Append(issues[i]).Append('\n'); }
+                else soft++;
+            }
+            sb.Append("[CIDIAG][三选一] 事件=")
+              .Append(AdversityRoad.InternalOS.MentalAttackCatalog.Events.Count)
+              .Append("  结构/安全错误=").Append(hard)
+              .Append("  可读性提醒=").Append(soft).Append('\n');
+            if (hard > 0) ok = false;
+
+            // 提醒逐条列出来：不报红，但不许它们悄悄躺着。
+            for (int i = 0; i < issues.Count; i++)
+                if (!issues[i].error) sb.Append("[CIDIAG][三选一]   ").Append(issues[i]).Append('\n');
+
+            // 【玩家够不够得着】数据全绿不等于这 90 关能被玩到。
+            //
+            // 这条是被一次真实的交付缺口换来的：数据、系统、这份报告全绿，
+            // 而 InternalLevelRunner 的调用者是 0 个——旅程生成只调 Legacy，
+            // 关卡选择只读经典区域表，90 关一关都走不到。玩家的原话是
+            // "为什么我测试没看到新增的关卡"。编译和校验都发现不了这种漏，
+            // 因为漏的不是某一行写错，而是**两头都对，中间没接**。
+            // 所以这里造一个每条障碍轴都有的假目标，真的跑一遍插入，看它到底给不给章节。
+            var probeGoal = new AdversityRoad.Goals.GoalData { goalId = "cidiag_probe" };
+            foreach (AdversityRoad.Personalization.WeaknessAxis ax
+                     in System.Enum.GetValues(typeof(AdversityRoad.Personalization.WeaknessAxis)))
+                probeGoal.obstacles.Add(new AdversityRoad.Goals.GoalObstacle
+                {
+                    obstacleId = "probe_" + ax, label = ax.ToString(), axis = ax
+                });
+
+            int before = probeGoal.chapters.Count;
+            var picked = AdversityRoad.InternalOS.InternalChapterBridge.SelectFor(probeGoal, 3);
+            for (int i = 0; i < picked.Count; i++)
+            {
+                var bp = AdversityRoad.InternalOS.InternalChapterBridge.ToBlueprint(picked[i], probeGoal, null);
+                if (bp != null) probeGoal.chapters.Add(bp);
+            }
+            int made = probeGoal.chapters.Count - before;
+            sb.Append("[CIDIAG][内部线] 十条障碍轴的假目标 → 选中 ").Append(picked.Count)
+              .Append(" 章、成蓝图 ").Append(made).Append(" 份\n");
+            if (made == 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 按障碍轴一章都插不进去——这 90 关在旅程里将永远不出现\n");
+                ok = false;
+            }
+
+            // 【每一关必须有能按的东西，房间里必须有东西】
+            //
+            // 这条是被一句我自己说错的话换来的：我拿"蓝图里有 4 个房间描述"当成了
+            // "真的建出一处有 4 个房间的场景"。两者差着整整一层——蓝图里写着
+            // "草稿工位"，而 rooms[].props 是空的、关键物写在没人读的字段里，
+            // 走进去就是一间空屋子加两个敌人。所以这里量三个真东西：
+            // 每关的关键物件数、Execution Gate 有没有、房间里有没有道具。
+            int noGate = 0, emptyRoom = 0, propTotal = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+                var plan = AdversityRoad.InternalOS.InternalProps.PlanFor(lv);
+                propTotal += plan.Count;
+
+                string gateName;
+                bool gate = AdversityRoad.InternalOS.InternalProps.HasGate(lv, out gateName);
+                if (!gate)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                      .Append(" 没有 Execution Gate 关键物——这一关走不完\n");
+                    noGate++; ok = false;
+                }
+
+                var ch2 = AdversityRoad.InternalOS.InternalChapterCatalog.Chapter(lv.chapterId);
+                var site = AdversityRoad.InternalOS.InternalSiteComposer.Compose(lv, ch2);
+                bool anyProp = false;
+                for (int r = 0; r < site.rooms.Count; r++)
+                    if (site.rooms[r].props.Count > 0) { anyProp = true; break; }
+                if (!anyProp)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                      .Append(" 的房间一件道具都没有——建出来是空屋子\n");
+                    emptyRoom++; ok = false;
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 关键物合计 ").Append(propTotal)
+              .Append(" 件（平均每关 ").Append((propTotal / (float)Mathf.Max(1, levels.Count)).ToString("0.0"))
+              .Append(" 件）；缺 Gate ").Append(noGate)
+              .Append(" 关、空房间 ").Append(emptyRoom).Append(" 关\n");
+
+            // 【】里允许出现的按键名（MobileControls 里那几颗键），它们不是场上的物件
+            // 【目标行里点名的东西，场上必须真的有那块牌子】
+            //
+            // 目标行现在会写"去【装车月台】装车"。可 Gate 的牌子过去一律写"提交台"——
+            // 玩家满场找一个不存在的名字，这比不给目标行更糟。
+            // 所以逐关把 playerObjective 里每个【X】拿出来，
+            // 和这一关 PlanFor 真会摆出的牌面对一遍，对不上就红。
+            int badRef = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+
+                var labels = new System.Collections.Generic.List<string>();
+                var plan2 = AdversityRoad.InternalOS.InternalProps.PlanFor(lv);
+                for (int k = 0; k < plan2.Count; k++)
+                {
+                    string lbl; Color col; Vector3 sz;
+                    AdversityRoad.InternalOS.InternalProps.Style(plan2[k].kind, out lbl, out col, out sz);
+                    if (plan2[k].kind == AdversityRoad.InternalOS.InternalPropKind.GateConsole)
+                        lbl = AdversityRoad.InternalOS.InternalProps.GateLabel(plan2[k].pfName);
+                    // 牌面覆盖（9-3 的"旧箱"）才是玩家真看到的字
+                    if (!string.IsNullOrEmpty(plan2[k].label)) lbl = plan2[k].label;
+                    labels.Add(lbl);
+                }
+                // 关卡循环自己摆的牌子（9-1 的六张修改卡）也算数
+                labels.AddRange(AdversityRoad.InternalOS.InternalProps.LoopLabelsFor(lv));
+
+                // 目标行和"怎么玩"卡片都要核：两处都会点名场上的东西，
+                // 点到一个不存在的名字，玩家就会满场找一块没有的牌子。
+                var texts = new System.Collections.Generic.List<string>();
+                if (!string.IsNullOrEmpty(lv.playerObjective)) texts.Add(lv.playerObjective);
+                if (lv.howToPlay != null) texts.AddRange(lv.howToPlay);
+
+                for (int t = 0; t < texts.Count; t++)
+                {
+                    string po = texts[t];
+                    if (string.IsNullOrEmpty(po)) continue;
+                    int at = 0;
+                    while (true)
+                    {
+                        int open = po.IndexOf('\u3010', at);
+                        if (open < 0) break;
+                        int close = po.IndexOf('\u3011', open + 1);
+                        if (close < 0) break;
+                        string want = po.Substring(open + 1, close - open - 1);
+                        at = close + 1;
+                        if (labels.Contains(want)) continue;
+                        // 【】里也可能是**按键名**而不是场上的东西。
+                        // "按【用】/ R" 是这个工程既有的写法（见 ShameInteractable），
+                        // 玩法说明里到处都要用它，不能被当成"场上没有这块牌子"。
+                        if (System.Array.IndexOf(ButtonNames, want) >= 0) continue;
+                        sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                          .Append(" 的说明让玩家去找【").Append(want)
+                          .Append("】，但这一关摆出来的牌子只有：")
+                          .Append(string.Join("/", labels.ToArray())).Append("\n");
+                        badRef++; ok = false;
+                    }
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 目标行/玩法说明指向核对：对不上的 ").Append(badRef).Append(" 处\n");
+
+            // 【蓝图必须真的会被"建"，而不是被当成 Legacy 打发掉】
+            //
+            // 这条是被一张实机截图换来的：玩家点进关卡，屏幕上是
+            // "这处场景没能建起来——换一关，或稍后再试。"。
+            // 根因是我把 source 标成了 ChapterSource.Legacy——我当时只想表达
+            // "策划冻结件、视为已校验"，而它在组装器里的含义是
+            // "不建场景，去开 V1 裂隙"。于是场景永远不会被建。
+            // 枚举值不是标签，是行为；所以这里逐关核对它到底落在哪条路上。
+            int wrongSource = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lvbp = AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[i], null);
+                if (lvbp == null || lvbp.source == AdversityRoad.Goals.ChapterSource.Legacy)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(levels[i].levelId)
+                      .Append(" 的蓝图来源是 Legacy —— 组装器会跳过建造，玩家只会看到「场景没能建起来」\n");
+                    wrongSource++; ok = false;
+                }
+            }
+            if (wrongSource == 0)
+                sb.Append("[CIDIAG][内部线] 90 关的蓝图来源均为 Internal，会走现场建造那条路\n");
+
+            // 单关也必须能变成可搭建的蓝图，否则关卡选择那条直通路是死的。
+            var probeLevel = levels.Count > 0
+                ? AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[0], probeGoal) : null;
+            if (probeLevel == null || probeLevel.site == null || probeLevel.site.rooms.Count == 0)
+            {
+                sb.Append("[CIDIAG][内部线] !! 单关蓝图建不出场景——关卡选择里点进去会是一片空地\n");
+                ok = false;
+            }
+            else
+            {
+                // chapterId ↔ levelId 必须能来回认，SiteGate 靠它决定拉不拉规则驱动。
+                var back = AdversityRoad.InternalOS.InternalChapterBridge
+                    .LevelOfChapterId(probeLevel.chapterId);
+                if (back == null || back.levelId != levels[0].levelId)
+                {
+                    sb.Append("[CIDIAG][内部线] !! chapterId 反查不回关卡——进场不会拉起规则驱动\n");
+                    ok = false;
+                }
+                else
+                {
+                    // 措辞要准：这里验的是**蓝图**能不能建，不是几何体已经建好了。
+                    // 真正的建造发生在运行时的 SiteBuilder，CI 不跑游戏。
+                    sb.Append("[CIDIAG][内部线] 单关蓝图可建：")
+                      .Append(levels[0].levelId).Append(" → ").Append(probeLevel.chapterId)
+                      .Append(" → 「").Append(probeLevel.site.siteName)
+                      .Append("」").Append(probeLevel.site.rooms.Count).Append(" 个房间描述、")
+                      .Append(AdversityRoad.InternalOS.InternalProps.PlanFor(levels[0]).Count)
+                      .Append(" 件关键物待摆（几何体由运行时 SiteBuilder 搭，本作业不跑游戏）\n");
+                }
+            }
+
+            return ok;
+        }
+
         /// <summary>
         /// 关卡通关规则表：每一关到底算"打倒它"还是"穿过去"，一次全列出来。
         ///
@@ -966,6 +1249,7 @@ namespace AdversityRoad.EditorTools
                 DiagBalance(sb);
                 DiagReach(sb);
                 if (!DiagStoryLadder(sb)) exit = 1;
+                if (!DiagInternalChapters(sb)) exit = 1;
                 if (!DiagLevelRules(sb)) exit = 1;
                 if (!DiagTelegraphRules(sb)) exit = 1;
                 if (!DiagUal(sb)) exit = 1;

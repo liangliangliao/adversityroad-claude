@@ -429,6 +429,135 @@ namespace AdversityRoad.OpenWorld
             fc.maxDistance = 42f;   // 人头顶的小牌子，远了就是噪点
         }
 
+        /// <summary>
+        /// 小号牌子：贴身可交互物用。
+        ///
+        /// FollowSign 的 52 号是给"人头顶"和"区域招牌"设计的，远处也要读得到。
+        /// 而关卡里的可交互物就在脚边——同样用 52 号的后果是玩家进关看到的是
+        /// 一片比人还大的字，而且字号最大的那几个（"修改项""工作台"）信息量最低。
+        /// 走近了才需要读的东西，就该是小字。
+        /// </summary>
+        public static void SmallSign(Transform parent, Vector3 localOffset, string text)
+        {
+            var go = new GameObject("Tag_" + text);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localOffset;
+            World.WorldText.Plate(
+                World.WorldText.Attach(go, text, 22, 0.035f, new Color(0.92f, 0.9f, 0.82f)));
+            var fc = go.AddComponent<FaceCamera>();
+            fc.maxDistance = 16f;   // 走近才看得见；远处不该是一片字
+        }
+
+        /// <summary>
+        /// 把字**贴在物体的面上**，不是挂在它头顶飘着。
+        ///
+        /// 【玩家的三条原话，这一条占两条】
+        /// "一些文字模糊看不清楚"、"文字能否固定在物体上面，不要漂浮空中"。
+        /// 三个成因，全在 SmallSign 那条路上：
+        ///
+        /// ① **太小**。TextMesh 的世界字高约等于 fontSize × characterSize ÷ 10，
+        ///    SmallSign 的 (22, 0.035) 算出来是 7.7 厘米——比一个易拉罐的字还小。
+        ///    这是我上一轮为了压住"满屏大字"改的，压过头了。
+        /// ② **被拉变形**。牌子是挂在道具那个立方体上的子物体，而立方体带着
+        ///    非等比缩放（提交台 1.6×1.2×1.0、脱离门 1.6×2.4×0.4），
+        ///    子物体继承这个缩放，字就被横向拉了三成——这正是"模糊"的观感来源。
+        /// ③ **飘着**。挂在顶上 0.55 米、还跟着镜头转，看上去就是悬空的字。
+        ///
+        /// 所以这里：字号拉到 90 号（图集清晰）再用 characterSize 缩回约 22 厘米的
+        /// 实际字高；父物体必须是**未缩放**的；牌子贴在四个侧面上、法线朝外、
+        /// 不跟镜头转——它是物体表面的一块标牌，走到哪一面都读得到。
+        /// </summary>
+        /// <param name="parent">**未缩放**的父物体（缩放会连字一起拉变形）。</param>
+        /// <param name="blockSize">被标注方块的实际尺寸（米）。</param>
+        public static void SurfaceSign(Transform parent, Vector3 blockSize, string text)
+        {
+            if (parent == null || string.IsNullOrEmpty(text)) return;
+
+            const float Height = 0.22f;      // 实际字高（米）
+            const int Font = 90;             // 图集分辨率：先画大，再缩小，字才锐
+            float charSize = Height * 10f / Font;
+
+            // 排版宽度：汉字算一个字宽，ASCII 算半个
+            float units = 0f;
+            for (int i = 0; i < text.Length; i++) units += text[i] > 0x2E80 ? 1f : 0.5f;
+            float textW = units * Height;
+
+            // 四个侧面：法线朝外，字贴在面上
+            Vector3[] normals = { Vector3.forward, Vector3.back, Vector3.right, Vector3.left };
+            for (int i = 0; i < normals.Length; i++)
+            {
+                Vector3 n = normals[i];
+                // 这一面有多宽：法线朝 Z 的面宽度取 X，朝 X 的面宽度取 Z
+                float faceW = Mathf.Abs(n.z) > 0.5f ? blockSize.x : blockSize.z;
+                float half = (Mathf.Abs(n.z) > 0.5f ? blockSize.z : blockSize.x) * 0.5f;
+
+                // 窄边不贴。修改卡厚 14 厘米，往那个侧面上塞三个字要缩到两成，
+                // 出来是几粒看不清的斑点——那正是"文字模糊"的另一种做法。
+                if (faceW < 0.5f) continue;
+
+                var go = new GameObject("Label_" + text);
+                go.transform.SetParent(parent, false);
+                // 贴在面上再往外 3 厘米：同面会和方块打架（z-fighting）
+                go.transform.localPosition = n * (half + 0.03f) + Vector3.up * (blockSize.y * 0.16f);
+                // 【朝向要取 -n，不是 n】
+                // TextMesh 的字是从物体的 **-Z 一侧**看过去才是正的：FaceCamera 里
+                // 用的是 LookRotation(牌子 - 镜头)，也就是让 +Z **背向**镜头。
+                // 这里照同一个约定——+Z 朝方块里面，可读的那一面才朝外。
+                // 写成 LookRotation(n) 的话，每块牌子都是脸朝里的，玩家只能看到反字。
+                go.transform.localRotation = Quaternion.LookRotation(-n, Vector3.up);
+
+                // 放不下就整体缩，别让字跑出牌面
+                float fit = textW > faceW * 0.88f ? faceW * 0.88f / textW : 1f;
+                go.transform.localScale = Vector3.one * fit;
+
+                World.WorldText.Plate(
+                    World.WorldText.Attach(go, text, Font, charSize,
+                        new Color(0.97f, 0.95f, 0.88f)),
+                    0.06f, new Color(0.09f, 0.10f, 0.13f, 0.92f));
+            }
+        }
+
+        /// <summary>
+        /// 刻在木牌上的字。
+        ///
+        /// 【和 SurfaceSign 的区别：没有底板】
+        /// SurfaceSign 会在字后面垫一块深色板——那正是"贴上去的一块牌子"的观感来源，
+        /// 玩家要的是"刻在实体木质物体上"。
+        /// 真正的刻痕要改网格，纯代码生成的场景做不到；但"看上去是刻的"只需要两件事：
+        ///   ① 字是**比木板更深的木纹色**，像凿掉一层露出的暗面，不是贴上去的亮色牌；
+        ///   ② 字紧贴板面（只让 1.5 厘米，避免 z-fighting），不是悬在板子前面。
+        /// 所以这里不配底板，字色由调用方给木纹暗色。
+        /// </summary>
+        public static void CarvedSign(Transform parent, Vector3 boardSize, string text, Color inkColor)
+        {
+            if (parent == null || string.IsNullOrEmpty(text)) return;
+
+            const float Height = 0.3f;     // 刻字比贴牌的字大一些，木牌本来就是给人远远看的
+            const int Font = 110;          // 先画大再缩小，字口才利落
+            float charSize = Height * 10f / Font;
+
+            float units = 0f;
+            for (int i = 0; i < text.Length; i++) units += text[i] > 0x2E80 ? 1f : 0.5f;
+            float textW = units * Height;
+
+            // 木牌只有正反两面会被刻字；窄边不刻
+            Vector3[] normals = { Vector3.forward, Vector3.back };
+            for (int i = 0; i < normals.Length; i++)
+            {
+                Vector3 n = normals[i];
+                var go = new GameObject("Carved_" + text);
+                go.transform.SetParent(parent, false);
+                go.transform.localPosition = n * (boardSize.z * 0.5f + 0.015f);
+                // 可读的一面是 -Z（见 SurfaceSign 里那条朝向说明）
+                go.transform.localRotation = Quaternion.LookRotation(-n, Vector3.up);
+
+                float fit = textW > boardSize.x * 0.86f ? boardSize.x * 0.86f / textW : 1f;
+                go.transform.localScale = Vector3.one * fit;
+
+                World.WorldText.Attach(go, text, Font, charSize, inkColor);
+            }
+        }
+
         public static void HomeSign(Vector3 pos, string text)
         {
             var go = new GameObject("Sign_" + text);

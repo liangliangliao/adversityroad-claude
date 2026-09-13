@@ -87,6 +87,7 @@ namespace AdversityRoad.Goals
             switch (source)
             {
                 case ChapterSource.Legacy: return "经典章节";
+                case ChapterSource.Internal: return "内部障碍线";
                 case ChapterSource.UserPreset: return "玩家预设";
                 default: return "AI 专属";
             }
