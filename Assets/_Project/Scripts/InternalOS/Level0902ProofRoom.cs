@@ -253,7 +253,7 @@ namespace AdversityRoad.InternalOS
             var mr = GetComponentInChildren<MeshRenderer>();
             if (mr != null)
                 mr.sharedMaterial =
-                    Combat.CombatFeedback.EnergyMaterial(new Color(0.35f, 0.38f, 0.4f), 0.1f);
+                    Combat.CombatFeedback.SolidMaterial(new Color(0.35f, 0.38f, 0.4f));
             _owner.Apply(runner, _item);
         }
     }

@@ -296,17 +296,18 @@ namespace AdversityRoad.OpenWorld
         /// 他的原话是"连战斗的入口都找不到，boss 都没有出现"。
         /// 一根远处就能看见的光柱，比任何文字提示都直接。
         /// </summary>
+        /// <summary>
+        /// Boss 的位置指示。
+        ///
+        /// 【那根 14 米高的红色圆柱已经去掉】
+        /// 它原本是"远处也看得见 Boss 在哪"的做法，但把 Boss 整个罩在里面：
+        /// 玩家看到的是一根红柱子，Boss 的身体、动作、前摇全被染红看不清。
+        /// 玩家原话："第 9 章节的 boss 为什么会被红色圆柱罩住，请移除它。"
+        /// 指示位置这件事交给脚下那盏灯就够了——它照亮 Boss，而不是盖住它。
+        /// </summary>
         static void BossBeacon(GameObject boss)
         {
             if (boss == null) return;
-            var beam = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            beam.name = "BossBeacon";
-            Object.DestroyImmediate(beam.GetComponent<Collider>());
-            beam.transform.SetParent(boss.transform, false);
-            beam.transform.localPosition = new Vector3(0, 14f, 0);
-            beam.transform.localScale = new Vector3(1.6f, 14f, 1.6f);
-            beam.GetComponent<MeshRenderer>().sharedMaterial =
-                Combat.CombatFeedback.EnergyMaterial(new Color(1f, 0.35f, 0.3f), 0.28f);
 
             var lightGo = new GameObject("BossBeaconLight");
             lightGo.transform.SetParent(boss.transform, false);
@@ -336,27 +337,42 @@ namespace AdversityRoad.OpenWorld
         /// 中段 = 场景中心一带。深处 = 远端，Boss 在那里等着。
         /// 落点最后一律吸附到导航面上——AI 给的是层次，能不能站人由引擎说了算。
         /// </summary>
+        /// <summary>
+        /// 敌人落在哪里。
+        ///
+        /// 【改成"拦在必经位置"，不再是 entrance/middle/deep 三个笼统的圈】
+        /// 玩家的要求原话："玩家和敌人默认在战斗区域出现，敌人分别出现在玩家
+        /// 做任务完成通关的必经的位置（起到拦截的作用）。"
+        ///
+        /// 关卡的主轴是"落点 → 远端出口"，任务点串在 0.45/0.60/0.75，
+        /// 交付点在 0.86（见 InternalProps.Build）。所以：
+        ///   · entrance → 战斗区（0.22 那一段）：开场的架在这里打，场地是空的
+        ///   · middle / deep → **卡在任务点之前**（0.36 / 0.52 / 0.68 ……）：
+        ///     玩家要去够哪个道具，就得先过这一关人。
+        /// 这样"敌人有用"和"胜利不靠清怪"同时成立：它们挡路，但通关看的是交付。
+        /// </summary>
         static Vector3 PlacedSpot(SiteInstance site, string placement, int index, System.Random rng)
         {
             Vector3 spawn = site.playerSpawn;
-            Vector3 center = site.origin + Vector3.up * 1.1f;
+            Vector3 far = site.farExit.sqrMagnitude > 0.01f
+                ? site.farExit : site.origin + Vector3.up * 1.1f;
 
-            // "深处"也要有上限：与落点关于中心对称的那一端在大场地里能有九十多米，
-            // 玩家看着目标行上的距离数字走十几秒，路上什么都遇不到——
-            // 那不是纵深，那是空跑。四十米足够形成"要走过去打"的层次。
-            const float MaxDeep = 40f;
-            Vector3 deepDir = center - spawn;
-            deepDir.y = 0f;
-            if (deepDir.sqrMagnitude < 1f) deepDir = Vector3.forward;
-            Vector3 deep = spawn + deepDir.normalized * Mathf.Min(deepDir.magnitude * 2f, MaxDeep);
+            Vector3 axis = far - spawn;
+            axis.y = 0f;
+            if (axis.sqrMagnitude < 1f) axis = Vector3.forward;
+            Vector3 side = Vector3.Cross(Vector3.up, axis.normalized);
 
-            Vector3 baseAt = placement == "entrance"
-                ? Vector3.Lerp(spawn, center, 0.28f)
-                : placement == "deep" ? deep : Vector3.Lerp(spawn, deep, 0.55f);
+            // 开场那一批留在战斗区；其余逐个卡在任务点之前
+            float t = placement == "entrance"
+                ? 0.22f
+                : Mathf.Min(0.36f + index * 0.16f, 0.78f);
 
-            // 同一层次的多个敌人错开，不要叠在一个点上
-            float a = index * 1.9f;
-            baseAt += new Vector3(Mathf.Cos(a) * (3f + index * 1.6f), 0, Mathf.Sin(a) * (3f + index * 1.6f));
+            Vector3 baseAt = spawn + axis * t;
+
+            // 同一层次的多个敌人左右错开，别叠在一个点上，也别正堵死路口
+            float off = (index % 2 == 0 ? 1f : -1f) * (2.5f + (index / 2) * 2.2f);
+            baseAt += side * off;
+            baseAt.y = spawn.y;
 
             if (!UnityEngine.AI.NavMesh.SamplePosition(baseAt, out var hit, 25f,
                     UnityEngine.AI.NavMesh.AllAreas))

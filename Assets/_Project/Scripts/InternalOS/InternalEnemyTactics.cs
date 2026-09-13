@@ -47,7 +47,7 @@ namespace AdversityRoad.InternalOS
                 switch (lv.levelId)
                 {
                     case Level0901BlankPage.LevelId:
-                        go.AddComponent<BlankPageSentinel>();
+                        go.AddComponent<BlankPageSentinel>().chapterId = chapterId;
                         break;
                     case Level0902ProofRoom.LevelId:
                         go.AddComponent<ProofGhost>().chapterId = chapterId;
@@ -77,49 +77,111 @@ namespace AdversityRoad.InternalOS
                 chapterId, inner, EnemyTier.Standard, at);
             if (go != null) go.AddComponent<ProofGhost>().chapterId = chapterId;
         }
+
+        /// <summary>
+        /// 9-1 用：倒下的哨兵过一会儿回来一只（只在还没做出第一版时）。
+        ///
+        /// 用一个挂在场景上的小协程载体来等——敌人自己马上就要被销毁，
+        /// 在它身上开协程等不到时间到。
+        /// </summary>
+        public static void ReturnSentinelLater(string chapterId, Vector3 near)
+        {
+            var host = new GameObject("SentinelReturn");
+            host.AddComponent<SentinelReturn>().Begin(chapterId, near);
+        }
+    }
+
+    /// <summary>等一会儿，把一只白纸哨兵放回场上。</summary>
+    public class SentinelReturn : MonoBehaviour
+    {
+        string _chapterId;
+        Vector3 _near;
+        float _at;
+
+        public void Begin(string chapterId, Vector3 near)
+        {
+            _chapterId = chapterId;
+            _near = near;
+            _at = Time.time + BlankPageSentinel.ReturnAfter;
+        }
+
+        void Update()
+        {
+            if (Time.time < _at) return;
+
+            var loop = Level0901BlankPage.Active;
+            var runner = InternalLevelRunner.Active;
+            // 关卡已经离开、或者第一版已经做出来了 —— 都不再补人
+            bool stillBlocked = loop != null && !loop.DraftMade &&
+                                runner != null && runner.Level != null &&
+                                runner.Level.levelId == Level0901BlankPage.LevelId;
+            if (!stillBlocked) { Destroy(gameObject); return; }
+
+            var ch = runner.Chapter;
+            if (ch != null)
+            {
+                EnemyType ext, inner, boss;
+                ChapterModuleLibrary.SuggestEnemies(InternalChapterBridge.AxisOf(ch),
+                    out ext, out inner, out boss);
+                var go = OpenWorld.ProceduralQuestAssembler.SpawnExtra(
+                    _chapterId, inner, EnemyTier.Standard, _near);
+                if (go != null)
+                {
+                    go.AddComponent<BlankPageSentinel>().chapterId = _chapterId;
+                    GameEvents.RaiseSubtitle(
+                        "又一个白纸哨兵站了过来——在做出第一版之前，它们会一直回来。" +
+                        "去【工作台】按【用】。");
+                }
+            }
+            Destroy(gameObject);
+        }
     }
 
     /// <summary>
-    /// 白纸哨兵（9-1）：**在你动笔之前，它打不倒**。
+    /// 白纸哨兵（9-1）：**打得倒，但在你动笔之前它会一直回来**。
     ///
-    /// 这一关的核心是"完美主义不让你开始"。把它做成一个数字（可交付度）是抽象的，
-    /// 做成一个**打不动的敌人**就是具体的：你可以一直砍它，它一直不倒，
-    /// 屏幕上一直跳"护体"——直到你走到工作台按下【用】做出第一版。
-    /// 那一刻它们同时变得可以被打倒。
+    /// 【上一版做错了：我把它设成了完全免伤】
+    /// 当时是 externalDamageMult = 0，想表达"完美主义在你动笔之前不可战胜"。
+    /// 实机上玩家看到的是：砍了很多轮，血条一点不掉，屏幕上只跳一个通用的
+    /// "护体"——没有任何理由。玩家的原话是
+    /// "第九章的第一个关卡的两个敌人的血量是无限的吗？为什么对战多轮次没有战胜它门。"
     ///
-    /// 玩家学到的不是一句话，是一个身体经验：**先动手，路才打得开。**
+    /// 他问的是"这是不是个 bug"。一个打不动的敌人**读起来就是 bug**，
+    /// 不管我在注释里把它的含义写得多好。这条教训比那个隐喻重要：
+    /// **玩家先要能判断游戏有没有坏，才谈得上读懂它想说什么。**
+    ///
+    /// 现在改成：哨兵是**正常敌人**，打得动、打得死、有正常反馈。
+    /// 只是在做出第一版之前，倒下的哨兵会在 10 秒后重新回来一只。
+    /// "完美主义会一直回来，直到你动手"——意思一样，但战斗是真的、可赢的，
+    /// 而且回来那一刻会明确说清原因，不会被当成血条坏了。
+    /// 做出第一版之后不再补人，场上剩的打完就干净了。
     /// </summary>
     public class BlankPageSentinel : MonoBehaviour
     {
+        /// <summary>倒下之后隔多久回来一只（仅在还没做出第一版时）。</summary>
+        public const float ReturnAfter = 10f;
+
+        public string chapterId = "";
+
         EnemyController _ec;
-        bool _released;
-        static float _lastHintAt = -99f;
+        bool _countedDown;
 
         void Awake() => _ec = GetComponent<EnemyController>();
 
         void Update()
         {
-            if (_ec == null) return;
-            var loop = Level0901BlankPage.Active;
-            if (loop == null) return;
+            if (_ec == null || _countedDown) return;
+            if (_ec.State != EnemyState.Dead) return;
 
-            if (!loop.DraftMade)
+            _countedDown = true;
+            var loop = Level0901BlankPage.Active;
+            // 粗稿出来之后就不再补人了——路是通的，打完就干净
+            if (loop == null || loop.DraftMade)
             {
-                // 打得动、有打击感、会硬直，但血不掉——这是"还没开始"的手感
-                _ec.externalDamageMult = 0f;
-                if (Time.time - _lastHintAt > 14f)
-                {
-                    _lastHintAt = Time.time;
-                    GameEvents.RaiseSubtitle(
-                        "〔白纸哨兵〕打不倒它——在做出第一版之前，它不会让开。");
-                }
+                GameEvents.RaiseSubtitle("白纸哨兵倒下了。第一版已经有了，它不会再回来。");
                 return;
             }
-
-            if (_released) return;
-            _released = true;
-            _ec.externalDamageMult = 1f;
-            GameEvents.RaiseSubtitle("第一版有了——白纸哨兵现在打得倒了。");
+            InternalEnemyTactics.ReturnSentinelLater(chapterId, transform.position);
         }
     }
 

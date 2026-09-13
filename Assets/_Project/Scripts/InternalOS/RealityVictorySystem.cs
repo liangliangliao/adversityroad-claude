@@ -160,6 +160,41 @@ namespace AdversityRoad.InternalOS
             return list;
         }
 
+        /// <summary>
+        /// 这一关通关过没有（Execution Gate 过了就会记一条 Simulation 证据）。
+        ///
+        /// 关卡解锁按它走：和经典关卡一样，前一关没过就进不了下一关。
+        /// </summary>
+        public static bool IsCleared(string levelId)
+        {
+            if (string.IsNullOrEmpty(levelId)) return false;
+            var all = Data.evidence;
+            string sim = VictoryLayer.Simulation.ToString();
+            for (int i = 0; i < all.Count; i++)
+                if (all[i].levelId == levelId && all[i].layer == sim) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// 这一关现在能不能进：本章第一关永远能进，其余要求**上一关已通关**。
+        ///
+        /// 玩家要求"沿用经典关卡规则"——经典线是 StoryManager.ZoneUnlocked
+        /// 按主线章节号顺序放行的，这一批也照这个来。
+        /// </summary>
+        public static bool IsUnlocked(string levelId)
+        {
+            var lv = InternalChapterCatalog.Level(levelId);
+            if (lv == null) return false;
+            if (lv.SubIndex <= 1) return true;
+
+            var ch = InternalChapterCatalog.Chapter(lv.chapterId);
+            if (ch == null) return true;
+            for (int i = 0; i < ch.levels.Count; i++)
+                if (ch.levels[i].SubIndex == lv.SubIndex - 1)
+                    return IsCleared(ch.levels[i].levelId);
+            return true;
+        }
+
         /// <summary>这一章的现实胜利是否已经发生过（Hall of Goals 与章节结算读它）。</summary>
         public static bool HasRealityVictory(string chapterId) =>
             EvidenceOf(chapterId, VictoryLayer.Reality).Count > 0;

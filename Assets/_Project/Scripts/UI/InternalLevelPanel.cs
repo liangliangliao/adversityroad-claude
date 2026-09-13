@@ -99,8 +99,14 @@ namespace AdversityRoad.UI
 
         // ==================== 版面 ====================
 
-        const int Cols = 5;
-        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -20f;
+        // 【为什么是 2 列大格，不是 5 列小格】
+        // 原来 5 列 × 226×116，16 号字，一格塞三行中文——
+        // 实机上每一格的字都被裁掉半截，玩家原话"菜单中的各关卡文字显示不全"。
+        // 一行中文 16 号字约占 16px 宽，226px 只放得下 14 个字，
+        // 而"要做的事：…"这一行本身就有二十多个字。
+        // 换成 2 列 × 620×180：一行放得下 38 个字，三行绰绰有余。
+        const int Cols = 2;
+        const float CellW = 620f, CellH = 180f, StepX = 636f, StepY = 192f, Top = -30f;
 
         static Vector2 SlotPos(int slot) => new Vector2(
             -(Cols - 1) * StepX * 0.5f + (slot % Cols) * StepX,
@@ -112,10 +118,16 @@ namespace AdversityRoad.UI
                 SlotPos(slot), new Vector2(CellW, CellH), color, onClick, 16);
             var txt = btn.GetComponentInChildren<Text>();
             txt.text = label;
-            txt.alignment = TextAnchor.MiddleLeft;
+            txt.alignment = TextAnchor.UpperLeft;
+            // 超出格子就换行；竖向装不下才截——原来两项都没设，
+            // 于是文字既不换行也不缩，直接被格子裁掉。
+            txt.horizontalOverflow = HorizontalWrapMode.Wrap;
+            txt.verticalOverflow = VerticalWrapMode.Truncate;
+            txt.fontSize = 19;
+            txt.lineSpacing = 1.15f;
             var rt = txt.GetComponent<RectTransform>();
-            rt.offsetMin = new Vector2(12, 4);
-            rt.offsetMax = new Vector2(-8, -4);
+            rt.offsetMin = new Vector2(16, 12);
+            rt.offsetMax = new Vector2(-16, -12);
             _cells.Add(btn.gameObject);
             slot++;
         }
@@ -181,13 +193,25 @@ namespace AdversityRoad.UI
                 var lv = ch.levels[i];
                 string id = lv.levelId;
                 string tier = lv.isBossLevel ? "Boss 关" : (lv.tier == "Elite" ? "精英关" : "普通关");
+
+                // 解锁与经典关卡同规则：上一关没过，这一关点不进去
+                bool cleared = RealityVictorySystem.IsCleared(id);
+                bool open = RealityVictorySystem.IsUnlocked(id);
+                string mark = cleared ? "✓ " : (open ? "" : "🔒 ");
+
+                // 格子放得下就别裁：文案本来就是写给玩家读的
                 Cell(ref slot,
-                    lv.levelId + "《" + lv.name + "》\n" +
-                    "要做的事：" + Clip(lv.Objective, 20) + "\n" +
-                    tier + " · " + Clip(lv.coreMechanic, 18),
-                    lv.isBossLevel ? new Color(0.5f, 0.34f, 0.18f, 0.96f)
-                                   : new Color(0.22f, 0.30f, 0.26f, 0.96f),
-                    () => Enter(id));
+                    mark + lv.levelId + "《" + lv.name + "》　" + tier + "\n" +
+                    "要做的事：" + lv.Objective + "\n" +
+                    (open ? Clip(lv.coreMechanic, 34)
+                          : "上一关通关后解锁"),
+                    !open ? new Color(0.17f, 0.17f, 0.19f, 0.96f)
+                          : cleared ? new Color(0.20f, 0.34f, 0.28f, 0.96f)
+                          : lv.isBossLevel ? new Color(0.5f, 0.34f, 0.18f, 0.96f)
+                                           : new Color(0.22f, 0.30f, 0.26f, 0.96f),
+                    open ? (UnityEngine.Events.UnityAction)(() => Enter(id))
+                         : () => GameEvents.RaiseSubtitle(
+                             "这一关还没解锁——先通关 " + PrevLabel(lv) + "。"));
             }
 
             // 这一章的 Boss 摘要单独占一格：真命门与失效条件是这一章的通关定义，
@@ -207,6 +231,17 @@ namespace AdversityRoad.UI
                     () => { _openChapter = 0; Refresh(); });
         }
 
+        /// <summary>上一关叫什么（锁住时告诉玩家该先过哪一关）。</summary>
+        static string PrevLabel(InternalLevelData lv)
+        {
+            var ch = InternalChapterCatalog.Chapter(lv.chapterId);
+            if (ch == null) return "上一关";
+            for (int i = 0; i < ch.levels.Count; i++)
+                if (ch.levels[i].SubIndex == lv.SubIndex - 1)
+                    return ch.levels[i].levelId + "《" + ch.levels[i].name + "》";
+            return "上一关";
+        }
+
         static string Clip(string s, int max)
         {
             if (string.IsNullOrEmpty(s)) return "";
@@ -223,6 +258,14 @@ namespace AdversityRoad.UI
         /// </summary>
         void Enter(string levelId)
         {
+            // 兜底再拦一次：按钮已经按解锁状态禁用了，但进关这条路
+            // 以后可能从别处调过来，规则该写在入口上，不只写在按钮上。
+            if (!RealityVictorySystem.IsUnlocked(levelId))
+            {
+                GameEvents.RaiseSubtitle("这一关还没解锁——先通关上一关。");
+                return;
+            }
+
             var goal = GoalOS.Active;
             if (goal == null)
             {

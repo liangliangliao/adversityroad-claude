@@ -46,6 +46,19 @@ namespace AdversityRoad.Combat
         /// <summary>对外提供能量光材质（半透明加色）：护体屏障等可视化不再用实心色块。</summary>
         public static Material EnergyMaterial(Color c, float alpha) => MatFX(c, alpha);
 
+        /// <summary>
+        /// **实体**方块的材质：不透明、写深度。
+        ///
+        /// 【为什么必须和 EnergyMaterial 分开】
+        /// EnergyMaterial 走的是 MatFX——加色混合、ZWrite 关。那是给刀光、
+        /// 能量柱一类特效用的。第 9 章的修改卡、关键物拿它当身体材质之后，
+        /// 方块整个是透光的：站在卡片正面能看见**背面那块木牌上的字**透过来，
+        /// 于是每张卡都带一层反的重影。玩家原话："白色方块两面都有文字，
+        /// 且中间透明，导致文字两边透视而出现文字重影效果。"
+        /// 实体就该用实体材质。
+        /// </summary>
+        public static Material SolidMaterial(Color c) => Mat(c);
+
         /// <summary>拖尾（刀光）走的着色器名，供 CI 诊断核对——挑到哪一条不该靠猜。</summary>
         public static string TrailShaderName { get; private set; } = "（尚未创建）";
 

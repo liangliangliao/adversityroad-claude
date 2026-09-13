@@ -324,8 +324,9 @@ namespace AdversityRoad.InternalOS
             body.transform.SetParent(root.transform, false);
             body.transform.localPosition = Vector3.zero;
             body.transform.localScale = size;
+            // 实体方块要用实体材质：透明材质会让正反两面的牌子互相透出来（重影）
             body.GetComponent<MeshRenderer>().sharedMaterial =
-                Combat.CombatFeedback.EnergyMaterial(color, emissive);
+                Combat.CombatFeedback.SolidMaterial(color);
             var col = body.GetComponent<Collider>();
             if (col != null) col.isTrigger = false;
 
@@ -371,7 +372,7 @@ namespace AdversityRoad.InternalOS
                 slab.transform.SetParent(holder.transform, false);
                 slab.transform.localScale = board;
                 slab.GetComponent<MeshRenderer>().sharedMaterial =
-                    Combat.CombatFeedback.EnergyMaterial(wood, 0f);
+                    Combat.CombatFeedback.SolidMaterial(wood);
                 Object.DestroyImmediate(slab.GetComponent<Collider>());
 
                 // 四角铆钉：小球，不是又一个小方块
@@ -385,7 +386,7 @@ namespace AdversityRoad.InternalOS
                             sx * (board.x * 0.5f - 0.07f), sy * (board.y * 0.5f - 0.07f), -0.025f);
                         r.transform.localScale = Vector3.one * 0.05f;
                         r.GetComponent<MeshRenderer>().sharedMaterial =
-                            Combat.CombatFeedback.EnergyMaterial(rivet, 0f);
+                            Combat.CombatFeedback.SolidMaterial(rivet);
                         Object.DestroyImmediate(r.GetComponent<Collider>());
                     }
 
@@ -420,13 +421,21 @@ namespace AdversityRoad.InternalOS
                 bool isGate = kind == InternalPropKind.GateConsole;
 
                 // Gate 站在终点；其余沿路铺开，左右交替，别排成一条直线挡路
-                // Gate 放在靠近深处那一端、但**在出口门之前**：
-                // exit 传进来的是 farExit，也就是那扇出口门所在的位置
-                // （见 SiteBuilder.FindClearExit / BuildFarExitDoor）。
-                // 摆到门上会和门重叠，摆到门外就跑到场地外面去了。
-                Vector3 pos = isGate
-                    ? Vector3.Lerp(spawn, exit, 0.82f)
-                    : spawn + forward * (5f + step * 6f) + right * ((step % 2 == 0) ? 2.2f : -2.2f);
+                // 【任务点串在"落点→出口"这条必经路上，而且都在战斗区之外】
+                //
+                // 玩家要的是："把战斗区域和玩家做任务交互区域分开……
+                // 物理场景改造成玩家从入口进入、经过必经区域、到达出口位置。"
+                //
+                // 所以主轴按比例切：
+                //   0.00 落点（入口）
+                //   0.22 战斗区中心 —— 这一段什么都不摆，留给打架
+                //   0.45 / 0.60 / 0.75 …… 任务点依次排在后面，必须走过去
+                //   0.86 Execution Gate（交付点），在出口门之前
+                //   1.00 出口门
+                // 左右再错开一点，免得排成一条直线挡路。
+                float t = isGate ? 0.86f : Mathf.Min(0.45f + step * 0.15f, 0.80f);
+                Vector3 pos = Vector3.Lerp(spawn, exit, t)
+                            + right * (isGate ? 0f : ((step % 2 == 0) ? 3.2f : -3.2f));
                 if (!isGate) step++;
 
                 if (UnityEngine.AI.NavMesh.SamplePosition(pos, out var hit, 12f,

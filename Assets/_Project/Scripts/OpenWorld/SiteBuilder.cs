@@ -36,6 +36,20 @@ namespace AdversityRoad.OpenWorld
         /// 场地一直够大，只是内容全挤在门口那一小块。
         /// </summary>
         public Vector3 farExit;
+
+        /// <summary>
+        /// 战斗区的中心与半径：**这一圈里不摆任何家具和杂物**。
+        ///
+        /// 玩家的要求原话是"划分有空旷适合和敌人战斗的区域（方便战斗，不然很拥挤），
+        /// 把战斗区域和玩家做任务交互区域分开"。
+        /// 过去两者是混在一起的：家具按整块场地铺、关键物也按整块场地铺，
+        /// 于是打起来到处是桌子柱子，做任务又要在敌人堆里挤。
+        ///
+        /// 现在沿"落点→远端出口"这条主轴分段：靠落点这一段是战斗区（清空），
+        /// 中后段依次是任务点，最后是出口。玩家和敌人默认落在战斗区。
+        /// </summary>
+        public Vector3 combatZone;
+        public float combatRadius;
         public readonly List<Vector3> enemySpawns = new List<Vector3>();
         public readonly List<Vector3> propAnchors = new List<Vector3>();
         public SiteBlueprint blueprint;
@@ -156,8 +170,12 @@ namespace AdversityRoad.OpenWorld
                 // 上限仍然守着一条老教训（130 米的场地把 Boss 推到 91 米外，
                 // 走过去什么都遇不到）：放大的是**可走的地面**，不是敌人之间的距离。
                 // 敌人与关键物仍然摆在中段，见 BuildHall / InternalProps.Build。
-                w = Mathf.Clamp(bp.siteWidth * 1.5f, 46f, 120f);
-                d = Mathf.Clamp(bp.siteDepth * 1.5f, 34f, 96f);
+                // 又放大一档（1.5 → 2.0，区间 46-120×34-96 → 60-150×45-120）：
+                // 上一轮放大之后玩家仍然说"再扩大物理空间，特别是规划最后大空间的
+                // 战斗区域"。现在的分区需要三段都摆得开——战斗区要空得下一场混战，
+                // 中后段还要串三个任务点，挤在一起就又回到"很拥挤"。
+                w = Mathf.Clamp(bp.siteWidth * 2.0f, 60f, 150f);
+                d = Mathf.Clamp(bp.siteDepth * 2.0f, 45f, 120f);
             }
 
             // ---- 周边街区：先把"这地方在城市里"建出来 ----
@@ -233,6 +251,11 @@ namespace AdversityRoad.OpenWorld
             inst.playerSpawn = FindClearSpawn(inst, d);
             inst.exitPoint = inst.playerSpawn - Vector3.up * 1.1f - Vector3.forward * 2.5f;
             inst.farExit = FindClearExit(inst, d);
+
+            // 战斗区：主轴上靠落点那一段，半径按场地给（但不小于 12 米——
+            // 再小就不叫"开阔"了）。家具、杂物、关键物都要避开它。
+            inst.combatZone = Vector3.Lerp(inst.playerSpawn, inst.farExit, 0.22f);
+            inst.combatRadius = Mathf.Clamp(Mathf.Min(w, d) * 0.30f, 12f, 26f);
             BuildEntranceMarker(inst, bp);
             BuildFarExitDoor(inst, chapter);
 
@@ -987,6 +1010,8 @@ namespace AdversityRoad.OpenWorld
                 var at = new Vector3(Rand(rng, w * 0.42f), 0f, Rand(rng, d * 0.42f));
                 // 中央那圈留给标志物：舞台/喷泉正中间插一个垃圾桶就成了穿帮
                 if (at.sqrMagnitude < 90f) continue;
+                // 战斗区要空：打起来最怕脚下到处是杂物
+                if (InCombatZone(inst, at)) continue;
                 BuildProp(inst, pool[rng.Next(pool.Count)], at, rng);
             }
         }
@@ -1001,6 +1026,13 @@ namespace AdversityRoad.OpenWorld
         /// <summary>已批准道具 → 程序化构件。库外 id 直接忽略（Validator 已先清洗过一遍）。</summary>
         static void BuildProp(SiteInstance inst, string prop, Vector3 at, System.Random rng)
         {
+            // 【战斗区一律不摆陈设】
+            // Furnish 按场地整块铺工位/货架/长椅，ScatterClutter 再撒一层杂物。
+            // 两者都不知道战斗区在哪，于是打起来满地都是家具——
+            // 玩家原话"很拥挤"。落在战斗区里的陈设直接不建。
+            // 柱子是例外：它是结构，不建会让大厅看起来没盖好。
+            if (prop != "pillar" && InCombatZone(inst, at)) return;
+
             switch (prop)
             {
                 case "desk":
@@ -1382,6 +1414,17 @@ namespace AdversityRoad.OpenWorld
         /// 所以这里按 siteKind 给每一类地方配一套固有陈设。AI 决定"这是地铁站"，
         /// 引擎负责"地铁站长什么样"——分工和坐标那条约束是一致的。
         /// </summary>
+        /// <summary>这个点落在战斗区里吗（本地坐标）。战斗区必须保持空旷。</summary>
+        static bool InCombatZone(SiteInstance inst, Vector3 local)
+        {
+            if (inst == null || inst.combatRadius <= 0.01f) return false;
+            Vector3 c = inst.combatZone - inst.origin;
+            c.y = 0f;
+            Vector3 p = local;
+            p.y = 0f;
+            return (p - c).sqrMagnitude < inst.combatRadius * inst.combatRadius;
+        }
+
         static void Furnish(SiteInstance inst, SiteKitCatalog.SiteKindInfo kind,
             System.Random rng, float w, float d)
         {
