@@ -215,6 +215,20 @@ namespace AdversityRoad.OpenWorld
 
             // 机制物件也放进场景内部，让"规则"在这个地方看得见摸得着
             BuildMechanicProps(bp, site.origin, site);
+
+            // 第 9-26 章：这一关的关键物（提交台 / Done 锁 / 检查点 / 脱离门……）。
+            //
+            // 【为什么单独一条】BuildMechanicProps 摆的是"机制提示牌"——走近给一行字。
+            // 而这 90 关的通关动作是**按下某个东西**：没有提交台，9-1 就永远走不完。
+            // PRD 第 10.2 节给的那张 Prefab 表说的就是这一批。
+            var internalLv = InternalOS.InternalChapterBridge.LevelOfChapterId(bp.chapterId);
+            if (internalLv != null)
+            {
+                int n = InternalOS.InternalProps.Build(internalLv,
+                    site.root != null ? site.root.transform : null,
+                    site.origin, site.playerSpawn, site.exitPoint);
+                Debug.Log("[InternalOS] " + internalLv.levelId + " 摆下关键物 " + n + " 件");
+            }
         }
 
         static void SpawnIntoDistrict(GoalChapterData bp, GoalData goal,

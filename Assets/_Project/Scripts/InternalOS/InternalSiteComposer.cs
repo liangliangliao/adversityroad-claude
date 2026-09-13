@@ -177,6 +177,35 @@ namespace AdversityRoad.InternalOS
             return "small";
         }
 
+        /// <summary>
+        /// World Kit → 这类地方该摆什么（只能用已批准道具库里的 id）。
+        ///
+        /// 【为什么必须填】不填的话 SiteBuilder 建出来的是一间只有地板和墙的空屋子：
+        /// 房间名写着"草稿工位"，走进去什么都没有。道具不是装饰，
+        /// 它是"这地方有人用过"的唯一证据。
+        /// </summary>
+        static string[] PropsOf(string worldKitId)
+        {
+            switch (worldKitId)
+            {
+                case "WK01": return new[] { "bed", "desk", "chair", "cabinet", "curtain", "lamp" };
+                case "WK02": return new[] { "door_frame", "stairs", "locker", "lamp", "trashbin" };
+                case "WK03": return new[] { "bench", "sign", "lamp", "car", "trashbin", "billboard" };
+                case "WK04": return new[] { "bench", "sign", "pillar", "barrier", "lamp" };
+                case "WK05": return new[] { "desk", "chair", "monitor", "whiteboard", "printer", "cabinet" };
+                case "WK06": return new[] { "counter", "chair", "sign", "billboard", "bench" };
+                case "WK07": return new[] { "stall", "shelf", "counter", "billboard", "bench", "plant" };
+                case "WK08": return new[] { "shelf", "desk", "chair", "papers", "lamp" };
+                case "WK09": return new[] { "desk", "monitor", "whiteboard", "shelf", "papers", "chair" };
+                case "WK10": return new[] { "counter", "bench", "chair", "sign", "plant" };
+                case "WK11": return new[] { "bench", "plant", "lamp", "fence", "sign" };
+                case "WK12": return new[] { "shelf", "crate", "cart", "barrier", "pipe", "sign" };
+                case "WK13": return new[] { "crate", "barrier", "trashbin", "pipe", "fence" };
+                case "WK14": return new[] { "pillar", "papers", "lamp", "curtain" };
+                default: return new[] { "desk", "chair", "shelf", "lamp" };
+            }
+        }
+
         /// <summary>主路径按 → 拆成房间：入口、阻力所在、深处，最多 4 段。</summary>
         static List<SiteRoom> RoomsOf(InternalLevelData lv)
         {
@@ -186,14 +215,18 @@ namespace AdversityRoad.InternalOS
             {
                 string name = segs[i].Trim();
                 if (string.IsNullOrEmpty(name)) continue;
-                rooms.Add(new SiteRoom
+                var room = new SiteRoom
                 {
                     name = name,
                     purpose = i == 0 ? "进场：看清自己站在哪"
                             : (i == segs.Length - 1 ? "收束：这一关真正要发生的那个动作"
                                                     : "阻力所在：错误策略在这里显出代价"),
                     sizeHint = i == segs.Length - 1 ? "large" : "medium",
-                });
+                };
+                // 每间房各取一段，互不重样：同一处 Base 的几间房不该长得一模一样
+                var pool = PropsOf(FirstKit(lv));
+                for (int k = 0; k < 4; k++) room.props.Add(pool[(i * 2 + k) % pool.Length]);
+                rooms.Add(room);
             }
             if (rooms.Count == 0)
                 rooms.AddRange(SiteKitCatalog.DefaultRooms(SiteKindOf(FirstKit(lv)),
@@ -251,6 +284,10 @@ namespace AdversityRoad.InternalOS
 
             site.rooms = RoomsOf(lv);
             site.interactables = InteractablesOf(lv);
+
+            // 散落道具：把空地填成"有人在这儿做过事"的地方
+            var scatter = PropsOf(kit);
+            for (int i = 0; i < 3; i++) site.scatterProps.Add(scatter[(i * 3) % scatter.Length]);
 
             site.rules.Add("核心机制：" + lv.coreMechanic);
             site.rules.Add("通关：" + lv.realityVictory);

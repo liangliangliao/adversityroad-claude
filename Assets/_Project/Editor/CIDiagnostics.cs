@@ -716,6 +716,46 @@ namespace AdversityRoad.EditorTools
                 ok = false;
             }
 
+            // 【每一关必须有能按的东西，房间里必须有东西】
+            //
+            // 这条是被一句我自己说错的话换来的：我拿"蓝图里有 4 个房间描述"当成了
+            // "真的建出一处有 4 个房间的场景"。两者差着整整一层——蓝图里写着
+            // "草稿工位"，而 rooms[].props 是空的、关键物写在没人读的字段里，
+            // 走进去就是一间空屋子加两个敌人。所以这里量三个真东西：
+            // 每关的关键物件数、Execution Gate 有没有、房间里有没有道具。
+            int noGate = 0, emptyRoom = 0, propTotal = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+                var plan = AdversityRoad.InternalOS.InternalProps.PlanFor(lv);
+                propTotal += plan.Count;
+
+                string gateName;
+                bool gate = AdversityRoad.InternalOS.InternalProps.HasGate(lv, out gateName);
+                if (!gate)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                      .Append(" 没有 Execution Gate 关键物——这一关走不完\n");
+                    noGate++; ok = false;
+                }
+
+                var ch2 = AdversityRoad.InternalOS.InternalChapterCatalog.Chapter(lv.chapterId);
+                var site = AdversityRoad.InternalOS.InternalSiteComposer.Compose(lv, ch2);
+                bool anyProp = false;
+                for (int r = 0; r < site.rooms.Count; r++)
+                    if (site.rooms[r].props.Count > 0) { anyProp = true; break; }
+                if (!anyProp)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                      .Append(" 的房间一件道具都没有——建出来是空屋子\n");
+                    emptyRoom++; ok = false;
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 关键物合计 ").Append(propTotal)
+              .Append(" 件（平均每关 ").Append((propTotal / (float)Mathf.Max(1, levels.Count)).ToString("0.0"))
+              .Append(" 件）；缺 Gate ").Append(noGate)
+              .Append(" 关、空房间 ").Append(emptyRoom).Append(" 关\n");
+
             // 单关也必须能变成可搭建的蓝图，否则关卡选择那条直通路是死的。
             var probeLevel = levels.Count > 0
                 ? AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[0], probeGoal) : null;
@@ -736,10 +776,14 @@ namespace AdversityRoad.EditorTools
                 }
                 else
                 {
-                    sb.Append("[CIDIAG][内部线] 单关直通链路通：")
+                    // 措辞要准：这里验的是**蓝图**能不能建，不是几何体已经建好了。
+                    // 真正的建造发生在运行时的 SiteBuilder，CI 不跑游戏。
+                    sb.Append("[CIDIAG][内部线] 单关蓝图可建：")
                       .Append(levels[0].levelId).Append(" → ").Append(probeLevel.chapterId)
-                      .Append(" → 场景「").Append(probeLevel.site.siteName)
-                      .Append("」").Append(probeLevel.site.rooms.Count).Append(" 个房间\n");
+                      .Append(" → 「").Append(probeLevel.site.siteName)
+                      .Append("」").Append(probeLevel.site.rooms.Count).Append(" 个房间描述、")
+                      .Append(AdversityRoad.InternalOS.InternalProps.PlanFor(levels[0]).Count)
+                      .Append(" 件关键物待摆（几何体由运行时 SiteBuilder 搭，本作业不跑游戏）\n");
                 }
             }
 
