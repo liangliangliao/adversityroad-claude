@@ -35,6 +35,8 @@ namespace AdversityRoad.InternalOS
         ArchiveVault,
         /// <summary>诱饵：看起来也该做、做了就偏离的那些东西。</summary>
         Decoy,
+        /// <summary>目标箱 / 货物：要被推到 Gate 去的那个东西，本身不是 Gate。</summary>
+        Cargo,
     }
 
     /// <summary>计划里的一件关键物：叫什么，以及它到底做什么。</summary>
@@ -67,6 +69,23 @@ namespace AdversityRoad.InternalOS
         {
             string n = pfName ?? "";
 
+            // 【为什么 Cargo 和 DecisionBoard 必须排在 GateConsole 前面】
+            //
+            // 这里用的是子串匹配，而"要被搬到 Gate 去的东西"名字里天然带着 Gate 的词：
+            //   PF_UnsubmittedBox      —— "Unsubmitted" 里含 "Submit"
+            //   PF_DecisionCriteriaBoard —— "Board" 本来是指"上车口"
+            // 按原来的顺序，9-3 的目标箱会被判成 Execution Gate：玩家走到箱子边
+            // 两米内就直接通关了，而这一关的玩法恰恰是"把正确的那一箱推到月台"。
+            // 箱子成了终点，这一关就没有了。
+            //
+            // 所以先认更具体的类别，再认 Gate——Gate 是兜底语义，不是优先语义。
+            // Mailbox/Inbox/Toolbox 里的 "Box" 不是货物，单独挡掉。
+            if (Has(n, "Crate", "Cargo", "Package", "Parcel") ||
+                (Has(n, "Box") && !Has(n, "Mailbox", "Inbox", "Outbox", "Toolbox", "Checkbox")))
+                return InternalPropKind.Cargo;
+            if (Has(n, "Criteria", "Decision", "Reversible", "Irreversible", "Compass",
+                    "Calibrat", "Sorter"))
+                return InternalPropKind.DecisionBoard;
             if (Has(n, "Submit", "Release", "Publish", "LoadDock", "Board", "ExitGate",
                     "ExitTrigger", "Threshold", "Deliver", "Acceptance"))
                 return InternalPropKind.GateConsole;
@@ -78,9 +97,6 @@ namespace AdversityRoad.InternalOS
                 return InternalPropKind.DisengageGate;
             if (Has(n, "Evidence", "Ore", "Vault", "Proof", "BehaviorCompare", "Record"))
                 return InternalPropKind.Evidence;
-            if (Has(n, "Criteria", "Decision", "Reversible", "Irreversible", "Compass",
-                    "Calibrat", "Sorter"))
-                return InternalPropKind.DecisionBoard;
             if (Has(n, "Trigger", "Habit", "IfThen", "Cue", "Routine", "Notification", "RedDot"))
                 return InternalPropKind.TriggerObject;
             if (Has(n, "Archive", "Replay", "StopLine", "Film", "Projector"))
@@ -129,10 +145,35 @@ namespace AdversityRoad.InternalOS
                 case InternalPropKind.Decoy:
                     label = "诱饵"; color = new Color(0.75f, 0.55f, 0.3f);
                     size = new Vector3(1.0f, 1.0f, 1.0f); return;
+                case InternalPropKind.Cargo:
+                    label = "目标箱"; color = new Color(0.85f, 0.7f, 0.45f);
+                    size = new Vector3(1.1f, 1.1f, 1.1f); return;
                 default:
                     label = "工作台"; color = new Color(0.7f, 0.75f, 0.8f);
                     size = new Vector3(1.6f, 0.9f, 0.9f); return;
             }
+        }
+
+        /// <summary>
+        /// Gate 牌子上的字。
+        ///
+        /// 【为什么不能所有 Gate 都写"提交台"】
+        /// Style 只认类别，于是 9-3 的装车月台、9-4 的终点门、11 关的脱离门
+        /// 顶上全挂着"提交台"。而 HUD 的目标行说的是"去【装车月台】"——
+        /// 玩家满场找一个不存在的牌子，这比不给牌子更糟。
+        /// 牌面与目标行必须是同一个词，所以这里按 PF 名给出那个词，
+        /// 由 <see cref="InternalProp.Create"/> 和目标行共用。
+        /// </summary>
+        public static string GateLabel(string pfName)
+        {
+            string n = pfName ?? "";
+            if (Has(n, "LoadDock")) return "装车月台";
+            if (Has(n, "Release", "Publish")) return "发布台";
+            if (Has(n, "Board")) return "上车口";
+            if (Has(n, "Deliver", "Acceptance")) return "交付台";
+            if (Has(n, "Threshold")) return "门槛";
+            if (Has(n, "ExitGate", "ExitTrigger")) return "终点门";
+            return "提交台";
         }
 
         /// <summary>
@@ -293,12 +334,15 @@ namespace AdversityRoad.InternalOS
 
         bool _used;
         float _lastHint = -99f;
+        /// <summary>目标箱已经被带上：从此跟在玩家身侧走，直到装上车。</summary>
+        bool _carried;
 
         public static InternalProp Create(Vector3 pos, string pfName, InternalPropKind kind,
             InternalLevelData lv, string boundTrigger)
         {
             string label; Color color; Vector3 size;
             InternalProps.Style(kind, out label, out color, out size);
+            if (kind == InternalPropKind.GateConsole) label = InternalProps.GateLabel(pfName);
 
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = "InternalProp_" + pfName;
@@ -310,7 +354,8 @@ namespace AdversityRoad.InternalOS
             var col = go.GetComponent<Collider>();
             if (col != null) col.isTrigger = false;
 
-            OpenWorldBuilder.FollowSign(go.transform, new Vector3(0, size.y * 0.5f + 0.9f, 0), label);
+            // 小号：这是走到跟前才需要读的东西，不是区域招牌
+            OpenWorldBuilder.SmallSign(go.transform, new Vector3(0, size.y * 0.5f + 0.55f, 0), label);
 
             var p = go.AddComponent<InternalProp>();
             p.pfName = pfName;
@@ -328,6 +373,18 @@ namespace AdversityRoad.InternalOS
 
             var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
+
+            // 带上的箱子跟着走：这一关的核心机制写的是"推、搬、绕、攀"，
+            // 那就得看得见箱子在被搬。跟随不用刚体——这关要的是"它在我手上"，
+            // 不是一套推箱子物理。
+            if (_carried)
+            {
+                Vector3 want = player.transform.position
+                             + player.transform.forward * 1.3f + Vector3.up * 0.9f;
+                transform.position = Vector3.Lerp(transform.position, want,
+                    1f - Mathf.Exp(-8f * Time.deltaTime));
+            }
+
             float d = Vector3.Distance(transform.position, player.transform.position);
 
             if (d > 3.6f) return;
@@ -348,7 +405,7 @@ namespace AdversityRoad.InternalOS
             switch (kind)
             {
                 case InternalPropKind.GateConsole:
-                    return "走到这里就算数：" + runner.Level.realityVictory;
+                    return "走到这里就算数：" + runner.Level.Objective;
                 case InternalPropKind.DoneLock:
                     return "先把「做到什么算完」钉死，提交台才肯开。";
                 case InternalPropKind.Checkpoint:
@@ -365,6 +422,10 @@ namespace AdversityRoad.InternalOS
                     return "必要的处理完了，剩下的收起来。";
                 case InternalPropKind.Decoy:
                     return "它看起来也该做——做了就偏离当前目标。";
+                case InternalPropKind.Cargo:
+                    return _carrying.Contains(runner.Level.levelId)
+                        ? "已经带上了——把它送到装车月台。"
+                        : "带上它，送到装车月台。别的旧箱子不用管。";
                 default:
                     return runner.Level.coreMechanic;
             }
@@ -397,7 +458,10 @@ namespace AdversityRoad.InternalOS
                     {
                         _used = false;
                         _lastHint = Time.time;
-                        GameEvents.RaiseSubtitle("【" + label + "】还不能按——先把完成标准钉下来。");
+                        GameEvents.RaiseSubtitle("【" + label + "】" +
+                            (NeedsCargo(runner) && !_carrying.Contains(runner.Level.levelId)
+                                ? "空着手——先把目标箱带过来。"
+                                : "还不能按——先把完成标准钉下来。"));
                         return;
                     }
                     if (!runner.ExecutionGate())
@@ -436,6 +500,18 @@ namespace AdversityRoad.InternalOS
                     GameEvents.RaiseSubtitle("【" + label + "】做完了，但当前目标没有前进。");
                     return;
 
+                case InternalPropKind.Cargo:
+                    // 目标箱不是终点，是**要被搬到终点去的东西**。
+                    // 带上之后它跟着走——"推、搬、绕、攀"这句核心机制要看得见，
+                    // 不能只是走过去弹一行字。
+                    _carrying.Add(runner.Level.levelId);
+                    _carried = true;
+                    _used = false;          // 还能再走近，用来读提示
+                    if (!string.IsNullOrEmpty(boundTrigger)) runner.FireTrigger(boundTrigger);
+                    runner.MarkGoalAction("带上目标箱");
+                    GameEvents.RaiseSubtitle("带上了【" + label + "】——送到装车月台去。");
+                    return;
+
                 default:
                     // 9-1 的工作台就是草稿桌：按下去第一版才出现，墙才停
                     var l3 = Level0901BlankPage.Active;
@@ -451,10 +527,26 @@ namespace AdversityRoad.InternalOS
             }
         }
 
+        /// <summary>这一关有没有目标箱要搬。</summary>
+        static bool NeedsCargo(InternalLevelRunner runner)
+        {
+            var plan = InternalProps.PlanFor(runner.Level);
+            for (int i = 0; i < plan.Count; i++)
+                if (plan[i].kind == InternalPropKind.Cargo) return true;
+            return false;
+        }
+
         /// <summary>本次进关里已经锁过完成标准的关卡（离关即清）。</summary>
         static readonly HashSet<string> _doneLocked = new HashSet<string>();
 
-        public static void ResetSession() => _doneLocked.Clear();
+        /// <summary>本次进关里已经带上目标箱的关卡（离关即清）。</summary>
+        static readonly HashSet<string> _carrying = new HashSet<string>();
+
+        public static void ResetSession()
+        {
+            _doneLocked.Clear();
+            _carrying.Clear();
+        }
 
         /// <summary>
         /// Gate 能不能按。
@@ -465,9 +557,14 @@ namespace AdversityRoad.InternalOS
         bool GateReady(InternalLevelRunner runner)
         {
             var plan = InternalProps.PlanFor(runner.Level);
+            bool needDone = false, needCargo = false;
             for (int i = 0; i < plan.Count; i++)
-                if (plan[i].kind == InternalPropKind.DoneLock)
-                    return _doneLocked.Contains(runner.Level.levelId);
+            {
+                if (plan[i].kind == InternalPropKind.DoneLock) needDone = true;
+                if (plan[i].kind == InternalPropKind.Cargo) needCargo = true;
+            }
+            if (needDone && !_doneLocked.Contains(runner.Level.levelId)) return false;
+            if (needCargo && !_carrying.Contains(runner.Level.levelId)) return false;
             return true;
         }
     }

@@ -429,6 +429,25 @@ namespace AdversityRoad.OpenWorld
             fc.maxDistance = 42f;   // 人头顶的小牌子，远了就是噪点
         }
 
+        /// <summary>
+        /// 小号牌子：贴身可交互物用。
+        ///
+        /// FollowSign 的 52 号是给"人头顶"和"区域招牌"设计的，远处也要读得到。
+        /// 而关卡里的可交互物就在脚边——同样用 52 号的后果是玩家进关看到的是
+        /// 一片比人还大的字，而且字号最大的那几个（"修改项""工作台"）信息量最低。
+        /// 走近了才需要读的东西，就该是小字。
+        /// </summary>
+        public static void SmallSign(Transform parent, Vector3 localOffset, string text)
+        {
+            var go = new GameObject("Tag_" + text);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localOffset;
+            World.WorldText.Plate(
+                World.WorldText.Attach(go, text, 22, 0.035f, new Color(0.92f, 0.9f, 0.82f)));
+            var fc = go.AddComponent<FaceCamera>();
+            fc.maxDistance = 16f;   // 走近才看得见；远处不该是一片字
+        }
+
         public static void HomeSign(Vector3 pos, string text)
         {
             var go = new GameObject("Sign_" + text);

@@ -308,7 +308,8 @@
      "triggerNote": "TRG_FirstDraft / TRG_PerfectionExpansion / TRG_DoneThreshold / TRG_Submit",
      "navMeshCamera": "主路径全NavMesh；扩张用预烘焙隐藏地板；修改走廊FOV 60→56，提交区恢复。",
      "realityVictory": "存在粗稿+达到Done最低标准+执行Submit。",
-     "reusedAssets": "Studio_Base + Overlay_Perfection + PF_DraftDesk/PF_DoneLock/PF_SubmitConsole"
+     "reusedAssets": "Studio_Base + Overlay_Perfection + PF_DraftDesk/PF_DoneLock/PF_SubmitConsole",
+     "playerObjective": "先去【工作台】做出第一版，再挑出真正挡住交付的问题，最后去【提交台】"
     },
     {
      "levelId": "9-2",
@@ -349,7 +350,8 @@
      "triggerNote": "TRG_EditCount / TRG_MarginalGainLow / TRG_StopEditing",
      "navMeshCamera": "迷宫仅3层环形，避免真实迷路；Exit方向始终可恢复。",
      "realityVictory": "处理最后一个真正阻断项后主动停止修改并提交。",
-     "reusedAssets": "OfficeArchive_Base + TextMaze_Module + PF_EditCard"
+     "reusedAssets": "OfficeArchive_Base + TextMaze_Module + PF_EditCard",
+     "playerObjective": "把改动分成\"挡交付的\"和\"只是想改的\"，处理完前者就去【提交台】停手"
     },
     {
      "levelId": "9-3",
@@ -389,7 +391,8 @@
      "triggerNote": "TRG_GoalBoxSelect / TRG_ScopeDrift / TRG_LoadTruck",
      "navMeshCamera": "3m货架通道；箱体使用NavMeshObstacle；相机保持货车方向Beacon。",
      "realityVictory": "把当前目标箱装上货车，车门关闭并生成Reality Evidence。",
-     "reusedAssets": "Warehouse_Base + PF_UnsubmittedBox/PF_LoadDock"
+     "reusedAssets": "Warehouse_Base + PF_UnsubmittedBox/PF_LoadDock",
+     "playerObjective": "只把当前这一箱推到【装车月台】装车——旧箱子不用管"
     },
     {
      "levelId": "9-4",
@@ -430,7 +433,8 @@
      "triggerNote": "TRG_Checkpoint_01-07 / TRG_RestartBait / TRG_Continue",
      "navMeshCamera": "跌落传送最近Checkpoint而非死亡重开；固定相机提示下一平台。",
      "realityVictory": "带着至少一次局部损伤也可到达终点；若首战无失误同样允许胜利。",
-     "reusedAssets": "CliffWalk_Base + PF_PersistentCheckpoint"
+     "reusedAssets": "CliffWalk_Base + PF_PersistentCheckpoint",
+     "playerObjective": "沿平台走到【终点门】；掉下去不算输，从最近的检查点接着走"
     },
     {
      "levelId": "9-5",
@@ -463,7 +467,8 @@
      "triggerNote": "TRG_RealityToCourt / TRG_DoneLock / TRG_SubmitWindow / TRG_Submit",
      "navMeshCamera": "Boss战不永久硬锁；SubmitConsole始终有HUD方向标。",
      "realityVictory": "按下Submit即Boss失效，即使HP未清零；DeathType=Publish。",
-     "reusedAssets": "Office_Base + Court_Overlay + Boss_PerfectionJudge_Module"
+     "reusedAssets": "Office_Base + Court_Overlay + Boss_PerfectionJudge_Module",
+     "playerObjective": "走完四道修改门、锁定完成标准，然后在窗口期按下【提交台】——不必打空它的血条"
     }
    ],
    "boss": {

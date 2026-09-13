@@ -239,7 +239,10 @@ namespace AdversityRoad.InternalOS
             // 六张一模一样：分得出来靠读，不靠颜色
             go.GetComponent<MeshRenderer>().sharedMaterial =
                 Combat.CombatFeedback.EnergyMaterial(new Color(0.88f, 0.88f, 0.84f), 0.25f);
-            OpenWorld.OpenWorldBuilder.FollowSign(go.transform, new Vector3(0, 1.0f, 0), "修改项");
+            // 六张卡**不挂常驻牌**：六个一模一样的大字牌是纯噪点，
+            // 而且这一关要的是"走近读内容才分得出哪两张真的挡交付"——
+            // 牌子写"修改项"既没信息，又把该读的内容挡在后面。走近自然出字幕。
+            OpenWorld.OpenWorldBuilder.SmallSign(go.transform, new Vector3(0, 0.85f, 0), "·");
 
             var c = go.AddComponent<EditCard>();
             c.text = text;

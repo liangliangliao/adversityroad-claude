@@ -116,6 +116,23 @@ namespace AdversityRoad.InternalOS
         public string realityVictory;
         public string reusedAssets;
 
+        /// <summary>
+        /// HUD 目标行上那句**人话**：现在该去做的一件事，一行读完就知道往哪走。
+        ///
+        /// 【为什么不直接拿 realityVictory 顶上去】
+        /// realityVictory 是写给设计文档看的验收条件，原文长这样：
+        /// "把当前目标箱装上货车，车门关闭并生成Reality Evidence。"
+        /// 玩家站在仓库里看到这行字，要先解析"Reality Evidence"是什么，
+        /// 才知道自己该推哪个箱子——这正是玩家反馈里的"游戏规则不清楚"。
+        /// 两者都留着：验收条件仍由 realityVictory 记录，玩家看的是这一栏。
+        /// 留空则回落到 realityVictory，不会因为漏填而把目标行清空。
+        /// </summary>
+        public string playerObjective;
+
+        /// <summary>玩家看的那句话：有 playerObjective 就用它，没有才回落到验收条件。</summary>
+        public string Objective =>
+            string.IsNullOrEmpty(playerObjective) ? realityVictory : playerObjective;
+
         public int ChapterNo
         {
             get

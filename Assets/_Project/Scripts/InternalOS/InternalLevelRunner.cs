@@ -67,10 +67,16 @@ namespace AdversityRoad.InternalOS
             _enteredAt = Time.unscaledTime;
             _lastGoalActionAt = _enteredAt;
 
+            // 机关的"这一趟做过了没有"必须每次进关清零。
+            // 它原来一个调用点都没有：Done 锁和目标箱都按 levelId 记在静态表里，
+            // 于是**重进同一关时，上一趟的进度还在**——第二次走到月台就直接过，
+            // 不用再把箱子搬过来。这类关卡最怕的就是"第二遍不用玩了"。
+            InternalProps.ResetSession();
+
             ControlChainRecorder.Begin(Chapter != null ? Chapter.chapterId : lv.chapterId,
                 lv.realityVictory);
 
-            GameEvents.RaiseSubtitle(lv.levelId + "《" + lv.name + "》—— " + lv.realityVictory);
+            GameEvents.RaiseSubtitle(lv.levelId + "《" + lv.name + "》—— " + lv.Objective);
             OnLevelEntered?.Invoke(lv);
         }
 
@@ -241,6 +247,44 @@ namespace AdversityRoad.InternalOS
         {
             RealityVictorySystem.Flush();
             if (Active == this) Active = null;
+        }
+
+        /// <summary>
+        /// HUD 目标行：**现在该做的那一件事**，随进度变。
+        ///
+        /// 【为什么这一行必须由关卡自己给】
+        /// SiteGate 原来按"敌人还剩几个"写目标行，清完就打
+        /// "这里清空了，从来路走出去"。可这 90 关的通关条件根本不是清怪——
+        /// PRD 3.4 写着"不以清怪定义胜利"。那行字不只是没用，它在**教玩家错误的通关方式**，
+        /// 还盖住了真正要做的事。玩家的原话就是"通关需要做什么？"
+        ///
+        /// 规则：永远只说下一步，不说全部流程。一行字读完就知道往哪走。
+        /// </summary>
+        public string ObjectiveLine()
+        {
+            if (Level == null) return "";
+            string head = Level.levelId + "《" + Level.name + "》 ";
+
+            if (Cleared) return head + "—— 这一关的条件达成了，可以离开";
+
+            var loop = Level0901BlankPage.Active;
+            if (loop != null && Level.levelId == Level0901BlankPage.LevelId)
+            {
+                if (!loop.DraftMade)
+                    return head + "→ 去【工作台】做出第一版（站着不动，这地方会一直往外长）";
+                if (!loop.DoneReached)
+                    return head + "→ 找出真正挡住交付的问题并处理（" +
+                           loop.CriticalFixed + "/" + Level0901BlankPage.CriticalToDone +
+                           "，其余只是可优化）";
+                return head + "→ 去【提交台】提交";
+            }
+
+            if (MentalAttackSystem.IsFollowUpPending)
+                return head + "→ " + MentalAttackSystem.PendingFollowUp;
+
+            // 玩家看的是 playerObjective 那句人话；realityVictory 是验收条件，
+            // 里面有 "Reality Evidence""DeathType=Publish" 这类只有文档读得懂的词。
+            return head + "→ " + Level.Objective;
         }
 
         /// <summary>这一关进来多久了（秒）。</summary>

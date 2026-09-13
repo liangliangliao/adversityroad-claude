@@ -103,32 +103,48 @@ namespace AdversityRoad.InternalOS
         /// <summary>布局取自"主路径 / 拓扑"那一栏的形状词，而不是取自场景类型。</summary>
         public static string LayoutOf(InternalLevelData lv)
         {
-            string t = (lv.mainPath ?? "") + (lv.greyboxScale ?? "") + (lv.name ?? "");
+            string name = lv.name ?? "";
+            string scale = lv.greyboxScale ?? "";
+            string path = lv.mainPath ?? "";
 
-            // 【顺序很重要，而且 rooms 不再是默认】
-            // 原来认不出就给 rooms——最分隔、最封闭的那一种，58/90 关都落在这里。
-            // 玩家的原话是"空间拥挤狭小封闭，像地下室"。
-            // 一处关卡默认该是**开阔的**，只有确实写着"走廊/迷宫/大厅"才收起来。
-            if (t.Contains("迷宫") || t.Contains("迷雾") || t.Contains("网格")) return "maze";
-            if (t.Contains("走廊") || t.Contains("长廊") || t.Contains("隧道") ||
-                t.Contains("通道") || t.Contains("巷")) return "corridor";
-            if (t.Contains("大厅") || t.Contains("法庭") || t.Contains("礼堂") ||
-                t.Contains("影院") || t.Contains("王座") || t.Contains("神殿")) return "hall";
-            if (t.Contains("庭院") || t.Contains("营地") || t.Contains("港")) return "courtyard";
+            // 【先看这一关整体是什么，再看路径里的词】
+            //
+            // 原来是把 mainPath 整串拿去匹配关键词，于是 9-1 的主路径
+            // "空白工作区→草稿工位→**修改走廊**→提交区" 里一个"走廊"，
+            // 就把整关判成了 corridor——一段路的名字决定了整关的形状。
+            // 实机结果是玩家被夹在两排家具之间动不了，原话是"一点儿不方便移动"。
+            // 路径里的段名描述的是**沿途经过什么**，不是这地方长什么样。
 
-            // 一条路：断崖、阶梯、平台、桥——这些关卡的空间语言是"往前走"，
-            // 切成房间会把路切断（9-4 是 7 个平台接一段断裂区，不是七间屋子）。
-            if (t.Contains("平台") || t.Contains("断崖") || t.Contains("断桥") ||
-                t.Contains("阶梯") || t.Contains("山坡") || t.Contains("路线") ||
-                t.Contains("脚手架")) return "corridor";
+            // ① 关卡名/尺度里明写的形状最可信
+            if (name.Contains("迷宫") || name.Contains("迷雾")) return "maze";
+            if (name.Contains("走廊") || name.Contains("长廊") || name.Contains("隧道") ||
+                name.Contains("巷") || name.Contains("通道")) return "corridor";
+            if (name.Contains("大厅") || name.Contains("法庭") || name.Contains("审判") ||
+                name.Contains("影院") || name.Contains("王座") || name.Contains("神殿")) return "hall";
+            if (name.Contains("广场") || name.Contains("街") || name.Contains("市场") ||
+                name.Contains("峡谷") || name.Contains("公园") || name.Contains("断崖")) return "openblock";
 
-            // 明确的室内工作/居住空间才用 rooms：它要的就是"一间一间"。
-            if (t.Contains("住宅") || t.Contains("办公") || t.Contains("会议") ||
-                t.Contains("工位") || t.Contains("诊室") || t.Contains("教室") ||
-                t.Contains("卧") || t.Contains("玄关")) return "rooms";
+            // ② 路线型：尺度栏写的是"主路线 NNNm"而不是 W×D
+            if (scale.Contains("路线") || scale.Contains("长度")) return "corridor";
 
-            // 其余一律开阔：广场、街区、仓库、货架、月台、市场、公园、峡谷……
-            return "openblock";
+            // ③ 路径里**过半**的段落都是通道类，才算通道关
+            int corridorish = 0, segs = 0;
+            var parts = path.Split('→');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string seg = parts[i].Trim();
+                if (seg.Length == 0) continue;
+                segs++;
+                if (seg.Contains("走廊") || seg.Contains("通道") || seg.Contains("隧道") ||
+                    seg.Contains("巷") || seg.Contains("阶梯")) corridorish++;
+            }
+            if (segs > 0 && corridorish * 2 > segs) return "corridor";
+
+            // ④ 其余：室内给 hall（一整块开阔地，道具沿着走），户外给 openblock。
+            //    默认绝不能是 rooms——那是分隔最密的一种，玩家进去就是"拥挤狭小封闭"。
+            string kit = FirstKit(lv);
+            var info = SiteKitCatalog.Kind(SiteKindOf(kit));
+            return (info != null && info.indoor) ? "hall" : "openblock";
         }
 
         /// <summary>高低差：断崖、平台、楼层、塔、矿井都在关卡表里明写着。</summary>
@@ -307,8 +323,15 @@ namespace AdversityRoad.InternalOS
         static List<SiteRoom> RoomsOf(InternalLevelData lv)
         {
             var rooms = new List<SiteRoom>();
+            // 房间数按面积收：42×18 = 756 平米切成四间，每间只剩十来平米，
+            // 再摆上家具就是图里那样"人卡在两组柜子中间"。
+            float aw, ad;
+            MetersOf(lv, out aw, out ad);
+            float area = (aw > 0.1f && ad > 0.1f) ? aw * ad : 900f;
+            int maxRooms = area >= 1800f ? 4 : (area >= 900f ? 3 : 2);
+
             var segs = (lv.mainPath ?? "").Split('→');
-            for (int i = 0; i < segs.Length && rooms.Count < 4; i++)
+            for (int i = 0; i < segs.Length && rooms.Count < maxRooms; i++)
             {
                 string name = segs[i].Trim();
                 if (string.IsNullOrEmpty(name)) continue;
@@ -322,7 +345,7 @@ namespace AdversityRoad.InternalOS
                 };
                 // 每间房各取一段，互不重样：同一处 Base 的几间房不该长得一模一样
                 var pool = PropsOf(FirstKit(lv));
-                for (int k = 0; k < 4; k++) room.props.Add(pool[(i * 2 + k) % pool.Length]);
+                for (int k = 0; k < 2; k++) room.props.Add(pool[(i * 2 + k) % pool.Length]);
                 rooms.Add(room);
             }
             if (rooms.Count == 0)
@@ -375,7 +398,10 @@ namespace AdversityRoad.InternalOS
                 landmark = LandmarkOf(lv),
                 verticality = VerticalityOf(lv),
                 weather = WeatherOf(lv),
-                clutter = lv.isBossLevel ? 1 : 2,
+                // 家具给到 0-1：这一关的内容是关键物与修改卡，不是桌椅。
+                // 42×18 的地方摆四间房的家具 + 散落道具 + 9 个交互物，
+                // 玩家会被夹在中间走不动（实机原话："一点儿不方便移动"）。
+                clutter = lv.isBossLevel ? 0 : 1,
                 sceneDescription = lv.realityToAdversity,
             };
 
@@ -388,9 +414,9 @@ namespace AdversityRoad.InternalOS
             site.rooms = RoomsOf(lv);
             site.interactables = InteractablesOf(lv);
 
-            // 散落道具：把空地填成"有人在这儿做过事"的地方
+            // 散落道具只给一件：够说明"有人在这儿做过事"，又不挡路。
             var scatter = PropsOf(kit);
-            for (int i = 0; i < 3; i++) site.scatterProps.Add(scatter[(i * 3) % scatter.Length]);
+            site.scatterProps.Add(scatter[0]);
 
             site.rules.Add("核心机制：" + lv.coreMechanic);
             site.rules.Add("通关：" + lv.realityVictory);

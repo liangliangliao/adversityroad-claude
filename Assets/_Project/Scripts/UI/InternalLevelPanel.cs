@@ -183,7 +183,7 @@ namespace AdversityRoad.UI
                 string tier = lv.isBossLevel ? "Boss 关" : (lv.tier == "Elite" ? "精英关" : "普通关");
                 Cell(ref slot,
                     lv.levelId + "《" + lv.name + "》\n" +
-                    "要做的事：" + Clip(lv.realityVictory, 20) + "\n" +
+                    "要做的事：" + Clip(lv.Objective, 20) + "\n" +
                     tier + " · " + Clip(lv.coreMechanic, 18),
                     lv.isBossLevel ? new Color(0.5f, 0.34f, 0.18f, 0.96f)
                                    : new Color(0.22f, 0.30f, 0.26f, 0.96f),

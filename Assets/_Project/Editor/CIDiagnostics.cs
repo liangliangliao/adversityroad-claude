@@ -756,6 +756,49 @@ namespace AdversityRoad.EditorTools
               .Append(" 件）；缺 Gate ").Append(noGate)
               .Append(" 关、空房间 ").Append(emptyRoom).Append(" 关\n");
 
+            // 【目标行里点名的东西，场上必须真的有那块牌子】
+            //
+            // 目标行现在会写"去【装车月台】装车"。可 Gate 的牌子过去一律写"提交台"——
+            // 玩家满场找一个不存在的名字，这比不给目标行更糟。
+            // 所以逐关把 playerObjective 里每个【X】拿出来，
+            // 和这一关 PlanFor 真会摆出的牌面对一遍，对不上就红。
+            int badRef = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+                if (string.IsNullOrEmpty(lv.playerObjective)) continue;
+
+                var labels = new System.Collections.Generic.List<string>();
+                var plan2 = AdversityRoad.InternalOS.InternalProps.PlanFor(lv);
+                for (int k = 0; k < plan2.Count; k++)
+                {
+                    string lbl; Color col; Vector3 sz;
+                    AdversityRoad.InternalOS.InternalProps.Style(plan2[k].kind, out lbl, out col, out sz);
+                    if (plan2[k].kind == AdversityRoad.InternalOS.InternalPropKind.GateConsole)
+                        lbl = AdversityRoad.InternalOS.InternalProps.GateLabel(plan2[k].pfName);
+                    labels.Add(lbl);
+                }
+
+                string po = lv.playerObjective;
+                int at = 0;
+                while (true)
+                {
+                    int open = po.IndexOf('\u3010', at);
+                    if (open < 0) break;
+                    int close = po.IndexOf('\u3011', open + 1);
+                    if (close < 0) break;
+                    string want = po.Substring(open + 1, close - open - 1);
+                    at = close + 1;
+                    if (labels.Contains(want)) continue;
+                    sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                      .Append(" 的目标行让玩家去找【").Append(want)
+                      .Append("】，但这一关摆出来的牌子只有：")
+                      .Append(string.Join("/", labels.ToArray())).Append("\n");
+                    badRef++; ok = false;
+                }
+            }
+            sb.Append("[CIDIAG][内部线] 目标行指向核对：对不上的 ").Append(badRef).Append(" 处\n");
+
             // 【蓝图必须真的会被"建"，而不是被当成 Legacy 打发掉】
             //
             // 这条是被一张实机截图换来的：玩家点进关卡，屏幕上是

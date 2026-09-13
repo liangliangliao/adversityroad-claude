@@ -386,6 +386,17 @@ namespace AdversityRoad.OpenWorld
             if (!SiteGate.InsideSite || SiteGate.InsideChapterId != _chapterId)
             { UI.HUDController.SetObjective(""); return; }
 
+            // 第 9-26 章：目标行由关卡自己给。
+            // 这批关卡不以清怪定义胜利（PRD 3.4），按敌人存活数写出来的
+            // "这里清空了，从来路走出去"会直接把玩家引向错误的通关方式。
+            var runner = InternalOS.InternalLevelRunner.Active;
+            if (runner != null && runner.Level != null &&
+                InternalOS.InternalChapterBridge.ChapterIdOfLevel(runner.Level.levelId) == _chapterId)
+            {
+                UI.HUDController.SetObjective(runner.ObjectiveLine());
+                return;
+            }
+
             var player = AdversityRoad.Core.ActorRegistry.Player;
             int alive = 0;
             string bossName = "";
