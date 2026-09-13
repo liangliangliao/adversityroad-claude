@@ -226,7 +226,7 @@ namespace AdversityRoad.OpenWorld
             {
                 int n = InternalOS.InternalProps.Build(internalLv,
                     site.root != null ? site.root.transform : null,
-                    site.origin, site.playerSpawn, site.farPoint);
+                    site.origin, site.playerSpawn, site.farExit);
                 Debug.Log("[InternalOS] " + internalLv.levelId + " 摆下关键物 " + n + " 件");
 
                 // 这一关的敌人该怎么和机关咬合：关卡表的"敌人/干扰"栏写得很具体

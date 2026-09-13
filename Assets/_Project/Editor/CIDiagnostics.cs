@@ -877,6 +877,86 @@ namespace AdversityRoad.EditorTools
         }
 
         /// <summary>
+        /// 关卡通关规则表：每一关到底算"打倒它"还是"穿过去"，一次全列出来。
+        ///
+        /// 【为什么这张表必须由 CI 打出来】规则的来源是敌人来处表（EnemyOrigins），
+        /// 一处改动会同时影响门的行为、任务行文案、进场播报和目标行——
+        /// 而这四处玩家是分开看到的。把最终结论列成一张表，改错了当场就能看见，
+        /// 不必进游戏走 27 关。
+        ///
+        /// 判据是硬的，两条：
+        ///   ① "穿过去"的关卡必须**解析得出一扇向前门**——门的去向按章节顺序算
+        ///      （Portal.Resolve），序列里没有下一章就没有向前门，那一关会变成
+        ///      既不能打过也走不出去的死局。所以这里核两件事：它不是序列最后一章，
+        ///      而且它的区域是经典静态区（开放城区与动态场景不在章节序列里）。
+        ///      入口到门的实际距离由运行时的 LevelTraverse 把关（走不够会明说还差几米），
+        ///      那段几何在编辑器里不建世界就量不到，不在这里假装量过。
+        ///   ② "穿过去"的关卡必须写了 victoryByEscape——一仗没打的人不该读到
+        ///      "你把它打碎了"；
+        ///   ③ 已知按剧情自带专属通关动作的关卡（第八章）不得落进"穿过去"，
+        ///      那会把它们自己的机制架空。
+        /// </summary>
+        static bool DiagLevelRules(StringBuilder sb)
+        {
+            bool ok = true;
+            var chapters = AdversityRoad.Core.StoryManager.Chapters;
+            int escape = 0, defeat = 0;
+            sb.Append("[CIDIAG][规则] 外部心魔 → 从入口走到出口即通关（也可打倒）；")
+              .Append("内心心魔 → 必须打倒。入口到出口的直线距离下限 ")
+              .Append(AdversityRoad.World.LevelTraverse.MinDistance.ToString("0")).Append(" 米\n");
+
+            for (int i = 0; i < chapters.Length; i++)
+            {
+                var ch = chapters[i];
+                var origin = AdversityRoad.AI.EnemyOrigins.Of(ch.enemyType);
+                var rule = AdversityRoad.Core.LevelRules.Of(ch);
+                if (rule == AdversityRoad.Core.LevelClearRule.Escape) escape++; else defeat++;
+
+                sb.Append("[CIDIAG][规则]   ").Append(ch.title)
+                  .Append("  关底=").Append(AdversityRoad.AI.EnemyCatalog.TypeLabel(ch.enemyType))
+                  .Append("（").Append(AdversityRoad.AI.EnemyOrigins.Label(origin)).Append("）")
+                  .Append("  通关=").Append(AdversityRoad.Core.LevelRules.Name(rule));
+
+                if (!ch.advanceOnKill)
+                {
+                    sb.Append("  〔专属通关动作，不走门到门〕");
+                    if (rule == AdversityRoad.Core.LevelClearRule.Escape &&
+                        AdversityRoad.Core.LevelRules.ZoneClearsByEscape(ch.zoneIndex, out int _))
+                    {
+                        sb.Append("  !! 专属通关动作的关卡被判成了门到门");
+                        ok = false;
+                    }
+                }
+                else if (rule == AdversityRoad.Core.LevelClearRule.Escape)
+                {
+                    // 不战而过的通关文案必须写过：否则玩家一仗没打，
+                    // 面板却告诉他"你把它打碎了"——游戏在替他撒谎
+                    if (string.IsNullOrEmpty(ch.victoryByEscape))
+                    {
+                        sb.Append("  !! 缺 victoryByEscape：不战而过会读到打赢版本的文案");
+                        ok = false;
+                    }
+                    if (i + 1 >= chapters.Length)
+                    {
+                        sb.Append("  !! 是序列最后一章，解析不出向前门——走不出去");
+                        ok = false;
+                    }
+                    if (ch.zoneIndex < 0 ||
+                        ch.zoneIndex >= AdversityRoad.World.ZoneBuilder.StaticZoneCount ||
+                        ch.zoneIndex == AdversityRoad.World.ZoneBuilder.IndexOfZone("city"))
+                    {
+                        sb.Append("  !! 区域不在经典章节序列里，向前门按章节解析不出去处");
+                        ok = false;
+                    }
+                }
+                sb.Append('\n');
+            }
+            sb.Append("[CIDIAG][规则] 合计：穿过去 ").Append(escape)
+              .Append(" 关 / 打倒它 ").Append(defeat).Append(" 关\n");
+            return ok;
+        }
+
+        /// <summary>
         /// 读招规律表：玩家要学的那套「固定规则」到底长什么样，一次全列出来。
         ///
         /// 判据是硬的：每一个敌人会用的招式，都必须能找到**它自己的动作片段**——
@@ -1170,6 +1250,7 @@ namespace AdversityRoad.EditorTools
                 DiagReach(sb);
                 if (!DiagStoryLadder(sb)) exit = 1;
                 if (!DiagInternalChapters(sb)) exit = 1;
+                if (!DiagLevelRules(sb)) exit = 1;
                 if (!DiagTelegraphRules(sb)) exit = 1;
                 if (!DiagUal(sb)) exit = 1;
                 // 变体池里出现重复片段（DescribeActionSet 自己标的 "!!"）也算红：

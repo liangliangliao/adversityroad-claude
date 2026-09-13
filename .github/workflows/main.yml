@@ -39,12 +39,17 @@ jobs:
       - name: C# 静态检查
         run: |
           set -e
-          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns csstatic uioverlap notelegraphui; do
+          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns csstatic uioverlap notelegraphui zonedoors; do
             echo "===== $t ====="
             python3 tools/$t.py
           done
       - name: 动画链路审计
         run: python3 tools/animchain.py
+
+  # zonedoors 查的是关卡布局而不是语法：每一关的进来门与出去门必须各在一端，
+  # 关底 BOSS 必须在这两扇门之间的那条路上，落点不能压在回头门的触发体里。
+  # 外部心魔的关卡把"走到出口"当成通关条件之后，出口贴着入口 = 这一关两步走完；
+  # 而这件事只看坐标就能判，不必等构建。
 
   # 资产运行时诊断：在 CI 里加载武器/背包资源并把导入后的真实层级/轴向/装配核对
   # 打进日志（搜 [CIDIAG]）。远程排查“导入结果与源文件不一致”类问题用，

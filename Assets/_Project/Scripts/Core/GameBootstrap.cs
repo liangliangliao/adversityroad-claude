@@ -77,6 +77,10 @@ namespace AdversityRoad.Core
             }
             ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(zone);
             BuildPlayer(startAt);
+            // 关卡入口重记一次：静态字段不随场景重载归零，而上一条 CurrentZoneId
+            // 若与重载前是同一个区，属性的写入口会因为"没变化"直接跳过。
+            // 这里玩家已经建出来了，记下的入口才是他真正站着的地方。
+            LevelTraverse.NoteEntered(zone);
             BuildCamera();
             EnemySpawnHook.Spawn = SpawnEnemy;   // Boss 战中召唤援军（明天之王/旧我）
             SpawnChapterEnemy();
@@ -89,6 +93,9 @@ namespace AdversityRoad.Core
             SpawnShadowGuardianIfEarned();
             EnsureV2Systems();
             BuildHUD();
+            // 经典关卡的顶部目标行：外部心魔的关卡要报"出口在哪、还差多远"，
+            // 否则通关条件从场上那个人换成了对面那扇门，而玩家看不到那扇门
+            ChapterObjectiveHud.Ensure();
             SetupChapterQuest();
             // 章节开场白挂到「进入世界」之后：开场页是标题，不是剧情弹窗，
             // 否则剧情面板会盖在标题上（两个模态同时开着，还互相抢 timeScale）
@@ -206,35 +213,51 @@ namespace AdversityRoad.Core
 
             // ---- 8-2 回声教室 ----
             // 三名侧目者的朝向经过对位：主锥罩住讲台前的「归还」，
-            // 另外两只在座位区交叉，「完成本职」正好落在交叉处——绕开无从谈起
+            // 另外两只在座位区交叉，「完成本职」正好落在交叉处——绕开无从谈起。
+            //
+            // 【坐标一律过 ZoneBuilder.EchoAt】教室按 EchoK 等比放大之后，
+            // 站位、朝向目标、目标交互物、玩家落点必须共用同一个口径。
+            // 这里少乘一次，三只侧目者就会站在课桌里，而锥子照着空地看。
+            // 等比放大只改距离不改角度，所以**射程跟着乘同一个系数**就够了
+            //（验收第 39 条要的是"罩得住"，那是角度 + 射程两件事）。
+            float coneRange = SideGlancer.DefaultConeRange * ZoneBuilder.EchoK;
             FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
-                o[26] + new Vector3(-9, 1.1f, 6), o[26] + new Vector3(0, 1.1f, 15));
+                o[26] + ZoneBuilder.EchoAt(-9, 1.1f, 6), o[26] + ZoneBuilder.EchoAt(0, 1.1f, 15), coneRange);
             FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
-                o[26] + new Vector3(9, 1.1f, 8), o[26] + new Vector3(-5, 1.1f, 1));
+                o[26] + ZoneBuilder.EchoAt(9, 1.1f, 8), o[26] + ZoneBuilder.EchoAt(-5, 1.1f, 1), coneRange);
             FaceSpawn(EnemyType.SideGlancer, EnemyTier.Novice,
-                o[26] + new Vector3(-11, 1.1f, -6), o[26] + new Vector3(0, 1.1f, -18));
+                o[26] + ZoneBuilder.EchoAt(-11, 1.1f, -6), o[26] + ZoneBuilder.EchoAt(0, 1.1f, -18), coneRange);
 
             // 等级按方案 8.6.3 对位：放大镜围观者 T2 / 身份钉兵 T3 / 心虚投影 T4 / 伪装同学 T2
-            SpawnEnemy(EnemyType.MagnifierOnlooker, EnemyTier.Standard, o[26] + new Vector3(6, 1.1f, -2), true);
-            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Elite, o[26] + new Vector3(-6, 1.1f, 9), true);
-            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Elite, o[26] + new Vector3(2, 1.1f, -8), true);
-            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Standard, o[26] + new Vector3(-2, 1.1f, -12), true);
+            SpawnEnemy(EnemyType.MagnifierOnlooker, EnemyTier.Standard, o[26] + ZoneBuilder.EchoAt(6, 1.1f, -2), true);
+            SpawnEnemy(EnemyType.NailAccuser, EnemyTier.Elite, o[26] + ZoneBuilder.EchoAt(-6, 1.1f, 9), true);
+            SpawnEnemy(EnemyType.GuiltProjection, EnemyTier.Elite, o[26] + ZoneBuilder.EchoAt(2, 1.1f, -8), true);
+            SpawnEnemy(EnemyType.DisguisedClassmate, EnemyTier.Standard, o[26] + ZoneBuilder.EchoAt(-2, 1.1f, -12), true);
 
             // 后排低语组：双人单位，互相登记为搭档
             var a = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
-                o[26] + new Vector3(-4, 1.1f, 12), true);
+                o[26] + ZoneBuilder.EchoAt(-4, 1.1f, 12), true);
             var b = SpawnEnemy(EnemyType.BackRowWhisperPair, EnemyTier.Standard,
-                o[26] + new Vector3(4, 1.1f, 12), true);
+                o[26] + ZoneBuilder.EchoAt(4, 1.1f, 12), true);
             var pa = a != null ? a.GetComponent<BackRowPair>() : null;
             var pb = b != null ? b.GetComponent<BackRowPair>() : null;
             if (pa != null && pb != null) { pa.partner = pb; pb.partner = pa; }
         }
 
-        /// <summary>生成一个朝着指定点站定的单位（侧目者的视线锥要罩住特定目标物）。</summary>
-        GameObject FaceSpawn(EnemyType type, EnemyTier tier, Vector3 at, Vector3 lookAt)
+        /// <summary>
+        /// 生成一个朝着指定点站定的单位（侧目者的视线锥要罩住特定目标物）。
+        /// <paramref name="coneRange"/> &gt; 0 时覆盖默认射程——房间放大了，锥子也得跟着长。
+        /// </summary>
+        GameObject FaceSpawn(EnemyType type, EnemyTier tier, Vector3 at, Vector3 lookAt,
+            float coneRange = 0f)
         {
             var go = SpawnEnemy(type, tier, at, true);
             if (go == null) return null;
+            if (coneRange > 0f)
+            {
+                var glancer = go.GetComponent<SideGlancer>();
+                if (glancer != null) glancer.coneRange = coneRange;
+            }
             Vector3 dir = lookAt - at;
             dir.y = 0f;
             if (dir.sqrMagnitude > 0.01f)
@@ -1107,7 +1130,12 @@ namespace AdversityRoad.Core
             // 进场字幕会滚走，而"还剩几个、打谁"必须随时抬头就能看见。
             var objT = UiUtil.MakeText(canvasGo.transform, "ObjectiveText", "", 24,
                 TextAnchor.MiddleCenter, new Color(1f, 0.86f, 0.45f));
-            UiUtil.SetRect(objT, new Vector2(0.5f, 1f), new Vector2(0, -92), new Vector2(1200, 34));
+            // 【两行高，而且不许截断】这一行原来是 1200×34 的单行框，而 Unity 的 Text
+            // 默认横向换行、纵向截断——目标行一长就换到第二行，第二行**整行被切掉**。
+            // 玩家截图里"目标 1/3 …"后面那半句消失，就是这么消失的。
+            // 给两行的高度，并把纵向溢出改成显示：宁可多占一行，也不能把话说一半。
+            UiUtil.SetRect(objT, new Vector2(0.5f, 1f), new Vector2(0, -100), new Vector2(1400, 66));
+            objT.verticalOverflow = VerticalWrapMode.Overflow;
             hud.objectiveText = objT;
 
             // 常驻三条 + 情境七条：所有条建好后再初始化布局
@@ -1537,12 +1565,17 @@ namespace AdversityRoad.Core
             string questId = "chapter_q_" + story.Chapter;
             foreach (var q in qm.activeQuests)
                 if (q.questId == questId) { GameEvents.RaiseQuestUpdated(questId); return; }
+
+            // 任务行按这一关的规则写：外部心魔写"穿过去或打倒它"，内心心魔写"击败"。
+            // 规则必须写在玩家一抬头就能看到的地方，不能只藏在进场那句字幕里。
+            var rule = LevelRules.Of(ch);
+            string bossLabel = EnemyCatalog.TierLabel(ch.enemyTier) + "·" +
+                               EnemyCatalog.TypeLabel(ch.enemyType);
             qm.AddQuest(new QuestData
             {
                 questId = questId,
-                title = ch.title + "：前往" + ZoneBuilder.ZoneNameOf(ch.zoneIndex) +
-                        "，击败【" + EnemyCatalog.TierLabel(ch.enemyTier) + "·" +
-                        EnemyCatalog.TypeLabel(ch.enemyType) + "】",
+                title = ch.title + "：前往" + ZoneBuilder.ZoneNameOf(ch.zoneIndex) + "，" +
+                        LevelRules.Objective(rule, bossLabel),
                 type = QuestType.Main,
                 sceneId = ZoneBuilder.ZoneIdOf(ch.zoneIndex),
                 relatedWeakness = Personalization.WeaknessAxis.Procrastination,
@@ -1550,7 +1583,8 @@ namespace AdversityRoad.Core
                 {
                     new QuestObjective
                     {
-                        description = "击败章节心魔",
+                        description = rule == LevelClearRule.Escape
+                            ? "穿过这一关（或击败章节心魔）" : "击败章节心魔",
                         targetEnemyId = ch.enemyId
                     }
                 }
@@ -1569,9 +1603,11 @@ namespace AdversityRoad.Core
                 return;
             }
             var ch = story.Current;
-            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题
+            // 大章-子章结构：标题显示所属成长线，正文首行点出子章与线主题，
+            // 末行把这一关的通关规则说清楚（外部心魔可以不战而过，内心心魔必须打倒）
             _battleFlow.ShowStory(story.CurrentAct.title,
-                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro, "出发");
+                "【" + ch.title + "】\n" + story.CurrentAct.theme + "\n\n" + ch.intro +
+                "\n\n" + LevelRules.Brief(LevelRules.Of(ch)), "出发");
         }
 
         // ================= 工具 =================

@@ -278,6 +278,13 @@ namespace AdversityRoad.OpenWorld
             sb.Append(ch.successCondition);
             GameEvents.RaiseSubtitle(sb.ToString());
 
+            // 通关规则单独播一句，而且排在关卡自述之后、三条机制规则之前：
+            // "这一关要不要打"是玩家进场第一件要知道的事，不能混在场景描述里带过。
+            var host0 = SiteBuilder.Find(ch.chapterId);
+            if (host0 != null && host0.root != null)
+                host0.root.AddComponent<DelayedLine>()
+                    .Setup(LevelRules.Brief(LevelRules.Of(ch)), 2.2f);
+
             if (ch.site == null) return;
             var rules = ch.site.rules;
             for (int i = 0; i < rules.Count && i < 3; i++)
@@ -285,7 +292,7 @@ namespace AdversityRoad.OpenWorld
                 string r = rules[i];
                 var host = SiteBuilder.Find(ch.chapterId);
                 if (host != null && host.root != null)
-                    host.root.AddComponent<DelayedLine>().Setup("规则 " + (i + 1) + "：" + r, 3f + i * 3.5f);
+                    host.root.AddComponent<DelayedLine>().Setup("规则 " + (i + 1) + "：" + r, 6f + i * 3.5f);
             }
         }
 
@@ -354,6 +361,7 @@ namespace AdversityRoad.OpenWorld
         SiteInstance _site;
         string _chapterId = "";
         string _title = "";
+        LevelClearRule _rule = LevelClearRule.Defeat;
         float _next;
 
         public static void Attach(SiteInstance site, GoalChapterData ch)
@@ -365,6 +373,7 @@ namespace AdversityRoad.OpenWorld
             // 顶部目标行也用章节名：面板、日志、HUD 三处必须是同一个名字，
             // 否则玩家没法把"我点的那一关"和"日志里生成的那一章"对上号
             o._title = ch.chapterName;
+            o._rule = LevelRules.Of(ch);
             o._next = 0f;
         }
 
@@ -383,6 +392,20 @@ namespace AdversityRoad.OpenWorld
         }
 
         void OnDisable() => UI.HUDController.SetObjective("");
+
+        /// <summary>「↗ 32m」：把一个世界坐标变成相对镜头的方位与距离。</summary>
+        string Where(Player.PlayerController player, Vector3 target)
+        {
+            if (player == null) return "";
+            Vector3 to = target - player.transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude < 0.01f) return "";
+            var cam = player.cameraTransform;
+            Vector3 fwd = cam != null ? cam.forward : player.transform.forward;
+            fwd.y = 0f;
+            float ang = Vector3.SignedAngle(fwd.normalized, to.normalized, Vector3.up);
+            return " · " + Arrow(ang) + Mathf.RoundToInt(to.magnitude) + "m";
+        }
 
         void Update()
         {
@@ -427,25 +450,25 @@ namespace AdversityRoad.OpenWorld
 
             if (alive == 0)
             {
-                UI.HUDController.SetObjective("◆ " + _title + " —— 这里清空了，从来路走出去");
+                UI.HUDController.SetObjective("◆ " + _title + " —— 这里清空了，从出口走出去");
+                return;
+            }
+
+            // 外部心魔的关卡：目标行指的是**出口**，不是 Boss。
+            // 玩家可以一路被追着打而不还手，走到那扇门就算通关；想打也随他，
+            // 所以后半句仍然报还剩几个（见 LevelRules）。
+            if (_rule == LevelClearRule.Escape)
+            {
+                UI.HUDController.SetObjective("◆ " + _title + " —— 走到出口即通关（不必应战）" +
+                    Where(player, _site.farExit) +
+                    " · 场上还有 " + alive + (string.IsNullOrEmpty(bossName) ? "" : "，含【" + bossName + "】"));
                 return;
             }
 
             // 方向 + 距离：这才是"敌人在哪里"的答案。
             // 户外场景放大之后敌人常在二三十米外、隔着一栋楼，只报"剩余 3"
             // 等于让玩家在一片空地上自己找——玩家的原话就是"连战斗入口都找不到"。
-            string where = "";
-            if (target != null && player != null)
-            {
-                Vector3 to = target.position - player.transform.position;
-                to.y = 0f;
-                float dist = to.magnitude;
-                var cam = player.cameraTransform;
-                Vector3 fwd = cam != null ? cam.forward : player.transform.forward;
-                fwd.y = 0f;
-                float ang = Vector3.SignedAngle(fwd.normalized, to.normalized, Vector3.up);
-                where = " · " + Arrow(ang) + Mathf.RoundToInt(dist) + "m";
-            }
+            string where = target != null ? Where(player, target.position) : "";
 
             UI.HUDController.SetObjective("◆ " + _title + " —— " +
                 (string.IsNullOrEmpty(bossName) ? "击败挡路的" : "击败【" + bossName + "】") +

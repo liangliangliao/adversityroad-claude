@@ -420,8 +420,12 @@ namespace AdversityRoad.InternalOS
                 bool isGate = kind == InternalPropKind.GateConsole;
 
                 // Gate 站在终点；其余沿路铺开，左右交替，别排成一条直线挡路
+                // Gate 放在靠近深处那一端、但**在出口门之前**：
+                // exit 传进来的是 farExit，也就是那扇出口门所在的位置
+                // （见 SiteBuilder.FindClearExit / BuildFarExitDoor）。
+                // 摆到门上会和门重叠，摆到门外就跑到场地外面去了。
                 Vector3 pos = isGate
-                    ? exit + forward * 1.5f
+                    ? Vector3.Lerp(spawn, exit, 0.82f)
                     : spawn + forward * (5f + step * 6f) + right * ((step % 2 == 0) ? 2.2f : -2.2f);
                 if (!isGate) step++;
 

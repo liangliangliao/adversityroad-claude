@@ -13,6 +13,16 @@ namespace AdversityRoad.AI
         public string enemyId;
         public string displayName;
         public EnemyCategory category;
+
+        /// <summary>
+        /// 来处：外部（世界里的人与处境）/ 内心（自己心里的东西）。
+        ///
+        /// 【为什么与 category 各存一份】category 在挂成首领时会被整体覆写成 Boss
+        /// （见 EnemyCatalog.Create 末尾），关卡首领的外部/内心因此全部丢失。
+        /// 而关卡通关规则恰恰只看来处：外部敌人的关卡可以不战而过，内心敌人的关卡
+        /// 仍然要打倒。所以来处由 EnemyOrigins.Of(type) 单独写入，不受等级影响。
+        /// </summary>
+        public EnemyOrigin origin = EnemyOrigin.Internal;
         public WeaknessAxis targetWeakness;   // 该敌人主攻的弱点轴
         public float maxHealth = 100;
         public float posture = 50;            // 韧性

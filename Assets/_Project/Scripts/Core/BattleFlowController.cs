@@ -125,8 +125,28 @@ namespace AdversityRoad.Core
             var chapters = StoryManager.Chapters;
             int cleared = newChapter - 1;
             if (cleared < 0 || cleared >= chapters.Length) return;
-            string title = newChapter >= chapters.Length ? "主线完结" : chapters[cleared].title + " · 通关";
-            Show(title, chapters[cleared].victory, "继续", ConfirmAction.Close);
+            var ch = chapters[cleared];
+            bool escaped = StoryManager.LastClearedByEscape;
+            string title = newChapter >= chapters.Length
+                ? "主线完结"
+                : ch.title + (escaped ? " · 通关（不战而过）" : " · 通关");
+            Show(title, VictoryText(ch, escaped), "继续", ConfirmAction.Close);
+        }
+
+        /// <summary>
+        /// 通关文案：打赢的读原文，走出去的读"走出去"版本。
+        ///
+        /// 【为什么不能共用一段】victory 的第一句写的是打赢之后的画面
+        /// （"千眼闭合""镜像碎裂""牢笼散架"）。玩家一仗没打、从出口走了出去，
+        /// 却读到"你把它打碎了"，游戏就在替他撒谎——而那一关本来要教的
+        /// 恰恰是**不打也可以过去**。所以只换掉第一段；
+        /// 后面"这件事意味着什么 / 下一站去哪"两种通关方式共用，不必写两遍。
+        /// </summary>
+        static string VictoryText(ChapterInfo ch, bool escaped)
+        {
+            if (!escaped || string.IsNullOrEmpty(ch.victoryByEscape)) return ch.victory;
+            int nl = ch.victory.IndexOf('\n');
+            return nl < 0 ? ch.victoryByEscape : ch.victoryByEscape + ch.victory.Substring(nl);
         }
 
         /// <summary>展示剧情/提示面板（章节开场等）。</summary>
