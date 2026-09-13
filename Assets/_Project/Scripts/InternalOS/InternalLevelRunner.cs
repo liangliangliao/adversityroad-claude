@@ -71,7 +71,7 @@ namespace AdversityRoad.InternalOS
             // 它原来一个调用点都没有：Done 锁和目标箱都按 levelId 记在静态表里，
             // 于是**重进同一关时，上一趟的进度还在**——第二次走到月台就直接过，
             // 不用再把箱子搬过来。这类关卡最怕的就是"第二遍不用玩了"。
-            InternalProps.ResetSession();
+            InternalProp.ResetSession();
 
             ControlChainRecorder.Begin(Chapter != null ? Chapter.chapterId : lv.chapterId,
                 lv.realityVictory);

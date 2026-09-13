@@ -390,7 +390,8 @@ namespace AdversityRoad.InternalOS
             if (d > 3.6f) return;
 
             // 走近先说这是什么：机关必须可读，不能靠玩家瞎撞（第 11.3 节第二条）
-            if (Time.time - _lastHint > 8f)
+            // 但带上的箱子永远贴在身边，这一条对它就成了每 8 秒一句的死循环——跳过。
+            if (!_carried && Time.time - _lastHint > 8f)
             {
                 _lastHint = Time.time;
                 GameEvents.RaiseSubtitle("【" + label + "】" + Hint(runner));
@@ -506,7 +507,9 @@ namespace AdversityRoad.InternalOS
                     // 不能只是走过去弹一行字。
                     _carrying.Add(runner.Level.levelId);
                     _carried = true;
-                    _used = false;          // 还能再走近，用来读提示
+                    // _used 保持 true：箱子只能被"带上"一次。
+                    // 之前这里置回 false，而箱子带上之后就跟在玩家身边、距离恒小于 2.2m——
+                    // 于是 Use 每帧重跑，字幕和 MarkGoalAction 一秒刷几十次。
                     if (!string.IsNullOrEmpty(boundTrigger)) runner.FireTrigger(boundTrigger);
                     runner.MarkGoalAction("带上目标箱");
                     GameEvents.RaiseSubtitle("带上了【" + label + "】——送到装车月台去。");
