@@ -681,7 +681,7 @@ namespace AdversityRoad.InternalOS
             var runner = InternalLevelRunner.Active;
             if (runner != null && runner.Level != null) _carrying.Remove(runner.Level.levelId);
 
-            GameEvents.RaiseSubtitle("〔最后检查者〕"你确定这就能交了吗"——箱子被推回了检查区。");
+            GameEvents.RaiseSubtitle("〔最后检查者〕「你确定这就能交了吗」——箱子被推回了检查区。");
             GameAudio.Play(GameAudio.Sfx.HeavyHit, 0.6f);
         }
 
