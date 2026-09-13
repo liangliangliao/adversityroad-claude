@@ -495,6 +495,13 @@ namespace AdversityRoad.InternalOS
         bool _inRange;
         /// <summary>目标箱已经被带上：从此跟在玩家身侧走，直到装上车。</summary>
         bool _carried;
+        /// <summary>它原本待的地方。被最后检查者打掉时要退回去。</summary>
+        Vector3 _home;
+        Vector3 _knockTo;
+        bool _knocked;
+
+        /// <summary>当前被玩家搬着的那个箱子（全场最多一个）。</summary>
+        public static InternalProp Carried { get; private set; }
 
         public static InternalProp Create(Vector3 pos, string pfName, InternalPropKind kind,
             InternalLevelData lv, string boundTrigger, string labelOverride = null,
@@ -515,6 +522,7 @@ namespace AdversityRoad.InternalOS
             p.boundTrigger = boundTrigger;
             p.label = label;
             p.explain = explainOverride;
+            p._home = go.transform.position;
             return p;
         }
 
@@ -525,6 +533,20 @@ namespace AdversityRoad.InternalOS
 
             var player = AdversityRoad.Core.ActorRegistry.Player;
             if (player == null) return;
+
+            // 被最后检查者打掉之后：自己飞回检查区，玩家得重新去搬
+            if (_knocked)
+            {
+                transform.position = Vector3.MoveTowards(transform.position, _knockTo,
+                    9f * Time.deltaTime);
+                if ((transform.position - _knockTo).sqrMagnitude < 0.09f)
+                {
+                    _knocked = false;
+                    _used = false;          // 可以再搬一次
+                    _inRange = false;
+                }
+                return;
+            }
 
             // 带上的箱子跟着走：这一关的核心机制写的是"推、搬、绕、攀"，
             // 那就得看得见箱子在被搬。跟随不用刚体——这关要的是"它在我手上"，
@@ -640,6 +662,29 @@ namespace AdversityRoad.InternalOS
             }
         }
 
+        /// <summary>
+        /// 被最后检查者打掉：箱子脱手，退回检查区。
+        ///
+        /// PRD 9-3 的敌人栏原文："最后检查者×3 **会把目标箱推回检查区**"。
+        /// 这是这一关战斗与机关咬合的地方：你不是在清怪，
+        /// 你是在**护着一件东西穿过一段有人拦你的路**——
+        /// 手上有箱子的时候打不还手，所以得躲、得绕、得挑时机。
+        /// </summary>
+        public void KnockCargoAway()
+        {
+            if (!_carried || kind != InternalPropKind.Cargo) return;
+            _carried = false;
+            _knocked = true;
+            _knockTo = _home;
+            if (Carried == this) Carried = null;
+
+            var runner = InternalLevelRunner.Active;
+            if (runner != null && runner.Level != null) _carrying.Remove(runner.Level.levelId);
+
+            GameEvents.RaiseSubtitle("〔最后检查者〕"你确定这就能交了吗"——箱子被推回了检查区。");
+            GameAudio.Play(GameAudio.Sfx.HeavyHit, 0.6f);
+        }
+
         /// <summary>做成了一步：先说发生了什么，再敲一句这件事的意义。</summary>
         void Done(string what)
         {
@@ -726,6 +771,7 @@ namespace AdversityRoad.InternalOS
                     // 不能只是走过去弹一行字。
                     _carrying.Add(runner.Level.levelId);
                     _carried = true;
+                    Carried = this;
                     // _used 保持 true：箱子只能被"带上"一次。
                     // 之前这里置回 false，而箱子带上之后就跟在玩家身边、距离恒小于 2.2m——
                     // 于是 Use 每帧重跑，字幕和 MarkGoalAction 一秒刷几十次。

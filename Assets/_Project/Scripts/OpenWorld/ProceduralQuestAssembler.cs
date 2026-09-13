@@ -228,7 +228,33 @@ namespace AdversityRoad.OpenWorld
                     site.root != null ? site.root.transform : null,
                     site.origin, site.playerSpawn, site.farPoint);
                 Debug.Log("[InternalOS] " + internalLv.levelId + " 摆下关键物 " + n + " 件");
+
+                // 这一关的敌人该怎么和机关咬合：关卡表的"敌人/干扰"栏写得很具体
+                // （9-3 的最后检查者"会把目标箱推回检查区"），过去一条都没实现，
+                // 场上就只是几只通用小怪站着——玩家原话"和战斗完全脱节"。
+                InternalOS.InternalEnemyTactics.Attach(internalLv, bp.chapterId, enc.enemies);
             }
+        }
+
+        /// <summary>
+        /// 往一处已经建好的场景里**再补一个敌人**。
+        ///
+        /// 9-2 用它：每打磨一处不挡交付的地方，就多出来一只校稿幽灵。
+        /// "边际收益递减"在这一关不是一个数字，是**屋里的人越来越多**。
+        /// </summary>
+        public static GameObject SpawnExtra(string chapterId, EnemyType type,
+            EnemyTier tier, Vector3 at)
+        {
+            if (Spawner == null || string.IsNullOrEmpty(chapterId)) return null;
+            if (!_live.TryGetValue(chapterId, out var enc) || enc == null || enc.site == null) return null;
+
+            var go = Spawner(type, tier, GroundAt(at), true);
+            if (go == null) return null;
+            enc.enemies.Add(go);
+            Reparent(go, enc.site);
+            var director = SiteEncounterDirector.Attach(enc.site.root);
+            if (director != null) director.Register(go);
+            return go;
         }
 
         static void SpawnIntoDistrict(GoalChapterData bp, GoalData goal,

@@ -17,16 +17,19 @@ namespace AdversityRoad.InternalOS
     ///
     ///     场上还剩着能改的东西，而你自己决定不改了，走去按提交。
     ///
-    /// 【边际收益必须看得见，否则"该停了"只是一句口号】
-    /// 每处理一项，这一版的"可交付度"涨一截，而**每一截都比上一截小**：
-    /// 两个阻断项各 +28、+22，三个有用项 +7/+5/+3，三个润色项 +1/+1/+0。
-    /// 字幕每次都把"这次 +x"和"离上次的涨幅"一起报出来，
-    /// 玩家会自己看见那条曲线在躺平——这是身体感受，不是说明文字。
+    /// 【代价要看得见，而且不能是一个数字】
+    /// 我上一版把边际收益做成了"可交付度 +7（共 35），上一次 +22，在往下掉"。
+    /// 那是文档语言：玩家在读一条曲线，不是在体会它。
     ///
-    /// 提交台任何时候都能按（只要两个阻断项处理完了）。
-    /// 交付之后按"你还剩多少没改"给出不同的意义句：剩得越多，这一关学得越透。
-    /// 这是 PRD 11.3 第四条"错误策略要有代价但可理解"的反面用法——
-    /// **正确策略要有可感知的回报**。
+    /// 现在换成一件看得见的事——**每打磨一处不挡交付的地方，屋里就多进来一只校稿幽灵**。
+    /// 收益越来越小，而屋里的人越来越多、路越来越难走。
+    /// "再改下去不划算"于是不需要任何一句说明，玩家自己会感觉到。
+    /// 阻断项不招幽灵：处理它们正是这一关要你做的事，不该有惩罚。
+    ///
+    /// 提交台任何时候都能按（只要两处阻断项处理完了）——**停手永远是一个选项**。
+    /// 交付之后按"你主动留下了多少没改"给不同的意义句：剩得越多，这一关学得越透。
+    ///
+    /// gain / Quality 仍然留着记账（交付时用来分档），但不再摆到玩家面前当主指标。
     /// </summary>
     public class Level0902ProofRoom : MonoBehaviour, ILevelGate
     {
@@ -44,10 +47,8 @@ namespace AdversityRoad.InternalOS
         public int OptionalFixed { get; private set; }
         /// <summary>场上还剩几张没处理。</summary>
         public int Remaining { get; private set; }
-        /// <summary>当前可交付度。</summary>
+        /// <summary>内部记账用的可交付度；不展示给玩家（见类注释）。</summary>
         public int Quality { get; private set; }
-
-        float _lastGain = -1f;
 
         public static void Install(Transform siteRoot, Vector3 spawn, Vector3 exit)
         {
@@ -101,7 +102,7 @@ namespace AdversityRoad.InternalOS
                 "其余的改了也只是更好看一点。什么时候停手，由你决定。");
         }
 
-        /// <summary>处理掉一项。返回这次的涨幅，用来让玩家看见边际收益在掉。</summary>
+        /// <summary>处理掉一项。非阻断项会招来一只校稿幽灵——代价是看得见的，不是数字。</summary>
         public void Apply(InternalLevelRunner runner, ProofItem item)
         {
             Remaining--;
@@ -113,22 +114,29 @@ namespace AdversityRoad.InternalOS
             if (item.critical && CriticalFixed >= CriticalToDone)
                 runner.FireTrigger(FirstTriggerOf(runner));
 
-            string trend;
-            if (_lastGain < 0f) trend = "";
-            else if (item.gain <= 0) trend = "　（这一次一点没涨）";
-            else if (item.gain < _lastGain) trend = "　（上一次 +" + Mathf.RoundToInt(_lastGain) + "，在往下掉）";
-            else trend = "";
-            _lastGain = item.gain;
+            // 【代价不写成数字，写成屋里多出来的一只幽灵】
+            //
+            // 上一版这里报的是"可交付度 +7（共 35）、上一次 +22，在往下掉"。
+            // 那是文档语言：玩家在读一条曲线，不是在体会它。
+            // 现在改成——**每打磨一处不挡交付的地方，屋里就多一只校稿幽灵**。
+            // 边际收益递减于是变成一件看得见的事：收益越来越小，屋里的人越来越多。
+            // 阻断项不会招来幽灵：处理它们是这一关要你做的事，不该有惩罚。
+            if (!item.critical)
+            {
+                InternalEnemyTactics.SpawnOneMoreGhost(
+                    InternalChapterBridge.ChapterIdOfLevel(LevelId), runner.Chapter);
+            }
 
             string tail;
             if (CriticalFixed < CriticalToDone)
-                tail = "　还差 " + (CriticalToDone - CriticalFixed) + " 个真正挡住交付的问题。";
+                tail = "　还差 " + (CriticalToDone - CriticalFixed) + " 处真正挡住交付的问题。";
             else
-                tail = "　两个阻断项都处理完了——现在随时可以去【提交台】。场上还剩 "
+                tail = "　两处阻断项都处理完了——现在随时可以去【提交台】。还剩 "
                      + Remaining + " 处可以改。";
 
-            GameEvents.RaiseSubtitle("✔ 改好了：" + item.text +
-                "　可交付度 +" + item.gain + "（共 " + Quality + "）" + trend + tail);
+            GameEvents.RaiseSubtitle((item.critical
+                ? "✔ 这一处真的挡着交付，改对了：" + item.text
+                : "✔ 改好了：" + item.text + "　——又进来一只校稿幽灵。") + tail);
             GameAudio.Play(GameAudio.Sfx.Cast, 0.45f);
         }
 
