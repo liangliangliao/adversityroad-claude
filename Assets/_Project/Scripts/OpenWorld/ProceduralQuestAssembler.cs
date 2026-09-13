@@ -407,7 +407,9 @@ namespace AdversityRoad.OpenWorld
             // 别卡在几何里：落点半米内有实体就往外推一点（推不开就交给导航面兜底）
             if (Physics.CheckSphere(at + Vector3.up * 1f, 0.5f, ~0, QueryTriggerInteraction.Ignore))
             {
-                Vector3 away = (at - center).normalized;
+                // 往"背离场地中心"的方向推：我重写落点逻辑时删掉了原来的
+                // center 局部变量，这里直接用场地原点，语义一样且不依赖上文。
+                Vector3 away = (at - site.origin).normalized;
                 if (away.sqrMagnitude < 0.01f) away = Vector3.forward;
                 Vector3 pushed = at + away * 2.5f;
                 if (UnityEngine.AI.NavMesh.SamplePosition(pushed, out var pHit, 8f,
