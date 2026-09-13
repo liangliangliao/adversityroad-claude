@@ -256,8 +256,13 @@ namespace AdversityRoad.OpenWorld
             // 再小就不叫"开阔"了）。家具、杂物、关键物都要避开它。
             inst.combatZone = Vector3.Lerp(inst.playerSpawn, inst.farExit, 0.22f);
             inst.combatRadius = Mathf.Clamp(Mathf.Min(w, d) * 0.30f, 12f, 26f);
+            var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapter.chapterId);
+            _internalSite = internalLevel != null;
+
             BuildEntranceMarker(inst, bp);
             BuildFarExitDoor(inst, chapter);
+            // 第 9-26 章：用和分区对齐的区域牌，替掉那些没有作用的路径名牌
+            if (internalLevel != null) BuildInternalZoneSigns(inst, internalLevel);
 
             // ---- 注册为动态区域（可传送、有名字、有雾色） ----
             inst.zoneIndex = ZoneBuilder.RegisterDynamicZone(inst.siteId, bp.siteName, inst.playerSpawn);
@@ -1833,6 +1838,38 @@ namespace AdversityRoad.OpenWorld
         /// 牌子按这一关的规则写：外部心魔写"走出去即通关"，内心心魔如实写"打倒它才算"，
         /// 免得玩家跑过去半天发现门不认。
         /// </summary>
+        /// <summary>
+        /// 第 9-26 章的**区域牌**：和真实分区对齐的三块牌子。
+        ///
+        /// 【为什么要换掉原来那些房间名牌】
+        /// 原来摆的是关卡表「主路径」那一栏切出来的段名——"空白工作区""修改走廊"。
+        /// 两个问题：一是那是**设计文档里的路径描述**，不是玩家能用的信息；
+        /// 二是它们由布局生成器随机落位，**和实际的分区位置对不上**——
+        /// 牌子写着"修改走廊"，而那块地上什么都没有。
+        /// 玩家原话："很多的指示牌或者文字标记……没有看到其作用是什么？"
+        ///
+        /// 现在每块牌子钉在它真正对应的那一段上，并且回答三件事：
+        /// **这是什么区 / 为什么会有它 / 在这儿要做什么**。
+        /// 牌子不再是装饰，它是这一关规则的说明书，位置本身就是信息。
+        /// </summary>
+        static void BuildInternalZoneSigns(SiteInstance inst, InternalOS.InternalLevelData lv)
+        {
+            if (lv == null) return;
+            Vector3 spawn = inst.playerSpawn, far = inst.farExit;
+            Vector3 L(float t) => inst.root.transform.InverseTransformPoint(
+                Vector3.Lerp(spawn, far, t)) + new Vector3(0f, 1.9f, 0f);
+
+            Sign(inst, L(0.22f), "【战斗区】",
+                "这一块特意空出来，没有家具——打起来才转得开身。" +
+                "敌人开场在这儿；再往前它们会守在每个任务点上拦你。");
+
+            Sign(inst, L(0.45f), "【任务区 · 起点】",
+                "这一关要做的事从这儿开始，沿路往出口方向依次排开：" + lv.Objective);
+
+            Sign(inst, L(0.86f), "【交付点】",
+                "这一关的事在这里算完成。交付之后再走到出口，这一关才结束。");
+        }
+
         static void BuildFarExitDoor(SiteInstance inst, GoalChapterData chapter)
         {
             Vector3 local = inst.root.transform.InverseTransformPoint(inst.farExit);
@@ -1846,10 +1883,18 @@ namespace AdversityRoad.OpenWorld
             Deco(inst, "ExitPadFar", local + new Vector3(0, -1.03f, 0), new Vector3(5f, 0.06f, 3f), tint);
             Lamp(inst, local + new Vector3(-3.4f, -1.1f, 0));
             Lamp(inst, local + new Vector3(3.4f, -1.1f, 0));
-            Sign(inst, local + new Vector3(0, 3.4f, 0),
-                escape ? "▲ 出口 · 走出去即通关" : "▲ 出口 · 打倒关底心魔后才算通关",
-                escape ? "走出这扇门这一关就结束了。" : "这一关要先打倒关底心魔，才走得出去。",
-                post: false);
+            // 牌子必须说这一关**自己**的规则。第 9-26 章既不是"打倒"也不是"逃走"：
+            // 先交付，再从这里走出去。写错的后果是玩家按错误的方式打一整关。
+            bool internalLv = InternalOS.InternalChapterBridge.LevelOfChapterId(
+                chapter != null ? chapter.chapterId : "") != null;
+            string exitTitle = internalLv ? "▲ 出口 · 交付之后从这里离开"
+                             : escape ? "▲ 出口 · 走出去即通关"
+                                      : "▲ 出口 · 打倒关底心魔后才算通关";
+            string exitWhy = internalLv
+                ? "这一关的事做完（交付）之后，走出这扇门就结束了。"
+                : escape ? "走出这扇门这一关就结束了。"
+                         : "这一关要先打倒关底心魔，才走得出去。";
+            Sign(inst, local + new Vector3(0, 3.4f, 0), exitTitle, exitWhy, post: false);
 
             // 从落点铺一条引导带到这扇门：玩家要一眼看出"往那边走"是有去处的
             float z0 = inst.playerSpawn.z - inst.origin.z, z1 = local.z;
@@ -2048,10 +2093,20 @@ namespace AdversityRoad.OpenWorld
         /// 现在建成立柱 + 牌面的实体，字用 SurfaceSign 刷在牌面上（不跟镜头转），
         /// 并挂一个走近解释的组件——名字回答"这叫什么"，解释回答"它是干什么的"。
         /// </summary>
+        /// <summary>
+        /// 这一处场景是第 9-26 章的关卡吗（决定要不要摆那些"路径名"房间牌）。
+        /// </summary>
+        static bool _internalSite;
+
         static void Sign(SiteInstance inst, Vector3 local, string text, string explain = null,
             bool post = true)
         {
             if (string.IsNullOrEmpty(text)) return;
+            // 第 9-26 章不摆"路径名"房间牌——见 BuildInternalZoneSigns 的说明。
+            // 区域牌走那条路单独建，以【】开头；入口/出口牌用 ◀ ▲ 开头，都放行。
+            if (_internalSite && text.Length > 0 &&
+                text[0] != '\u3010' && text[0] != '◀' && text[0] != '▲' && text[0] != '▼')
+                return;
 
             // 牌面宽度按字数给，别让四个字挤在一块两个字宽的板上
             float w = Mathf.Clamp(text.Length * 0.42f + 0.5f, 1.8f, 5.2f);

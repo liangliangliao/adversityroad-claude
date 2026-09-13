@@ -106,7 +106,20 @@ namespace AdversityRoad.UI
         // 而"要做的事：…"这一行本身就有二十多个字。
         // 换成 2 列 × 620×180：一行放得下 38 个字，三行绰绰有余。
         const int Cols = 2;
-        const float CellW = 620f, CellH = 180f, StepX = 636f, StepY = 192f, Top = -30f;
+        const float CellW = 620f, CellH = 180f, StepX = 636f, StepY = 192f;
+
+        /// <summary>
+        /// 第一行的中心线。
+        ///
+        /// 【这里曾经切掉了第一行的上半截】
+        /// 格子用 SetRect(anchor=(0.5,1), pos, size) 摆，枢轴是默认的 (0.5,0.5)——
+        /// 也就是说 pos 给的是**格子中心**。原来 Top = -30，格子高 180，
+        /// 于是第一行从 -30+90 = +60 一直到 -120：**上面 60 像素跑到内容区外面**，
+        /// 被 viewport 裁掉。玩家看到的就是第一行只剩下半截、开头那几个字没了。
+        /// （上一版格子 116 高、Top = -20 时同样在裁，只是裁得少些没被注意到。）
+        /// 正确的值必须把半个格高让出来，再留一点上边距。
+        /// </summary>
+        const float Top = -(CellH * 0.5f) - 24f;
 
         static Vector2 SlotPos(int slot) => new Vector2(
             -(Cols - 1) * StepX * 0.5f + (slot % Cols) * StepX,
@@ -188,6 +201,7 @@ namespace AdversityRoad.UI
             _headerText.text = "第" + chapterNo + "章 " + ch.title + " —— " + ch.core;
 
             int slot = 0;
+            bool anyCurrent = false;
             for (int i = 0; i < ch.levels.Count; i++)
             {
                 var lv = ch.levels[i];
@@ -197,7 +211,11 @@ namespace AdversityRoad.UI
                 // 解锁与经典关卡同规则：上一关没过，这一关点不进去
                 bool cleared = RealityVictorySystem.IsCleared(id);
                 bool open = RealityVictorySystem.IsUnlocked(id);
-                string mark = cleared ? "✓ " : (open ? "" : "🔒 ");
+                // 「当前这一关」＝解锁了但还没过的第一关。三种状态三种颜色，
+                // 玩家扫一眼就知道自己走到哪儿了。
+                bool current = open && !cleared && !anyCurrent;
+                if (current) anyCurrent = true;
+                string mark = cleared ? "✓ " : (current ? "▶ " : (open ? "" : "🔒 "));
 
                 // 格子放得下就别裁：文案本来就是写给玩家读的
                 Cell(ref slot,
@@ -205,10 +223,10 @@ namespace AdversityRoad.UI
                     "要做的事：" + lv.Objective + "\n" +
                     (open ? Clip(lv.coreMechanic, 34)
                           : "上一关通关后解锁"),
-                    !open ? new Color(0.17f, 0.17f, 0.19f, 0.96f)
-                          : cleared ? new Color(0.20f, 0.34f, 0.28f, 0.96f)
-                          : lv.isBossLevel ? new Color(0.5f, 0.34f, 0.18f, 0.96f)
-                                           : new Color(0.22f, 0.30f, 0.26f, 0.96f),
+                    !open ? new Color(0.17f, 0.17f, 0.19f, 0.96f)     // 锁住：灰
+                          : cleared ? new Color(0.16f, 0.42f, 0.26f, 0.98f) // 已通关：绿
+                          : current ? new Color(0.62f, 0.46f, 0.14f, 0.98f) // 当前这一关：琥珀
+                                    : new Color(0.22f, 0.26f, 0.32f, 0.96f),// 之后的：蓝灰
                     open ? (UnityEngine.Events.UnityAction)(() => Enter(id))
                          : () => GameEvents.RaiseSubtitle(
                              "这一关还没解锁——先通关 " + PrevLabel(lv) + "。"));

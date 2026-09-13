@@ -85,7 +85,13 @@ namespace AdversityRoad.InternalOS
 
             // 六张修改卡摆在「修改走廊」那一段：主路径中段，左右交替。
             // 两张是真的阻断项，四张只是可优化——卡面只写问题，不写标签。
-            var mid = Vector3.Lerp(spawn, exit, 0.55f);
+            // 【六张卡沿主轴按顺序铺开，不再堆在一处】
+            // 原来全挤在 t=0.55 附近 ±4.5 米，六张卡叠成一小片——
+            // 玩家原话"需要玩家操作的任务被堆叠在一块区域，显得密集和拥挤，
+            // 并且毫无规则和次序"。
+            // 现在每张卡占一个station：沿路依次 0.52→0.82，左右交替错开 6 米。
+            // 关键物（工作台/完成标准锁/提交台）走中线，卡在两侧，互不打架，
+            // 玩家一路走过去自然一张一张遇到。
             Vector3 right = Vector3.Cross(Vector3.up, _pushDir);
             string[] critical =
             {
@@ -104,8 +110,9 @@ namespace AdversityRoad.InternalOS
             {
                 bool crit = i < critical.Length;
                 string text = crit ? critical[i] : cosmetic[i - critical.Length];
-                Vector3 at = mid + _pushDir * ((i / 2) * 4.5f - 4.5f)
-                                 + right * ((i % 2 == 0) ? 3.2f : -3.2f);
+                float t = 0.52f + i * 0.06f;                 // 0.52 / 0.58 / … / 0.82
+                Vector3 at = Vector3.Lerp(spawn, exit, t)
+                           + right * ((i % 2 == 0) ? 6f : -6f);
                 if (UnityEngine.AI.NavMesh.SamplePosition(at, out var hit, 10f,
                         UnityEngine.AI.NavMesh.AllAreas)) at = hit.position;
                 _cards.Add(EditCard.Create(at, text, crit, this, transform));

@@ -80,8 +80,49 @@ namespace AdversityRoad.OpenWorld
             _dwell += Time.deltaTime;
             if (_dwell < DwellTime) return;
 
+            // 第 9-26 章：交付完了，走出这扇门才算把这一关走完。
+            // 这一批的规则既不是"打倒"也不是"逃走"，是**先交付、再离场**，
+            // 所以在旧的两条规则之前单独判。
+            var runner = InternalOS.InternalLevelRunner.Active;
+            if (runner != null && runner.Level != null &&
+                InternalOS.InternalChapterBridge.ChapterIdOfLevel(runner.Level.levelId) == chapterId)
+            {
+                if (!runner.Cleared)
+                {
+                    Hint("出口在这儿，但这一关还没交付——" + runner.Level.Objective, 4f);
+                    _dwell = 0f;
+                    return;
+                }
+                ClearInternalLevel(runner);
+                return;
+            }
+
             if (Rule() == LevelClearRule.Escape) ClearByEscape();
             else LeaveWithoutClearing();
+        }
+
+        /// <summary>
+        /// 第 9-26 章的收尾：交付过了，从出口走出去。
+        ///
+        /// 【为什么出口必须真的有用】
+        /// 这一批关卡原来靠 LevelRules.Of 判规则，而它按敌人来源判：
+        /// 内部敌人 → Defeat，于是门上写着"打倒关底心魔后才算通关"，
+        /// 走过去还回一句"换个地方没有用"。玩家的原话是
+        /// "没有真正的所谓出口"——因为这扇门当时确实是条死路，
+        /// 而且还在对玩家说错话（这一批本来就不靠清怪通关）。
+        ///
+        /// 现在的结构和经典关卡一致：入口进 → 必经区做完事 → 出口走出去。
+        /// 交付（Execution Gate）是"事情做完了"，走出这扇门是"这一关结束了"。
+        /// </summary>
+        void ClearInternalLevel(InternalOS.InternalLevelRunner runner)
+        {
+            _fired = true;
+            var lv = runner.Level;
+            GoalOS.ChapterCleared(chapterId);
+            UI.InternalClearPanel.Show(lv);
+
+            var host = new GameObject("SiteExitDelay");
+            host.AddComponent<SiteExitDelay>().Setup(chapterId, 3.5f);
         }
 
         void ClearByEscape()

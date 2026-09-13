@@ -87,11 +87,14 @@ namespace AdversityRoad.InternalOS
             };
             Remaining = items.Count;
 
-            Vector3 mid = Vector3.Lerp(spawn, exit, 0.5f);
+            // 八张卡沿主轴按顺序铺开（0.40→0.75，左右交替错开 6 米），
+            // 不再堆在中点那一小片——理由同 9-1：玩家要能一路走过去一张一张读，
+            // 而不是站在一堆卡中间分不清先后。
             for (int i = 0; i < items.Count; i++)
             {
-                Vector3 at = mid + fwd * ((i / 2) * 5f - 7.5f)
-                                 + right * ((i % 2 == 0) ? 3.6f : -3.6f);
+                float t = 0.40f + i * 0.05f;
+                Vector3 at = Vector3.Lerp(spawn, exit, t)
+                           + right * ((i % 2 == 0) ? 6f : -6f);
                 if (UnityEngine.AI.NavMesh.SamplePosition(at, out var hit, 10f,
                         UnityEngine.AI.NavMesh.AllAreas)) at = hit.position;
                 ProofCard.Create(at, items[i], this, transform);

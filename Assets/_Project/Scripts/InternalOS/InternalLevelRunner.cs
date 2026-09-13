@@ -284,7 +284,7 @@ namespace AdversityRoad.InternalOS
             if (Level == null) return "";
             string head = Level.levelId + "《" + Level.name + "》 ";
 
-            if (Cleared) return head + "—— 这一关的条件达成了，可以离开";
+            if (Cleared) return head + "✔ 交付完成 —— 现在走到【出口】离开，这一关就结束了";
 
             var loop = Level0901BlankPage.Active;
             if (loop != null && Level.levelId == Level0901BlankPage.LevelId)
