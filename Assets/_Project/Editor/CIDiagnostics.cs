@@ -756,6 +756,28 @@ namespace AdversityRoad.EditorTools
               .Append(" 件）；缺 Gate ").Append(noGate)
               .Append(" 关、空房间 ").Append(emptyRoom).Append(" 关\n");
 
+            // 【蓝图必须真的会被"建"，而不是被当成 Legacy 打发掉】
+            //
+            // 这条是被一张实机截图换来的：玩家点进关卡，屏幕上是
+            // "这处场景没能建起来——换一关，或稍后再试。"。
+            // 根因是我把 source 标成了 ChapterSource.Legacy——我当时只想表达
+            // "策划冻结件、视为已校验"，而它在组装器里的含义是
+            // "不建场景，去开 V1 裂隙"。于是场景永远不会被建。
+            // 枚举值不是标签，是行为；所以这里逐关核对它到底落在哪条路上。
+            int wrongSource = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lvbp = AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[i], null);
+                if (lvbp == null || lvbp.source == AdversityRoad.Goals.ChapterSource.Legacy)
+                {
+                    sb.Append("[CIDIAG][内部线] !! ").Append(levels[i].levelId)
+                      .Append(" 的蓝图来源是 Legacy —— 组装器会跳过建造，玩家只会看到「场景没能建起来」\n");
+                    wrongSource++; ok = false;
+                }
+            }
+            if (wrongSource == 0)
+                sb.Append("[CIDIAG][内部线] 90 关的蓝图来源均为 Internal，会走现场建造那条路\n");
+
             // 单关也必须能变成可搭建的蓝图，否则关卡选择那条直通路是死的。
             var probeLevel = levels.Count > 0
                 ? AdversityRoad.InternalOS.InternalChapterBridge.ToLevelBlueprint(levels[0], probeGoal) : null;

@@ -25,6 +25,8 @@ namespace AdversityRoad.UI
     {
         GameObject _panel;
         Text _headerText;
+        Transform _grid;
+        RectTransform _contentRt;
         readonly List<GameObject> _cells = new List<GameObject>();
 
         /// <summary>0 = 还在选章；否则是正在看第几章。</summary>
@@ -39,29 +41,63 @@ namespace AdversityRoad.UI
 
         void Build(Transform canvas)
         {
-            _panel = UiUtil.MakePanel(canvas, "InternalLevelPanel", new Vector2(1260, 1060),
+            // 和关卡选择面板同一套结构：frame 固定、viewport 裁剪、content 按行数长。
+            // 18 个章节格勉强一屏，展开某一章之后还有 Boss 摘要和返回格——
+            // 定尺版面迟早又是"下半截在屏幕外"。
+            var frame = UiUtil.MakePanel(canvas, "InternalLevelFrame", new Vector2(1300, 900),
                 new Color(0.07f, 0.08f, 0.11f, 0.98f));
 
-            var title = UiUtil.MakeText(_panel.transform, "Title",
-                "第 9-26 章 · 内部障碍线", 36,
+            var title = UiUtil.MakeText(frame.transform, "Title",
+                "第 9-26 章 · 内部障碍线", 34,
                 TextAnchor.MiddleCenter, new Color(0.95f, 0.85f, 0.4f));
-            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -44), new Vector2(800, 52));
+            UiUtil.SetRect(title, new Vector2(0.5f, 1f), new Vector2(0, -38), new Vector2(800, 48));
 
-            _headerText = UiUtil.MakeText(_panel.transform, "Header", "", 22,
+            _headerText = UiUtil.MakeText(frame.transform, "Header", "", 21,
                 TextAnchor.MiddleCenter, new Color(0.82f, 0.86f, 0.92f));
-            UiUtil.SetRect(_headerText, new Vector2(0.5f, 1f), new Vector2(0, -92), new Vector2(1120, 34));
+            UiUtil.SetRect(_headerText, new Vector2(0.5f, 1f), new Vector2(0, -80), new Vector2(1180, 32));
 
-            UiUtil.MakeButton(_panel.transform, "关闭", new Vector2(0.5f, 0f),
-                new Vector2(0, 44), new Vector2(260, 64),
+            var hint = UiUtil.MakeText(frame.transform, "ScrollHint", "↕ 上下拖动", 19,
+                TextAnchor.MiddleLeft, new Color(1f, 1f, 1f, 0.5f));
+            UiUtil.SetRect(hint, new Vector2(0f, 1f), new Vector2(150, -38), new Vector2(300, 28));
+
+            var viewGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewGo.transform.SetParent(frame.transform, false);
+            var viewRt = viewGo.GetComponent<RectTransform>();
+            viewRt.anchorMin = Vector2.zero;
+            viewRt.anchorMax = Vector2.one;
+            viewRt.offsetMin = new Vector2(8f, 100f);
+            viewRt.offsetMax = new Vector2(-8f, -104f);
+
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewGo.transform, false);
+            _contentRt = content.GetComponent<RectTransform>();
+            _contentRt.anchorMin = new Vector2(0.5f, 1f);
+            _contentRt.anchorMax = new Vector2(0.5f, 1f);
+            _contentRt.pivot = new Vector2(0.5f, 1f);
+            _contentRt.anchoredPosition = Vector2.zero;
+            _contentRt.sizeDelta = new Vector2(1280, 900);
+
+            var scroll = frame.AddComponent<ScrollRect>();
+            scroll.content = _contentRt;
+            scroll.viewport = viewRt;
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 40f;
+
+            UiUtil.MakeButton(frame.transform, "关闭", new Vector2(0.5f, 0f),
+                new Vector2(0, 46), new Vector2(260, 64),
                 new Color(0.3f, 0.3f, 0.38f, 0.95f), Hide, 25);
 
+            _panel = frame;
+            _grid = content.transform;
             _panel.SetActive(false);
         }
 
         // ==================== 版面 ====================
 
         const int Cols = 5;
-        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -168f;
+        const float CellW = 226f, CellH = 116f, StepX = 240f, StepY = 126f, Top = -20f;
 
         static Vector2 SlotPos(int slot) => new Vector2(
             -(Cols - 1) * StepX * 0.5f + (slot % Cols) * StepX,
@@ -69,7 +105,7 @@ namespace AdversityRoad.UI
 
         void Cell(ref int slot, string label, Color color, UnityEngine.Events.UnityAction onClick)
         {
-            var btn = UiUtil.MakeButton(_panel.transform, "", new Vector2(0.5f, 1f),
+            var btn = UiUtil.MakeButton(_grid, "", new Vector2(0.5f, 1f),
                 SlotPos(slot), new Vector2(CellW, CellH), color, onClick, 16);
             var txt = btn.GetComponentInChildren<Text>();
             txt.text = label;
@@ -89,6 +125,18 @@ namespace AdversityRoad.UI
 
             if (_openChapter == 0) ListChapters();
             else ListLevels(_openChapter);
+
+            FitContent(_cells.Count);
+        }
+
+        /// <summary>内容高度按真实格子数算，并把滚动位置拉回顶部。</summary>
+        void FitContent(int slots)
+        {
+            if (_contentRt == null) return;
+            int rows = Mathf.CeilToInt(slots / (float)Cols);
+            float h = Mathf.Max(600f, -Top + rows * StepY + 60f);
+            _contentRt.sizeDelta = new Vector2(1280, h);
+            _contentRt.anchoredPosition = Vector2.zero;
         }
 
         void ListChapters()

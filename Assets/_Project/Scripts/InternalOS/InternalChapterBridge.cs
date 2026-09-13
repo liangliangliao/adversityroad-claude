@@ -87,7 +87,9 @@ namespace AdversityRoad.InternalOS
             var bp = new GoalChapterData
             {
                 chapterId = "internal_" + ch.chapterId,
-                source = ChapterSource.Legacy,   // 策划冻结件，与 Legacy 同级：直接视为已校验
+                // 必须是 Internal，不能是 Legacy：Legacy 在组装器里的含义是
+                // "不建场景，去开 V1 裂隙"，而这一批需要现场建一处场景。
+                source = ChapterSource.Internal,
                 linkedGoalId = goal != null ? goal.goalId : "",
                 linkedMilestoneId = ob != null ? ob.linkedMilestoneId : "",
                 chapterName = ch.title,
@@ -181,7 +183,7 @@ namespace AdversityRoad.InternalOS
             var bp = new GoalChapterData
             {
                 chapterId = ChapterIdOfLevel(lv.levelId),
-                source = ChapterSource.Legacy,
+                source = ChapterSource.Internal,
                 linkedGoalId = goal != null ? goal.goalId : "",
                 chapterName = lv.levelId + "《" + lv.name + "》",
                 worldDistrictId = ChapterModuleLibrary.IsDistrict(lv.districtId)
