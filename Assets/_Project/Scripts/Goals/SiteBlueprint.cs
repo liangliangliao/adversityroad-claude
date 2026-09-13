@@ -11,7 +11,22 @@ namespace AdversityRoad.Goals
     {
         public string name = "";          // 「需求会议室」「堆满故障单的工位区」
         public string purpose = "";       // 这个房间在关卡规则里承担什么
-        public string sizeHint = "medium";// small / medium / large
+        public string sizeHint = "medium";
+
+        /// <summary>
+        /// 场地真实尺寸（米）。0 = 没给，按 sizeHint 的三档走。
+        ///
+        /// 【为什么要有它】sizeHint 只有大/中/小三档，对应 81×62 / 60×46 / 45×34 三种盒子。
+        /// 而 V2.2 的关卡表每一关都明写了尺度：42×18、65×38、55×45、120m 主路线……
+        /// 全压进三档的后果是**所有关卡长得一样大**——PRD 里最开放的那关和一间
+        /// 12×9m 的住宅拿到同一个盒子。玩家的原话是"空间拥挤狭小封闭，像地下室"。
+        ///
+        /// 给了米数就按米数建，但仍会夹在能打起来的区间里（见 SiteBuilder）：
+        /// 这个工程吃过"开阔到 130 米、Boss 在 91 米外、走过去什么都遇不到"的亏，
+        /// "开阔"不等于"空旷到找不到人"。
+        /// </summary>
+        public float siteWidth;
+        public float siteDepth;// small / medium / large
         public List<string> props = new List<string>();   // 只能来自已批准道具库
     }
 
@@ -67,6 +82,21 @@ namespace AdversityRoad.Goals
         public string layout = "rooms";     // rooms / corridor / maze / hall / openblock / courtyard
         public string ambience = "indoor_cold";
         public string sizeHint = "medium";
+
+        /// <summary>
+        /// 场地真实尺寸（米）。0 = 没给，按 sizeHint 的三档走。
+        ///
+        /// 【为什么要有它】sizeHint 只有大/中/小三档，对应 81×62 / 60×46 / 45×34 三种盒子。
+        /// 而 V2.2 的关卡表每一关都明写了尺度：42×18、65×38、55×45、120m 主路线……
+        /// 全压进三档的后果是**所有关卡长得一样大**——PRD 里最开放的那关和一间
+        /// 12×9m 的住宅拿到同一个盒子。玩家的原话是"空间拥挤狭小封闭，像地下室"。
+        ///
+        /// 给了米数就按米数建，但仍会夹在能打起来的区间里（见 SiteBuilder）：
+        /// 这个工程吃过"开阔到 130 米、Boss 在 91 米外、走过去什么都遇不到"的亏，
+        /// "开阔"不等于"空旷到找不到人"。
+        /// </summary>
+        public float siteWidth;
+        public float siteDepth;
 
         // ===== 物理世界的差异化描述（V2.1 新增）=====
         //

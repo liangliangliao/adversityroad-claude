@@ -236,6 +236,7 @@ namespace AdversityRoad.InternalOS
             Vector3 right = Vector3.Cross(Vector3.up, forward);
 
             int made = 0, step = 0;
+            Transform gateTransform = null;
             for (int i = 0; i < plan.Count; i++)
             {
                 var kind = plan[i].kind;
@@ -257,8 +258,21 @@ namespace AdversityRoad.InternalOS
                 var p = InternalProp.Create(pos, plan[i].pfName, kind, lv, trig);
                 if (p == null) continue;
                 if (parent != null) p.transform.SetParent(parent, true);
+                if (isGate) gateTransform = p.transform;
                 made++;
             }
+
+            // 关卡循环：光有"三个能按的东西"还不是玩法。
+            // 9-1 的玩法是"你不动房间就变大、六张修改卡里只有两张真的挡交付"，
+            // 那一段逻辑属于这一关自己，装在这里。
+            // 其余四关目前还只有关键物，没有各自的循环——见 README 的待办。
+            if (lv.levelId == Level0901BlankPage.LevelId)
+            {
+                Level0901BlankPage.Install(parent, spawn, exit);
+                if (Level0901BlankPage.Active != null)
+                    Level0901BlankPage.Active.BindSubmitConsole(gateTransform);
+            }
+
             return made;
         }
     }
@@ -363,6 +377,21 @@ namespace AdversityRoad.InternalOS
             switch (kind)
             {
                 case InternalPropKind.GateConsole:
+                    // 9-1 有自己的判据（有没有粗稿、两个阻断项处理完没有）
+                    var loop = Level0901BlankPage.Active;
+                    if (loop != null && runner.Level.levelId == Level0901BlankPage.LevelId)
+                    {
+                        string why;
+                        if (!loop.CanSubmit(out why))
+                        {
+                            _used = false;
+                            _lastHint = Time.time;
+                            GameEvents.RaiseSubtitle("【" + label + "】" + why);
+                            return;
+                        }
+                        runner.ExecutionGate();
+                        return;
+                    }
                     // Done 锁还没合上就不给过：这一关的顺序本身就是它要教的东西
                     if (!GateReady(runner))
                     {
@@ -379,6 +408,18 @@ namespace AdversityRoad.InternalOS
                     return;
 
                 case InternalPropKind.DoneLock:
+                    // 9-1 的 Done 不是走过去就算：它由"两个阻断项处理完"决定
+                    var l2 = Level0901BlankPage.Active;
+                    if (l2 != null && runner.Level.levelId == Level0901BlankPage.LevelId)
+                    {
+                        _used = false;
+                        _lastHint = Time.time;
+                        GameEvents.RaiseSubtitle(l2.DoneReached
+                            ? "【" + label + "】已达到 Done 最低标准——可以去提交了。"
+                            : "【" + label + "】Done 的最低标准是处理掉两个真正阻断交付的问题（已处理 "
+                              + l2.CriticalFixed + "）。");
+                        return;
+                    }
                     _doneLocked.Add(runner.Level.levelId);
                     runner.MarkGoalAction("锁定完成标准");
                     GameEvents.RaiseSubtitle("完成标准已钉下——现在可以去提交了。");
@@ -396,6 +437,14 @@ namespace AdversityRoad.InternalOS
                     return;
 
                 default:
+                    // 9-1 的工作台就是草稿桌：按下去第一版才出现，墙才停
+                    var l3 = Level0901BlankPage.Active;
+                    if (l3 != null && kind == InternalPropKind.WorkStation &&
+                        runner.Level.levelId == Level0901BlankPage.LevelId)
+                    {
+                        l3.MakeDraft(runner);
+                        return;
+                    }
                     if (!string.IsNullOrEmpty(boundTrigger)) runner.FireTrigger(boundTrigger);
                     runner.MarkGoalAction(label);
                     return;

@@ -73,6 +73,40 @@ namespace AdversityRoad.InternalOS
         /// <summary>测试与热重载用：丢掉缓存，下次访问重新读盘。</summary>
         public static void Reload() { _book = null; }
 
+        /// <summary>
+        /// 已经验过手感、可以放给玩家的章节。
+        ///
+        /// 【为什么要有这道闸】
+        /// 数据层 90 关是齐的，但"数据齐"不等于"能玩"。玩家试完第一版的原话是
+        /// "不知道怎么玩""游戏变得非常复杂"——而我给的入口是一张 18 章 × 5 关的目录表。
+        /// PRD 第 3 节开篇第一句就否定了这个形态：
+        /// "本增补不是给玩家再加 18 套心理课程"。一次放 90 关，玩家看到的就是课程表。
+        ///
+        /// 所以先只放第 9 章：它的五关空间语言最具体（白纸、无限扩张、提交台），
+        /// 五关的尺度也各不相同，最适合验证"一关做对了是什么样"。
+        /// 手感验过再往这个数组里加章节号——**加之前不要往下推**。
+        /// 其余 17 章的数据一行不删：问题在实现不在数据。
+        /// </summary>
+        public static readonly int[] VerifiedChapters = { 9 };
+
+        public static bool IsVerified(int chapterNo)
+        {
+            for (int i = 0; i < VerifiedChapters.Length; i++)
+                if (VerifiedChapters[i] == chapterNo) return true;
+            return false;
+        }
+
+        public static bool IsVerified(InternalChapterInfo ch) => ch != null && IsVerified(ch.chapterNo);
+
+        /// <summary>可以放给玩家的章节（按 VerifiedChapters 过滤）。</summary>
+        public static List<InternalChapterInfo> VerifiedList()
+        {
+            var list = new List<InternalChapterInfo>();
+            var chs = Chapters;
+            for (int i = 0; i < chs.Count; i++) if (IsVerified(chs[i])) list.Add(chs[i]);
+            return list;
+        }
+
         public static List<InternalChapterInfo> Chapters => Book.chapters;
 
         public static InternalChapterInfo Chapter(string chapterId)

@@ -34,11 +34,15 @@ namespace AdversityRoad.InternalOS
                 case "WK04": return "subway";
                 case "WK05": return "office_floor";
                 case "WK06": return "recruit_hall";
-                case "WK07": return "mall";
+                // WK07 是"商场、广场、店铺、咖啡厅"——广场是户外的。
+                // 原来一律映射成 mall（室内中庭），9 关全变成了封闭盒子。
+                case "WK07": return "market";
                 case "WK08": return "library_room";
                 case "WK09": return "studio";
                 case "WK10": return "waiting_area";
                 case "WK11": return "park";
+                // WK02 楼道确实是室内，但它的空间语言是"电梯、楼梯、长廊、消防通道"，
+                // 不是一间屋子——布局那一层会把它走成 corridor。
                 case "WK12": return "warehouse";
                 case "WK13": return "alley";
                 // WK14 InnerCore 是"可变几何、断桥、悬浮城市、镜面"。
@@ -100,15 +104,31 @@ namespace AdversityRoad.InternalOS
         public static string LayoutOf(InternalLevelData lv)
         {
             string t = (lv.mainPath ?? "") + (lv.greyboxScale ?? "") + (lv.name ?? "");
+
+            // 【顺序很重要，而且 rooms 不再是默认】
+            // 原来认不出就给 rooms——最分隔、最封闭的那一种，58/90 关都落在这里。
+            // 玩家的原话是"空间拥挤狭小封闭，像地下室"。
+            // 一处关卡默认该是**开阔的**，只有确实写着"走廊/迷宫/大厅"才收起来。
             if (t.Contains("迷宫") || t.Contains("迷雾") || t.Contains("网格")) return "maze";
             if (t.Contains("走廊") || t.Contains("长廊") || t.Contains("隧道") ||
                 t.Contains("通道") || t.Contains("巷")) return "corridor";
             if (t.Contains("大厅") || t.Contains("法庭") || t.Contains("礼堂") ||
-                t.Contains("影院") || t.Contains("王座")) return "hall";
-            if (t.Contains("广场") || t.Contains("街") || t.Contains("市场") ||
-                t.Contains("峡谷") || t.Contains("公园")) return "openblock";
+                t.Contains("影院") || t.Contains("王座") || t.Contains("神殿")) return "hall";
             if (t.Contains("庭院") || t.Contains("营地") || t.Contains("港")) return "courtyard";
-            return "rooms";
+
+            // 一条路：断崖、阶梯、平台、桥——这些关卡的空间语言是"往前走"，
+            // 切成房间会把路切断（9-4 是 7 个平台接一段断裂区，不是七间屋子）。
+            if (t.Contains("平台") || t.Contains("断崖") || t.Contains("断桥") ||
+                t.Contains("阶梯") || t.Contains("山坡") || t.Contains("路线") ||
+                t.Contains("脚手架")) return "corridor";
+
+            // 明确的室内工作/居住空间才用 rooms：它要的就是"一间一间"。
+            if (t.Contains("住宅") || t.Contains("办公") || t.Contains("会议") ||
+                t.Contains("工位") || t.Contains("诊室") || t.Contains("教室") ||
+                t.Contains("卧") || t.Contains("玄关")) return "rooms";
+
+            // 其余一律开阔：广场、街区、仓库、货架、月台、市场、公园、峡谷……
+            return "openblock";
         }
 
         /// <summary>高低差：断崖、平台、楼层、塔、矿井都在关卡表里明写着。</summary>
@@ -156,6 +176,83 @@ namespace AdversityRoad.InternalOS
             if (t.Contains("营地") || t.Contains("港")) return "tent";
             if (t.Contains("偶像") || t.Contains("塔")) return "statue";
             return "none";
+        }
+
+        /// <summary>
+        /// 从关卡表的尺度栏里读出真实米数。
+        ///
+        /// PRD 写得很具体，但写法有三种，三种都得认：
+        ///   ① 单组：  "42m×18m×4m"
+        ///   ② 多组：  "Reality 35×25m；法庭55×45m；核心40×40m"
+        ///   ③ 路线：  "主路线120m；平台宽8-15m"（根本不是一块场地的边长）
+        ///
+        /// 取哪一组有讲究：
+        /// · Boss 关取**最大**的那一组——4.1 节要求 Boss 有效尺度 35-70m，
+        ///   而 9-5 的第一组是 Reality 35×25，真正的战场是法庭 55×45。
+        ///   取第一组会把 Boss 塞进一间比它自己还小的屋子。
+        /// · 其余关取第一组：它是主场地，后面几组是支路或分区。
+        /// · 路线型关卡（9-4 断崖）给一个**狭长**的占地：长度按路线、宽度按平台。
+        ///   不这么做它会退回默认盒子，变成一间方屋子——而这一关的空间语言是"一条路"。
+        ///
+        /// 读不到就返回 0，建造器自己回退到 sizeHint。
+        /// </summary>
+        public static void MetersOf(InternalLevelData lv, out float w, out float d)
+        {
+            w = 0f; d = 0f;
+            string s = lv != null ? (lv.greyboxScale ?? "") : "";
+            if (s.Length == 0) return;
+
+            bool wantLargest = lv.isBossLevel;
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (!char.IsDigit(s[i])) continue;
+                int a = i;
+                while (i < s.Length && (char.IsDigit(s[i]) || s[i] == '.')) i++;
+                float first;
+                if (!float.TryParse(s.Substring(a, i - a), out first)) continue;
+
+                int j = i;
+                while (j < s.Length && (s[j] == 'm' || s[j] == 'M' || s[j] == ' ')) j++;
+                if (j >= s.Length || (s[j] != '×' && s[j] != 'x' && s[j] != 'X' && s[j] != '*')) continue;
+                j++;
+                while (j < s.Length && s[j] == ' ') j++;
+                int b = j;
+                while (j < s.Length && (char.IsDigit(s[j]) || s[j] == '.')) j++;
+                float second;
+                if (b == j || !float.TryParse(s.Substring(b, j - b), out second)) continue;
+
+                if (!wantLargest) { w = first; d = second; return; }
+                if (first * second > w * d) { w = first; d = second; }
+                i = j;
+            }
+            if (w > 0.1f) return;
+
+            // 一组 W×D 都没有：看看是不是"主路线 NNN m"那种路线型关卡
+            float route = RouteLengthOf(s);
+            if (route <= 0.1f) return;
+            w = route;
+            d = Mathf.Max(12f, route * 0.18f);   // 狭长：宽度按路线的一小截，读起来是一条路
+        }
+
+        /// <summary>"主路线120m" / "长度110m" / "完整路线约150m" 里的那个长度。</summary>
+        static float RouteLengthOf(string s)
+        {
+            string[] keys = { "路线", "长度", "主路" };
+            for (int k = 0; k < keys.Length; k++)
+            {
+                int at = s.IndexOf(keys[k], System.StringComparison.Ordinal);
+                if (at < 0) continue;
+                for (int i = at; i < s.Length; i++)
+                {
+                    if (!char.IsDigit(s[i])) continue;
+                    int a = i;
+                    while (i < s.Length && (char.IsDigit(s[i]) || s[i] == '.')) i++;
+                    float v;
+                    if (float.TryParse(s.Substring(a, i - a), out v) && v >= 20f) return v;
+                    break;
+                }
+            }
+            return 0f;
         }
 
         /// <summary>尺度栏里的第一个数字决定 sizeHint（Boss 关按 35-70m 的有效尺度走）。</summary>
@@ -281,6 +378,12 @@ namespace AdversityRoad.InternalOS
                 clutter = lv.isBossLevel ? 1 : 2,
                 sceneDescription = lv.realityToAdversity,
             };
+
+            // PRD 明写的尺度：给了就用真实米数，别再压成三档
+            float mw, md;
+            MetersOf(lv, out mw, out md);
+            site.siteWidth = mw;
+            site.siteDepth = md;
 
             site.rooms = RoomsOf(lv);
             site.interactables = InteractablesOf(lv);

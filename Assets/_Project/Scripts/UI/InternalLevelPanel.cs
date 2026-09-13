@@ -8,12 +8,15 @@ using AdversityRoad.InternalOS;
 namespace AdversityRoad.UI
 {
     /// <summary>
-    /// 第 9-26 章 · 内部障碍线的关卡直通面板（90 关）。
+    /// 内部障碍线的关卡直通面板。
     ///
-    /// 【为什么要单开一个面板】
-    /// 关卡选择面板是 5 列 × 八行就到底的定尺版面，本身已经排满；
-    /// 90 关再加 18 个章节标题塞进去，只会把现有格子挤出屏幕。
-    /// 所以这里自己开一张，两级：先选章（18），再选关（5）。
+    /// 【它现在只列已验过的章节，不是 90 关的目录】
+    /// 第一版这里摆的是 18 章 × 5 关的两级目录，玩家试完的原话是
+    /// "不知道怎么玩""游戏变得非常复杂"。那不是 UI 问题——
+    /// PRD 第 3 节开篇第一句写着"本增补**不是**给玩家再加 18 套心理课程"，
+    /// 而一张 90 关的目录表，正是一份课程表。
+    /// 现在只放 InternalChapterCatalog.VerifiedChapters 里的章节（当前只有第 9 章）；
+    /// 其余 17 章数据一行没删，等这一章的手感验过再逐章放开。
     ///
     /// 【它是测试入口，不是主线入口】
     /// 这 90 关正式的出场方式是 Goal OS 按目标里的障碍轴插进旅程
@@ -141,8 +144,13 @@ namespace AdversityRoad.UI
 
         void ListChapters()
         {
-            var chapters = InternalChapterCatalog.Chapters;
-            _headerText.text = "18 章 × 5 关（3 普通 + 1 精英 + 1 Boss）—— 敌人全部是内部敌人。点章节展开。";
+            var chapters = InternalChapterCatalog.VerifiedList();
+
+            // 只有一章时不必再让玩家先选章——直接摊开那五关。
+            // 多一层点击就多一分"这是个目录"的感觉。
+            if (chapters.Count == 1) { _openChapter = chapters[0].chapterNo; ListLevels(_openChapter); return; }
+
+            _headerText.text = "按当前目标挡住你的那条线进入；这里只列已验过手感的章节。";
 
             int slot = 0;
             for (int i = 0; i < chapters.Count; i++)
@@ -175,8 +183,8 @@ namespace AdversityRoad.UI
                 string tier = lv.isBossLevel ? "Boss 关" : (lv.tier == "Elite" ? "精英关" : "普通关");
                 Cell(ref slot,
                     lv.levelId + "《" + lv.name + "》\n" +
-                    tier + " · " + lv.baseKitLabel + "\n" +
-                    "通关：" + Clip(lv.realityVictory, 22),
+                    "要做的事：" + Clip(lv.realityVictory, 20) + "\n" +
+                    tier + " · " + Clip(lv.coreMechanic, 18),
                     lv.isBossLevel ? new Color(0.5f, 0.34f, 0.18f, 0.96f)
                                    : new Color(0.22f, 0.30f, 0.26f, 0.96f),
                     () => Enter(id));
@@ -194,8 +202,9 @@ namespace AdversityRoad.UI
                     new Color(0.30f, 0.20f, 0.24f, 0.96f), null);
             }
 
-            Cell(ref slot, "← 返回章节列表", new Color(0.26f, 0.26f, 0.32f, 0.96f),
-                () => { _openChapter = 0; Refresh(); });
+            if (InternalChapterCatalog.VerifiedList().Count > 1)
+                Cell(ref slot, "← 返回章节列表", new Color(0.26f, 0.26f, 0.32f, 0.96f),
+                    () => { _openChapter = 0; Refresh(); });
         }
 
         static string Clip(string s, int max)

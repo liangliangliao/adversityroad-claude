@@ -119,6 +119,10 @@ namespace AdversityRoad.Goals
         /// 同一个目标常常两边都有——先插外部线再插内部线，旅程上才会两种都出现。
         ///
         /// 最多 3 条：这 18 章每章 5 关，一次插太多会让一条旅程全是内心戏。
+        ///
+        /// 【目前只会插进已验过的章节】见 InternalChapterCatalog.VerifiedChapters。
+        /// 玩家试完第一版说"不知道怎么玩、太复杂"，而一次放 18 章正是 PRD 第 3 节
+        /// 开篇否定的那个形态（"不是给玩家再加 18 套心理课程"）。
         /// </summary>
         public static void EnsureInternalChapters(GoalData goal)
         {
@@ -128,6 +132,8 @@ namespace AdversityRoad.Goals
             for (int i = 0; i < chapters.Count; i++)
             {
                 var ch = chapters[i];
+                // 没验过手感的章节不往玩家旅程里插——数据齐不等于能玩。
+                if (!InternalOS.InternalChapterCatalog.IsVerified(ch)) continue;
                 var axis = InternalOS.InternalChapterBridge.AxisOf(ch);
                 GoalObstacle match = null;
                 foreach (var ob in goal.obstacles)
