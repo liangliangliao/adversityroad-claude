@@ -497,6 +497,16 @@ namespace AdversityRoad.InternalOS
                 if (plan[i].kind != InternalPropKind.GateConsole) workCount++;
             workCount = Mathf.Max(0, workCount - 1);   // 第一件去起手位，不占工作带的位置
 
+            // 这一趟是回访吗。**必须声明在这里**：下面的道具循环（MarkDone）和
+            // 再下面的关卡循环两处都要用它。上一版声明写在第二处，第一处就成了
+            // CS0841「在声明之前使用局部变量」——本机的 csbuild 没有 Unity DLL，
+            // 方法体不做绑定，这一类只有 CI 的 Unity 编译挡得住。
+            //
+            // 判据直接问存档，不能问 InternalLevelRunner.Active：
+            // Build 跑在**场景装配期**，那时玩家还没进门，Active 要么是 null，
+            // 要么还是上一关的 runner——拿它判会判到别的关卡头上。
+            bool replay = RealityVictorySystem.IsCleared(lv.levelId);
+
             int made = 0, step = 0;
             Transform gateTransform = null;
             for (int i = 0; i < plan.Count; i++)
@@ -531,11 +541,6 @@ namespace AdversityRoad.InternalOS
             // 其余四关目前还只有关键物，没有各自的循环——见 README 的待办。
             // 回访不装关卡循环：修改卡不再铺一遍、白墙不再往外推、幽灵不再进来。
             // 玩家原话"不要再重新玩一遍……做同样的任务"——这一段就是那些任务。
-            // 判据直接问存档，不能问 InternalLevelRunner.Active：
-            // Build 跑在**场景装配期**，那时玩家还没进门，Active 要么是 null，
-            // 要么还是上一关的 runner——拿它判会判到别的关卡头上。
-            bool replay = RealityVictorySystem.IsCleared(lv.levelId);
-
             if (!replay && lv.levelId == Level0901BlankPage.LevelId)
             {
                 Level0901BlankPage.Install(parent, spawn, exit);
