@@ -36,14 +36,17 @@ namespace AdversityRoad.UI
     {
         const float Top = -370f;      // 心法行在 -338，往下让开一行
         const float W = 620f, H = 250f;
+        const float FoldedH = 46f;    // 折起来只留标题那一行
 
         static ExamineCard _inst;
         static readonly List<Examinable> _all = new List<Examinable>();
 
         GameObject _panel;
-        Text _title, _body;
+        RectTransform _frame;
+        Text _title, _body, _hint;
         Examinable _shown;
-        Examinable _muted;            // 被玩家按【用】收起来的那一件
+        /// <summary>玩家点了卡片把它折起来了（只留标题那一行）。换一件东西时自动展开。</summary>
+        bool _folded;
 
         public static void Register(Examinable e)
         {
@@ -53,19 +56,11 @@ namespace AdversityRoad.UI
         public static void Unregister(Examinable e)
         {
             _all.Remove(e);
-            if (_inst != null && _inst._muted == e) _inst._muted = null;
         }
 
-        /// <summary>此刻正显示着（或正被收起着）的就是这一件吗。</summary>
+        /// <summary>此刻正显示着的就是这一件吗。</summary>
         public static bool IsShowing(Examinable e)
             => _inst != null && _inst._shown == e;
-
-        /// <summary>把当前这一件收起来／再打开（玩家按【用】时调）。</summary>
-        public static void Toggle(Examinable e)
-        {
-            if (_inst == null || e == null) return;
-            _inst._muted = _inst._muted == e ? null : e;
-        }
 
         public static void Ensure()
         {
@@ -85,12 +80,25 @@ namespace AdversityRoad.UI
         {
             _panel = UiUtil.MakePanel(canvas, "ExamineFrame", new Vector2(W, H),
                 new Color(0.06f, 0.07f, 0.10f, 0.92f));
-            UiUtil.SetRect(_panel.GetComponent<Image>(), new Vector2(0f, 1f),
+            _frame = UiUtil.SetRect(_panel.GetComponent<Image>(), new Vector2(0f, 1f),
                 new Vector2(22f + W * 0.5f, Top - H * 0.5f), new Vector2(W, H));
+
+            // 【"点击"那一半放在这儿，不放在【用】键上】
+            // 玩家要的是"自动**或者点击**显示解释"。上一版把点击接到了【用】键上，
+            // 结果只读的牌子把按键从工作台那儿吃掉，直接卡关。
+            // 现在点的是卡片自己：一次折起（只留标题）、再一次展开。
+            // 纯 UI 事件，和世界里的任何输入都不共享通道，不可能再抢。
+            var btn = _panel.AddComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.onClick.AddListener(() => { _folded = !_folded; Apply(); });
 
             _title = UiUtil.MakeText(_panel.transform, "Title", "", 22,
                 TextAnchor.UpperLeft, new Color(0.96f, 0.86f, 0.46f));
             UiUtil.SetRect(_title, new Vector2(0.5f, 1f), new Vector2(0, -20), new Vector2(W - 28, 28));
+
+            _hint = UiUtil.MakeText(_panel.transform, "Hint", "（点一下收起）", 15,
+                TextAnchor.UpperRight, new Color(0.62f, 0.66f, 0.72f));
+            UiUtil.SetRect(_hint, new Vector2(0.5f, 1f), new Vector2(0, -20), new Vector2(W - 28, 24));
 
             _body = UiUtil.MakeText(_panel.transform, "Body", "", 18,
                 TextAnchor.UpperLeft, new Color(0.88f, 0.90f, 0.94f));
@@ -101,12 +109,29 @@ namespace AdversityRoad.UI
             _panel.SetActive(false);
         }
 
+        /// <summary>按当前的折叠状态调整高度与正文可见性。</summary>
+        void Apply()
+        {
+            if (_frame != null)
+                _frame.sizeDelta = new Vector2(W, _folded ? FoldedH : H);
+            if (_frame != null)
+                _frame.anchoredPosition = new Vector2(22f + W * 0.5f,
+                    Top - (_folded ? FoldedH : H) * 0.5f);
+            if (_body != null) _body.gameObject.SetActive(!_folded);
+            if (_hint != null) _hint.text = _folded ? "（点一下展开）" : "（点一下收起）";
+        }
+
         void Update()
         {
             if (_panel == null) return;
 
-            // 最近的那一件说话。挑出唯一的主人，而不是让大家抢同一个出口。
+            // 挑出唯一的主人，而不是让大家抢同一个出口。
+            //
+            // 【能操作的优先于只能读的】距离不是唯一标准：地面分段线和关键物常常
+            // 落在同一个位置上（起手位那条线与工作台都在 t=0.32），只比距离的话
+            // 玩家站在工作台跟前，卡上写的却是那条线——他要的是这件东西怎么用。
             Examinable best = null;
+            int bestRank = int.MaxValue;
             float bestD = float.MaxValue;
             var player = ActorRegistry.Player;
             if (player != null)
@@ -117,18 +142,21 @@ namespace AdversityRoad.UI
                     var e = _all[i];
                     if (e == null) { _all.RemoveAt(i); continue; }
                     float d = Vector3.Distance(e.transform.position, p);
-                    if (d > e.range || d >= bestD) continue;
-                    bestD = d; best = e;
+                    if (d > e.range) continue;
+                    int rank = e.interactive ? 0 : 1;
+                    if (rank > bestRank || (rank == bestRank && d >= bestD)) continue;
+                    bestRank = rank; bestD = d; best = e;
                 }
             }
 
             if (best != _shown)
             {
                 _shown = best;
-                _muted = null;            // 换了一件东西，收起状态跟着清掉
+                _folded = false;          // 换了一件东西，折叠状态跟着复位
                 Render(best);
+                Apply();
             }
-            bool show = best != null && _muted != best;
+            bool show = best != null;
             if (_panel.activeSelf != show) _panel.SetActive(show);
         }
 
@@ -160,35 +188,34 @@ namespace AdversityRoad.UI
         public float range = 4.5f;
 
         /// <summary>
-        /// 这件东西自己要用【用】键吗。
+        /// 这件东西是**能操作的**（按【用】会发生事），还是只能读的牌子。
         ///
-        /// 玩家要的是"自动**或者点击**显示解释"。自动那一半由距离负责；
-        /// 点击这一半统一走【用】——但关键物和修改卡的【用】已经是"做那件事"了，
-        /// 抢过来会把玩法弄坏。所以它们把这一位设成 true 自己处理，
-        /// 剩下的纯说明牌（入口/出口/路线牌/地面分段）由这里接管：按一下收起，
-        /// 再按一下打开。
+        /// 【这一位原来叫 consumesUse，而且干了一件闯祸的事】
+        /// 上一版让只读的牌子也去读【用】键，好让玩家"点一下收起卡片"。
+        /// 后果是卡关：MobileInput.GetDown 是**消费式**的（读到就把这一次按下删掉），
+        /// 谁先读谁独吞。地面那五条分段每条都挂着一个只读牌，而【起手位】那条线
+        /// 和工作台在同一个 t（0.32）上——分段的 Update 先跑就把按键吃掉了，
+        /// 工作台永远收不到，第一版做不出来，这一关就过不去。
+        ///
+        /// 教训写在这儿：**动作键属于你要操作的那件东西，只读的牌子一律不许碰。**
+        /// 现在这一位不再管输入，只管两件事：
+        ///   · 谁该占住说明卡——能操作的优先于只能读的（你需要的是它的用法）；
+        ///   · 提醒读代码的人：这件东西自己会处理【用】。
+        /// "点击"那一半改由卡片自己承担（点卡片收起/展开），纯 UI，不碰世界输入。
         /// </summary>
-        public bool consumesUse;
+        public bool interactive;
 
         System.Func<CodexEntry> _resolve;
 
         public static Examinable Attach(GameObject host, System.Func<CodexEntry> resolve,
-            float range = 4.5f, bool consumesUse = false)
+            float range = 4.5f, bool interactive = false)
         {
             if (host == null || resolve == null) return null;
             var e = host.AddComponent<Examinable>();
             e._resolve = resolve;
             e.range = range;
-            e.consumesUse = consumesUse;
+            e.interactive = interactive;
             return e;
-        }
-
-        void Update()
-        {
-            if (consumesUse) return;            // 这件东西自己用【用】做别的事
-            if (!ExamineCard.IsShowing(this)) return;
-            if (Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))
-                ExamineCard.Toggle(this);
         }
 
         public CodexEntry Entry() => _resolve != null ? _resolve() : default(CodexEntry);

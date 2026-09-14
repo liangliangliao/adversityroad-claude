@@ -271,7 +271,7 @@ namespace AdversityRoad.InternalOS
             UI.Examinable.Attach(go, () => SignCodex.ForCard(
                 InternalLevelRunner.Active != null ? InternalLevelRunner.Active.Level : null,
                 Level0901BlankPage.CardLabel, body),
-                InternalProp.InteractRange + 1.2f, consumesUse: true);
+                InternalProp.InteractRange + 1.2f, interactive: true);
             return c;
         }
 

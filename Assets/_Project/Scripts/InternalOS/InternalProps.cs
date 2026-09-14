@@ -629,7 +629,7 @@ namespace AdversityRoad.InternalOS
             {
                 var run = InternalLevelRunner.Active;
                 return SignCodex.ForProp(pk, plv, run != null && run.Replay);
-            }, InteractRange + 1.2f, consumesUse: true);
+            }, InteractRange + 1.2f, interactive: true);
             return p;
         }
 
@@ -718,10 +718,14 @@ namespace AdversityRoad.InternalOS
                       "还没记上的是：现实里做到没有、换个场合又做到没有。——按【用】/ R"
                     : "【" + label + "】这一件你上一趟已经做过了。这次不用再做一遍。");
             }
+            // 【只有交付台才去读这个键】
+            // MobileInput.GetDown 是消费式的：读一次就把这次按下删掉，别人再读就是 false。
+            // 回访时按不动的机关如果也来读一遍，就会把按键从真正需要它的东西那儿吃掉——
+            // 这正是上一版卡关的机制（见 Examinable.interactive 的说明）。
+            // 没事可做的东西，一律不碰动作键。
+            if (!isGate) return;
             if (!(Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))) return;
-            // 回访时交付台办回执；其余按不动的东西，这一下用来收起/再展开说明卡
-            if (isGate) UI.RealityCheckPanel.Show(runner.Level);
-            else UI.ExamineCard.Toggle(GetComponent<UI.Examinable>());
+            UI.RealityCheckPanel.Show(runner.Level);
         }
 
         /// <summary>可交互距离。比原来的 2.2 米放宽一点：现在要玩家自己按，够得着才不别扭。</summary>

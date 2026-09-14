@@ -222,7 +222,7 @@ namespace AdversityRoad.InternalOS
             UI.Examinable.Attach(go, () => SignCodex.ForCard(
                 InternalLevelRunner.Active != null ? InternalLevelRunner.Active.Level : null,
                 Level0902ProofRoom.CardLabel, body != null ? body.text : ""),
-                InternalProp.InteractRange + 1.2f, consumesUse: true);
+                InternalProp.InteractRange + 1.2f, interactive: true);
             return c;
         }
 
