@@ -40,12 +40,20 @@ namespace AdversityRoad.InternalOS
     /// </summary>
     public static class InternalLayout
     {
-        // 各带的首尾（沿"落点→出口"主轴的比例）
-        public const float CombatT = 0.22f;
-        public const float OpeningT = 0.30f;
-        public const float ReadFrom = 0.40f, ReadTo = 0.64f;
-        public const float WorkFrom = 0.70f, WorkTo = 0.82f;
-        public const float GateT = 0.90f;
+        // 各带的首尾（沿"落点→出口"主轴的比例）。
+        //
+        // 【这一版把资料带拉长、把过道拉宽，因为八张卡摆成了一排栅栏】
+        // 上一版资料带是 0.40-0.64：主轴 40 米时只占 9.6 米，八张卡分四排，
+        // 排距 3.2 米——从入口望过去就是一堵墙。
+        // 现在资料带占 0.42-0.70（11.2 米，排距 3.7 米），过道半宽从 7.5 拉到 9.5，
+        // 两排之间隔开 19 米：卡在路的两侧，不在你正前方。
+        // 真正让它不再像牌坊的是形状（斜面阅读台，只有腰高，见 InternalProps.ReadingStand）——
+        // 间距只是配合，直立的板拉多开都还是墙。
+        public const float CombatT = 0.20f;
+        public const float OpeningT = 0.32f;
+        public const float ReadFrom = 0.42f, ReadTo = 0.70f;
+        public const float WorkFrom = 0.78f, WorkTo = 0.86f;
+        public const float GateT = 0.93f;
 
         // ===== 每条带的名字 =====
         //
@@ -56,21 +64,66 @@ namespace AdversityRoad.InternalOS
         // 于是说明里写"去【起手位】"就被判成指向不存在的东西。
         //
         // 名字散在两处迟早会对不上，所以收在这里一份：
-        // SiteBuilder 拿它刻牌子，CIDiagnostics 拿它核说明，两边永远一致。
+        // SiteBuilder 拿它刷在地上（BuildInternalRoute）、ZoneRoute 拿它报段名、
+        // CIDiagnostics 拿它核说明，三边永远一致。
         public const string ZoneCombat  = "战斗区";
         public const string ZoneOpening = "起手位";
         public const string ZoneRead    = "资料带";
         public const string ZoneWork    = "工作带";
         public const string ZoneGate    = "交付点";
 
-        /// <summary>场上会立出来的区域牌名（玩法说明里点名它们是合法的）。</summary>
+        /// <summary>场上会出现的区域名（玩法说明里点名它们是合法的）。</summary>
         public static readonly string[] ZoneNames =
         {
             ZoneCombat, ZoneOpening, ZoneRead, ZoneWork, ZoneGate
         };
 
-        /// <summary>资料带里两排之间的半宽：过道净宽 15 米，打起来也转得开。</summary>
-        public const float AisleHalf = 7.5f;
+        /// <summary>每条带在主轴上的位置，与 ZoneNames 一一对应。</summary>
+        public static readonly float[] ZoneT =
+        {
+            CombatT, OpeningT, ReadFrom, WorkFrom, GateT
+        };
+
+        /// <summary>
+        /// 踩进这条带时该说的那句话：**这儿是干什么的、现在要做什么**。
+        ///
+        /// 【为什么说明不再写在牌子上】
+        /// 原来每条带立一块木牌，牌上挂一个"走近解释"。两个后果：
+        /// ① 牌子是家具——五块牌子挤在主轴前半段（战斗区 8.8m、往里走 9.0m、
+        ///    起手位 12m、资料带 16m，而每块的解释半径是 6 米），玩家看到的是
+        ///    "类似牌坊"的一排东西；
+        /// ② 解释半径互相重叠，几块牌子同时往**同一行字幕**里写，后写的盖掉先写的，
+        ///    于是玩家站在牌子边上什么也没读到——"只是摆设"这句话是准确的。
+        ///
+        /// 现在说明不挂在物体上，挂在**这条带本身**：名字刷在地上（高度为零，
+        /// 不占地方、不挡视线），踩过分段线的那一刻说一次。
+        /// 一次只会有一条带被踩进去，所以不会再互相盖。
+        /// </summary>
+        public static string ZoneWhat(int index, string objective)
+        {
+            switch (index)
+            {
+                case 0: return "这一段特意空着，没有家具——打起来才转得开身。" +
+                               "敌人开场在这儿，再往前它们会守在每条带的路口上拦你。";
+                case 1: return "这一关第一件要动手的东西就在这儿，走到跟前按【用】/ R。" +
+                               "先有东西，再谈它够不够好。";
+                case 2: return "要读的东西分两排立在过道两侧，从近到远就是先后顺序。" +
+                               "读不等于做——读完自己决定动不动手。要做的事是：" + objective;
+                case 3: return "余下要按的关键物在这一段，沿路依次排开。" +
+                               "读过的东西在这里变成动作。";
+                default: return "这一关的事在这里算完成。交付之后再走到出口，这一关才结束。";
+            }
+        }
+
+        /// <summary>路线牌上刻的那一行：走一遍就是把这一关做完一遍。</summary>
+        public static string RouteLine()
+        {
+            return "【路线】" + ZoneCombat + " → " + ZoneOpening + " → " + ZoneRead
+                 + " → " + ZoneWork + " → " + ZoneGate + " → 出口";
+        }
+
+        /// <summary>资料带里两排之间的半宽：过道净宽 19 米，卡在路两侧而不在正前方。</summary>
+        public const float AisleHalf = 9.5f;
         /// <summary>工作带里左右错开的距离。关键物少，错开小一点就够认。</summary>
         public const float WorkOffset = 4.5f;
 

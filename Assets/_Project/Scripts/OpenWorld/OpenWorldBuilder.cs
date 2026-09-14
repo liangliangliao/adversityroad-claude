@@ -558,6 +558,33 @@ namespace AdversityRoad.OpenWorld
             }
         }
 
+        /// <summary>
+        /// **刷在地上的字**：平铺在地面，从上方读。
+        ///
+        /// 【为什么需要这种字】
+        /// 区域说明原来做成了立在路上的木牌。玩家的原话是"立这么多标记（类似牌坊），
+        /// 它们之间的距离很近，显得非常密集堆积在一起"——说得对，而且这不是
+        /// "牌子摆得不够开"的问题：**说明本身不该占地方**。
+        /// 一块牌子会挡视线、挡路、和隔壁的牌子抢位置；刷在地上的字一样读得到，
+        /// 但它高度为零，永远不会和任何东西挤在一起，也永远不会挡住前面那段路。
+        ///
+        /// 朝向：可读的一面是 -Z（见 SurfaceSign 那条说明），所以让 -Z 朝上——
+        /// 字就是正面朝天躺着的，沿主轴走过去低头就读得到。
+        /// </summary>
+        public static void GroundSign(Transform parent, Vector3 localPos, string text,
+            float height, Color ink)
+        {
+            if (parent == null || string.IsNullOrEmpty(text)) return;
+            const int Font = 110;          // 先画大再缩小，字口才利落
+            float charSize = height * 10f / Font;
+
+            var go = new GameObject("GroundSign_" + text);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            go.transform.localRotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
+            World.WorldText.Attach(go, text, Font, charSize, ink);
+        }
+
         public static void HomeSign(Vector3 pos, string text)
         {
             var go = new GameObject("Sign_" + text);

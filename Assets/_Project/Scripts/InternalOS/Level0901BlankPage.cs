@@ -110,7 +110,8 @@ namespace AdversityRoad.InternalOS
                 // 这一带和工作台/提交台那一带完全不重叠——上一版两者的区间叠在一起，
                 // 场上就成了玩家说的"堆在一块、杂乱无章"。
                 Vector3 at = InternalLayout.Aisle(spawn, exit, i, 6);
-                _cards.Add(EditCard.Create(at, text, crit, this, transform));
+                // 可读面朝回落点：玩家顺着主轴走过来，正好迎面读得到
+                _cards.Add(EditCard.Create(at, text, crit, this, transform, spawn - at));
             }
 
             GameEvents.RaiseSubtitle("白纸之门：先做出第一版。站着不动，这地方会一直往外长。");
@@ -250,13 +251,16 @@ namespace AdversityRoad.InternalOS
         bool _inRange;
 
         public static EditCard Create(Vector3 pos, string text, bool critical,
-            Level0901BlankPage owner, Transform parent)
+            Level0901BlankPage owner, Transform parent, Vector3 facing)
         {
-            // 卡是立着的一块板：牌面就写在板上，不挂在头顶飘着。
+            // 卡是一台**斜面阅读台**，不是立着的板：牌面刻在斜面上，走到跟前低头就读得到。
+            // 直立的板会把自己整片投进视野，八张一排就是一堵墙（见 ReadingStand 的说明）。
             // 六张一模一样——分得出来靠走近读那行字，不靠颜色、不靠标签。
-            var size = new Vector3(1.1f, 1.4f, 0.14f);
-            var go = InternalProps.LabeledBlock("EditCard", pos, size,
-                new Color(0.88f, 0.88f, 0.84f), 0.25f, Level0901BlankPage.CardLabel);
+            var go = InternalProps.ReadingStand("EditCard", pos, facing,
+                new Color(0.88f, 0.88f, 0.84f), Level0901BlankPage.CardLabel);
+            // 挂到关卡节点下。原来这一句没有（9-2 有），于是六张卡是**游离**在场景里的：
+            // 这一关卸掉之后它们还留在世界里，重进一次就多六张。
+            if (parent != null) go.transform.SetParent(parent, true);
 
             var c = go.AddComponent<EditCard>();
             c.text = text;

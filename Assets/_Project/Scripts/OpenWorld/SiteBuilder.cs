@@ -295,8 +295,8 @@ namespace AdversityRoad.OpenWorld
 
             BuildEntranceMarker(inst, bp);
             BuildFarExitDoor(inst, chapter);
-            // 第 9-26 章：用和分区对齐的区域牌，替掉那些没有作用的路径名牌
-            if (internalLevel != null) BuildInternalZoneSigns(inst, internalLevel);
+            // 第 9-26 章：路线画在地上（带名 + 踩线说明），全场只留一块实体路线牌
+            if (internalLevel != null) BuildInternalRoute(inst, internalLevel);
 
             // ---- 注册为动态区域（可传送、有名字、有雾色） ----
             inst.zoneIndex = ZoneBuilder.RegisterDynamicZone(inst.siteId, bp.siteName, inst.playerSpawn);
@@ -434,22 +434,14 @@ namespace AdversityRoad.OpenWorld
                 new Vector3(half * 2f, 0.04f, lane1 - lane0),
                 Lighten(inst.cFloor, 0.10f));
 
-            // ---- 三条分段线：踩过一条，就换了一件要做的事 ----
-            BandLine(inst, Z(InternalOS.InternalLayout.CombatT), half, new Color(0.86f, 0.45f, 0.38f));
-            BandLine(inst, Z(InternalOS.InternalLayout.OpeningT), half, new Color(0.95f, 0.66f, 0.35f));
-            BandLine(inst, Z(InternalOS.InternalLayout.ReadFrom), half, new Color(0.55f, 0.78f, 0.95f));
-            BandLine(inst, Z(InternalOS.InternalLayout.WorkFrom), half, new Color(0.95f, 0.82f, 0.45f));
-            BandLine(inst, Z(InternalOS.InternalLayout.GateT), half, new Color(0.55f, 0.92f, 0.66f));
+            // 分段线与带名不在这里画：这一步跑在落点/出口定下来之前，用的是预估主轴。
+            // 线画歪两米，牌子说的和地上有的就又对不上了——见 BuildInternalRoute。
 
-            // ---- 过道两侧的矮墩：把路框出来，齐膝高，不挡视线也不挡人 ----
-            int kerbs = Mathf.Max(4, Mathf.RoundToInt((lane1 - lane0) / 5f));
-            for (int i = 0; i <= kerbs; i++)
-            {
-                float z = Mathf.Lerp(lane0, lane1, (float)i / kerbs);
-                for (int sx = -1; sx <= 1; sx += 2)
-                    Cyl(inst, "AisleKerb", new Vector3(sx * half, 0.22f, z),
-                        0.28f, 0.45f, inst.cTrim, false);
-            }
+            // 【这里原来还有两排矮墩把过道框出来——删掉了】
+            // 它们不承担任何规则：不能交互、走近不解释、挡不住也指不了路，
+            // 纯粹是"看起来像条路"的装饰。玩家原话
+            // "有的标记出现在场景中，但却未真正发挥作用，只是摆设"——这一类就在其中。
+            // 地上那条颜色过道已经把路说清楚了，不需要再摆一圈实物。
 
             // ---- 场地边上几根柱子：给尺度，全部落在过道之外 ----
             int cols = Mathf.Clamp(Mathf.RoundToInt(d / 16f), 2, 6);
@@ -465,13 +457,6 @@ namespace AdversityRoad.OpenWorld
             float cz = Z(InternalOS.InternalLayout.CombatT);
             inst.enemySpawns.Add(inst.origin + new Vector3(-5f, 1.1f, cz));
             inst.enemySpawns.Add(inst.origin + new Vector3(5f, 1.1f, cz + 4f));
-        }
-
-        /// <summary>一条横过主轴的分段线（只是地上的颜色，不挡人）。</summary>
-        static void BandLine(SiteInstance inst, float z, float half, Color c)
-        {
-            Deco(inst, "BandLine", new Vector3(0, 0.09f, z),
-                new Vector3(half * 2f + 2f, 0.05f, 0.5f), c);
         }
 
         /// <summary>长廊：一条走不完的通道，两侧是门——无限代付走廊那一类的通用形状。</summary>
@@ -1420,8 +1405,13 @@ namespace AdversityRoad.OpenWorld
                 Deco(inst, "PathMark", new Vector3(0, 0.08f, z),
                     new Vector3(2.6f, 0.05f, 1.1f), new Color(0.95f, 0.82f, 0.45f, 1f));
             }
-            Sign(inst, new Vector3(0, 1.9f, spawnZ + dir * 9f), "▼ 往里走 · 出口在那一头",
-                "这一关要做的事在前面，出口也在那一头。");
+            // 【这块牌子和 9 米外那块【战斗区】是叠在一起的】
+            // 主轴长 40 米时，它在 9.0m，而战斗区那块在 8.8m——相距 0.2 米，
+            // 两块的解释半径都是 6 米，往同一行字幕里抢着写。
+            // 第 9-26 章改由一块路线牌统一说明（见 BuildInternalRoute），这块不再立。
+            if (!_internalSite)
+                Sign(inst, new Vector3(0, 1.9f, spawnZ + dir * 9f), "▼ 往里走 · 出口在那一头",
+                    "这一关要做的事在前面，出口也在那一头。");
         }
 
         /// <summary>只烘焙本场景（Children 收集）：不动主世界导航，卸载时一起消失。</summary>
@@ -1952,55 +1942,101 @@ namespace AdversityRoad.OpenWorld
         /// 免得玩家跑过去半天发现门不认。
         /// </summary>
         /// <summary>
-        /// 第 9-26 章的**区域牌**：和真实分区对齐的三块牌子。
+        /// 第 9-26 章的路线：**画在地上，不立在路上**。
         ///
-        /// 【为什么要换掉原来那些房间名牌】
-        /// 原来摆的是关卡表「主路径」那一栏切出来的段名——"空白工作区""修改走廊"。
-        /// 两个问题：一是那是**设计文档里的路径描述**，不是玩家能用的信息；
-        /// 二是它们由布局生成器随机落位，**和实际的分区位置对不上**——
-        /// 牌子写着"修改走廊"，而那块地上什么都没有。
-        /// 玩家原话："很多的指示牌或者文字标记……没有看到其作用是什么？"
+        /// 【上一版是五块木牌，玩家说那是"牌坊"】
+        /// 原话："立这么多标记（类似牌坊），它们之间的距离很近，显得非常密集堆积在一起。
+        /// 另外有的标记出现在场景中，但却未真正发挥作用，只是摆设，玩家不会和其交互，
+        /// 玩家来到这些标记旁边也不会任何提示。"
         ///
-        /// 现在每块牌子钉在它真正对应的那一段上，并且回答三件事：
-        /// **这是什么区 / 为什么会有它 / 在这儿要做什么**。
-        /// 牌子不再是装饰，它是这一关规则的说明书，位置本身就是信息。
+        /// 两条都成立，而且是同一个根因——**我把说明做成了家具**：
+        /// ① 主轴长 40 米，五块牌分别落在 8.8 / 12 / 16 / 28 / 36 米，
+        ///    入口那块"▼往里走"还正好压在 9.0 米——前半段 8 米里挤着三块牌子。
+        /// ② 每块牌的解释半径是 6 米，几块的范围整片重叠，而它们往**同一行字幕**里写；
+        ///    后写的盖掉先写的，于是玩家站在牌子边上什么都没读到。
+        ///    "只是摆设"这句话在实机上是准确的。
+        ///
+        /// 现在说明不再是物体：
+        ///   · 带名**刷在地上**（GroundSign，高度为零）——不挡视线、不占路、不互相挤；
+        ///   · 解释交给**一个**状态机：它知道玩家在第几段，段号变了才说一句（ZoneRoute）。
+        ///     同一时刻只会踩进一条带，所以不会再互相盖；
+        ///   · 整条路线只保留**一块**实体牌，立在入口侧边（不挡主轴），
+        ///     刻着走法，走近读到完整一句。
+        ///
+        /// 场上因此少了五件家具，而信息一件没少——反而是第一次真的读得到。
         /// </summary>
-        static void BuildInternalZoneSigns(SiteInstance inst, InternalOS.InternalLevelData lv)
+        static void BuildInternalRoute(SiteInstance inst, InternalOS.InternalLevelData lv)
         {
-            if (lv == null) return;
+            if (lv == null || inst == null || inst.root == null) return;
             Vector3 spawn = inst.playerSpawn, far = inst.farExit;
-            Vector3 L(float t) => inst.root.transform.InverseTransformPoint(
-                Vector3.Lerp(spawn, far, t)) + new Vector3(0f, 1.9f, 0f);
+            Transform root = inst.root.transform;
+            float half = InternalOS.InternalLayout.AisleHalf;
 
-            // 三块牌子钉在三条分段线上，一块一段，和地上的颜色线对齐。
-            // 比例全部取自 InternalLayout——牌子写的和东西落的必须是同一条规则，
-            // 否则又变成"牌子说这儿是任务区，而那块地上什么都没有"。
-            // 牌面上的名字一律取自 InternalLayout.Zone*：玩法说明点的就是这几个名字，
-            // 两处必须是同一份常量，否则玩家会照着说明去找一块措辞不同的牌子
-            // （CI 的「目标行/玩法说明指向核对」查的正是这件事）。
-            Sign(inst, L(InternalOS.InternalLayout.CombatT),
-                "【" + InternalOS.InternalLayout.ZoneCombat + "】",
-                "这一块特意空出来，没有家具——打起来才转得开身。" +
-                "敌人开场在这儿；再往前它们会守在每条带的路口上拦你。");
+            var lineInk = new Color(0.16f, 0.15f, 0.18f);
+            var zoneT = InternalOS.InternalLayout.ZoneT;
+            var zoneNames = InternalOS.InternalLayout.ZoneNames;
+            var lineWorldZ = new float[zoneT.Length];
+            var whatSaid = new string[zoneT.Length];
+            // 带名刷在分段线的**里侧**——往出口那一边偏一点，走过线正好读到
+            float ahead = (far.z >= spawn.z ? 1f : -1f) * 2.2f;
 
-            Sign(inst, L(InternalOS.InternalLayout.OpeningT),
-                "【" + InternalOS.InternalLayout.ZoneOpening + "】· 先动手",
-                "这一关第一件要按的东西就在这儿。先有东西，再谈它够不够好——" +
-                "没做出第一版之前，后面那些「还能更好」都不成立。");
+            for (int i = 0; i < zoneT.Length && i < zoneNames.Length; i++)
+            {
+                Vector3 at = Vector3.Lerp(spawn, far, zoneT[i]);
+                Vector3 local = root.InverseTransformPoint(at);
 
-            Sign(inst, L(InternalOS.InternalLayout.ReadFrom),
-                "【" + InternalOS.InternalLayout.ZoneRead + "】· 先读",
-                "要读的东西分两排立在过道两侧，从近到远就是先后顺序。" +
-                "读不等于做：读完自己决定动不动手。这一关要做的事是：" + lv.Objective);
+                // ① 分段线：一条横过主轴的颜色带，踩过去就换了一件要做的事
+                Deco(inst, "BandLine", new Vector3(0f, 0.09f, local.z),
+                    new Vector3(half * 2f + 2f, 0.05f, 0.5f), BandColor(i));
 
-            Sign(inst, L(InternalOS.InternalLayout.WorkFrom),
-                "【" + InternalOS.InternalLayout.ZoneWork + "】· 动手",
-                "要按下去的关键物在这一段，沿路依次排开。" +
-                "读过的东西在这里变成动作——按【用】/ R 才算数。");
+                // ② 带名刷在地上，就在线的里侧一点——低头即读，不占任何空间
+                OpenWorldBuilder.GroundSign(root,
+                    new Vector3(0f, 0.14f, local.z + ahead), zoneNames[i], 1.1f, lineInk);
 
-            Sign(inst, L(InternalOS.InternalLayout.GateT),
-                "【" + InternalOS.InternalLayout.ZoneGate + "】",
-                "这一关的事在这里算完成。交付之后再走到出口，这一关才结束。");
+                lineWorldZ[i] = at.z;
+                whatSaid[i] = InternalOS.InternalLayout.ZoneWhat(i, lv.Objective);
+            }
+
+            // ③ 说明由**一个**状态机负责：它知道玩家在第几段，段号变了才说一句。
+            //    每条带各挂一个触发器是不行的——两条线相距四米，站在中间会同时命中，
+            //    那正是上一版"几块牌子互相盖掉"的同一个毛病换了个地方。
+            var runner = new GameObject("ZoneRoute");
+            runner.transform.SetParent(root, false);
+            var zr = runner.AddComponent<ZoneRoute>();
+            zr.lineZ = lineWorldZ;
+            zr.zoneNames = zoneNames;
+            zr.zoneWhat = whatSaid;
+            zr.centerX = inst.origin.x;
+            zr.halfWidth = half + 4f;
+            zr.dir = far.z >= spawn.z ? 1f : -1f;
+
+            // ④ 全场唯一一块实体路线牌：立在入口侧边，不站在主轴上
+            // 贴着走线放（半个过道宽），不是丢在场地边上：
+            // 全场只剩这一块说明牌，它必须是玩家一进场就走过的那一块。
+            Vector3 boardAt = Vector3.Lerp(spawn, far, 0.05f)
+                            + InternalOS.InternalLayout.Right(spawn, far) * (half * 0.6f);
+            Vector3 boardLocal = root.InverseTransformPoint(boardAt);
+            Sign(inst, new Vector3(boardLocal.x, 1.9f, boardLocal.z),
+                InternalOS.InternalLayout.RouteLine(),
+                "地上的颜色线把这块地分成几段，名字就刷在线旁边。" +
+                "顺着主轴往前走，一段做一件事，走到头就走完了这一关。这一关要做的是：" +
+                lv.Objective,
+                // 半径收到 4 米：牌子在 t=0.05，第一条分段线在 t=0.20（主轴 40 米时
+                // 是 2 米与 8 米）。默认的 6 米正好够得到那条线，两句会撞在一起。
+                explainRange: 4f);
+        }
+
+        /// <summary>分段线的颜色：一段一色，踩过哪一条一眼认得出。</summary>
+        static Color BandColor(int index)
+        {
+            switch (index)
+            {
+                case 0: return new Color(0.86f, 0.45f, 0.38f);   // 战斗区
+                case 1: return new Color(0.95f, 0.66f, 0.35f);   // 起手位
+                case 2: return new Color(0.55f, 0.78f, 0.95f);   // 资料带
+                case 3: return new Color(0.95f, 0.82f, 0.45f);   // 工作带
+                default: return new Color(0.55f, 0.92f, 0.66f);  // 交付点
+            }
         }
 
         static void BuildFarExitDoor(SiteInstance inst, GoalChapterData chapter)
@@ -2242,10 +2278,10 @@ namespace AdversityRoad.OpenWorld
         }
 
         static void Sign(SiteInstance inst, Vector3 local, string text, string explain = null,
-            bool post = true)
+            bool post = true, float explainRange = 6f)
         {
             if (string.IsNullOrEmpty(text)) return;
-            // 第 9-26 章不摆"路径名"房间牌——见 BuildInternalZoneSigns 的说明。
+            // 第 9-26 章不摆"路径名"房间牌——见 BuildInternalRoute 的说明。
             // 区域牌走那条路单独建，以【】开头；入口/出口牌用 ◀ ▲ 开头，都放行。
             if (_internalSite && text.Length > 0 &&
                 text[0] != '\u3010' && text[0] != '◀' && text[0] != '▲' && text[0] != '▼')
@@ -2307,6 +2343,10 @@ namespace AdversityRoad.OpenWorld
                 var ex = root.AddComponent<SiteSignExplain>();
                 ex.title = text;
                 ex.explain = explain;
+                // 解释半径要能调：牌子的范围一旦够到别的说明源，两边就会往
+                // 同一行字幕里抢着写，后写的盖掉先写的——上一版五块区域牌正是这么
+                // 变成"走到旁边也没有任何提示"的。
+                ex.range = explainRange;
             }
         }
 
@@ -2460,6 +2500,59 @@ namespace AdversityRoad.OpenWorld
     /// 不是"它是干什么的"。走近补一句用途，停留时长由
     /// <see cref="UI.HUDController.SubtitleSeconds"/> 按字数算——长句子自动留久一点。
     /// </summary>
+    /// <summary>
+    /// 整条路线只有**一个**说话的人。
+    ///
+    /// 【它替掉的是五块牌子，以及五块牌子互相盖掉对方的那个毛病】
+    /// 区域说明原来挂在立在路上的木牌上（SiteSignExplain，半径 6 米）。
+    /// 主轴长 40 米时那几块牌落在 8.8 / 9.0 / 12 / 16 米——范围整片重叠，
+    /// 同一帧里好几块都往**同一行字幕**里写，后写的盖掉先写的。
+    /// 玩家看到的就是"走到标记旁边也不会有任何提示"。
+    ///
+    /// 换成"每条带各挂一个触发器"只会把同样的竞争搬个地方：两条线相距四米，
+    /// 站在中间仍然同时落在两个触发范围里。
+    ///
+    /// 所以这里不做触发器，做一个**状态机**：它知道玩家此刻在第几段，
+    /// 只有段号变了才说一句。于是同一时刻结构上不可能有两条说明——
+    /// 不是"调参数调到不重叠"，是**重叠这件事没法发生**。
+    /// 往回走也照样报，因为它比的是段号，不是有没有踩到线。
+    /// </summary>
+    public class ZoneRoute : MonoBehaviour
+    {
+        /// <summary>每条分段线在主轴上的世界坐标（沿 Z，由近到远）。</summary>
+        public float[] lineZ;
+        public string[] zoneNames;
+        public string[] zoneWhat;
+        /// <summary>主轴的横坐标，以及算作"走在这条路上"的半宽。</summary>
+        public float centerX;
+        public float halfWidth = 13f;
+        /// <summary>主轴指向出口的方向（+1 / -1）。</summary>
+        public float dir = 1f;
+
+        int _current = -1;
+
+        void Update()
+        {
+            var player = AdversityRoad.Core.ActorRegistry.Player;
+            if (player == null || lineZ == null || lineZ.Length == 0) return;
+
+            Vector3 p = player.transform.position;
+            // 绕到场地边上去了就不播——这几句是给"走在路上的人"看的
+            if (Mathf.Abs(p.x - centerX) > halfWidth) return;
+
+            // 已经跨过的最后一条线，就是玩家此刻所在的那一段
+            int idx = -1;
+            for (int i = 0; i < lineZ.Length; i++)
+                if ((p.z - lineZ[i]) * dir >= 0f) idx = i;
+
+            if (idx < 0 || idx == _current) return;
+            _current = idx;
+            if (idx >= zoneNames.Length || idx >= zoneWhat.Length) return;
+            AdversityRoad.Core.GameEvents.RaiseSubtitle(
+                "〔" + zoneNames[idx] + "〕" + zoneWhat[idx]);
+        }
+    }
+
     public class SiteSignExplain : MonoBehaviour
     {
         public string title = "";

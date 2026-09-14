@@ -85,8 +85,11 @@ namespace AdversityRoad.InternalOS
             // 玩家从中间走过去，左右各一列，一张一张读得到；
             // 提交台和别的关键物在后面那一带，不和它们挤在同一段路上。
             for (int i = 0; i < items.Count; i++)
-                ProofCard.Create(InternalLayout.Aisle(spawn, exit, i, items.Count),
-                    items[i], this, transform);
+            {
+                Vector3 at = InternalLayout.Aisle(spawn, exit, i, items.Count);
+                // 可读面朝回落点：顺着主轴走过来迎面读得到
+                ProofCard.Create(at, items[i], this, transform, spawn - at);
+            }
 
             GameEvents.RaiseSubtitle(
                 "永久校稿室：场上八处可以改的地方。真正挡住交付的只有两处，" +
@@ -205,11 +208,11 @@ namespace AdversityRoad.InternalOS
         float _lastHint = -99f;
 
         public static ProofCard Create(Vector3 pos, ProofItem item,
-            Level0902ProofRoom owner, Transform parent)
+            Level0902ProofRoom owner, Transform parent, Vector3 facing)
         {
-            var size = new Vector3(1.1f, 1.4f, 0.14f);
-            var go = InternalProps.LabeledBlock("ProofCard", pos, size,
-                new Color(0.86f, 0.87f, 0.9f), 0.25f, Level0902ProofRoom.CardLabel);
+            // 斜面阅读台，理由同 9-1：八张直立的板沿主轴一摆就是一排栅栏。
+            var go = InternalProps.ReadingStand("ProofCard", pos, facing,
+                new Color(0.86f, 0.87f, 0.9f), Level0902ProofRoom.CardLabel);
             if (parent != null) go.transform.SetParent(parent, true);
 
             var c = go.AddComponent<ProofCard>();

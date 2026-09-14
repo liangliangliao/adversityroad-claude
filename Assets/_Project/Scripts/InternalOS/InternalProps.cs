@@ -339,6 +339,60 @@ namespace AdversityRoad.InternalOS
         }
 
         /// <summary>
+        /// **阅读台**：一根矮柱撑着一块斜面板，像博物馆展品前的说明台。
+        ///
+        /// 【为什么修改卡不能再是立着的板】
+        /// 上一版每张卡是一块 1.1×1.4 的直立方板。八张沿主轴分两排一摆，
+        /// 从入口望过去就是一排栅栏——玩家原话"立这么多标记（类似牌坊），
+        /// 它们之间的距离很近，显得非常密集堆积在一起"。
+        /// 问题不只在间距：**直立的板会把自己整片投进视野**，
+        /// 哪怕间距再拉开，站在主轴上看还是一堵墙。
+        ///
+        /// 斜面阅读台只有腰高，面是朝上斜的：远看是路边一排矮桩，视线越得过去；
+        /// 走到跟前低头就读得到。同样八件东西，场面完全不同。
+        ///
+        /// facing 是**可读面朝向**：让它朝回落点那一侧，玩家顺着主轴走过来正好读得到。
+        /// </summary>
+        public static GameObject ReadingStand(string name, Vector3 pos, Vector3 facing,
+            Color color, string label)
+        {
+            var root = new GameObject(name);
+            root.transform.position = pos;
+            facing.y = 0f;
+            if (facing.sqrMagnitude > 0.01f)
+                root.transform.rotation = Quaternion.LookRotation(facing.normalized, Vector3.up);
+
+            // 斜面板先建：EditCard/ProofCard 用 GetComponentInChildren<MeshRenderer>()
+            // 取"用过了要变灰"的那个渲染器，它必须是第一个被找到的。
+            var panel = new GameObject("Panel");
+            panel.transform.SetParent(root.transform, false);
+            panel.transform.localPosition = new Vector3(0f, 0.94f, 0f);
+            panel.transform.localRotation = Quaternion.Euler(-52f, 0f, 0f);
+
+            var board = new Vector3(1.15f, 0.68f, 0.07f);
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "Body";
+            body.transform.SetParent(panel.transform, false);
+            body.transform.localScale = board;
+            body.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.SolidMaterial(color);
+
+            OpenWorldBuilder.CarvedSign(panel.transform, board, label,
+                new Color(0.24f, 0.15f, 0.08f));
+
+            // 矮柱
+            var post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            post.name = "Post";
+            post.transform.SetParent(root.transform, false);
+            post.transform.localPosition = new Vector3(0f, 0.42f, 0f);
+            post.transform.localScale = new Vector3(0.17f, 0.42f, 0.17f);
+            post.GetComponent<MeshRenderer>().sharedMaterial =
+                Combat.CombatFeedback.SolidMaterial(new Color(0.36f, 0.25f, 0.15f));
+
+            return root;
+        }
+
+        /// <summary>
         /// 往方块的前后两面各钉一块小木牌，字刻在木牌上。
         ///
         /// 木牌比物体窄一圈、厚 4 厘米，四角有铆钉——这样它读起来是

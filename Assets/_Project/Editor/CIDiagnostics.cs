@@ -785,9 +785,11 @@ namespace AdversityRoad.EditorTools
                 }
                 // 关卡循环自己摆的牌子（9-1 的六张修改卡）也算数
                 labels.AddRange(AdversityRoad.InternalOS.InternalProps.LoopLabelsFor(lv));
-                // 区域牌也算数：SiteBuilder.BuildInternalZoneSigns 会按主轴的分段
-                // 逐块立出来（战斗区 / 起手位 / 资料带 / 工作带 / 交付点），
-                // 玩法说明用它们讲路线是合法的。名字与建牌子处同一份常量。
+                // 区域名也算数：SiteBuilder.BuildInternalRoute 会把这几个名字
+                // （战斗区 / 起手位 / 资料带 / 工作带 / 交付点）**刷在地上**，
+                // 并由 ZoneRoute 在玩家走进那一段时说明它是干什么的。
+                // 它们不是立着的牌子，但确确实实在场上、读得到、有作用，
+                // 所以玩法说明用它们讲路线是合法的。名字与刷字处同一份常量。
                 labels.AddRange(AdversityRoad.InternalOS.InternalLayout.ZoneNames);
 
                 // 目标行和"怎么玩"卡片都要核：两处都会点名场上的东西，
