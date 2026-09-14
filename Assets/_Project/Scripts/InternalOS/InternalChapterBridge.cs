@@ -233,6 +233,12 @@ namespace AdversityRoad.InternalOS
         /// </summary>
         public static bool BossDefeated(string levelId, bool executionGatePassed, bool hpCleared)
         {
+            // 【统一规则：打倒大 BOSS 就具备通关条件】见 Core.BossClearRule。
+            // 按 PRD，非击杀型 Boss（9-5 的完美审判官写的是 DeathType=Publish）
+            // 本来只认它自己的失效动作，血条清零不算数。产品要求统一，所以打死一律算；
+            // 交付那条路一条不拆，下面照旧。
+            if (hpCleared && Core.BossClearRule.KillBossClears) return true;
+
             var boss = InternalChapterCatalog.BossOfLevel(levelId);
             if (boss == null) return hpCleared;
             if (InternalChapterCatalog.IsKillBoss(boss))

@@ -853,6 +853,36 @@ namespace AdversityRoad.EditorTools
             }
             sb.Append("[CIDIAG][内部线] 目标行/玩法说明指向核对：对不上的 ").Append(badRef).Append(" 处\n");
 
+            // 【一关只许有一个"必须打死的"】
+            //
+            // 玩家的统一规则："只需要消灭大BOSS就算具备通关条件，
+            // 无必须打死其他小BOSS敌人。"
+            // 这件事在代码里的保证是：只有 tier=="chief" 的那一个会被挂上
+            // ChapterGateEnemy（击杀即通关），精英与杂兵一律不是通关条件。
+            // 但这只是**当前**成立——编成表是数据生成的，哪天多写一个 chief，
+            // 玩家就得打两个才过得去，而这件事不会报错、不会崩，只会变难。
+            // 所以在这里把不变量钉死：非 Boss 关一个 chief 都不许有，Boss 关最多一个。
+            int badChief = 0;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+                var ch3 = AdversityRoad.InternalOS.InternalChapterCatalog.Chapter(lv.chapterId);
+                var plan3 = AdversityRoad.InternalOS.InternalSiteComposer.ComposeEnemies(lv, ch3);
+                int chiefs = 0;
+                for (int k = 0; k < plan3.Count; k++)
+                    if (plan3[k] != null && plan3[k].tier == "chief") chiefs++;
+                int want = lv.isBossLevel ? 1 : 0;
+                if (chiefs == want) continue;
+                sb.Append("[CIDIAG][内部线] !! ").Append(lv.levelId)
+                  .Append(lv.isBossLevel ? " 是 Boss 关，应当恰好 1 个 chief，实际 "
+                                         : " 不是 Boss 关，不该有 chief，实际 ")
+                  .Append(chiefs).Append(" 个——多一个就等于多一个「必须打死的」\n");
+                badChief++;
+            }
+            if (badChief > 0) ok = false;
+            sb.Append("[CIDIAG][内部线] 必须击杀数体检（一关最多一个大 BOSS）：不合格 ")
+              .Append(badChief).Append(" 关\n");
+
             // 【说明卡三段体检】
             //
             // 玩家的要求："玩家站立在所有带有文字牌子旁边……显示解释，这是什么？

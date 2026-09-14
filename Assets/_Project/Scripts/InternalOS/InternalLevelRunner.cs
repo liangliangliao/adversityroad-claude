@@ -289,6 +289,9 @@ namespace AdversityRoad.InternalOS
         public bool ExecutionGate(bool hpCleared = false)
         {
             if (Level == null) return false;
+            // 通关只算一次：打倒大 BOSS 和按下交付台现在是同一个出口的两条路，
+            // 两条都走过的话会记两条 Simulation 证据，Mastery 的分母就脏了。
+            if (Cleared) return true;
 
             if (Level.isBossLevel &&
                 !InternalChapterBridge.BossDefeated(Level.levelId, true, hpCleared))
@@ -304,7 +307,11 @@ namespace AdversityRoad.InternalOS
             MentalAttackSystem.LinkLaterOutcome(Level.levelId, true);
 
             var boss = InternalChapterCatalog.BossOfLevel(Level.levelId);
-            GameEvents.RaiseSubtitle(boss != null
+            // 靠打倒结束时别报它自己的 DeathType——9-5 写的是 Publish（按下 Submit 才失效），
+            // 你明明是把它打倒的，屏幕上却说"Publish"，那是在说假话。
+            if (boss != null && hpCleared)
+                GameEvents.RaiseSubtitle(boss.name + " 被打倒了——这一关的条件达成。");
+            else GameEvents.RaiseSubtitle(boss != null
                 ? boss.name + " 失去了这条路上的指挥权（" + boss.deathType + "）"
                 : "这一关的条件达成了。");
 

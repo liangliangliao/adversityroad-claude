@@ -63,7 +63,10 @@ namespace AdversityRoad.OpenWorld
             // 后果之一：经典关卡的言语攻防被那道"第 9-26 章不弹"的闸永远关住；
             // 之二：成长指标还在替那一关记时间。
             // 收线放在这个公共出口上，每一条离开路径就都覆盖到了。
-            InternalOS.InternalLevelRunner.Retire(false);
+            // 按"交付过没有"判结局，别一律记成撤退：打倒大 BOSS 之后
+            // 是 SiteExitDelay 把人送回城的，走的也是这条公共出口，
+            // 写死 false 会把一次通关记成 Partial。
+            InternalOS.InternalLevelRunner.RetireAsFinished();
 
             AI.DialogueLibrary.ClearChapterLines();
             UI.HUDController.SetObjective("");

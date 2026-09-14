@@ -650,6 +650,22 @@ namespace AdversityRoad.OpenWorld
             if (ec == null || ec.profile == null || ec.profile.enemyId != enemyId) return;
             _reported = true;
 
+            // 【第 9-26 章：打倒大 BOSS 也要让关卡自己知道】
+            // 这里原来只写 GoalOS.ChapterCleared，而那 90 关的通关状态挂在
+            // InternalLevelRunner 上：Cleared 没置位 → 出口门不放人、
+            // 不记 Simulation 证据 → 关卡菜单仍显示未通关、下一关不解锁。
+            // 打完 Boss 却被关在里面出不去，是个实打实的 bug。
+            //
+            // 走 ExecutionGate(hpCleared: true)：它会记证据、置 Cleared，
+            // 和交付那条路收在同一个出口上（统一规则见 Core.BossClearRule）。
+            var run = InternalOS.InternalLevelRunner.ActiveHere;
+            if (run != null && run.Level != null &&
+                InternalOS.InternalChapterBridge.ChapterIdOfLevel(run.Level.levelId) == chapterId)
+            {
+                if (run.ExecutionGate(hpCleared: true))
+                    UI.InternalClearPanel.Show(run.Level);   // 这条路也要有通关卡
+            }
+
             GoalOS.ChapterCleared(chapterId);
             var goal = GoalOS.Active;
             var bp = goal != null ? goal.FindChapter(chapterId) : null;

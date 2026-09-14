@@ -432,8 +432,14 @@ namespace AdversityRoad.Core
         {
             var cur = Current;
             if (cur == null || enemyId != cur.enemyId) return;
-            // 非击杀型章节（第八章）：打倒它不推进进度，通关条件另有其事
-            if (!cur.advanceOnKill) return;
+
+            // 【统一规则：打倒大 BOSS 就具备通关条件】见 BossClearRule。
+            // 这里原来是 `if (!cur.advanceOnKill) return;`——第八章两关据此把
+            // "打死 Boss"排除在通关之外（它们的通关动作是自行陈述 / 三个目标动作）。
+            // 产品现在要求统一，所以打死一律算；那两条非战斗的路照旧留着
+            // （CompleteChapterByObjective），两条并行，谁先到算谁。
+            if (!cur.advanceOnKill && !BossClearRule.KillBossClears) return;
+
             LastClearedByEscape = false;
             Advance();
         }
