@@ -47,6 +47,28 @@ namespace AdversityRoad.InternalOS
         public const float WorkFrom = 0.70f, WorkTo = 0.82f;
         public const float GateT = 0.90f;
 
+        // ===== 每条带的名字 =====
+        //
+        // 【为什么名字要写在这儿，而不是写在建牌子那一行】
+        // CI 有一道门禁（CIDiagnostics「目标行/玩法说明指向核对」）：玩法说明里
+        // 每一个【X】，场上都必须真有一块写着 X 的牌子，否则玩家会满场找一个
+        // 不存在的名字。这道门禁原来只认关键物的牌面，不认区域牌——
+        // 于是说明里写"去【起手位】"就被判成指向不存在的东西。
+        //
+        // 名字散在两处迟早会对不上，所以收在这里一份：
+        // SiteBuilder 拿它刻牌子，CIDiagnostics 拿它核说明，两边永远一致。
+        public const string ZoneCombat  = "战斗区";
+        public const string ZoneOpening = "起手位";
+        public const string ZoneRead    = "资料带";
+        public const string ZoneWork    = "工作带";
+        public const string ZoneGate    = "交付点";
+
+        /// <summary>场上会立出来的区域牌名（玩法说明里点名它们是合法的）。</summary>
+        public static readonly string[] ZoneNames =
+        {
+            ZoneCombat, ZoneOpening, ZoneRead, ZoneWork, ZoneGate
+        };
+
         /// <summary>资料带里两排之间的半宽：过道净宽 15 米，打起来也转得开。</summary>
         public const float AisleHalf = 7.5f;
         /// <summary>工作带里左右错开的距离。关键物少，错开小一点就够认。</summary>

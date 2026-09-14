@@ -1975,23 +1975,31 @@ namespace AdversityRoad.OpenWorld
             // 三块牌子钉在三条分段线上，一块一段，和地上的颜色线对齐。
             // 比例全部取自 InternalLayout——牌子写的和东西落的必须是同一条规则，
             // 否则又变成"牌子说这儿是任务区，而那块地上什么都没有"。
-            Sign(inst, L(InternalOS.InternalLayout.CombatT), "【战斗区】",
+            // 牌面上的名字一律取自 InternalLayout.Zone*：玩法说明点的就是这几个名字，
+            // 两处必须是同一份常量，否则玩家会照着说明去找一块措辞不同的牌子
+            // （CI 的「目标行/玩法说明指向核对」查的正是这件事）。
+            Sign(inst, L(InternalOS.InternalLayout.CombatT),
+                "【" + InternalOS.InternalLayout.ZoneCombat + "】",
                 "这一块特意空出来，没有家具——打起来才转得开身。" +
                 "敌人开场在这儿；再往前它们会守在每条带的路口上拦你。");
 
-            Sign(inst, L(InternalOS.InternalLayout.OpeningT), "【起手位 · 先动手】",
+            Sign(inst, L(InternalOS.InternalLayout.OpeningT),
+                "【" + InternalOS.InternalLayout.ZoneOpening + "】· 先动手",
                 "这一关第一件要按的东西就在这儿。先有东西，再谈它够不够好——" +
                 "没做出第一版之前，后面那些「还能更好」都不成立。");
 
-            Sign(inst, L(InternalOS.InternalLayout.ReadFrom), "【资料带 · 先读】",
+            Sign(inst, L(InternalOS.InternalLayout.ReadFrom),
+                "【" + InternalOS.InternalLayout.ZoneRead + "】· 先读",
                 "要读的东西分两排立在过道两侧，从近到远就是先后顺序。" +
                 "读不等于做：读完自己决定动不动手。这一关要做的事是：" + lv.Objective);
 
-            Sign(inst, L(InternalOS.InternalLayout.WorkFrom), "【工作带 · 动手】",
+            Sign(inst, L(InternalOS.InternalLayout.WorkFrom),
+                "【" + InternalOS.InternalLayout.ZoneWork + "】· 动手",
                 "要按下去的关键物在这一段，沿路依次排开。" +
                 "读过的东西在这里变成动作——按【用】/ R 才算数。");
 
-            Sign(inst, L(InternalOS.InternalLayout.GateT), "【交付点】",
+            Sign(inst, L(InternalOS.InternalLayout.GateT),
+                "【" + InternalOS.InternalLayout.ZoneGate + "】",
                 "这一关的事在这里算完成。交付之后再走到出口，这一关才结束。");
         }
 
