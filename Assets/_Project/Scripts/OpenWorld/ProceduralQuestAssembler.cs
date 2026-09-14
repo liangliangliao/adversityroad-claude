@@ -617,6 +617,9 @@ namespace AdversityRoad.OpenWorld
             var p = go.AddComponent<ChapterProp>();
             p.label = label;
             p.hint = hint;
+            // 走近读得到三段说明，格式和其他带字的东西一致
+            string l = label, h = hint;
+            UI.Examinable.Attach(go, () => InternalOS.SignCodex.ForPlainSign(l, h, false), 4.5f);
             return p;
         }
 

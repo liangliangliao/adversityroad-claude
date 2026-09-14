@@ -620,6 +620,16 @@ namespace AdversityRoad.InternalOS
             p.label = label;
             p.explain = explainOverride;
             p._home = go.transform.position;
+
+            // 走近自动读得到"这是什么 / 为什么在这儿 / 怎么用"。
+            // 内容现取而不是建的时候定死：同一件东西在第一趟和回访要说的不一样。
+            var pk = kind;
+            var plv = lv;
+            UI.Examinable.Attach(go, () =>
+            {
+                var run = InternalLevelRunner.Active;
+                return SignCodex.ForProp(pk, plv, run != null && run.Replay);
+            }, InteractRange + 1.2f, consumesUse: true);
             return p;
         }
 
@@ -708,9 +718,10 @@ namespace AdversityRoad.InternalOS
                       "还没记上的是：现实里做到没有、换个场合又做到没有。——按【用】/ R"
                     : "【" + label + "】这一件你上一趟已经做过了。这次不用再做一遍。");
             }
-            if (!isGate) return;
-            if (Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))
-                UI.RealityCheckPanel.Show(runner.Level);
+            if (!(Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))) return;
+            // 回访时交付台办回执；其余按不动的东西，这一下用来收起/再展开说明卡
+            if (isGate) UI.RealityCheckPanel.Show(runner.Level);
+            else UI.ExamineCard.Toggle(GetComponent<UI.Examinable>());
         }
 
         /// <summary>可交互距离。比原来的 2.2 米放宽一点：现在要玩家自己按，够得着才不别扭。</summary>

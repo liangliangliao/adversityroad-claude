@@ -1308,6 +1308,11 @@ namespace AdversityRoad.Core
             // 言语攻防（快速选择式）：敌人心理攻击时弹出三选一回应面板
             canvasGo.AddComponent<VerbalDefenseController>();
 
+            // 查看卡：走到任何一件带字的东西旁边，它自己说清三件事
+            // （这是什么 / 为什么在这儿 / 怎么用）。在这里建一次，
+            // 免得依赖"第一件 Examinable 挂上来时画布已经在了"这种顺序巧合。
+            ExamineCard.Ensure();
+
             // 能量分级警告：偏低/告急字幕 + 低生命红屏脉冲 + 生命垂危休整答题弹窗
             VitalAlertController.Create(canvasGo.transform, quizPanel);
 

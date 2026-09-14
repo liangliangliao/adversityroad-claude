@@ -218,6 +218,11 @@ namespace AdversityRoad.InternalOS
             var c = go.AddComponent<ProofCard>();
             c._item = item;
             c._owner = owner;
+            var body = item;
+            UI.Examinable.Attach(go, () => SignCodex.ForCard(
+                InternalLevelRunner.Active != null ? InternalLevelRunner.Active.Level : null,
+                Level0902ProofRoom.CardLabel, body != null ? body.text : ""),
+                InternalProp.InteractRange + 1.2f, consumesUse: true);
             return c;
         }
 

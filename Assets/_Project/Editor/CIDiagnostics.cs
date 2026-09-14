@@ -597,6 +597,33 @@ namespace AdversityRoad.EditorTools
         static readonly string[] ButtonNames = { "用", "跳", "蹲", "闪", "挡", "锁", "术", "拔刀" };
 
         /// <summary>
+        /// 一张说明卡的三段体检：缺段 → 这块牌子又成了摆设；超长 → 在卡上被截成半句。
+        /// </summary>
+        static int CheckCodex(System.Text.StringBuilder sb, string levelId, string who,
+            AdversityRoad.InternalOS.CodexEntry c)
+        {
+            int bad = 0;
+            if (!c.Valid)
+            {
+                sb.Append("[CIDIAG][内部线] !! ").Append(levelId).Append(' ').Append(who)
+                  .Append(" 的说明卡三段不全（这是什么 / 为什么在这儿 / 怎么用）\n");
+                bad++;
+            }
+            int max = AdversityRoad.InternalOS.SignCodex.MaxPart;
+            string[] parts = { c.what, c.why, c.how };
+            string[] names = { "这是什么", "为什么在这儿", "怎么用" };
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (parts[i] == null || parts[i].Length <= max) continue;
+                sb.Append("[CIDIAG][内部线] !! ").Append(levelId).Append(' ').Append(who)
+                  .Append(" 的「").Append(names[i]).Append("」有 ").Append(parts[i].Length)
+                  .Append(" 字，超过 ").Append(max).Append(" —— 卡片上会被截掉\n");
+                bad++;
+            }
+            return bad;
+        }
+
+        /// <summary>
         /// 第 9-26 章 · 90 关内部障碍线的入库体检（V2.2 增补 PRD 第 11.3 / 12 节）。
         ///
         /// 【为什么要在 CI 里跑】
@@ -825,6 +852,40 @@ namespace AdversityRoad.EditorTools
                 }
             }
             sb.Append("[CIDIAG][内部线] 目标行/玩法说明指向核对：对不上的 ").Append(badRef).Append(" 处\n");
+
+            // 【说明卡三段体检】
+            //
+            // 玩家的要求："玩家站立在所有带有文字牌子旁边……显示解释，这是什么？
+            // 为什么出现在这里？如何用它？"——三段缺一段，这块牌子就又变回摆设。
+            // 而且卡片版面是固定的 620×250（左边让开心法行、下边让开虚拟摇杆），
+            // 某一段写长了不会换页，会**被截掉**——玩家看到的是半句话。
+            // 两件事编译器都不管，所以在这里逐条量。
+            int badCodex = 0;
+            var kinds = (AdversityRoad.InternalOS.InternalPropKind[])
+                System.Enum.GetValues(typeof(AdversityRoad.InternalOS.InternalPropKind));
+            for (int i = 0; i < levels.Count; i++)
+            {
+                var lv = levels[i];
+                for (int k = 0; k < kinds.Length; k++)
+                    badCodex += CheckCodex(sb, lv.levelId, "关键物 " + kinds[k],
+                        AdversityRoad.InternalOS.SignCodex.ForProp(kinds[k], lv, false));
+                for (int z = 0; z < AdversityRoad.InternalOS.InternalLayout.ZoneNames.Length; z++)
+                    badCodex += CheckCodex(sb, lv.levelId, "分段 " +
+                        AdversityRoad.InternalOS.InternalLayout.ZoneNames[z],
+                        AdversityRoad.InternalOS.SignCodex.ForZone(z, lv, false));
+                badCodex += CheckCodex(sb, lv.levelId, "入口牌",
+                    AdversityRoad.InternalOS.SignCodex.ForEntrance(lv, "x"));
+                badCodex += CheckCodex(sb, lv.levelId, "出口牌",
+                    AdversityRoad.InternalOS.SignCodex.ForExit(lv));
+                badCodex += CheckCodex(sb, lv.levelId, "路线牌",
+                    AdversityRoad.InternalOS.SignCodex.ForRouteBoard(lv, false));
+                badCodex += CheckCodex(sb, lv.levelId, "修改项",
+                    AdversityRoad.InternalOS.SignCodex.ForCard(lv, "修改项", "示例内容"));
+            }
+            if (badCodex > 0) ok = false;
+            sb.Append("[CIDIAG][内部线] 说明卡三段体检（缺段 / 超 ")
+              .Append(AdversityRoad.InternalOS.SignCodex.MaxPart)
+              .Append(" 字被截）：不合格 ").Append(badCodex).Append(" 处\n");
 
             // 【蓝图必须真的会被"建"，而不是被当成 Legacy 打发掉】
             //

@@ -266,6 +266,12 @@ namespace AdversityRoad.InternalOS
             c.text = text;
             c.critical = critical;
             c._owner = owner;
+            // 走近读三段说明（这是什么 / 为什么在这儿 / 怎么用），格式与场上其他东西一致
+            string body = text;
+            UI.Examinable.Attach(go, () => SignCodex.ForCard(
+                InternalLevelRunner.Active != null ? InternalLevelRunner.Active.Level : null,
+                Level0901BlankPage.CardLabel, body),
+                InternalProp.InteractRange + 1.2f, consumesUse: true);
             return c;
         }
 

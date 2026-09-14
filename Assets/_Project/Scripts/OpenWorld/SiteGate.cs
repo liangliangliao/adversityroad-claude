@@ -96,6 +96,33 @@ namespace AdversityRoad.OpenWorld
             var gate = root.AddComponent<SiteGate>();
             gate.chapterId = chapterId;
             gate.siteName = siteName;
+
+            // 城里这扇门也是一块带字的东西：走近读得到它是什么、为什么在这儿、怎么进。
+            // 第 9-26 章的门额外说明这一关已经通关过、这一趟是回访。
+            string cid = chapterId, sname = siteName;
+            UI.Examinable.Attach(root, () =>
+            {
+                var lv = InternalOS.InternalChapterBridge.LevelOfChapterId(cid);
+                if (lv == null)
+                    return InternalOS.SignCodex.ForPlainSign("▶ " + sname,
+                        "这一章在城里的入口。推门进去就是那处场景。", true);
+                bool done = InternalOS.RealityVictorySystem.IsCleared(lv.levelId);
+                return new InternalOS.CodexEntry
+                {
+                    title = "▶ " + sname,
+                    what = "这一关在城里的门。",
+                    why = done
+                        ? "你已经通关过。再进去是回访：没有敌人，任务也不必重做。"
+                        // Objective 在有些关卡回落到验收条件那种文档语言，最长 83 字，
+                        // 卡片装不下会被截成半句——自己截并显式省略
+                        : InternalOS.SignCodex.Clip("这一关挡着的是：" + lv.Objective,
+                            InternalOS.SignCodex.MaxPart),
+                    how = done
+                        ? "走进去交现实回执，或看一遍当时做过的事。"
+                        : "走进去开始这一关。",
+                    core = InternalOS.SignCodex.CoreOf(lv),
+                };
+            }, 5f);
             return gate;
         }
 

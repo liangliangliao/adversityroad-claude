@@ -1387,8 +1387,10 @@ namespace AdversityRoad.OpenWorld
             // 从另一扇门出"这条规则在生成关卡里连方向都读不出来：玩家站在入口，
             // 看到的牌子写着出口，自然就在原地找 Boss。现在两端各一块牌子，
             // 各说各的用途：这一块是原路退出去（不算通关），对面那扇才是出口。
+            string siteName = bp.siteName;
             Sign(inst, new Vector3(0, 1.9f, localZ), "◀ " + bp.siteName + " · 入口（原路退出）",
-                "从这里原路退回城里。走这一头不算通关。");
+                "从这里原路退回城里。走这一头不算通关。",
+                codex: () => InternalOS.SignCodex.ForEntrance(CurrentLevel(), siteName));
             Deco(inst, "ExitPad", new Vector3(0, 0.07f, localZ),
                 new Vector3(5f, 0.06f, 3f), new Color(0.4f, 0.8f, 0.6f));
 
@@ -1996,6 +1998,14 @@ namespace AdversityRoad.OpenWorld
                 OpenWorldBuilder.GroundSign(root,
                     new Vector3(0f, 0.14f, local.z + ahead), zoneNames[i], 1.1f, lineInk);
 
+                // 地上的带名也是"带字的东西"：走到线上一样读得到三段说明
+                int zi = i;
+                var bandGo = new GameObject("ZoneExamine_" + zoneNames[i]);
+                bandGo.transform.SetParent(root, false);
+                bandGo.transform.localPosition = new Vector3(0f, 0.6f, local.z);
+                UI.Examinable.Attach(bandGo,
+                    () => InternalOS.SignCodex.ForZone(zi, CurrentLevel(), IsReplay()), 5.5f);
+
                 lineWorldZ[i] = at.z;
                 // 通关过的关卡还照原样催你干活，等于在说"你刚才那趟不算数"
                 whatSaid[i] = replay
@@ -2032,7 +2042,8 @@ namespace AdversityRoad.OpenWorld
                   lv.Objective,
                 // 半径收到 4 米：牌子在 t=0.05，第一条分段线在 t=0.20（主轴 40 米时
                 // 是 2 米与 8 米）。默认的 6 米正好够得到那条线，两句会撞在一起。
-                explainRange: 4f);
+                explainRange: 4f,
+                codex: () => InternalOS.SignCodex.ForRouteBoard(CurrentLevel(), IsReplay()));
         }
 
         /// <summary>分段线的颜色：一段一色，踩过哪一条一眼认得出。</summary>
@@ -2072,7 +2083,8 @@ namespace AdversityRoad.OpenWorld
                 ? "这一关的事做完（交付）之后，走出这扇门就结束了。"
                 : escape ? "走出这扇门这一关就结束了。"
                          : "这一关要先打倒关底心魔，才走得出去。";
-            Sign(inst, local + new Vector3(0, 3.4f, 0), exitTitle, exitWhy, post: false);
+            Sign(inst, local + new Vector3(0, 3.4f, 0), exitTitle, exitWhy, post: false,
+                codex: () => InternalOS.SignCodex.ForExit(CurrentLevel()));
 
             // 从落点铺一条引导带到这扇门：玩家要一眼看出"往那边走"是有去处的
             float z0 = inst.playerSpawn.z - inst.origin.z, z1 = local.z;
@@ -2087,6 +2099,25 @@ namespace AdversityRoad.OpenWorld
             door.transform.SetParent(inst.root.transform, false);
             door.transform.localPosition = local;
             SiteExitDoor.Attach(door, chapter.chapterId);
+        }
+
+        /// <summary>
+        /// 说明卡内容现取时用的两个助手。
+        ///
+        /// 不能在建场景的时候把关卡/回访状态定死：Build 跑在装配期，那时玩家还没进门，
+        /// InternalLevelRunner.Active 要么是 null，要么还是上一关的。
+        /// 而说明卡是玩家站在跟前那一刻才读的——那时问才问得准。
+        /// </summary>
+        static InternalOS.InternalLevelData CurrentLevel()
+        {
+            var run = InternalOS.InternalLevelRunner.Active;
+            return run != null ? run.Level : null;
+        }
+
+        static bool IsReplay()
+        {
+            var run = InternalOS.InternalLevelRunner.Active;
+            return run != null && run.Replay;
         }
 
         /// <summary>看不见但挡得住的边界墙（只有碰撞体，不渲染、不吃绘制开销）。</summary>
@@ -2287,7 +2318,8 @@ namespace AdversityRoad.OpenWorld
         }
 
         static void Sign(SiteInstance inst, Vector3 local, string text, string explain = null,
-            bool post = true, float explainRange = 6f)
+            bool post = true, float explainRange = 6f,
+            System.Func<InternalOS.CodexEntry> codex = null)
         {
             if (string.IsNullOrEmpty(text)) return;
             // 第 9-26 章不摆"路径名"房间牌——见 BuildInternalRoute 的说明。
@@ -2357,6 +2389,20 @@ namespace AdversityRoad.OpenWorld
                 // 变成"走到旁边也没有任何提示"的。
                 ex.range = explainRange;
             }
+
+            // 走近自动给出三段说明（这是什么 / 为什么在这儿 / 怎么用）。
+            // 玩家原话："所有带有文字牌子……显示解释"——牌子就是牌子，
+            // 一块只写着名字的牌子和一块没有字的板子对玩家是一回事。
+            //
+            // 没给专门文案的牌子（经典章节的房间名牌）也要有：回落到通用三段，
+            // 名字说是什么、原有的 purpose 说为什么在这儿、怎么用如实说"只用来认路"。
+            var entry = codex;
+            if (entry == null)
+            {
+                string t = text, ex2 = explain;
+                entry = () => InternalOS.SignCodex.ForPlainSign(t, ex2, false);
+            }
+            UI.Examinable.Attach(root, entry, explainRange);
         }
 
         /// <summary>
