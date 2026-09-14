@@ -252,6 +252,19 @@ namespace AdversityRoad.InternalOS
         }
 
         /// <summary>这一关是否已经有能按的东西（CI 与面板共用）。</summary>
+        /// <summary>
+        /// 这一关交付台**牌面上的那几个字**（9-3 是"装车月台"，多数关是"提交台"）。
+        ///
+        /// 回访时 HUD 与字幕都要指它。必须报牌面，不能自己另起一个名字：
+        /// 让玩家去找一块场上不存在的牌子，是这个项目已经栽过一次的坑
+        /// （CI 的「说明指向核对」就是为它加的）。
+        /// </summary>
+        public static string GateLabelOf(InternalLevelData lv)
+        {
+            string pf;
+            return HasGate(lv, out pf) ? GateLabel(pf) : "提交台";
+        }
+
         public static bool HasGate(InternalLevelData lv, out string gateName)
         {
             gateName = "";
@@ -336,6 +349,17 @@ namespace AdversityRoad.InternalOS
             // 不是这个物件本身的一部分。
             if (!string.IsNullOrEmpty(label)) WoodPlaque(root.transform, size, label);
             return root;
+        }
+
+        /// <summary>办过了的样子：主体压成灰，牌子和刻字照旧留着（还要读得到名字）。</summary>
+        public static void MarkDone(GameObject root)
+        {
+            if (root == null) return;
+            var body = root.transform.Find("Body");
+            var mr = body != null ? body.GetComponent<MeshRenderer>() : null;
+            if (mr != null)
+                mr.sharedMaterial =
+                    Combat.CombatFeedback.SolidMaterial(new Color(0.33f, 0.35f, 0.37f));
         }
 
         /// <summary>
@@ -494,6 +518,9 @@ namespace AdversityRoad.InternalOS
                     plan[i].label, plan[i].explain);
                 if (p == null) continue;
                 if (parent != null) p.transform.SetParent(parent, true);
+                // 回访：一眼看得出这件事办过了。交付台除外——它这一趟改口当回执台，
+                // 是全场唯一还要玩家按的东西，不能和别的一样灰下去。
+                if (replay && kind != InternalPropKind.GateConsole) MarkDone(p.gameObject);
                 if (isGate) gateTransform = p.transform;
                 made++;
             }
@@ -502,13 +529,20 @@ namespace AdversityRoad.InternalOS
             // 9-1 的玩法是"你不动房间就变大、六张修改卡里只有两张真的挡交付"，
             // 那一段逻辑属于这一关自己，装在这里。
             // 其余四关目前还只有关键物，没有各自的循环——见 README 的待办。
-            if (lv.levelId == Level0901BlankPage.LevelId)
+            // 回访不装关卡循环：修改卡不再铺一遍、白墙不再往外推、幽灵不再进来。
+            // 玩家原话"不要再重新玩一遍……做同样的任务"——这一段就是那些任务。
+            // 判据直接问存档，不能问 InternalLevelRunner.Active：
+            // Build 跑在**场景装配期**，那时玩家还没进门，Active 要么是 null，
+            // 要么还是上一关的 runner——拿它判会判到别的关卡头上。
+            bool replay = RealityVictorySystem.IsCleared(lv.levelId);
+
+            if (!replay && lv.levelId == Level0901BlankPage.LevelId)
             {
                 Level0901BlankPage.Install(parent, spawn, exit);
                 if (Level0901BlankPage.Active != null)
                     Level0901BlankPage.Active.BindSubmitConsole(gateTransform);
             }
-            else if (lv.levelId == Level0902ProofRoom.LevelId)
+            else if (!replay && lv.levelId == Level0902ProofRoom.LevelId)
             {
                 Level0902ProofRoom.Install(parent, spawn, exit);
             }
@@ -621,6 +655,15 @@ namespace AdversityRoad.InternalOS
 
             if (d > InteractRange) { _inRange = false; return; }
 
+            // ---- 回访：这地方的事已经办完了 ----
+            // 机关还立在原地（该还是那个地方），但按不动了——
+            // 只有交付台改口当**现实回执台**：把 PRD 第 8 节的后两层胜利交回来。
+            if (runner.Replay)
+            {
+                UpdateReplay(runner);
+                return;
+            }
+
             // ---- 进入范围：先解释这是什么，再告诉他按什么 ----
             // 带上的箱子永远贴在身边，对它重复播报会变成死循环——跳过。
             bool canUse = !_used && !_carried;
@@ -636,6 +679,33 @@ namespace AdversityRoad.InternalOS
             if (!canUse) return;
             if (Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))
                 Use(runner);
+        }
+
+        /// <summary>
+        /// 回访时走近这件机关会发生什么。
+        ///
+        /// 普通机关：只说一句"这一件你当时做过了"，按不动——重做一遍没有意义，
+        /// 而让它还能按下去就等于把玩家又拉回同一套任务里。
+        /// 交付台：改口当**现实回执台**。这一关在游戏里的账已经结了，
+        /// 还没结的是 PRD 第 8 节的后两层——现实里做到没有、换个场合又做到没有。
+        /// </summary>
+        void UpdateReplay(InternalLevelRunner runner)
+        {
+            bool isGate = kind == InternalPropKind.GateConsole;
+            if (!_inRange || Time.time - _lastHint > 12f)
+            {
+                _inRange = true;
+                _lastHint = Time.time;
+                // 牌面还是原来那块（"提交台"/"装车月台"），只是这一趟它办的是回执。
+                // 另起一个名字会让玩家去找一块场上不存在的牌子。
+                GameEvents.RaiseSubtitle(isGate
+                    ? "【" + label + "】这一趟它是回执台。游戏里的那一层你已经拿到了，" +
+                      "还没记上的是：现实里做到没有、换个场合又做到没有。——按【用】/ R"
+                    : "【" + label + "】这一件你上一趟已经做过了。这次不用再做一遍。");
+            }
+            if (!isGate) return;
+            if (Input.GetKeyDown(KeyCode.R) || Mobile.MobileInput.GetDown("Interact"))
+                UI.RealityCheckPanel.Show(runner.Level);
         }
 
         /// <summary>可交互距离。比原来的 2.2 米放宽一点：现在要玩家自己按，够得着才不别扭。</summary>

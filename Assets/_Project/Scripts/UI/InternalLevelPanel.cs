@@ -217,12 +217,25 @@ namespace AdversityRoad.UI
                 if (current) anyCurrent = true;
                 string mark = cleared ? "✓ " : (current ? "▶ " : (open ? "" : "🔒 "));
 
+                // 通关过的关卡点进去是**回访**，不是重打：场上没有敌人、任务不必重做，
+                // 要办的只有一件——把现实/迁移的回执交上。格子上就得这么写，
+                // 否则玩家点进去之前以为要再打一遍（他已经这么反馈过一次）。
+                string third;
+                if (!open) third = "上一关通关后解锁";
+                else if (cleared)
+                {
+                    // 现实回执按**关**问（每关条件各写各的）；迁移按章算，见 HasLayer
+                    bool reality = RealityVictorySystem.HasLayer(id, VictoryLayer.Reality);
+                    int ctx = RealityVictorySystem.DistinctTransferContexts(ch.chapterId);
+                    third = "回访 · 无敌人、不重做　现实" + (reality ? "✔" : "○")
+                          + " 迁移" + ctx + "档";
+                }
+                else third = Clip(lv.coreMechanic, 34);
+
                 // 格子放得下就别裁：文案本来就是写给玩家读的
                 Cell(ref slot,
                     mark + lv.levelId + "《" + lv.name + "》　" + tier + "\n" +
-                    "要做的事：" + lv.Objective + "\n" +
-                    (open ? Clip(lv.coreMechanic, 34)
-                          : "上一关通关后解锁"),
+                    (cleared ? "已做到：" : "要做的事：") + lv.Objective + "\n" + third,
                     !open ? new Color(0.17f, 0.17f, 0.19f, 0.96f)     // 锁住：灰
                           : cleared ? new Color(0.16f, 0.42f, 0.26f, 0.98f) // 已通关：绿
                           : current ? new Color(0.62f, 0.46f, 0.14f, 0.98f) // 当前这一关：琥珀

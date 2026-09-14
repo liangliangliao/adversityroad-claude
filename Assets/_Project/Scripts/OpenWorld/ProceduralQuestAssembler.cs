@@ -186,6 +186,14 @@ namespace AdversityRoad.OpenWorld
         {
             var site = enc.site;
 
+            // 【通关过的第 9-26 章关卡不再放敌人】
+            // 玩家原话："通关之后再回来，不要再重新玩一遍，比如又出现敌人以及做同样的任务。"
+            // 离开时 DespawnChapter 会把整处场景销毁，再进来是从零重建——
+            // 不在这里拦一道，enemyPlan 就会照原样再放一遍人。
+            var internalLv = InternalOS.InternalChapterBridge.LevelOfChapterId(bp.chapterId);
+            bool replay = internalLv != null &&
+                InternalOS.RealityVictorySystem.IsCleared(internalLv.levelId);
+
             // 同时参战人数由它管：场上人可以多，一起打你的最多三个（含 Boss）
             var director = SiteEncounterDirector.Attach(site.root);
 
@@ -194,6 +202,7 @@ namespace AdversityRoad.OpenWorld
             int idx = 0;
             foreach (var spec in bp.enemyPlan)
             {
+                if (replay) break;          // 回访：一个人都不放
                 if (!ResolveEnemy(spec.enemyType, out var t)) continue;
                 var tier = TierOf(spec.tier, goal, rng);
                 for (int k = 0; k < spec.count; k++)
@@ -223,7 +232,9 @@ namespace AdversityRoad.OpenWorld
             // 【为什么单独一条】BuildMechanicProps 摆的是"机制提示牌"——走近给一行字。
             // 而这 90 关的通关动作是**按下某个东西**：没有提交台，9-1 就永远走不完。
             // PRD 第 10.2 节给的那张 Prefab 表说的就是这一批。
-            var internalLv = InternalOS.InternalChapterBridge.LevelOfChapterId(bp.chapterId);
+            //
+            // 回访时这些东西照建不误：这地方该还是那个地方。变的是它们的状态——
+            // 都是做过的样子，交付台改口当回执台（见 InternalProp）。
             if (internalLv != null)
             {
                 int n = InternalOS.InternalProps.Build(internalLv,

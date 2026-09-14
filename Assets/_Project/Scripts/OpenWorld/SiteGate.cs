@@ -237,11 +237,13 @@ namespace AdversityRoad.OpenWorld
             var internalLevel = InternalOS.InternalChapterBridge.LevelOfChapterId(chapterId);
             if (internalLevel != null)
             {
-                InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
+                var run = InternalOS.InternalLevelRunner.Enter(internalLevel.levelId);
                 // 进关先把"这一关怎么玩"摆出来。HUD 那一行目标行只说下一步去哪，
                 // 回答不了"场上这几样东西各是干什么的"——玩家连着三轮说
                 // "游戏规则不清楚，不知道如何玩"，光靠一行小字是补不上的。
-                UI.LevelBriefPanel.Show(internalLevel);
+                // 回访不弹：那张卡讲的是"这一关的任务怎么做"，而回访本来就不做任务。
+                // 该说的换成一句字幕，由 InternalLevelRunner.Setup 发。
+                if (run == null || !run.Replay) UI.LevelBriefPanel.Show(internalLevel);
             }
 
             return true;

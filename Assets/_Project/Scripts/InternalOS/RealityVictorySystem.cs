@@ -195,6 +195,24 @@ namespace AdversityRoad.InternalOS
             return true;
         }
 
+        /// <summary>
+        /// **这一关**在某一层有没有记过证据。
+        ///
+        /// 和按章统计的 HasRealityVictory 不是一回事，两者都要：
+        /// 现实胜利的条件是**每关各写各的**（lv.realityVictory），所以"记过没有"
+        /// 必须按关问；而 Mastery 的 M5 判据是 real >= 3——那是**整章**攒够三次。
+        /// 按章去重会让第二关起永远显示"已记下"，M5 就再也到不了了。
+        /// </summary>
+        public static bool HasLayer(string levelId, VictoryLayer layer)
+        {
+            if (string.IsNullOrEmpty(levelId)) return false;
+            var all = Data.evidence;
+            string want = layer.ToString();
+            for (int i = 0; i < all.Count; i++)
+                if (all[i].levelId == levelId && all[i].layer == want) return true;
+            return false;
+        }
+
         /// <summary>这一章的现实胜利是否已经发生过（Hall of Goals 与章节结算读它）。</summary>
         public static bool HasRealityVictory(string chapterId) =>
             EvidenceOf(chapterId, VictoryLayer.Reality).Count > 0;

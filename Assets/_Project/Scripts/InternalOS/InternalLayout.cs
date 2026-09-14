@@ -115,6 +115,25 @@ namespace AdversityRoad.InternalOS
             }
         }
 
+        /// <summary>
+        /// 回访时每一段说的话：说的是**你当时在这儿做了什么**，不是"你要做什么"。
+        ///
+        /// 通关过的关卡还照原样催你干活，就等于在说"你刚才那趟不算数"。
+        /// 这几句把同一块地改写成回看：路还是那条路，意思从"去做"变成"你做过了"。
+        /// </summary>
+        public static string ZoneRecap(int index)
+        {
+            switch (index)
+            {
+                case 0: return "当时你是在这一块打开一条路的。这一趟没有人拦你了。";
+                case 1: return "第一件事就是在这儿动的手。当时最难的一步是开始，不是做好。";
+                case 2: return "这一排你一件件读过，然后自己挑了改哪几处、放过哪几处。";
+                case 3: return "读完的判断在这一段变成了动作。";
+                default: return "你在这儿交付的。往前是出口——这一趟只剩一件事：" +
+                                "把现实里的回执交了（按【用】/ R）。";
+            }
+        }
+
         /// <summary>路线牌上刻的那一行：走一遍就是把这一关做完一遍。</summary>
         public static string RouteLine()
         {

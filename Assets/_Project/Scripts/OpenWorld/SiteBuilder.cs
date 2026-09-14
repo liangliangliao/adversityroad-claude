@@ -1972,6 +1972,9 @@ namespace AdversityRoad.OpenWorld
             Transform root = inst.root.transform;
             float half = InternalOS.InternalLayout.AisleHalf;
 
+            // 装配期问存档，不问 InternalLevelRunner.Active（那时玩家还没进门）
+            bool replay = InternalOS.RealityVictorySystem.IsCleared(lv.levelId);
+
             var lineInk = new Color(0.16f, 0.15f, 0.18f);
             var zoneT = InternalOS.InternalLayout.ZoneT;
             var zoneNames = InternalOS.InternalLayout.ZoneNames;
@@ -1994,7 +1997,10 @@ namespace AdversityRoad.OpenWorld
                     new Vector3(0f, 0.14f, local.z + ahead), zoneNames[i], 1.1f, lineInk);
 
                 lineWorldZ[i] = at.z;
-                whatSaid[i] = InternalOS.InternalLayout.ZoneWhat(i, lv.Objective);
+                // 通关过的关卡还照原样催你干活，等于在说"你刚才那趟不算数"
+                whatSaid[i] = replay
+                    ? InternalOS.InternalLayout.ZoneRecap(i)
+                    : InternalOS.InternalLayout.ZoneWhat(i, lv.Objective);
             }
 
             // ③ 说明由**一个**状态机负责：它知道玩家在第几段，段号变了才说一句。
@@ -2018,9 +2024,12 @@ namespace AdversityRoad.OpenWorld
             Vector3 boardLocal = root.InverseTransformPoint(boardAt);
             Sign(inst, new Vector3(boardLocal.x, 1.9f, boardLocal.z),
                 InternalOS.InternalLayout.RouteLine(),
-                "地上的颜色线把这块地分成几段，名字就刷在线旁边。" +
-                "顺着主轴往前走，一段做一件事，走到头就走完了这一关。这一关要做的是：" +
-                lv.Objective,
+                replay
+                ? "这一关你走完了。路还是那条路，但这一趟不用再做一遍——" +
+                  "走到【" + InternalOS.InternalLayout.ZoneGate + "】那儿交回执就行。"
+                : "地上的颜色线把这块地分成几段，名字就刷在线旁边。" +
+                  "顺着主轴往前走，一段做一件事，走到头就走完了这一关。这一关要做的是：" +
+                  lv.Objective,
                 // 半径收到 4 米：牌子在 t=0.05，第一条分段线在 t=0.20（主轴 40 米时
                 // 是 2 米与 8 米）。默认的 6 米正好够得到那条线，两句会撞在一起。
                 explainRange: 4f);

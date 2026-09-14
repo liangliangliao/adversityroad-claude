@@ -93,6 +93,10 @@ namespace AdversityRoad.OpenWorld
                     _dwell = 0f;
                     return;
                 }
+                // 回访：这一关的账早就结了。再弹一次通关卡、再报一次"章节完成"
+                // 都是假的——玩家原话"通关之后再回来，不要再重新玩一遍"。
+                // 安静地送他回城就好。
+                if (runner.Replay) { LeaveAfterRevisit(runner); return; }
                 ClearInternalLevel(runner);
                 return;
             }
@@ -123,6 +127,25 @@ namespace AdversityRoad.OpenWorld
 
             var host = new GameObject("SiteExitDelay");
             host.AddComponent<SiteExitDelay>().Setup(chapterId, 3.5f);
+        }
+
+        /// <summary>回访结束：不弹通关卡、不重记通关，按回执有没有交说一句就走。</summary>
+        void LeaveAfterRevisit(InternalOS.InternalLevelRunner runner)
+        {
+            _fired = true;
+            var lv = runner.Level;
+            var ch = lv != null ? InternalOS.InternalChapterCatalog.Chapter(lv.chapterId) : null;
+            string chapterKey = ch != null ? ch.chapterId : (lv != null ? lv.chapterId : "");
+
+            bool reality = lv != null && InternalOS.RealityVictorySystem.HasLayer(
+                lv.levelId, InternalOS.VictoryLayer.Reality);
+            int contexts = InternalOS.RealityVictorySystem.DistinctTransferContexts(chapterKey);
+            GameEvents.RaiseSubtitle(reality
+                ? "回执交过了（现实 ✔，迁移 " + contexts + " 个场合）。这一关真正的胜利在外面，不在这儿。"
+                : "这一趟没交回执也没关系。现实里做到那一次，随时回来记一笔。");
+
+            var host = new GameObject("SiteExitDelay");
+            host.AddComponent<SiteExitDelay>().Setup(chapterId, 2.5f);
         }
 
         void ClearByEscape()

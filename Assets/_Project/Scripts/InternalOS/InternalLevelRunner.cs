@@ -49,6 +49,29 @@ namespace AdversityRoad.InternalOS
         public bool GatePassed { get; private set; }
         public bool Cleared { get; private set; }
 
+        /// <summary>
+        /// 这一趟是**回访**，不是重打。
+        ///
+        /// 【为什么必须有这个状态】
+        /// 玩家原话："通关之后再回来，不要再重新玩一遍，比如又出现敌人以及做同样的任务。"
+        /// 说得对，而且原因很具体：离开时 SiteGate 会 DespawnChapter 把整处场景销毁，
+        /// 再进来是从零重建——敌人按 enemyPlan 重新放一遍，关卡循环重新装一遍，
+        /// InternalProp.ResetSession() 又把每件机关的"这一趟做过了没有"清零。
+        /// 三件事叠起来，通关过的关卡和没通关的关卡长得一模一样。
+        ///
+        /// 【回来该干什么：PRD 早就写好了，只是一直够不着】
+        /// 第 8 节把胜利分三层：Simulation（游戏里做到）→ Reality（现实里做到）
+        /// → Transfer（换一个情境又做到），Mastery 靠后两层往上走。
+        /// 通关只拿到第一层。而 ConfirmRealityVictory / ConfirmTransferVictory
+        /// 这两个方法在这一版之前**一个调用者都没有**——后两层在游戏里无路可走，
+        /// Mastery 于是永远停在通关那一档。
+        ///
+        /// 所以回访不是把关卡再演一遍，而是回来**交回执**：
+        /// 场上没有敌人，机关都是做过的样子，交付台变成现实回执台。
+        /// 这既回答了"别让我重玩"，也让通关之后这一趟第一次有了意义。
+        /// </summary>
+        public bool Replay { get; private set; }
+
         /// <summary>已经触发过的 Trigger（同一个触发点不重复弹同一条攻击）。</summary>
         readonly HashSet<string> _fired = new HashSet<string>();
         float _enteredAt;
@@ -94,10 +117,29 @@ namespace AdversityRoad.InternalOS
             // 同理：9-1 的哨兵补员次数也按"每趟"计，重进一关要从头数
             InternalEnemyTactics.ResetSession();
 
-            ControlChainRecorder.Begin(Chapter != null ? Chapter.chapterId : lv.chapterId,
-                lv.realityVictory);
+            // 已经通关过 → 这一趟是回访。判据用的就是解锁用的那一条
+            // （Execution Gate 过了会记一条 Simulation 证据），不另起一套账。
+            Replay = RealityVictorySystem.IsCleared(lv.levelId);
+            if (Replay)
+            {
+                // 回访一进门这一关就已经是"做完了"的状态：出口立刻能走，
+                // 不必再为了出去把同样的事重做一遍。
+                GatePassed = true;
+                Cleared = true;
+            }
 
-            GameEvents.RaiseSubtitle(lv.levelId + "《" + lv.name + "》—— " + lv.Objective);
+            // 回访不记控制链，也不计入成长指标：控制链记的是**一次尝试**的经过，
+            // 而这一趟没有尝试——场上没有敌人、没有任务。把回访混进去会让
+            // "这一章我打了几次、花了多久"这类指标虚高，读起来像是又失败了一遍。
+            if (!Replay)
+                ControlChainRecorder.Begin(Chapter != null ? Chapter.chapterId : lv.chapterId,
+                    lv.realityVictory);
+
+            GameEvents.RaiseSubtitle(Replay
+                ? lv.levelId + "《" + lv.name + "》—— 这一关你已经走完了。" +
+                  "场上没有人拦你，事也不必重做。往里走到【" +
+                  InternalProps.GateLabelOf(lv) + "】交一次现实回执就行。"
+                : lv.levelId + "《" + lv.name + "》—— " + lv.Objective);
             OnLevelEntered?.Invoke(lv);
         }
 
@@ -106,10 +148,14 @@ namespace AdversityRoad.InternalOS
         {
             if (Level == null) return;
 
-            SettleGoalOffline();
+            if (!Replay)
+            {
+                SettleGoalOffline();
+                ControlChainRecorder.End(cleared ? "Completed"
+                    : (GatePassed ? "Partial" : "Withdrawn"));
+            }
+            // 回执要落盘：回访这一趟唯一可能产生的记录就是它
             RealityVictorySystem.Flush();
-            ControlChainRecorder.End(cleared ? "Completed"
-                : (GatePassed ? "Partial" : "Withdrawn"));
 
             OnLevelEnded?.Invoke(Level, cleared);
             if (Active == this) Active = null;
@@ -252,9 +298,10 @@ namespace AdversityRoad.InternalOS
         {
             MentalAttackSystem.Tick();
 
-            if (Level == null) return;
+            if (Level == null || Replay) return;
             // 在这一关里，只要还没通关，时间就都算"可行动时间"；
             // 真正被算成 Agency 的只有 MarkGoalAction 之后那一段。
+            // 回访不计：那一趟没有要做的事，算进去只会稀释这一章真实的行动率。
             RealityVictorySystem.AddActionTime(_goalOffline ? 0f : Time.unscaledDeltaTime,
                 Time.unscaledDeltaTime);
         }
@@ -285,6 +332,11 @@ namespace AdversityRoad.InternalOS
         {
             if (Level == null) return "";
             string head = Level.levelId + "《" + Level.name + "》 ";
+
+            // 回访：这一趟要办的只有回执，指路要指**牌面上的那几个字**
+            if (Replay)
+                return head + "✔ 已通关 · 回访 —— 走到【" +
+                       InternalProps.GateLabelOf(Level) + "】交现实回执，或直接从【出口】离开";
 
             if (Cleared) return head + "✔ 交付完成 —— 现在走到【出口】离开，这一关就结束了";
 
