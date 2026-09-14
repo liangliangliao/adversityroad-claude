@@ -1476,7 +1476,8 @@ namespace AdversityRoad.AI
             // 第 9-26 章先问这一关自己：那批关卡的敌人是玩家**内部的障碍**，
             // 说的该是他自己会对自己说的那句话，而不是经典关卡里外面那个人的台词。
             // 认不出的关卡返回空串，照旧退回通用台词。
-            var internalRunner = InternalOS.InternalLevelRunner.Active;
+            // 同样用 ActiveHere：Active 漏掉之后，经典关卡的心魔会开口说第 9 章的台词
+            var internalRunner = InternalOS.InternalLevelRunner.ActiveHere;
             string line = internalRunner != null
                 ? InternalOS.InternalEnemyTactics.PressureLine(internalRunner.Level) : "";
             if (string.IsNullOrEmpty(line))

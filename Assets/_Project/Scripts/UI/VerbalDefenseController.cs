@@ -131,8 +131,11 @@ namespace AdversityRoad.UI
             // 拦在任务点上、把箱子推回去、在你动笔之前一次次回来——
             // 那是场上的事，不是一道选择题。所以这里直接不接管：
             // 心理伤害照常落下（调用方会 TakeHit），面板不弹。
-            if (AdversityRoad.InternalOS.InternalLevelRunner.Active != null &&
-                AdversityRoad.InternalOS.InternalLevelRunner.Active.Level != null)
+            //
+            // 判据用 ActiveHere 而不是 Active：Active 是生命周期标志，会漏
+            // （阵亡 / 关卡选择跳走 / 重载之后仍然非空），一漏这道闸就再也打不开，
+            // 经典关卡的言语攻防跟着一起死。ActiveHere 问的是玩家现在站在哪儿。
+            if (AdversityRoad.InternalOS.InternalLevelRunner.ActiveHere != null)
                 return false;
 
             _active = true;

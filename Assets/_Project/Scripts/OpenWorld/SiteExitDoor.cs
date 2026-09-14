@@ -83,8 +83,8 @@ namespace AdversityRoad.OpenWorld
             // 第 9-26 章：交付完了，走出这扇门才算把这一关走完。
             // 这一批的规则既不是"打倒"也不是"逃走"，是**先交付、再离场**，
             // 所以在旧的两条规则之前单独判。
-            var runner = InternalOS.InternalLevelRunner.Active;
-            if (runner != null && runner.Level != null &&
+            var runner = InternalOS.InternalLevelRunner.ActiveHere;
+            if (runner != null &&
                 InternalOS.InternalChapterBridge.ChapterIdOfLevel(runner.Level.levelId) == chapterId)
             {
                 if (!runner.Cleared)

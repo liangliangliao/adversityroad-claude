@@ -57,6 +57,14 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         public static void ClearInsideState()
         {
+            // 【这里原来漏了一件事，而且漏得很贵】
+            // 阵亡、从关卡选择面板跳走、重载新局——三条路都只走这里，不走 ExitToCity，
+            // 于是 InternalLevelRunner.Active 带着一个已经不存在的关卡活了下去。
+            // 后果之一：经典关卡的言语攻防被那道"第 9-26 章不弹"的闸永远关住；
+            // 之二：成长指标还在替那一关记时间。
+            // 收线放在这个公共出口上，每一条离开路径就都覆盖到了。
+            InternalOS.InternalLevelRunner.Retire(false);
+
             AI.DialogueLibrary.ClearChapterLines();
             UI.HUDController.SetObjective("");
             _hasReturn = false;
@@ -337,8 +345,7 @@ namespace AdversityRoad.OpenWorld
                 ZoneBuilder.CurrentZoneId = ZoneBuilder.ZoneIdOf(OpenWorldBuilder.CityZoneIndex);
 
             // 内部障碍线的关卡：走出来就收线（撤退也是合法结局，不算失败告终）
-            var runner = InternalOS.InternalLevelRunner.Active;
-            if (runner != null) runner.Leave(runner.GatePassed);
+            InternalOS.InternalLevelRunner.RetireAsFinished();
 
             ClearInsideState();
             GameEvents.RaiseSubtitle("你从那个地方走了出来——它是为这条旅程建的，也会随这条旅程收起。");
@@ -448,8 +455,8 @@ namespace AdversityRoad.OpenWorld
             // 第 9-26 章：目标行由关卡自己给。
             // 这批关卡不以清怪定义胜利（PRD 3.4），按敌人存活数写出来的
             // "这里清空了，从来路走出去"会直接把玩家引向错误的通关方式。
-            var runner = InternalOS.InternalLevelRunner.Active;
-            if (runner != null && runner.Level != null &&
+            var runner = InternalOS.InternalLevelRunner.ActiveHere;
+            if (runner != null &&
                 InternalOS.InternalChapterBridge.ChapterIdOfLevel(runner.Level.levelId) == _chapterId)
             {
                 UI.HUDController.SetObjective(runner.ObjectiveLine());

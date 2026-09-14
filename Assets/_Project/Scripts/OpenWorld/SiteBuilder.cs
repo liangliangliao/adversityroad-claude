@@ -2110,13 +2110,13 @@ namespace AdversityRoad.OpenWorld
         /// </summary>
         static InternalOS.InternalLevelData CurrentLevel()
         {
-            var run = InternalOS.InternalLevelRunner.Active;
+            var run = InternalOS.InternalLevelRunner.ActiveHere;
             return run != null ? run.Level : null;
         }
 
         static bool IsReplay()
         {
-            var run = InternalOS.InternalLevelRunner.Active;
+            var run = InternalOS.InternalLevelRunner.ActiveHere;
             return run != null && run.Replay;
         }
 

@@ -58,7 +58,8 @@ namespace AdversityRoad.UI
             sb.Append("【你刚才做成的那件事】\n").Append(lv.Objective).Append("\n\n");
 
             // 这一关自己的意义句（9-1/9-2 有专门写的；其余回落到章节核心）
-            var gate = InternalLevelRunner.Active != null ? InternalLevelRunner.Active.Gate : null;
+            var run = InternalLevelRunner.ActiveHere;
+            var gate = run != null ? run.Gate : null;
             string meaning = gate != null ? gate.SubmitMeaning() : "";
             if (string.IsNullOrEmpty(meaning) && ch != null) meaning = ch.core;
             if (!string.IsNullOrEmpty(meaning))

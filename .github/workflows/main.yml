@@ -39,7 +39,7 @@ jobs:
       - name: C# 静态检查
         run: |
           set -e
-          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns csstatic uioverlap notelegraphui zonedoors internalrefs csdeclorder interactkey; do
+          for t in cslint csquote csident csobsolete csmember csmissing csshadow csdup csns csstatic uioverlap notelegraphui zonedoors internalrefs csdeclorder interactkey activehere; do
             echo "===== $t ====="
             python3 tools/$t.py
           done

@@ -41,6 +41,50 @@ namespace AdversityRoad.InternalOS
     {
         public static InternalLevelRunner Active { get; private set; }
 
+        /// <summary>
+        /// 这一关的 runner——**而且玩家此刻确实站在它的场景里**。
+        ///
+        /// 【为什么不能直接用 Active】
+        /// Active 是个生命周期标志，它会漏。有三条路只清"人在场景里"的状态、
+        /// 不收 runner：阵亡（SiteGate.ClearInsideState）、从关卡选择面板直接跳走、
+        /// 重载新局。走过任何一条之后 Active 仍然非空。
+        ///
+        /// 于是"第 9-26 章里不弹言语攻防"那道闸就**永远关着**——玩家原话
+        /// "经典关卡中原有的言语攻击弹框被关闭了"。被误伤的还有敌人台词：
+        /// 经典关卡的心魔会开口说第 9 章的话。
+        ///
+        /// 所以关卡之外的判断一律走这一条：它问的是**玩家现在在哪儿**
+        /// （SiteGate 的进出状态在每一条离开路径上都会被清），不会残留。
+        /// InternalOS 内部的机关不必用它——它们各自按 levelId 对得上才动手，
+        /// 而且随场景一起销毁。
+        /// </summary>
+        public static InternalLevelRunner ActiveHere
+        {
+            get
+            {
+                var run = Active;
+                if (run == null || run.Level == null) return null;
+                if (!OpenWorld.SiteGate.InsideSite) return null;
+                return InternalChapterBridge.ChapterIdOfLevel(run.Level.levelId)
+                       == OpenWorld.SiteGate.InsideChapterId ? run : null;
+            }
+        }
+
+        /// <summary>
+        /// 收掉当前这一关（如果还开着）。离开场景的**每一条**路都要走它，
+        /// 否则 Active 会带着一个已经不存在的关卡活下去。
+        /// </summary>
+        public static void Retire(bool cleared)
+        {
+            if (Active != null) Active.Leave(cleared);
+        }
+
+        /// <summary>正常走出场景时收线：结局按"交付过没有"判。</summary>
+        public static void RetireAsFinished()
+        {
+            if (Active != null) Active.Leave(Active.GatePassed);
+        }
+
         /// <summary>这一关的循环（有的话）。由循环自己在装好时登记。</summary>
         public ILevelGate Gate { get; set; }
 
@@ -147,6 +191,15 @@ namespace AdversityRoad.InternalOS
         public void Leave(bool cleared)
         {
             if (Level == null) return;
+            var lv = Level;
+
+            // 【先摘牌，再做别的】
+            // Retire 挂在 SiteGate.ClearInsideState 这个公共出口上，
+            // 而 OnLevelEnded 是个公开事件：哪天有订阅者在回调里碰到 ClearInsideState，
+            // 只要这时 Active 还挂着，就会 Retire → Leave → 回调 → Retire……无限递归。
+            // 把这两行提到最前面，重入就是个直接 return，不必指望订阅者守规矩。
+            if (Active == this) Active = null;
+            Level = null;
 
             if (!Replay)
             {
@@ -157,9 +210,7 @@ namespace AdversityRoad.InternalOS
             // 回执要落盘：回访这一趟唯一可能产生的记录就是它
             RealityVictorySystem.Flush();
 
-            OnLevelEnded?.Invoke(Level, cleared);
-            if (Active == this) Active = null;
-            Level = null;
+            OnLevelEnded?.Invoke(lv, cleared);
             Destroy(gameObject);
         }
 
